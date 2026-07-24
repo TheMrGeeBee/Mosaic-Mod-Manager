@@ -23,11 +23,11 @@ from gui_qt import column_state
 from gui_qt.theme_qt import active_palette, _c, qc, qc_contrast
 from gui_qt.icons import icon
 from gui_qt.modlist.modlist_header import TkStyleHeader
-from gui_qt.plugin_model import (
+from gui_qt.plugin.plugin_model import (
     PluginModel, RowRole, PFlagsRole, PHighlightRole,
     COL_NAME, COL_FLAGS, COL_LOCK, COL_PRIORITY, COL_GAME_INDEX, COLUMNS,
 )
-from gui_qt.plugin_state import (
+from gui_qt.plugin.plugin_state import (
     PF_MISSING, PF_LATE, PF_VMM, PF_ESL, PF_LOOT, PF_DIRTY, PF_TAGS,
     PF_USERLIST, PF_UL_CYCLE, format_loot_tooltip,
 )
@@ -449,7 +449,7 @@ class PluginView(QTreeView):
         selected = {i.row() for i in self.selectionModel().selectedRows()}
         if index.row() not in selected:
             self.setCurrentIndex(index)   # right-click outside selection → select it
-        from gui_qt.plugin_menu import show_context_menu
+        from gui_qt.plugin.plugin_menu import show_context_menu
         show_context_menu(self, self.viewport().mapToGlobal(pos), index)
 
     def _reposition_marker_strip(self):
@@ -900,7 +900,7 @@ class PluginView(QTreeView):
         vp = self.viewport().width()
         if vp <= 0:
             return
-        from gui_qt.plugin_model import COLUMNS
+        from gui_qt.plugin.plugin_model import COLUMNS
         others = sum(self.columnWidth(c) for c in range(len(COLUMNS))
                      if c != COL_NAME and not self.isColumnHidden(c))
         target = vp - others

@@ -273,7 +273,7 @@ def plugin_filter_hidden_rows(rows, state: dict, disabled_mf=None) -> set[int]:
     (hide rows where it holds). AND across includes, OR across excludes — same
     convention as compute_hidden_rows. No active keys → hide nothing.
     """
-    from gui_qt.plugin_state import (
+    from gui_qt.plugin.plugin_state import (
         PF_ESL, PF_MISSING, PF_DIRTY, PF_TAGS, PF_USERLIST,
         PF_ESL_SAFE, PF_ESL_UNSAFE)
 

@@ -11056,7 +11056,7 @@ class MainWindow(QMainWindow):
         ul_path = self._userlist_path()
 
         def worker():
-            from gui_qt.plugin_state import (
+            from gui_qt.plugin.plugin_state import (
                 load_plugins, resolve_plugin_paths_for_game)
             from Utils.userlist import read_userlist_state
             from Utils.perftrace import span
@@ -11201,7 +11201,7 @@ class MainWindow(QMainWindow):
         import threading
 
         def worker():
-            from gui_qt.plugin_state import compute_esl_eligibility
+            from gui_qt.plugin.plugin_state import compute_esl_eligibility
             from Utils.perftrace import span
             data_dir = (game.get_vanilla_plugins_path()
                         if hasattr(game, "get_vanilla_plugins_path") else None)
@@ -11217,8 +11217,8 @@ class MainWindow(QMainWindow):
         keys off them."""
         if gen != self._plugins_gen or not kinds:
             return   # superseded — a newer plugin reload is in flight/applied
-        from gui_qt.plugin_state import PF_ESL_SAFE, PF_ESL_UNSAFE
-        from gui_qt.plugin_model import COL_FLAGS, PFlagsRole
+        from gui_qt.plugin.plugin_state import PF_ESL_SAFE, PF_ESL_UNSAFE
+        from gui_qt.plugin.plugin_model import COL_FLAGS, PFlagsRole
         m = self._plugin_model
         changed = False
         for r in m._rows:
@@ -11250,8 +11250,8 @@ class MainWindow(QMainWindow):
         update each plugin row's PF_USERLIST/PF_UL_CYCLE bits + the menu sets +
         the tooltip group map, without a full plugin reload (Tk parity:
         _refresh_userlist_set + _predraw)."""
-        from gui_qt.plugin_state import PF_USERLIST, PF_UL_CYCLE
-        from gui_qt.plugin_model import COL_FLAGS, PFlagsRole
+        from gui_qt.plugin.plugin_state import PF_USERLIST, PF_UL_CYCLE
+        from gui_qt.plugin.plugin_model import COL_FLAGS, PFlagsRole
         from Utils.userlist import read_userlist_state
         state = read_userlist_state(self._userlist_path())
         self._userlist_state = state
@@ -11301,7 +11301,7 @@ class MainWindow(QMainWindow):
         # Tk closes any existing overlay first so the view reflects the file.
         if self._tabs.has_key("plugin_groups"):
             self._tabs.close_tab("plugin_groups")
-        from gui_qt.plugin_groups_view import PluginGroupsView
+        from gui_qt.plugin.plugin_groups_view import PluginGroupsView
         view = PluginGroupsView(
             ul_path,
             on_close=lambda: self._tabs.close_tab("plugin_groups"),
@@ -11325,7 +11325,7 @@ class MainWindow(QMainWindow):
         sel_rows = self._plugin_view.selectionModel().selectedRows()
         sel_name = (self._plugin_model.row(sel_rows[0].row()).name
                     if sel_rows else "")
-        from gui_qt.plugin_rules_view import PluginRulesView
+        from gui_qt.plugin.plugin_rules_view import PluginRulesView
         view = PluginRulesView(
             plugin_names, ul_path, selected_plugin=sel_name,
             on_close=lambda: self._tabs.close_tab("plugin_rules"),
@@ -11362,7 +11362,7 @@ class MainWindow(QMainWindow):
         # revert or adjust further (Tk parity).
         self._cycle_anchor = name_lower
         self._cycle_scope = component
-        from gui_qt.plugin_cycle_view import PluginCycleView
+        from gui_qt.plugin.plugin_cycle_view import PluginCycleView
         view = PluginCycleView(
             plugin_name,
             on_close=lambda: self._tabs.close_tab("plugin_cycle"),
@@ -11595,7 +11595,7 @@ class MainWindow(QMainWindow):
             self._notify(self.tr("Plugin metadata refreshed."), "success")
             return
 
-        from gui_qt.plugin_state import apply_loot_sort, save_plugins
+        from gui_qt.plugin.plugin_state import apply_loot_sort, save_plugins
         new_rows, moved = apply_loot_sort(
             ctx.get("rows", []), ctx.get("locked_indices", {}),
             list(result.sorted_names), ctx.get("include_vanilla", False))
@@ -11698,7 +11698,7 @@ class MainWindow(QMainWindow):
         first = next((i for i in range(m.rowCount())
                       if m.row(i).name.lower() in names_lower), None)
         if first is not None:
-            from gui_qt.plugin_model import COL_FLAGS
+            from gui_qt.plugin.plugin_model import COL_FLAGS
             from PySide6.QtWidgets import QAbstractItemView
             self._plugin_view.scrollTo(m.index(first, COL_FLAGS),
                                        QAbstractItemView.PositionAtCenter)
@@ -12329,8 +12329,8 @@ class MainWindow(QMainWindow):
 
     def _plugins_placeholder(self) -> QWidget:
         from PySide6.QtWidgets import QStackedWidget
-        from gui_qt.plugin_model import PluginModel
-        from gui_qt.plugin_view import PluginView
+        from gui_qt.plugin.plugin_model import PluginModel
+        from gui_qt.plugin.plugin_view import PluginView
 
         frame = QFrame()
         frame.setObjectName("PlaceholderPane")

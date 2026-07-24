@@ -287,7 +287,7 @@ def _plugin_paths(view) -> dict:
     if game is None:
         return {}
     try:
-        from gui_qt.plugin_state import resolve_plugin_paths_for_game
+        from gui_qt.plugin.plugin_state import resolve_plugin_paths_for_game
         return resolve_plugin_paths_for_game(game)
     except Exception:
         return {}

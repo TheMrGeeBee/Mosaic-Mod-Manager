@@ -2016,7 +2016,7 @@ def _loot_available() -> bool:
 
 def _filemap_deployed_plugins(game, profile_dir) -> "dict[str, str]":
     """Top-level plugin names the freshly-built filemap.txt deploys, keyed
-    {lower: original_name}. Port of gui_qt.plugin_state._filemap_deployed_plugins
+    {lower: original_name}. Port of gui_qt.plugin.plugin_state._filemap_deployed_plugins
     (kept here so the neutral install layer doesn't import the Qt module).
 
     A collection's manifest ``plugins`` array doesn't always list every plugin

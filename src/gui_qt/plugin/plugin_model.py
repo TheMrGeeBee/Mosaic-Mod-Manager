@@ -14,7 +14,7 @@ from PySide6.QtCore import (
     Qt, QAbstractTableModel, QModelIndex, Signal, QT_TRANSLATE_NOOP,
 )
 
-from gui_qt.plugin_state import PluginRow, save_plugins, compute_game_indexes
+from gui_qt.plugin.plugin_state import PluginRow, save_plugins, compute_game_indexes
 
 COL_NAME = 0
 COL_FLAGS = 1
