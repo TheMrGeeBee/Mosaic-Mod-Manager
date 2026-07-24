@@ -3028,7 +3028,7 @@ class MainWindow(QMainWindow):
                          "warning")
             self._append_log("[nexus] no OAuth tokens — login required")
             return
-        from gui_qt.nexus_browser_view import NexusBrowserView
+        from gui_qt.nexus.nexus_browser_view import NexusBrowserView
         view = NexusBrowserView(api, domain, game,
                                 install_fn=self._install_paths,
                                 log_fn=self._append_log,
@@ -6316,7 +6316,7 @@ class MainWindow(QMainWindow):
         if files is None:           # fetch error (fallback already handled)
             self._req_installing = False
             return
-        from gui_qt.nexus_file_chooser import NexusFileChooser, installable_files
+        from gui_qt.nexus.nexus_file_chooser import NexusFileChooser, installable_files
         picks = installable_files(files)
         if not picks:
             self._notify(self.tr("No downloadable files for that mod."), "warning")
@@ -12630,7 +12630,7 @@ class MainWindow(QMainWindow):
         h.addWidget(self._endorse_amm_btn)
 
         # Nexus username at the far right; hover shows API rate-limit usage.
-        from gui_qt.nexus_footer import NexusFooterLabel
+        from gui_qt.nexus.nexus_footer import NexusFooterLabel
         self._nexus_footer = NexusFooterLabel(lambda: getattr(self, "_nexus_api", None))
         h.addWidget(self._nexus_footer)
 

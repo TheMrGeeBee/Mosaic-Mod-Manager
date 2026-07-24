@@ -17,7 +17,7 @@ from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QLabel, QPushButton
 
 from gui_qt.theme_qt import active_palette, _c
-from gui_qt.nexus_mod_card import _TwoLineLabel, _fmt_count, cap_summary, wrap_tooltip
+from gui_qt.nexus.nexus_mod_card import _TwoLineLabel, _fmt_count, cap_summary, wrap_tooltip
 
 CARD_W = 240          # portrait card (Tk collection tile was ~220 wide)
 IMG_W = 238           # cover width = CARD_W minus the 1px border each side

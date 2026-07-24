@@ -32,7 +32,7 @@ from gui_qt.theme_qt import active_palette, _c
 from gui_qt.safe_emit import safe_emit
 from gui_qt.worker import run_in_worker
 from gui_qt.selector_button import SelectorButton
-from gui_qt.nexus_mod_card import NexusModCard, ThumbnailLoader, CARD_W
+from gui_qt.nexus.nexus_mod_card import NexusModCard, ThumbnailLoader, CARD_W
 
 # label → API value (verbatim from Tk browse_mods_panel.SORT_KEYS / TIME_RANGES)
 SORT_KEYS = [
@@ -1049,7 +1049,7 @@ class NexusBrowserView(QWidget):
         folders so the browser download auto-installs when it arrives.
         'Download with Mod Manager' still works too — that comes back as an
         nxm:// link, which cancels this watch (see app._handle_nxm)."""
-        from gui_qt.nexus_file_chooser import NexusFileChooser, installable_files
+        from gui_qt.nexus.nexus_file_chooser import NexusFileChooser, installable_files
         picks = installable_files(files or [])
         if not picks:
             # No file list (API error) or nothing installable: fall back to
@@ -1159,7 +1159,7 @@ class NexusBrowserView(QWidget):
 
     def _on_files_ready(self, entry, files):
         """UI thread: pick the file to install. Main/optional/misc; >1 → chooser."""
-        from gui_qt.nexus_file_chooser import NexusFileChooser, installable_files
+        from gui_qt.nexus.nexus_file_chooser import NexusFileChooser, installable_files
         picks = installable_files(files)
         if not picks:
             self._log("Nexus: no downloadable files found.")
