@@ -8,7 +8,7 @@ game's profile scaffolding without pulling in tkinter. Pure, framework-agnostic.
 from __future__ import annotations
 
 from Games.base_game import BaseGame
-from Utils.modlist import sync_modlist_with_mods_folder
+from Utils.mods.modlist import sync_modlist_with_mods_folder
 
 
 def create_profile_structure(game: BaseGame) -> None:

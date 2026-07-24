@@ -92,7 +92,7 @@ def _fs_id(path: Path) -> "int | None":
 def _count_enabled_mods(profile_dir: Path) -> "tuple[int, int]":
     """Return (enabled_mods, separators) from the profile's modlist.txt."""
     try:
-        from Utils.modlist import read_modlist
+        from Utils.mods.modlist import read_modlist
         entries = read_modlist(profile_dir / "modlist.txt")
     except Exception:
         return (0, 0)

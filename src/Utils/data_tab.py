@@ -9,7 +9,7 @@ verbatim from the Tk ModFiles… er, Data mixin (gui/plugin_panel_data.py) so th
 Data tab stays in lockstep. Pure stdlib + Utils.*/Games.* — no GUI toolkit.
 
 Conflict data (contested keys + filemap winner) is provided by
-Utils.mod_files.build_conflict_cache — reused, not duplicated here.
+Utils.mods.mod_files.build_conflict_cache — reused, not duplicated here.
 """
 
 from __future__ import annotations
@@ -75,7 +75,7 @@ def load_data_entries(game, filemap_path: Path,
     modlist_path = profile_dir / "modlist.txt"
     if modlist_path.is_file():
         try:
-            from Utils.modlist import read_modlist
+            from Utils.mods.modlist import read_modlist
             from Utils.deploy.deploy import (
                 load_separator_deploy_paths, expand_separator_deploy_paths)
             sep_paths = load_separator_deploy_paths(profile_dir)
@@ -153,7 +153,7 @@ def resolve_data_entries(game, entries: list[tuple[str, str]],
         modlist_path = profile_dir / "modlist.txt"
         if modlist_path.is_file():
             try:
-                from Utils.modlist import read_modlist
+                from Utils.mods.modlist import read_modlist
                 for rank, e in enumerate(read_modlist(modlist_path)):
                     priority_map[e.name] = rank
             except Exception:

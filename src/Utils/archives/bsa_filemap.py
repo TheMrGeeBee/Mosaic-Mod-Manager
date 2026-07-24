@@ -47,7 +47,7 @@ from Utils.filemap import (
     _compute_conflict_status,
     read_mod_index,
 )
-from Utils.modlist import read_modlist
+from Utils.mods.modlist import read_modlist
 
 _BSA_INDEX_VERSION = 1
 

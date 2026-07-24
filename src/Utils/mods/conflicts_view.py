@@ -215,7 +215,7 @@ def compute_mod_conflicts(
     if archive_exts and bsa_index_path is not None and bsa_index_path.is_file():
         try:
             from Utils.archives.bsa_filemap import read_bsa_index, compute_bsa_winner_map
-            from Utils.modlist import read_modlist as _read_ml
+            from Utils.mods.modlist import read_modlist as _read_ml
             bsa_index = read_bsa_index(bsa_index_path) or {}
             entries_ml = _read_ml(modlist_path)
             enabled_ml = [e for e in entries_ml if not e.is_separator and e.enabled]

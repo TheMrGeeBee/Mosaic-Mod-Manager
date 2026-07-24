@@ -12,7 +12,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from Nexus.nexus_meta import read_meta
-from Utils.mod_files_versions import resolve_latest_name_match
+from Utils.mods.mod_files_versions import resolve_latest_name_match
 
 
 def resolve_quick_update_target(api, staging_root: Path, mod_name: str,

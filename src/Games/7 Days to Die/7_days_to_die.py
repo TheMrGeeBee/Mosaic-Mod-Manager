@@ -44,7 +44,7 @@ from pathlib import Path
 
 from Games.base_game import BaseGame
 from Utils.deploy.deploy import LinkMode
-from Utils.modlist import read_modlist
+from Utils.mods.modlist import read_modlist
 from Utils.config_paths import get_profiles_dir
 from Utils.profile_state import read_excluded_mod_files
 
@@ -742,7 +742,7 @@ def _make_keep(path_filters, mod_name: str, offset: str, strip=None):
     ``offset + rel_key`` before testing — otherwise "Disable" exclusions on
     wrapped content never match and the files deploy anyway."""
     if strip:
-        from Utils.mod_files import rel_key_after_strip
+        from Utils.mods.mod_files import rel_key_after_strip
         return lambda rel_key: path_filters.accepts(
             mod_name, rel_key_after_strip(offset + rel_key, strip))
     return lambda rel_key: path_filters.accepts(mod_name, offset + rel_key)

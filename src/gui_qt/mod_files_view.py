@@ -1,6 +1,6 @@
 """Qt Mod Files tab — per-mod file tree with Top Level + Disable checkbox columns.
 
-Reuses Utils.mod_files for every bit of logic (file listing, conflict cache, the
+Reuses Utils.mods.mod_files for every bit of logic (file listing, conflict cache, the
 strip-prefix promotion/demotion algorithm, the exclusion save-merge) so it stays
 in lockstep with the Tk tab. This module is the Qt presentation: a QTreeView +
 ModFilesModel, a toolbar (Expand all / Filters), a search box, and a footer
@@ -16,7 +16,7 @@ from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QTreeView, QLabel, QAbstractItemView,
 )
 
-import Utils.mod_files as mflogic
+import Utils.mods.mod_files as mflogic
 from gui_qt.mod_files_model import (
     ModFilesModel, _Node, COL_NAME, COL_TOPLEVEL, COL_DISABLE,
 )

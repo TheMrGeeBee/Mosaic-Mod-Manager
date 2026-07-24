@@ -6,7 +6,7 @@ the same modlist-scoped mechanism as the Settings tab itself.
 
 Lets a user author ordered search/replace regex rules that are applied to a
 downloaded archive's filename stem *before* the built-in Nexus/mod.io name
-parsers (see `Utils.mod_name_utils._apply_custom_patterns`). This is the escape
+parsers (see `Utils.mods.mod_name_utils._apply_custom_patterns`). This is the escape
 hatch for when Nexus changes its download-name format again: rather than shipping
 a code change, a user adds a rule here.
 
@@ -132,7 +132,7 @@ class InstallNamePatternsView(QWidget):
         # {id: default rule dict} for the built-in rules, used for per-row and
         # global reset.
         try:
-            from Utils.mod_name_utils import default_install_name_rules
+            from Utils.mods.mod_name_utils import default_install_name_rules
             self._defaults = default_install_name_rules()
         except Exception:
             self._defaults = []
@@ -383,7 +383,7 @@ class InstallNamePatternsView(QWidget):
             self._test_out.setText("")
             return
         try:
-            from Utils.mod_name_utils import (
+            from Utils.mods.mod_name_utils import (
                 _suggest_mod_names, sanitize_mod_folder_name)
             suggestions = _suggest_mod_names(stem)
             result = (suggestions[0] if suggestions else stem) or stem

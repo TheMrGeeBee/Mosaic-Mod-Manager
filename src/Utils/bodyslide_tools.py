@@ -72,7 +72,7 @@ def ensure_output_mod(game: "BaseGame", profile: str, mod_name: str) -> Path:
 
     modlist_path = game.get_profile_root() / "profiles" / profile / "modlist.txt"
     if modlist_path.is_file():
-        from Utils.modlist import prepend_mod, read_modlist
+        from Utils.mods.modlist import prepend_mod, read_modlist
         entries = read_modlist(modlist_path)
         if not any(e.name == mod_name for e in entries):
             prepend_mod(modlist_path, mod_name, enabled=True)

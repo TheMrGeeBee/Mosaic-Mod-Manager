@@ -46,7 +46,7 @@ def register_as_mod_neutral(
     mod directory. Call from a worker thread.
     """
     from Nexus.nexus_meta import NexusModMeta, write_meta
-    from Utils.modlist import prepend_mod
+    from Utils.mods.modlist import prepend_mod
 
     staging = game.get_effective_mod_staging_path()
     if staging is None:

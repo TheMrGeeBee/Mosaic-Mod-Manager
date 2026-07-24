@@ -17,7 +17,7 @@ from PySide6.QtCore import (
 # Crash-proof diagnostic prints (Flatpak stdout can raise BrokenPipeError and
 # kill worker threads). See Utils.app_log.safe_print.
 from Utils.app_log import safe_print as print  # noqa: A004
-from Utils.modlist import ModEntry, read_modlist
+from Utils.mods.modlist import ModEntry, read_modlist
 from Utils.filemap import OVERWRITE_NAME, ROOT_FOLDER_NAME
 from gui_qt.modlist_sort import (
     DIVIDER_NAME, build_display, uninvert_display, make_divider, is_reverse,
@@ -949,7 +949,7 @@ class ModListModel(QAbstractTableModel):
         # Every structural edit (drag, remove, add-separator, set_priority…)
         # funnels through here — row→block mapping may have changed.
         self._sep_hl_cache.clear()
-        from Utils.modlist import write_modlist, _lock_for
+        from Utils.mods.modlist import write_modlist, _lock_for
         from Utils.perftrace import span
         # ALWAYS write the natural order — the display list may be a sorted /
         # inverted permutation (and contains the divider in reverse mode).
@@ -978,7 +978,7 @@ class ModListModel(QAbstractTableModel):
         if e.name in _PINNED_NAMES or (not e.is_separator and e.locked):
             return
         # Separators keep their suffix so they stay separators on write-out.
-        from Utils.modlist import _SEPARATOR_SUFFIX
+        from Utils.mods.modlist import _SEPARATOR_SUFFIX
         e.name = (new_name + _SEPARATOR_SUFFIX) if e.is_separator else new_name
         idx = self.index(row, COL_NAME)
         self.dataChanged.emit(idx, idx, [Qt.DisplayRole, EntryRole])
@@ -1022,7 +1022,7 @@ class ModListModel(QAbstractTableModel):
         self.save()
 
     def add_separator(self, row: int, name: str, above: bool) -> None:
-        from Utils.modlist import _SEPARATOR_SUFFIX
+        from Utils.mods.modlist import _SEPARATOR_SUFFIX
         from gui_qt.modlist_sort import insert_separator_display
         sep = ModEntry(name + _SEPARATOR_SUFFIX, True, False, True)
         ref = self._entries[row]

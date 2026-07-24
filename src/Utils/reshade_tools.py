@@ -592,7 +592,7 @@ def install_reshade_files(
     widgets from this worker-thread call would spawn a stray floating window.
     """
     from Utils.deploy.deploy import apply_wine_dll_overrides
-    from Utils.mod_name_utils import sanitize_mod_folder_name
+    from Utils.mods.mod_name_utils import sanitize_mod_folder_name
 
     # ReShade must live next to the rendering exe. Ask the game handler for the
     # install subdir relative to the game root (e.g. "bin/x64", "<Project>/
@@ -610,7 +610,7 @@ def install_reshade_files(
     indexed_mod: str | None = None
     if dest == "mod":
         mod_name = (mod_name or "").strip() or "ReShade"
-        from Utils.install_as_mod import register_as_mod_neutral
+        from Utils.mods.install_as_mod import register_as_mod_neutral
         base_dir = register_as_mod_neutral(
             game, mod_name, None, log_fn=log_fn, root_folder=True)
         indexed_mod = mod_name
@@ -675,7 +675,7 @@ def install_reshade_files(
     #     immediately (the Tk wizard skipped this — mod needed a Refresh first).
     #     The caller reloads the modlist UI on the GUI thread after we return.
     if indexed_mod is not None:
-        from Utils.install_as_mod import index_installed_mod
+        from Utils.mods.install_as_mod import index_installed_mod
         index_installed_mod(game, indexed_mod, log_fn=log_fn)
 
     # 4. Apply Wine DLL override to the Proton prefix.

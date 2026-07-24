@@ -18,7 +18,7 @@ from PySide6.QtWidgets import (
 )
 
 import Utils.data_tab as dtlogic
-import Utils.mod_files as mflogic
+import Utils.mods.mod_files as mflogic
 from gui_qt.data_model import DataModel, _DataNode, COL_NAME, COL_MOD
 from gui_qt.safe_emit import safe_emit
 

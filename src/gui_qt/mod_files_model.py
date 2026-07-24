@@ -1,14 +1,14 @@
 """Qt tree model for the Mod Files tab.
 
 A QAbstractItemModel over a folder/file hierarchy built from a mod's raw file
-listing (Utils.mod_files.build_tree). Three columns:
+listing (Utils.mods.mod_files.build_tree). Three columns:
 
   0  File name  — the tree (folder/file names)
   1  Top Level  — checkbox: is this path promoted to deploy at the game root
   2  Disable    — checkbox: is this file excluded from deploy (folders = tri-state)
 
 The model is display-only state; all persistence + the strip/exclusion
-algorithms live in Utils.mod_files. The view drives saves on checkbox clicks.
+algorithms live in Utils.mods.mod_files. The view drives saves on checkbox clicks.
 """
 
 from __future__ import annotations
@@ -210,7 +210,7 @@ class ModFilesModel(QAbstractItemModel):
                 stack.extend(n.children)
         return out
 
-    # ---- mutation (view calls these, then persists via Utils.mod_files) ---
+    # ---- mutation (view calls these, then persists via Utils.mods.mod_files) ---
     def set_disabled_subtree(self, node: _Node, included: bool):
         """Set the Disable state for a node + all descendants (folder toggle)."""
         if node.is_dir:

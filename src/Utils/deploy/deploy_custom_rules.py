@@ -343,7 +343,7 @@ def deploy_custom_rules(
                 load_separator_deploy_paths as _lsdp,
                 expand_separator_link_modes as _eslm,
             )
-            from Utils.modlist import read_modlist as _rml
+            from Utils.mods.modlist import read_modlist as _rml
             _per_mode = _eslm(_lsdp(filemap_path.parent),
                               _rml(filemap_path.parent / "modlist.txt"))
         except Exception:
@@ -361,7 +361,7 @@ def deploy_custom_rules(
                 load_separator_deploy_paths as _lsdp_raw,
                 expand_separator_raw_deploy as _esrd,
             )
-            from Utils.modlist import read_modlist as _rml_raw
+            from Utils.mods.modlist import read_modlist as _rml_raw
             _raw_mods = _esrd(_lsdp_raw(filemap_path.parent),
                               _rml_raw(filemap_path.parent / "modlist.txt"))
         except Exception:

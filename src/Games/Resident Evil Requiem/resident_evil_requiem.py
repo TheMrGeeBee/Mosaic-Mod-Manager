@@ -36,7 +36,7 @@ from Utils.deploy.deploy import (
     restore_custom_rules,
     restore_filemap_from_root,
 )
-from Utils.modlist import read_modlist
+from Utils.mods.modlist import read_modlist
 from Utils.config_paths import get_profiles_dir
 
 _PROFILES_DIR = get_profiles_dir()

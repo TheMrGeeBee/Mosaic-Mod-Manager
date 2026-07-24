@@ -27,7 +27,7 @@ from Utils.deploy.deploy import (
     expand_separator_deploy_paths,
     cleanup_custom_deploy_dirs,
 )
-from Utils.modlist import read_modlist
+from Utils.mods.modlist import read_modlist
 
 _PROFILES_DIR = get_profiles_dir()
 

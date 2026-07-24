@@ -831,7 +831,7 @@ class RequirementResolver:
         if (self._staging_root is not None and self._staging_root.is_dir()
                 and modlist_path.is_file()):
             try:
-                from Utils.modlist import read_modlist
+                from Utils.mods.modlist import read_modlist
                 from Nexus.nexus_meta import read_meta
                 for e in read_modlist(modlist_path):
                     if not e.enabled:

@@ -1062,7 +1062,7 @@ class MainWindow(QMainWindow):
             mod_name = rel.parts[0]
 
             from Utils.archives.bsa_filemap import read_bsa_index, compute_bsa_winner_map
-            from Utils.modlist import read_modlist
+            from Utils.mods.modlist import read_modlist
             from Utils.archives.ue_pak_reader import UE_ARCHIVE_EXTENSIONS
             index = read_bsa_index(staging.parent / "bsa_index.bin") or {}
             enabled = [e for e in read_modlist(ml)
@@ -2041,7 +2041,7 @@ class MainWindow(QMainWindow):
             # shared index/filemap, which is unchanged across the switch.
             with perftrace.span("switch.sync_modlist_folder"):
                 try:
-                    from Utils.modlist import sync_modlist_with_mods_folder
+                    from Utils.mods.modlist import sync_modlist_with_mods_folder
                     ml = self._gs.modlist_path()
                     staging = self._gs.staging_dir()
                     if ml is not None and staging is not None:
@@ -3433,7 +3433,7 @@ class MainWindow(QMainWindow):
 
         # Compute the diff (old cached manifest vs the new mod list).
         import json as _json
-        from Utils.modlist import read_modlist
+        from Utils.mods.modlist import read_modlist
         from Utils.collections.collection_diff import diff_collection
         from Utils.profile_state import read_collection_revision
         old_manifest = {}
@@ -3500,7 +3500,7 @@ class MainWindow(QMainWindow):
 
         def worker():
             import configparser
-            from Utils.modlist import read_modlist
+            from Utils.mods.modlist import read_modlist
             try:
                 snapshot = list(read_modlist(profile_dir / "modlist.txt")) \
                     if (profile_dir / "modlist.txt").is_file() else []
@@ -3545,7 +3545,7 @@ class MainWindow(QMainWindow):
     def _finish_collection_update(self, payload):
         """UI thread: remove stale + bundled/patched mods, build
         update_context, then continue-install."""
-        from Utils import mod_remove
+        from Utils.mods import mod_remove
         info = payload["info"]; profile_dir = payload["profile_dir"]
         pname = payload["pname"]; diff = payload["diff"]
         snapshot = payload["snapshot"]
@@ -5284,7 +5284,7 @@ class MainWindow(QMainWindow):
         """A backup was restored — sync the modlist with the mods folder so any
         mods in staging but absent from the restored modlist.txt show up, then
         refresh both panels (backups cover modlist AND plugins)."""
-        from Utils.modlist import sync_modlist_with_mods_folder
+        from Utils.mods.modlist import sync_modlist_with_mods_folder
         self._reassert_profile_paths()
         ml = self._gs.modlist_path()
         staging = self._gs.staging_dir()
@@ -5520,7 +5520,7 @@ class MainWindow(QMainWindow):
     def _on_separators_removed(self, names):
         """Drop stored colour + deploy override + lock + collapsed state for
         removed separators."""
-        from Utils.modlist import _SEPARATOR_SUFFIX
+        from Utils.mods.modlist import _SEPARATOR_SUFFIX
         profile_dir = self._gs.profile_dir()
         display_names = set()
         for nm in names:
@@ -5986,7 +5986,7 @@ class MainWindow(QMainWindow):
         Resolves collisions (single → Replace/Rename/Cancel overlay; multi → one
         Replace-or-skip prompt), copies on a worker thread, and — for a move —
         removes the sources here afterwards. Port of Tk _copy_mod(s)_to_profile."""
-        from Utils import mod_copy
+        from Utils.mods import mod_copy
         game = self._gs.game
         src_staging = self._gs.staging_dir()
         src_profile_dir = self._gs.profile_dir()
@@ -6061,7 +6061,7 @@ class MainWindow(QMainWindow):
         """Worker: copy each planned mod, then (move) remove the sources."""
         import threading
         from pathlib import Path
-        from Utils import mod_copy
+        from Utils.mods import mod_copy
         # Serialize: a second copy/move while one runs would write the same
         # target folders concurrently (install has the same guard).
         if getattr(self, "_copy_running", False):
@@ -6110,7 +6110,7 @@ class MainWindow(QMainWindow):
             removed = False
             if move and copied:
                 try:
-                    from Utils.mod_remove import remove_mods
+                    from Utils.mods.mod_remove import remove_mods
                     remove_mods(game, Path(src_profile_dir), copied,
                                 log_fn=lambda m: self._op_log.emit(str(m)))
                     removed = True
@@ -6160,7 +6160,7 @@ class MainWindow(QMainWindow):
         JSON/text writes, no worker thread or collision overlay needed;
         colliding names are skipped (dedup by name)."""
         from Utils import separator_copy
-        from Utils.modlist import _SEPARATOR_SUFFIX
+        from Utils.mods.modlist import _SEPARATOR_SUFFIX
         game = self._gs.game
         src_profile_dir = self._gs.profile_dir()
         if game is None or src_profile_dir is None:
@@ -6729,7 +6729,7 @@ class MainWindow(QMainWindow):
     def _export_code_worker(self, game):
         try:
             from Utils import profile_export
-            from Utils.modlist import read_modlist
+            from Utils.mods.modlist import read_modlist
             pd = getattr(game, "_active_profile_dir", None)
             modlist_path = (Path(pd) / "modlist.txt") if pd else None
             if not modlist_path or not modlist_path.is_file():
@@ -8606,7 +8606,7 @@ class MainWindow(QMainWindow):
         forced_name = getattr(self, "_install_preferred", {}).get(path, "")
 
         def worker():
-            from Utils.mod_install import prepare_archive
+            from Utils.mods.mod_install import prepare_archive
             try:
                 prepared = prepare_archive(
                     path, self._install_game, self._install_profile_dir,
@@ -8651,7 +8651,7 @@ class MainWindow(QMainWindow):
 
         def driver():
             from concurrent.futures import ThreadPoolExecutor
-            from Utils.mod_install import (prepare_archive, finish_install,
+            from Utils.mods.mod_install import (prepare_archive, finish_install,
                                            _archive_lists_fomod_config)
             from Utils.extract_budget import (ExtractionMemoryBudget,
                                               get_uncompressed_size)
@@ -8934,7 +8934,7 @@ class MainWindow(QMainWindow):
         exists_cb = None if _forced else self._make_exists_cb()
 
         def worker():
-            from Utils.mod_install import finish_install
+            from Utils.mods.mod_install import finish_install
             try:
                 name = finish_install(
                     prepared, selections,
@@ -9004,7 +9004,7 @@ class MainWindow(QMainWindow):
         exists_cb = None if _forced else self._make_exists_cb()
 
         def worker():
-            from Utils.mod_install import finish_install
+            from Utils.mods.mod_install import finish_install
             try:
                 name = finish_install(
                     prepared, selections,
@@ -9161,8 +9161,8 @@ class MainWindow(QMainWindow):
     def _remove_previous_version(self, old_name: str, new_name: str):
         """New mod inherits old's modlist slot + enabled state; old is removed."""
         try:
-            from Utils.modlist import read_modlist, write_modlist
-            from Utils.mod_remove import remove_mods
+            from Utils.mods.modlist import read_modlist, write_modlist
+            from Utils.mods.mod_remove import remove_mods
             pdir = self._gs.profile_dir()
             game = self._gs.game
             if pdir is None or game is None:
@@ -9229,7 +9229,7 @@ class MainWindow(QMainWindow):
         overlay (Replace All / Rename… / Cancel) rather than failing outright,
         and the rename completes asynchronously through that flow (so the return
         value is None — the folder is still under ``old_name`` at that point)."""
-        from Utils.mod_name_utils import sanitize_mod_folder_name
+        from Utils.mods.mod_name_utils import sanitize_mod_folder_name
         new_name = sanitize_mod_folder_name(new_name)
         if not old_name or not new_name or old_name == new_name:
             return None
@@ -9259,7 +9259,7 @@ class MainWindow(QMainWindow):
         row, then rename *old_name* → *new_name* (used by the rename-collision
         Replace-All path)."""
         try:
-            from Utils.mod_remove import remove_mods
+            from Utils.mods.mod_remove import remove_mods
             remove_mods(self._gs.game, self._gs.profile_dir(), [new_name],
                         log_fn=self._append_log)
         except Exception as exc:
@@ -9271,7 +9271,7 @@ class MainWindow(QMainWindow):
         # post-install reload for a fresh install), and remove_row's default
         # save=True would silently re-persist that stale state.
         try:
-            from Utils.modlist import read_modlist, write_modlist, _lock_for
+            from Utils.mods.modlist import read_modlist, write_modlist, _lock_for
             ml_path = self._gs.modlist_path()
             if ml_path is not None:
                 with _lock_for(ml_path):
@@ -9310,7 +9310,7 @@ class MainWindow(QMainWindow):
         # Re-key the name-keyed per-mod state (strip prefixes, disabled plugins,
         # excluded files, notes) — Tk parity: _migrate_mod_name_state.
         try:
-            from Utils.mod_rename import migrate_mod_state
+            from Utils.mods.mod_rename import migrate_mod_state
             migrate_mod_state(self._gs.profile_dir(), old_name, new_name,
                               log_fn=self._append_log)
         except Exception as exc:
@@ -9327,7 +9327,7 @@ class MainWindow(QMainWindow):
         # just-installed mod's entry outright (root cause of mods vanishing
         # until a manual Refresh, but only when using this rename prompt).
         try:
-            from Utils.modlist import read_modlist, write_modlist, _lock_for
+            from Utils.mods.modlist import read_modlist, write_modlist, _lock_for
             ml_path = self._gs.modlist_path()
             if ml_path is not None:
                 with _lock_for(ml_path):
@@ -10112,7 +10112,7 @@ class MainWindow(QMainWindow):
     def _on_refresh_modlist(self):
         """Refresh: re-sync the mods folder, reload the modlist + plugins, and
         force a full index rescan (picks up files added/removed inside mods)."""
-        from Utils.modlist import sync_modlist_with_mods_folder
+        from Utils.mods.modlist import sync_modlist_with_mods_folder
         self._reassert_profile_paths()
         ml = self._gs.modlist_path()
         staging = self._gs.staging_dir()
@@ -10564,7 +10564,7 @@ class MainWindow(QMainWindow):
         overlays are keyed by mod name so they still render correctly). Leave it
         False for a game/profile switch, where the old overlays are stale and
         must be cleared immediately."""
-        from Utils.modlist import read_modlist
+        from Utils.mods.modlist import read_modlist
         from gui_qt.modlist_data import read_meta_for_entries
         from Utils.perftrace import span
 
@@ -12096,7 +12096,7 @@ class MainWindow(QMainWindow):
         mod on disk + in modlist but not indexed) vs. a name/scan issue
         (near-match key) vs. all-good. Reads the index once per build."""
         try:
-            from Utils.modlist import read_modlist
+            from Utils.mods.modlist import read_modlist
             from Utils.filemap import read_mod_index, OVERWRITE_NAME, ROOT_FOLDER_NAME
             staging = self._gs.staging_dir()
             ml = self._gs.modlist_path()

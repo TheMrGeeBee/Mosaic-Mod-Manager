@@ -229,7 +229,7 @@ def _delete_selected(win):
         profile_dir = getattr(view, "profile_dir", None)
         if game is not None and profile_dir is not None:
             try:
-                from Utils.mod_remove import remove_mods
+                from Utils.mods.mod_remove import remove_mods
                 remove_mods(game, profile_dir, names,
                             log_fn=lambda msg: print(f"[remove] {msg}",
                                                      flush=True))

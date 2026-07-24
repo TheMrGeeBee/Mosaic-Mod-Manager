@@ -21,7 +21,7 @@ import json
 from datetime import datetime, timezone
 from pathlib import Path
 
-from Utils.modlist import read_modlist, write_modlist
+from Utils.mods.modlist import read_modlist, write_modlist
 
 INSTALLED_COLLECTIONS_DIR = "installed_collections"
 
@@ -149,7 +149,7 @@ def remove_appended_collection(game, profile_dir: Path, record: dict,
     """
     log = log_fn or (lambda _m: None)
     if mod_names:
-        from Utils.mod_remove import remove_mods
+        from Utils.mods.mod_remove import remove_mods
         remove_mods(game, Path(profile_dir), list(mod_names), log_fn=log)
         modlist_path = Path(profile_dir) / "modlist.txt"
         removed_lower = {n.lower() for n in mod_names}

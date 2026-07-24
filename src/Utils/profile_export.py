@@ -563,7 +563,7 @@ def install_local_bundle(src_path, profile_dir, mods_dir, overwrite_dir=None, *,
     # source profile) — drop those phantom entries now so they don't linger until
     # a manual Refresh. Mirrors the Refresh path's folder-sync.
     try:
-        from Utils.modlist import sync_modlist_with_mods_folder
+        from Utils.mods.modlist import sync_modlist_with_mods_folder
         sync_modlist_with_mods_folder(profile_dir / "modlist.txt", mods_dir)
         log("Import: reconciled modlist.txt against staged mods.")
     except Exception as exc:

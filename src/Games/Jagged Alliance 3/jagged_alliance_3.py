@@ -22,7 +22,7 @@ from Utils.deploy.deploy import (
     load_separator_deploy_paths, expand_separator_deploy_paths,
     cleanup_custom_deploy_dirs, move_to_core, restore_data_core,
 )
-from Utils.modlist import read_modlist
+from Utils.mods.modlist import read_modlist
 from Utils.config_paths import get_profiles_dir
 
 _PROFILES_DIR = get_profiles_dir()

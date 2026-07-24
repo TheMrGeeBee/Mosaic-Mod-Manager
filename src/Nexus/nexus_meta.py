@@ -427,7 +427,7 @@ def collect_root_flagged_mods(modlist_path: Path, staging_root: Path,
     wizard-installed SKSE put Scripts/ in the game root instead of Data/.
     For build_filemap the extra names are harmless — it only tests membership
     for mods already in the enabled iteration."""
-    from Utils.modlist import read_modlist
+    from Utils.mods.modlist import read_modlist
 
     flagged: set[str] = set()
     if not modlist_path.is_file():

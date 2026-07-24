@@ -169,7 +169,7 @@ def build_conflict_cache(index_path: Path | None,
         disabled: set[str] = set()
         if ml_path is not None and ml_path.is_file():
             try:
-                from Utils.modlist import read_modlist
+                from Utils.mods.modlist import read_modlist
                 disabled = {e.name for e in read_modlist(ml_path)
                             if not e.is_separator and not e.enabled}
             except Exception:

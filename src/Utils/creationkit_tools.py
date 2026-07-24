@@ -81,7 +81,7 @@ def install_ckpe_mod(game: "BaseGame", *,
 
     from Utils.ca_bundle import download_file, get_ssl_context
     from Utils.wizard_archives import extract_archive
-    from Utils.install_as_mod import index_installed_mod, register_as_mod_neutral
+    from Utils.mods.install_as_mod import index_installed_mod, register_as_mod_neutral
 
     req = urllib.request.Request(
         CKPE_GITHUB_API,

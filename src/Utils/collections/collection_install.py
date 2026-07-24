@@ -3,7 +3,7 @@
 A faithful port of ``gui/collections_dialog.py:_run_install`` — the premium
 download→install pipeline — with the Tk widget calls replaced by a callback
 interface and the Tk-only ``install_mod_from_archive`` replaced by the neutral
-``Utils.mod_install.install_collection_archive``. The heavy backend
+``Utils.mods.mod_install.install_collection_archive``. The heavy backend
 (``fomod_installer``/``bain_installer``/``nexus_download``/``collection_reset``/
 ``nexus_meta``/``loot_sorter``) is reused verbatim.
 
@@ -40,9 +40,9 @@ from Utils.download_locations import (
     is_default_downloads_disabled, load_extra_download_locations)
 from Utils.download_scheduler import order_by_size, run_smallest_first
 from Utils.extract_budget import ExtractionMemoryBudget, get_uncompressed_size
-from Utils.mod_install import (
+from Utils.mods.mod_install import (
     install_collection_archive, FOMOD_DEFERRED, BAIN_DEFERRED)
-from Utils.modlist import read_modlist, write_modlist, ModEntry
+from Utils.mods.modlist import read_modlist, write_modlist, ModEntry
 from Utils.plugins.plugins import write_plugins, write_loadorder, PluginEntry
 from Utils.ui_config import (
     load_collection_settings, load_clear_archive_after_install,
@@ -527,7 +527,7 @@ def run_collection_install(
         return already_installed_by_fid.get(mod.file_id, "")
 
     def _name_candidates(mod) -> "list[str]":
-        from Utils.mod_name_utils import _suggest_mod_names
+        from Utils.mods.mod_name_utils import _suggest_mod_names
         logical = schema_file_id_to_logical.get(mod.file_id, "") or ""
         schema_name = schema_pos_to_name.get(
             schema_file_id_to_pos.get(mod.file_id, -1), "") or ""

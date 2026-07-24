@@ -16,7 +16,7 @@ import re
 from pathlib import Path
 
 from Utils.atomic_write import write_atomic_text
-from Utils.modlist import write_modlist, ModEntry
+from Utils.mods.modlist import write_modlist, ModEntry
 
 
 # ---------------------------------------------------------------------------

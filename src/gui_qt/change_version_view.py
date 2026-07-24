@@ -1,7 +1,7 @@
 """Change Version overlay — lists a mod's Nexus files so the user can install a
 different version. Opens as a plugins-panel-scoped tab (covers the whole plugins
 panel). Qt port of the Tk gui/mod_files_overlay.py; shares the pure highlight /
-sort helpers in Utils.mod_files_versions.
+sort helpers in Utils.mods.mod_files_versions.
 
 The file list is fetched on a daemon thread (a Signal marshals the result back to
 the UI thread — never a QThread). Installing a chosen file reuses the same
@@ -21,7 +21,7 @@ from PySide6.QtWidgets import (
 
 from gui_qt.theme_qt import active_palette, _c, danger_close_button, button_qss, qc
 from gui_qt.safe_emit import safe_emit
-from Utils.mod_files_versions import resolve_latest_name_match, fmt_size, sort_key
+from Utils.mods.mod_files_versions import resolve_latest_name_match, fmt_size, sort_key
 
 # File-row highlight colours, resolved from the active theme so a monotone /
 # high-contrast theme actually takes effect (were hardcoded Tk hex before).

@@ -218,7 +218,7 @@ def install_archive_payload(
     Blocking; call from a worker thread. Does NO UI work — the caller reloads
     the modlist on the GUI thread afterwards when mode == "mod".
     """
-    from Utils.install_as_mod import (
+    from Utils.mods.install_as_mod import (
         derive_mod_name, index_installed_mod, register_as_mod_neutral,
     )
 

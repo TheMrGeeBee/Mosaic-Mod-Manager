@@ -9,7 +9,7 @@ import os
 from datetime import datetime
 from pathlib import Path
 
-from Utils.modlist import ModEntry
+from Utils.mods.modlist import ModEntry
 
 
 # Flag bits for the Flags column — mirrors the full Tk set (FOMOD/BAIN are

@@ -45,7 +45,7 @@ from Utils.deploy.deploy import (
     load_per_mod_strip_prefixes,
     restore_filemap_from_root,
 )
-from Utils.modlist import read_modlist
+from Utils.mods.modlist import read_modlist
 from Utils.config_paths import get_profiles_dir
 from Utils.archives.re_pak_patcher import (
     find_pak_files,

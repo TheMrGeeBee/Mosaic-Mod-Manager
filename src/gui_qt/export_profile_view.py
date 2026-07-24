@@ -515,7 +515,7 @@ class ExportProfileView(QWidget):
         """Build export rows from the active profile's modlist (high-priority first,
         separators dropped — mirrors the Tk _on_workshop prep), then auto-load the
         newest saved settings if present."""
-        from Utils.modlist import read_modlist
+        from Utils.mods.modlist import read_modlist
         pd = self._profile_dir()
         modlist_path = (pd / "modlist.txt") if pd else None
         if not modlist_path or not modlist_path.is_file():

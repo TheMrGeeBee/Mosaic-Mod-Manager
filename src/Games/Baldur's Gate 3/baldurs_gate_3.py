@@ -37,9 +37,9 @@ from Utils.deploy.deploy import (
     expand_separator_link_modes, expand_separator_raw_deploy,
     cleanup_custom_deploy_dirs, restore_custom_rules,
 )
-from Utils.modlist import read_modlist
+from Utils.mods.modlist import read_modlist
 from Utils.config_paths import get_profiles_dir
-from Utils.modsettings import write_modsettings, write_vanilla_modsettings
+from Utils.mods.modsettings import write_modsettings, write_vanilla_modsettings
 
 _PROFILES_DIR = get_profiles_dir()
 

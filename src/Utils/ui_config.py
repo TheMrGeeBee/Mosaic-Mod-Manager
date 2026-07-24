@@ -1905,12 +1905,12 @@ def load_install_name_patterns() -> list[dict]:
         # Config not created yet — return defaults without writing (the ini is
         # written on first save/seed once load_ui_scale has created the file).
         try:
-            from Utils.mod_name_utils import default_install_name_rules
+            from Utils.mods.mod_name_utils import default_install_name_rules
             return default_install_name_rules()
         except Exception:
             return []
     try:
-        from Utils.mod_name_utils import default_install_name_rules
+        from Utils.mods.mod_name_utils import default_install_name_rules
         defaults = default_install_name_rules()
     except Exception:
         defaults = []
@@ -2018,7 +2018,7 @@ def save_install_name_patterns(rules: list[dict]) -> None:
     # there), so a default remains introduced even after the user deletes it —
     # it won't be re-added by the load-time migration.
     try:
-        from Utils.mod_name_utils import default_install_name_rules
+        from Utils.mods.mod_name_utils import default_install_name_rules
         default_ids = {str(d["id"]) for d in default_install_name_rules() if d.get("id")}
     except Exception:
         default_ids = set()

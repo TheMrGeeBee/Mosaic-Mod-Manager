@@ -60,7 +60,7 @@ from Utils.deploy.deploy import (
     restore_data_core,
     restore_filemap_from_root,
 )
-from Utils.modlist import read_modlist
+from Utils.mods.modlist import read_modlist
 from Utils.config_paths import get_profiles_dir, get_custom_games_dir, get_custom_game_images_dir
 
 _PROFILES_DIR = get_profiles_dir()

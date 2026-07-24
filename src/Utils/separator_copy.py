@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from Utils.modlist import ModEntry, _SEPARATOR_SUFFIX, read_modlist, write_modlist
+from Utils.mods.modlist import ModEntry, _SEPARATOR_SUFFIX, read_modlist, write_modlist
 
 
 def separator_exists_in_profile(target_modlist_path: Path, name: str) -> bool:

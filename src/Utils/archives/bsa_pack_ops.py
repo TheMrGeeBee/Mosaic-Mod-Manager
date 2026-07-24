@@ -216,7 +216,7 @@ def compute_skip_winners(
     files, so the caller adds them to the exclusion set. Port of the skip_winners
     block in Tk ``_on_pack_bsa_click``; reuses ``mod_files.build_conflict_cache``.
     """
-    from Utils.mod_files import build_conflict_cache
+    from Utils.mods.mod_files import build_conflict_cache
 
     contested_keys, filemap_winner = build_conflict_cache(index_path, profile_dir)
     return {

@@ -49,7 +49,7 @@ if TYPE_CHECKING:
     from typing import Callable
 
 from Utils.atomic_write import atomic_writer, write_atomic_text
-from Utils.modlist import read_modlist
+from Utils.mods.modlist import read_modlist
 from Utils import perftrace
 
 # Conflict status constants (returned per-mod in build_filemap result)

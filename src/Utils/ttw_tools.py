@@ -299,7 +299,7 @@ def register_output(game: "BaseGame", dest: Path,
                     log_fn: Callable[[str], None] = _noop) -> None:
     """Register the installer's Data/-rooted output as the TTW mod (normal
     Data-relative mod, not rootFolder) and index it."""
-    from Utils.install_as_mod import index_installed_mod, register_as_mod_neutral
+    from Utils.mods.install_as_mod import index_installed_mod, register_as_mod_neutral
     register_as_mod_neutral(
         game, OUTPUT_NAME, archive=None, log_fn=log_fn, root_folder=False)
     index_installed_mod(game, OUTPUT_NAME, log_fn=log_fn)

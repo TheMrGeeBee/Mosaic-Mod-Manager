@@ -2167,7 +2167,7 @@ def _nexus_file_display_name(meta, game) -> str:
     if not raw:
         return ""
     try:
-        from Utils.mod_name_utils import sanitize_mod_folder_name
+        from Utils.mods.mod_name_utils import sanitize_mod_folder_name
         cleaned = sanitize_mod_folder_name(raw) or raw
     except Exception:
         import re
@@ -2210,7 +2210,7 @@ def _clean_mod_name(stem: str, game) -> str:
     """
     name = stem
     try:
-        from Utils.mod_name_utils import _suggest_mod_names, sanitize_mod_folder_name
+        from Utils.mods.mod_name_utils import _suggest_mod_names, sanitize_mod_folder_name
         suggestions = _suggest_mod_names(stem)
         name = (suggestions[0] if suggestions else stem) or stem
         name = sanitize_mod_folder_name(name) or name
@@ -2641,7 +2641,7 @@ def _add_to_modlist(profile_dir: Path, mod_name: str, log_fn: LogFn,
             # Replacing an existing mod — keep its load-order position and its
             # existing enabled/disabled state (a reinstall/update must not
             # silently re-enable a disabled mod).
-            from Utils.modlist import ensure_mod_preserving_position
+            from Utils.mods.modlist import ensure_mod_preserving_position
             ensure_mod_preserving_position(
                 modlist_path, mod_name, enabled=default_enabled,
                 preserve_existing_state=True)
@@ -2649,7 +2649,7 @@ def _add_to_modlist(profile_dir: Path, mod_name: str, log_fn: LogFn,
             # New mods land at the top with the configured default state; but if
             # this name already exists (reinstall without position-preservation)
             # keep its current state.
-            from Utils.modlist import prepend_mod
+            from Utils.mods.modlist import prepend_mod
             prepend_mod(modlist_path, mod_name,
                         enabled=default_enabled, preserve_existing_state=True)
     except Exception as exc:
@@ -2662,7 +2662,7 @@ def _add_to_modlist(profile_dir: Path, mod_name: str, log_fn: LogFn,
     # landed somewhere other than what _reload_modlist reads, or was
     # immediately overwritten by another writer.
     try:
-        from Utils.modlist import read_modlist
+        from Utils.mods.modlist import read_modlist
         names = {e.name for e in read_modlist(modlist_path)}
         if mod_name not in names:
             log_fn(f"modlist update: wrote '{mod_name}' to {modlist_path} "

@@ -963,7 +963,7 @@ def register_output_mod(game: "BaseGame", mod_name: str, mod_dir: Path, *,
     """Write meta.ini + prepend the mod to the active profile's modlist so
     Amethyst treats the output as a managed, enabled mod."""
     from Nexus.nexus_meta import NexusModMeta, write_meta
-    from Utils.modlist import prepend_mod
+    from Utils.mods.modlist import prepend_mod
 
     meta = NexusModMeta(mod_name=mod_name, installation_file="SkyGen",
                         root_folder=False)

@@ -480,7 +480,7 @@ def deploy_filemap(
             expand_separator_link_modes as _eslm,
             expand_separator_merge_dirs as _esmd,
         )
-        from Utils.modlist import read_modlist as _rml
+        from Utils.mods.modlist import read_modlist as _rml
         _sd = _lsdp(filemap_path.parent)
         _se = _rml(filemap_path.parent / "modlist.txt")
         if _per_mode is None:

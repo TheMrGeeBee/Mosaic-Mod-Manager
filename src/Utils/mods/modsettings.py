@@ -21,7 +21,7 @@ import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from Utils.modlist import ModEntry, read_modlist
+from Utils.mods.modlist import ModEntry, read_modlist
 from Utils.archives.pak_reader import extract_meta_lsx, read_pak_info
 from Utils.app_log import app_log, safe_log as _safe_log
 

@@ -1260,7 +1260,7 @@ def _remove(view, model, row):
         profile_dir = getattr(view, "profile_dir", None)
         if game is not None and profile_dir is not None:
             try:
-                from Utils.mod_remove import remove_mods
+                from Utils.mods.mod_remove import remove_mods
                 remove_mods(game, profile_dir, [name],
                             log_fn=lambda m: print(f"[remove] {m}", flush=True))
             except Exception as exc:
@@ -1400,7 +1400,7 @@ def _remove_mods_multi(view, model, mod_rows):
         profile_dir = getattr(view, "profile_dir", None)
         if game is not None and profile_dir is not None:
             try:
-                from Utils.mod_remove import remove_mods
+                from Utils.mods.mod_remove import remove_mods
                 remove_mods(game, profile_dir, names,
                             log_fn=lambda m: print(f"[remove] {m}", flush=True))
             except Exception as exc:

@@ -19,8 +19,8 @@ import json
 from dataclasses import dataclass
 from pathlib import Path
 
-from Utils.modlist import ModEntry, read_modlist, write_modlist
-from Utils.modsettings import scan_mod_paks
+from Utils.mods.modlist import ModEntry, read_modlist, write_modlist
+from Utils.mods.modsettings import scan_mod_paks
 
 
 # ---------------------------------------------------------------------------
