@@ -320,7 +320,7 @@ class PGPatcherView(WizardViewBase):
             self._mo2_dummy_dir = None
             return
         from Utils.modding_tools.xedit_tools import applications_dir
-        from Utils.mo2_dummy import build_mo2_dummy_instance
+        from Utils.installers.mo2_dummy import build_mo2_dummy_instance
 
         profile = getattr(self._ctx, "profile_name", None) or "default"
         apps_dir = applications_dir(self._game, _PATCHER_DIR)

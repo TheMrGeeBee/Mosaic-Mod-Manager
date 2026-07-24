@@ -1147,7 +1147,7 @@ def prepare_archive(archive_path: str, game, profile_dir: Path, *,
     # wrapper-peel + bounded BFS. (Rebuilding the config path with a lowercase
     # "fomod" broke uppercase FOMOD/ dirs on case-sensitive filesystems and
     # misrouted such archives to the BAIN probe.)
-    from Utils.fomod_parser import (detect_fomod, detect_scripted_fomod,
+    from Utils.installers.fomod_parser import (detect_fomod, detect_scripted_fomod,
                                     parse_module_config)
     fomod_base: Path | None = None
     config = None
@@ -1184,7 +1184,7 @@ def prepare_archive(archive_path: str, game, profile_dir: Path, *,
     # layout so the caller can show the picker.
     if fomod_result is None and getattr(game, "supports_bain", True):
         try:
-            from Utils.bain_installer import detect_bain, bain_unwrap_single_folder
+            from Utils.installers.bain_installer import detect_bain, bain_unwrap_single_folder
             bain_root = bain_unwrap_single_folder(str(extract_dir))
             subpkgs = detect_bain(
                 bain_root, extra_exts=getattr(game, "plugin_extensions", None))
@@ -1196,7 +1196,7 @@ def prepare_archive(archive_path: str, game, profile_dir: Path, *,
             # Fill the per-package file sets here (worker thread) — the Qt
             # picker's win/lose recolour needs them and must not walk the
             # disk on the GUI thread.
-            from Utils.bain_installer import scan_subpackage_files
+            from Utils.installers.bain_installer import scan_subpackage_files
             scan_subpackage_files(subpkgs)
             prepared.bain_subpkgs = subpkgs
             prepared.bain_root = bain_root
@@ -1350,7 +1350,7 @@ def finish_install(prepared: "PreparedInstall", fomod_selections, *,
             # BAIN: merge the selected sub-packages (later ones override earlier),
             # with paths relative to the unwrapped bain_root — mirroring the
             # collection install path.
-            from Utils.bain_installer import resolve_bain_files
+            from Utils.installers.bain_installer import resolve_bain_files
             if bain_selections is not None and isinstance(
                     bain_selections.get("selected"), list):
                 bain_selected = list(bain_selections["selected"])
@@ -1440,7 +1440,7 @@ def finish_install(prepared: "PreparedInstall", fomod_selections, *,
     fomod_active_deps = ""
     if p.is_fomod() and p.fomod_config is not None:
         try:
-            from Utils.fomod_installer import (
+            from Utils.installers.fomod_installer import (
                 collect_unselected_dep_plugins, collect_selected_dep_plugins)
             sel = fomod_selections or {}
             fomod_pending_deps = ";".join(
@@ -1688,7 +1688,7 @@ def install_collection_archive(
             installed_files, active_files, loose_files = _collection_plugin_context(
                 game, profile_dir)
             try:
-                from Utils.fomod_installer import (
+                from Utils.installers.fomod_installer import (
                     resolve_files, check_module_dependencies)
                 ok, msg = check_module_dependencies(
                     config, installed_files, active_files, loose_files)
@@ -1754,7 +1754,7 @@ def install_collection_archive(
                     is_fomod_install = True
                     log_fn(f"FOMOD complete — {len(file_list or [])} file(s) to install.")
                     try:
-                        from Utils.fomod_installer import (
+                        from Utils.installers.fomod_installer import (
                             collect_unselected_dep_plugins,
                             collect_selected_dep_plugins)
                         _sel = final_selections or {}
@@ -1771,7 +1771,7 @@ def install_collection_archive(
 
         # ---- BAIN ---------------------------------------------------------
         elif getattr(game, "supports_bain", True):
-            from Utils.bain_installer import (
+            from Utils.installers.bain_installer import (
                 detect_bain, resolve_bain_files, bain_unwrap_single_folder)
             bain_root = bain_unwrap_single_folder(str(prepared.extract_dir))
             bain_subpkgs = detect_bain(
@@ -1792,7 +1792,7 @@ def install_collection_archive(
                     # Worker thread: fill the per-package file sets before the
                     # picker shows (its recolour must not walk the disk on the
                     # GUI thread).
-                    from Utils.bain_installer import scan_subpackage_files
+                    from Utils.installers.bain_installer import scan_subpackage_files
                     scan_subpackage_files(bain_subpkgs)
                     result = resolve_bain(bain_subpkgs, bain_root, prepared.mod_name)
                     if result is None:
@@ -1955,7 +1955,7 @@ def _default_fomod_file_list(config, installed_files, active_files, loose_files,
                              log_fn: LogFn) -> "list[tuple[str, str, bool]]":
     """Resolve a FOMOD's file list using its default/recommended selections
     (threading flag state through steps), passing the collection context sets."""
-    from Utils.fomod_installer import (
+    from Utils.installers.fomod_installer import (
         resolve_files, get_default_selections, update_flags)
     selections: dict = {}
     flag_state: dict = {}
@@ -2248,7 +2248,7 @@ def _install_fomod(fomod_base: Path, config, dest_root: Path,
     src→dst and apply requiredInstallFiles + conditional installs. Returns
     False on failure (caller falls back to verbatim copy)."""
     try:
-        from Utils.fomod_installer import (
+        from Utils.installers.fomod_installer import (
             resolve_files, get_default_selections, update_flags)
     except Exception as exc:
         log_fn(f"FOMOD installer unavailable ({exc}).")

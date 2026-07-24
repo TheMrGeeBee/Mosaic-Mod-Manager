@@ -10412,7 +10412,7 @@ class MainWindow(QMainWindow):
         # Clause delimiters — imported so the encode (fomod_installer) and decode
         # (here) can never drift. They're all filename-illegal chars, so plugin
         # names containing "+", "!", "&" etc. don't collide.
-        from Utils.fomod_installer import (
+        from Utils.installers.fomod_installer import (
             FLAG_OPT_SEP, FLAG_OR_SEP, FLAG_AND_SEP, FLAG_ABSENT)
 
         def _member_holds(m: str) -> bool:
