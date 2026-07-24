@@ -30,7 +30,7 @@ from PySide6.QtWidgets import (
 from gui_qt.theme_qt import active_palette, _c
 from gui_qt.safe_emit import safe_emit
 from gui_qt.nexus_mod_card import ThumbnailLoader
-from gui_qt.collection_card import CollectionCard, CARD_W, IMG_W, IMG_H
+from gui_qt.collections.collection_card import CollectionCard, CARD_W, IMG_W, IMG_H
 from gui_qt.selector_button import SelectorButton
 
 PAGE_SIZE = 20            # Tk parity (collections_dialog PAGE_SIZE)

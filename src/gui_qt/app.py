@@ -3059,7 +3059,7 @@ class MainWindow(QMainWindow):
                          "warning")
             self._append_log("[nexus] no OAuth tokens — login required")
             return
-        from gui_qt.collections_browser_view import CollectionsBrowserView
+        from gui_qt.collections.collections_browser_view import CollectionsBrowserView
         view = CollectionsBrowserView(
             api, domain, game, log_fn=self._append_log,
             on_open_detail=self._open_collection_detail_tab,
@@ -3206,7 +3206,7 @@ class MainWindow(QMainWindow):
             self._notify(self.tr("Log in first: Nexus ▸ Login to Nexus ▸ Login via SSO."),
                          "warning")
             return
-        from gui_qt.collection_detail_view import CollectionDetailView
+        from gui_qt.collections.collection_detail_view import CollectionDetailView
         view = CollectionDetailView(
             api, collection, game, log_fn=self._append_log,
             revision_number=revision_number)
@@ -3364,10 +3364,10 @@ class MainWindow(QMainWindow):
             self._start_collection_pipeline(info)
 
         if existing:
-            from gui_qt.collection_mode_overlay import ContinueOverlay
+            from gui_qt.collections.collection_mode_overlay import ContinueOverlay
             ContinueOverlay.show_over(self, existing, _done)
         else:
-            from gui_qt.collection_mode_overlay import ModeOverlay
+            from gui_qt.collections.collection_mode_overlay import ModeOverlay
             try:
                 profiles = _profiles_for_game(game.name)
             except Exception:
@@ -3397,7 +3397,7 @@ class MainWindow(QMainWindow):
         except Exception:
             pass
         try:
-            from gui_qt.collection_detail_view import _PAUSED_COLLECTIONS
+            from gui_qt.collections.collection_detail_view import _PAUSED_COLLECTIONS
             _PAUSED_COLLECTIONS.discard(slug)
         except Exception:
             pass
@@ -3484,7 +3484,7 @@ class MainWindow(QMainWindow):
                 return
             self._apply_collection_update(info, profile_dir, pname, slug, diff)
 
-        from gui_qt.collection_update_overlay import UpdateOverlay
+        from gui_qt.collections.collection_update_overlay import UpdateOverlay
         UpdateOverlay.show_over(
             self, profile_name=pname, from_rev=from_rev, to_rev=to_rev,
             to_remove=list(diff.to_remove), to_update=to_update_labels,
@@ -3581,7 +3581,7 @@ class MainWindow(QMainWindow):
         """Refresh the Install/Update/Resume button on any open collection detail
         tab (after a pause/resume state change)."""
         try:
-            from gui_qt.collection_detail_view import CollectionDetailView
+            from gui_qt.collections.collection_detail_view import CollectionDetailView
             for view in self.findChildren(CollectionDetailView):
                 try:
                     view._update_install_btn_state()
@@ -3699,13 +3699,13 @@ class MainWindow(QMainWindow):
         manual_mode = bool(info.get("manual"))
         title = f"Installing collection: {collection.name or slug}"
         if manual_mode:
-            from gui_qt.collection_manual_overlay import CollectionManualOverlay
+            from gui_qt.collections.collection_manual_overlay import CollectionManualOverlay
             self._col_install_overlay = CollectionManualOverlay.show_over(
                 self, collection.name or slug, profile_dir.name, len(mods),
                 control.manual_queue, on_pause=self._on_col_pause_clicked,
                 on_cancel=self._on_col_cancel_clicked)
         else:
-            from gui_qt.collection_install_overlay import CollectionInstallOverlay
+            from gui_qt.collections.collection_install_overlay import CollectionInstallOverlay
             from Utils.ui_config import load_download_speed_limit
             self._col_install_overlay = CollectionInstallOverlay.show_over(
                 self, title, on_pause=self._on_col_pause_clicked,
@@ -4109,7 +4109,7 @@ class MainWindow(QMainWindow):
             slug = getattr(self, "_col_install_slug", "") or ""
             if slug:
                 try:
-                    from gui_qt.collection_detail_view import _PAUSED_COLLECTIONS
+                    from gui_qt.collections.collection_detail_view import _PAUSED_COLLECTIONS
                     _PAUSED_COLLECTIONS.add(slug)
                 except Exception:
                     pass
@@ -6695,7 +6695,7 @@ class MainWindow(QMainWindow):
         if self._tabs.has_key(key):
             self._tabs.focus_key(key)
             return
-        from gui_qt.collection_detail_view import CollectionDetailView
+        from gui_qt.collections.collection_detail_view import CollectionDetailView
         view = CollectionDetailView(
             api, collection, game, log_fn=self._append_log,
             local_manifest=manifest, bundle_zip=bundle_zip,
