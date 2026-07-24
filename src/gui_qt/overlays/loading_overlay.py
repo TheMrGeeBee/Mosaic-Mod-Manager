@@ -19,7 +19,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import QWidget, QLabel, QVBoxLayout
 
-_LOGO = Path(__file__).resolve().parent.parent / "icons" / "Logo.png"
+_LOGO = Path(__file__).resolve().parent.parent.parent / "icons" / "Logo.png"
 _LOGO_SIZE = 160
 
 

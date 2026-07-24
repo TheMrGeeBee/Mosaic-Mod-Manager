@@ -34,7 +34,7 @@ from Utils.ui_config import (
 )
 from Utils.xdg import open_url
 
-_ICONS_DIR = Path(__file__).resolve().parent.parent / "icons"
+_ICONS_DIR = Path(__file__).resolve().parent.parent.parent / "icons"
 _WIKI_URL = "https://github.com/ChrisDKN/Amethyst-Mod-Manager/wiki"
 _TOTAL_PAGES = 3
 

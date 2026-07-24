@@ -45,7 +45,7 @@ API_CHOICES: list[tuple[str, str]] = [
 ]
 
 # Path to the bundled default ReShade.ini (lives next to the Qt wizard).
-BUNDLED_INI_PATH = Path(__file__).resolve().parent.parent / "wizards_qt" / "ReShade.ini"
+BUNDLED_INI_PATH = Path(__file__).resolve().parent.parent.parent / "wizards_qt" / "ReShade.ini"
 
 
 def _noop(_msg: str) -> None:

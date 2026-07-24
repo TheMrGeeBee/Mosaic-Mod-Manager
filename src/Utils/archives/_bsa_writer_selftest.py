@@ -25,7 +25,7 @@ import lz4.frame
 
 # Allow running as a standalone script: add the src/ root to sys.path so
 # `Utils.bsa_*` imports resolve.
-_SRC_ROOT = Path(__file__).resolve().parents[1]
+_SRC_ROOT = Path(__file__).resolve().parents[2]
 if str(_SRC_ROOT) not in sys.path:
     sys.path.insert(0, str(_SRC_ROOT))
 

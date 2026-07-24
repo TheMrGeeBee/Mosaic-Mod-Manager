@@ -28,7 +28,7 @@ from PySide6.QtWidgets import (
 
 from gui_qt.theme.theme_qt import active_palette, _c
 
-_ICONS_DIR = Path(__file__).resolve().parent.parent / "icons" / "games"
+_ICONS_DIR = Path(__file__).resolve().parent.parent.parent / "icons" / "games"
 
 CARD_W = 180
 CARD_H = 210

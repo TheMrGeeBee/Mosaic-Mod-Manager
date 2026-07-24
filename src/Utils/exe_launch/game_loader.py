@@ -95,7 +95,7 @@ def _find_games_dir() -> Path | None:
 
     # 2. Relative to this file: Utils/game_loader.py -> parent.parent/Games
     try:
-        cand = Path(__file__).resolve().parent.parent / "Games"
+        cand = Path(__file__).resolve().parent.parent.parent / "Games"
         if _valid_games_dir(cand):
             _games_dir_cache = cand
             return cand

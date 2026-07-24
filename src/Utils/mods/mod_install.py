@@ -2456,7 +2456,7 @@ def _load_bg3_sibling(stem: str):
     cached = _sys.modules.get(mod_name)
     if cached is not None:
         return cached
-    bg3_dir = Path(__file__).resolve().parent.parent / "Games" / "Baldur's Gate 3"
+    bg3_dir = Path(__file__).resolve().parent.parent.parent / "Games" / "Baldur's Gate 3"
     spec = importlib.util.spec_from_file_location(mod_name, str(bg3_dir / f"{stem}.py"))
     module = importlib.util.module_from_spec(spec)
     _sys.modules[mod_name] = module

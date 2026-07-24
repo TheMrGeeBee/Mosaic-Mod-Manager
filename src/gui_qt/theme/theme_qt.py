@@ -22,7 +22,7 @@ if TYPE_CHECKING:
 # empty colour string.
 _FALLBACK = "#1a1a1a"
 
-_ICONS_DIR = Path(__file__).resolve().parent.parent / "icons"
+_ICONS_DIR = Path(__file__).resolve().parent.parent.parent / "icons"
 
 
 def _icon_url(name: str) -> str:
