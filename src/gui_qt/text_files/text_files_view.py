@@ -16,7 +16,7 @@ from PySide6.QtWidgets import (
 
 import Utils.text_files as tf
 from gui_qt.safe_emit import safe_emit
-from gui_qt.text_files_model import (
+from gui_qt.text_files.text_files_model import (
     TextFilesModel, _TextNode, COL_NAME, COL_SOURCE,
 )
 
@@ -101,7 +101,7 @@ class TextFilesView(QWidget):
         self._tree.setSelectionMode(QAbstractItemView.SingleSelection)
         self._tree.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self._tree.clicked.connect(self._on_clicked)
-        from gui_qt.text_files_delegate import TextFilesDelegate
+        from gui_qt.text_files.text_files_delegate import TextFilesDelegate
         self._tree.setItemDelegate(TextFilesDelegate(self._tree))
         self._tree.expanded.connect(lambda *_: self._tree.viewport().update())
         self._tree.collapsed.connect(lambda *_: self._tree.viewport().update())

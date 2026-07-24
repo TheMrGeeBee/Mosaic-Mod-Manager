@@ -12371,7 +12371,7 @@ class MainWindow(QMainWindow):
         self._mod_files_view.on_open_text = self._open_text_editor_tab
         self._plugin_stack.addWidget(self._mod_files_view)
         # Page 2: the real Text Files view.
-        from gui_qt.text_files_view import TextFilesView
+        from gui_qt.text_files.text_files_view import TextFilesView
         self._text_files_view = TextFilesView()
         self._text_files_view.on_open_file = self._open_text_editor_tab
         self._plugin_stack.addWidget(self._text_files_view)
