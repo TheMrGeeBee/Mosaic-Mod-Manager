@@ -136,7 +136,7 @@ def packages_dir(game: "BaseGame") -> Path:
 def find_mpi_archive(keywords: "list[str]") -> "Path | None":
     """Newest archive matching all *keywords* across the configured download
     locations, or None."""
-    from Utils.download_locations import get_effective_download_locations
+    from Utils.downloads.download_locations import get_effective_download_locations
     from Utils.wizard_archives import find_archive
 
     best: "Path | None" = None

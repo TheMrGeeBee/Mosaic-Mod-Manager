@@ -354,7 +354,7 @@ class BSADecompressorView(WizardViewBase):
         from Utils.archives.bsa_decompressor_tools import (
             NEXUS_FILE_ID, NEXUS_GAME_DOMAIN, NEXUS_MOD_ID,
         )
-        from Utils.mpi_auto_fetch import start_auto_fetch
+        from Utils.downloads.mpi_auto_fetch import start_auto_fetch
         _wlog = lambda m: self._log(f"BSA Decompressor Wizard: {m}")
         last_pct = [-1]
 

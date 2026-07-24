@@ -62,7 +62,7 @@ def arm_nexus_auto_fetch(*, api, url: str, file_id: int, keywords: list[str],
     straight through the Nexus API; everyone else keeps the manual page while
     the download folders are watched, so the wizard advances the moment the
     browser download completes (mirrors the ESM Fixes / BSA Decompressor
-    hands-free flow in Utils.mpi_auto_fetch).
+    hands-free flow in Utils.downloads.mpi_auto_fetch).
 
     All callbacks fire on the WORKER thread — pass safe_emit lambdas:
     ``status_cb(text, color)`` updates the download-page status,
@@ -75,7 +75,7 @@ def arm_nexus_auto_fetch(*, api, url: str, file_id: int, keywords: list[str],
     if parsed is None or not file_id:
         return False
     game_domain, mod_id = parsed
-    from Utils.mpi_auto_fetch import start_auto_fetch
+    from Utils.downloads.mpi_auto_fetch import start_auto_fetch
     from Utils.wizard_archives import find_archive, get_downloads_dir
     tr = QCoreApplication.translate
     last_pct = [-1]

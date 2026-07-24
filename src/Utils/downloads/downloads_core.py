@@ -10,7 +10,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
 
-from Utils.download_locations import (
+from Utils.downloads.download_locations import (
     is_default_downloads_disabled, is_cache_default_disabled,
     get_default_downloads_dir, load_extra_download_locations,
 )

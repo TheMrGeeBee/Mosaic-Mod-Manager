@@ -36,9 +36,9 @@ from typing import Callable
 from Utils.collections.collection_reset import (
     _resolve_collection_priorities, _apply_collection_groups)
 from Utils.config_paths import get_download_cache_dir_for_game, list_all_cache_dirs
-from Utils.download_locations import (
+from Utils.downloads.download_locations import (
     is_default_downloads_disabled, load_extra_download_locations)
-from Utils.download_scheduler import order_by_size, run_smallest_first
+from Utils.downloads.download_scheduler import order_by_size, run_smallest_first
 from Utils.extract_budget import ExtractionMemoryBudget, get_uncompressed_size
 from Utils.mods.mod_install import (
     install_collection_archive, FOMOD_DEFERRED, BAIN_DEFERRED)

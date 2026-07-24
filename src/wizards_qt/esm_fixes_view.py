@@ -355,7 +355,7 @@ class ESMFixesView(WizardViewBase):
         from Utils.esm_fixes_tools import (
             NEXUS_FILE_ID, NEXUS_GAME_DOMAIN, NEXUS_MOD_ID,
         )
-        from Utils.mpi_auto_fetch import start_auto_fetch
+        from Utils.downloads.mpi_auto_fetch import start_auto_fetch
         _wlog = lambda m: self._log(f"ESM Fixes Wizard: {m}")
         last_pct = [-1]
 

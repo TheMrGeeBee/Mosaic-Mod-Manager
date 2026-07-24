@@ -838,7 +838,7 @@ def _installation_archive(view, name: str):
     search_dirs = []
     try:
         from Utils.config_paths import list_all_cache_dirs
-        from Utils.download_locations import (
+        from Utils.downloads.download_locations import (
             is_default_downloads_disabled, load_extra_download_locations)
         if not is_default_downloads_disabled():
             xdg = os.environ.get("XDG_DOWNLOAD_DIR")

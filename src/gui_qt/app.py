@@ -3972,7 +3972,7 @@ class MainWindow(QMainWindow):
     def _on_col_limit_changed(self, mbps: float):
         """Overlay speed-limit spinbox changed: apply to in-flight downloads
         immediately (global token bucket) and persist for next time."""
-        from Utils import bandwidth_limit
+        from Utils.downloads import bandwidth_limit
         from Utils.ui_config import save_download_speed_limit
         bandwidth_limit.set_limit_mbps(mbps)
         try:
@@ -4602,7 +4602,7 @@ class MainWindow(QMainWindow):
         """Reinstall one or more mods from their recorded installation archives
         (Tk parity, gui/modlist_nexus_actions._reinstall_mod). Each mod's archive
         is located across the Downloads dir + configured caches + extra locations
-        (Utils.download_locations / config_paths); mods with no on-disk archive
+        (Utils.downloads.download_locations / config_paths); mods with no on-disk archive
         are skipped with a log line. Resolved archives go through _install_paths
         with the mod's existing folder name forced (silent Replace-All, keeping
         the modlist position + endorsed flag), so no Mod-Already-Exists dialog."""

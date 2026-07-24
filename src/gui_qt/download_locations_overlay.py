@@ -1,6 +1,6 @@
 """Borderless in-window overlay to manage download scan locations — toggle the
 default Downloads folder, toggle the per-game cache, and add/remove extra
-folders. Reads/writes the same Utils.download_locations settings as the Tk app
+folders. Reads/writes the same Utils.downloads.download_locations settings as the Tk app
 (backward compatible). ``on_done(True)`` on Save, ``on_done(False)`` on
 cancel / Esc / backdrop click.
 
@@ -15,7 +15,7 @@ from PySide6.QtWidgets import (
     QWidget, QHBoxLayout, QLabel, QCheckBox, QListWidget, QPushButton, QFrame,
 )
 
-import Utils.download_locations as dl
+import Utils.downloads.download_locations as dl
 from gui_qt.overlay_base import OverlayBase
 from gui_qt.theme_qt import active_palette, _c
 
