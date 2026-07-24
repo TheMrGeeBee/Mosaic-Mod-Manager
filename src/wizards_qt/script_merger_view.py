@@ -26,7 +26,7 @@ _NEXUS_URL = "https://www.nexusmods.com/witcher3/mods/8405?tab=files&file_id=595
 _NEXUS_FILE_ID = 59566
 _MERGER_EXE = "WitcherScriptMerger.exe"
 _MERGER_DIR = "ScriptMerger"
-# .NET 8 install runs through Utils.proton_tools.install_dotnet_runtime.
+# .NET 8 install runs through Utils.wine_proton.proton_tools.install_dotnet_runtime.
 
 (_PG_DEPLOY, _PG_DOWNLOAD, _PG_LOCATE, _PG_EXTRACT, _PG_PROTON, _PG_NET8,
  _PG_RUN) = range(7)
@@ -147,7 +147,7 @@ class ScriptMergerView(WizardViewBase):
 
         def worker():
             from Utils.exe_launch import resolve_tool_prefix
-            from Utils.protontricks import dotnet_dep_key, is_dep_installed
+            from Utils.wine_proton.protontricks import dotnet_dep_key, is_dep_installed
             _wlog = lambda m: self._log(f"Script Merger Wizard: {m}")
             try:
                 safe_emit(self._net8_status_sig,
@@ -173,7 +173,7 @@ class ScriptMergerView(WizardViewBase):
                     safe_emit(self._net8_done_sig, True)
                     return
 
-                from Utils.proton_tools import install_dotnet_runtime
+                from Utils.wine_proton.proton_tools import install_dotnet_runtime
                 ok = install_dotnet_runtime(
                     "8", proton_script, env, prefix_path,
                     log_fn=_wlog,

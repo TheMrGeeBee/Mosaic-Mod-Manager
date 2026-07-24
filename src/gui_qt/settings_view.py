@@ -774,7 +774,7 @@ class SettingsView(QWidget):
 
     # ---- path browse / clear ----------------------------------------------
     def _browse_into(self, edit: QLineEdit, save_fn, title: str):
-        from Utils.portal_filechooser import pick_folder
+        from Utils.wine_proton.portal_filechooser import pick_folder
         pick_folder(f"Select {title}",
                     lambda path: self._folder_picked.emit((edit, save_fn, path)))
 
@@ -782,7 +782,7 @@ class SettingsView(QWidget):
                           filters=None):
         # Reuse the folder-picked signal/slot — the payload shape is identical
         # (edit, save_fn, path); pick_file just returns a file Path.
-        from Utils.portal_filechooser import pick_file
+        from Utils.wine_proton.portal_filechooser import pick_file
         pick_file(f"Select {title}",
                   lambda path: self._folder_picked.emit((edit, save_fn, path)),
                   filters=filters)

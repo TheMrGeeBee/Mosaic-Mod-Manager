@@ -20,7 +20,7 @@ from pathlib import Path
 from typing import Callable
 
 from Utils.config_paths import get_wine_prefixes_dir
-from Utils.steam_finder import find_wine
+from Utils.wine_proton.steam_finder import find_wine
 from wrappers.bendr import _linux_to_wine, _ensure_utf8_prefix
 
 import re

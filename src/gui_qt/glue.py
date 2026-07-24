@@ -32,7 +32,7 @@ def register_all(app, *, log, parent_window, ask_choice=None, warn=None,
 
     # 2. main-thread dispatcher (portal_filechooser, generic worker→UI hops).
     try:
-        from Utils.portal_filechooser import set_main_thread_dispatcher
+        from Utils.wine_proton.portal_filechooser import set_main_thread_dispatcher
         set_main_thread_dispatcher(lambda fn: QTimer.singleShot(0, fn))
         done.append("main_thread_dispatcher")
     except Exception as e:
@@ -86,7 +86,7 @@ def register_all(app, *, log, parent_window, ask_choice=None, warn=None,
 
     # 6. toolkit file pickers (QFileDialog) — last-resort behind portal/zenity.
     try:
-        from Utils.portal_filechooser import set_toolkit_pickers
+        from Utils.wine_proton.portal_filechooser import set_toolkit_pickers
         fp = file_pickers or {}
         set_toolkit_pickers(
             folder=fp.get("folder"), file=fp.get("file"),

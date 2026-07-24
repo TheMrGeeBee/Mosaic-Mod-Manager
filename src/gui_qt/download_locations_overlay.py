@@ -107,7 +107,7 @@ class DownloadLocationsOverlay(OverlayBase):
             self._list.addItem(p)
 
     def _add(self):
-        from Utils.portal_filechooser import pick_folder
+        from Utils.wine_proton.portal_filechooser import pick_folder
         pick_folder(self.tr("Add download folder"),
                     lambda path: self._folder_picked.emit(path))
 

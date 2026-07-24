@@ -19,7 +19,7 @@ from typing import TYPE_CHECKING
 
 from Utils.config_paths import get_game_config_dir, get_game_config_path
 from Utils.deploy.deploy import LinkMode
-from Utils.steam_finder import find_prefix as _find_steam_prefix
+from Utils.wine_proton.steam_finder import find_prefix as _find_steam_prefix
 
 if TYPE_CHECKING:
     from typing import Callable
@@ -64,7 +64,7 @@ def _ensure_lutris_prefix_compat(prefix_path: "Path | None") -> None:
     if prefix_path is None:
         return
     try:
-        from Utils.lutris_finder import is_lutris_prefix, ensure_steamuser_compat
+        from Utils.wine_proton.lutris_finder import is_lutris_prefix, ensure_steamuser_compat
         if is_lutris_prefix(prefix_path):
             ensure_steamuser_compat(prefix_path)
     except Exception:
@@ -1705,7 +1705,7 @@ class BaseGame(ABC):
             if found:
                 return found
         try:
-            from Utils.lutris_finder import find_lutris_game_info_by_exe
+            from Utils.wine_proton.lutris_finder import find_lutris_game_info_by_exe
             for exe in [getattr(self, "exe_name", None),
                         *(getattr(self, "exe_name_alts", []) or [])]:
                 if not exe:

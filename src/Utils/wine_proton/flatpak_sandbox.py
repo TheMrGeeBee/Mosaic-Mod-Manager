@@ -74,7 +74,7 @@ def _steam_flatpak_owns_path(path: Path) -> bool:
     if not steam_root.is_dir():
         return False
     try:
-        from Utils.steam_finder import parse_vdf_libraries, _VDF_FILENAMES
+        from Utils.wine_proton.steam_finder import parse_vdf_libraries, _VDF_FILENAMES
     except Exception:
         return False
     try:

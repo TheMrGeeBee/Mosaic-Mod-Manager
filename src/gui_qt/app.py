@@ -28,7 +28,7 @@ from gui_qt.flow_layout import FlowLayout
 from gui_qt.game_state import GameState
 from gui_qt.detachable_tabs import DetachableTabWidget
 from gui_qt import glue
-from Utils.proton_tools import DOTNET_VERSIONS
+from Utils.wine_proton.proton_tools import DOTNET_VERSIONS
 # Diagnostic prints here run on worker threads and use flush=True. Under
 # Flatpak/AppImage stdout often has no reader, so a full pipe buffer makes
 # print() raise BrokenPipeError, which killed the worker (e.g. the play/deploy
@@ -706,7 +706,7 @@ class MainWindow(QMainWindow):
         refs). Without them every in-sandbox Proton/wine run — dtkit-patch,
         vcredist, wizard exes — dies with "/lib/ld-linux.so.2: could not open".
         """
-        from Utils.flatpak_i386 import i386_support_missing
+        from Utils.wine_proton.flatpak_i386 import i386_support_missing
         if not i386_support_missing():
             return
         from Utils.ui_config import load_suppress_i386_warning
@@ -723,7 +723,7 @@ class MainWindow(QMainWindow):
 
         def _run():
             from gui_qt.safe_emit import safe_emit
-            from Utils.flatpak_i386 import install_i386_extensions
+            from Utils.wine_proton.flatpak_i386 import install_i386_extensions
             from Utils.app_log import app_log
             ok = install_i386_extensions(log_fn=lambda m: app_log(f"[flatpak] {m}"))
             safe_emit(self._i386_repair_done, ok)
@@ -747,7 +747,7 @@ class MainWindow(QMainWindow):
                 state="success", sticky=True,
             )
         else:
-            from Utils.flatpak_i386 import MANUAL_INSTALL_CMD
+            from Utils.wine_proton.flatpak_i386 import MANUAL_INSTALL_CMD
             self._append_log(f"[flatpak] install manually: {MANUAL_INSTALL_CMD}")
             from gui_qt.confirm_overlay import ConfirmOverlay
 
@@ -6625,7 +6625,7 @@ class MainWindow(QMainWindow):
         # on a WORKER thread — QTimer.singleShot(0, …) from there never fires (no
         # event loop on that thread), so marshal to the GUI thread with a Signal
         # (auto-queued to the receiver's thread).
-        from Utils.portal_filechooser import pick_file
+        from Utils.wine_proton.portal_filechooser import pick_file
         pick_file(
             "Import profile",
             lambda p: self._import_file_picked.emit(p),
@@ -7053,7 +7053,7 @@ class MainWindow(QMainWindow):
             return
         # Picker callback fires on the portal WORKER thread → marshal via Signal.
         from Utils.exe_launch import EXE_PICKER_FILTERS
-        from Utils.portal_filechooser import pick_file
+        from Utils.wine_proton.portal_filechooser import pick_file
         pick_file("Select executable",
                   lambda p: self._custom_exe_picked.emit(p),
                   filters=EXE_PICKER_FILTERS)
@@ -7195,7 +7195,7 @@ class MainWindow(QMainWindow):
                 if not run_path.is_file():
                     # Staged extender materialised by the deploy that just
                     # ran — re-resolve so on-disk casing wins.
-                    from Utils.framework_detect import resolve_file_ci
+                    from Utils.wine_proton.framework_detect import resolve_file_ci
                     gp = game.get_game_path() if hasattr(game, "get_game_path") else None
                     resolved = None
                     if gp is not None:
@@ -7776,7 +7776,7 @@ class MainWindow(QMainWindow):
         # The picker callback fires on the portal WORKER thread; QTimer.singleShot
         # from there never fires (no event loop on that thread), so marshal to the
         # GUI thread with a Signal (auto-queued to the receiver's thread).
-        from Utils.portal_filechooser import pick_files
+        from Utils.wine_proton.portal_filechooser import pick_files
         pick_files("Select mod archive(s)",
                    lambda ps: self._install_files_picked.emit(ps))
 
@@ -8066,14 +8066,14 @@ class MainWindow(QMainWindow):
         game = self._proton_game()
         if game is None:
             return
-        from Utils.proton_tools import launch_wine_tool
+        from Utils.wine_proton.proton_tools import launch_wine_tool
         launch_wine_tool(game, "winecfg", log_fn=self._append_log)
 
     def _proton_regedit(self):
         game = self._proton_game()
         if game is None:
             return
-        from Utils.proton_tools import launch_wine_tool
+        from Utils.wine_proton.proton_tools import launch_wine_tool
         launch_wine_tool(game, "regedit", log_fn=self._append_log)
 
     def _proton_dll_overrides(self):
@@ -8098,7 +8098,7 @@ class MainWindow(QMainWindow):
         if game is None:
             return
         import threading
-        from Utils.proton_tools import launch_winetricks
+        from Utils.wine_proton.proton_tools import launch_winetricks
         self._notify(self.tr("Launching winetricks…"), "info")
         threading.Thread(
             target=lambda: launch_winetricks(
@@ -8109,8 +8109,8 @@ class MainWindow(QMainWindow):
         game = self._proton_game()
         if game is None:
             return
-        from Utils.portal_filechooser import pick_exe_file
-        from Utils.proton_tools import launch_exe_in_prefix
+        from Utils.wine_proton.portal_filechooser import pick_exe_file
+        from Utils.wine_proton.proton_tools import launch_exe_in_prefix
 
         def _picked(exe_path):
             if exe_path is None:
@@ -8120,25 +8120,25 @@ class MainWindow(QMainWindow):
         pick_exe_file(self.tr("Select EXE to run in this prefix"), _picked)
 
     def _proton_install_vcredist(self):
-        from Utils.proton_tools import install_vcredist
+        from Utils.wine_proton.proton_tools import install_vcredist
         self._run_proton_installer(
             self.tr("Installing VC++ Redistributable"),
             lambda plog: install_vcredist(self._gs.game, log_fn=plog))
 
     def _proton_install_d3dcompiler(self):
-        from Utils.proton_tools import install_d3dcompiler_47
+        from Utils.wine_proton.proton_tools import install_d3dcompiler_47
         self._run_proton_installer(
             self.tr("Installing d3dcompiler_47"),
             lambda plog: install_d3dcompiler_47(self._gs.game, log_fn=plog))
 
     def _proton_install_xact(self):
-        from Utils.proton_tools import install_xact
+        from Utils.wine_proton.proton_tools import install_xact
         self._run_proton_installer(
             self.tr("Installing XACT audio (XAudio2)"),
             lambda plog: install_xact(self._gs.game, log_fn=plog))
 
     def _proton_install_dotnet(self, version: str):
-        from Utils.proton_tools import install_dotnet
+        from Utils.wine_proton.proton_tools import install_dotnet
         self._run_proton_installer(
             self.tr("Installing .NET {0}").format(version),
             lambda plog: install_dotnet(self._gs.game, version, log_fn=plog))
@@ -11769,7 +11769,7 @@ class MainWindow(QMainWindow):
         from gui_qt.worker import run_in_worker
 
         def detect():
-            from Utils.framework_detect import detect_frameworks
+            from Utils.wine_proton.framework_detect import detect_frameworks
             return gen, detect_frameworks(game, filemap_path, modlist_path,
                                           rf_toggle_enabled=True)
 

@@ -327,7 +327,7 @@ class DynDOLODView(QWidget):
                 err_text())
 
     def _browse_archive(self):
-        from Utils.portal_filechooser import pick_file
+        from Utils.wine_proton.portal_filechooser import pick_file
         # Portal callback fires on a WORKER thread — marshal via Signal.
         pick_file(self.tr("Select the DynDOLOD archive"), lambda *a: safe_emit(self._picked_sig, *a))
 
@@ -510,7 +510,7 @@ class DynDOLODView(QWidget):
             from Utils.exe_launch import (
                 resolve_tool_prefix, run_tool_logged, shutdown_prefix_wineserver,
             )
-            from Utils.wine_paths import to_wine_path
+            from Utils.wine_proton.wine_paths import to_wine_path
             from Utils.xedit_tools import prepare_xedit_prefix
             _wlog = lambda m: self._log(f"{name} Wizard: {m}")
             try:

@@ -32,8 +32,8 @@ import os
 import re
 from pathlib import Path
 
-from Utils.steam_finder import find_steam_libraries, _parse_acf_installdir
-from Utils.heroic_finder import (
+from Utils.wine_proton.steam_finder import find_steam_libraries, _parse_acf_installdir
+from Utils.wine_proton.heroic_finder import (
     _find_heroic_config_roots, _load_epic_installed, _load_gog_installed,
     _load_sideload_installed, _sideload_game_root, _stored_exe_matches,
 )
@@ -258,7 +258,7 @@ class InstalledIndex:
         # against memory rather than re-reading Lutris's data each time.
         self._lutris_exes: list[list[str]] = []
         try:
-            from Utils.lutris_finder import build_installed_exe_index
+            from Utils.wine_proton.lutris_finder import build_installed_exe_index
             self._lutris_exes = build_installed_exe_index()
         except Exception as exc:
             self._log(f"lutris index build failed, continuing with none: {exc}")

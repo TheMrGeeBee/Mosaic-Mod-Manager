@@ -131,7 +131,7 @@ class MCPView(WizardViewBase):
     def _do_run(self):
         import subprocess
         from Utils.exe_launch import get_game_prefix_env
-        from Utils.steam_finder import proton_run_command
+        from Utils.wine_proton.steam_finder import proton_run_command
         try:
             if self._game_root is None:
                 raise RuntimeError("Game path is not configured.")

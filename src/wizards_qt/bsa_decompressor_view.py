@@ -391,12 +391,12 @@ class BSADecompressorView(WizardViewBase):
             log_fn=_wlog)
 
     def _browse_folder(self, attr: str, title: str):
-        from Utils.portal_filechooser import pick_folder
+        from Utils.wine_proton.portal_filechooser import pick_folder
         pick_folder(title,
                     lambda p: safe_emit(self._paths_picked_sig, attr, p))
 
     def _browse_mpi(self):
-        from Utils.portal_filechooser import pick_file
+        from Utils.wine_proton.portal_filechooser import pick_file
         pick_file(self.tr("Select the BSA Decompressor .mpi or its archive"),
                   lambda p: safe_emit(self._paths_picked_sig, "mpi", p),
                   filters=[(self.tr("MPI package or archive"),

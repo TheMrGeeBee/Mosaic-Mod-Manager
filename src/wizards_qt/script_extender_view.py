@@ -393,7 +393,7 @@ class ScriptExtenderView(QWidget):
 
     # ---- browse (shared) -----------------------------------------------------------
     def _browse_archive(self):
-        from Utils.portal_filechooser import pick_file
+        from Utils.wine_proton.portal_filechooser import pick_file
         # Portal callback fires on a WORKER thread — marshal via Signal.
         pick_file(self.tr("Select the script extender archive"),
                   lambda path: safe_emit(self._picked_sig, path))

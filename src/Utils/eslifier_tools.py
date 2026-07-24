@@ -43,7 +43,7 @@ def write_settings(game: "BaseGame", exe: Path, pfx: Path, profile: str,
     opens them from inside the Proton prefix. Existing user-tweaked keys are
     preserved; only the path/mode keys we manage are overwritten.
     """
-    from Utils.wine_paths import to_wine_path
+    from Utils.wine_proton.wine_paths import to_wine_path
 
     game.set_active_profile_dir(
         game.get_profile_root() / "profiles" / profile

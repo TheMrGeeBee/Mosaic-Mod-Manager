@@ -87,7 +87,7 @@ class BG3ImportView(WizardViewBase):
         return page
 
     def _browse_json(self):
-        from Utils.portal_filechooser import pick_file
+        from Utils.wine_proton.portal_filechooser import pick_file
         pick_file(self.tr("Select a BG3MM order .json"),
                   lambda p: safe_emit(self._picked_sig, p), _JSON_FILTERS)
 

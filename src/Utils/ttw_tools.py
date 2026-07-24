@@ -117,7 +117,7 @@ def download_installer(game: "BaseGame",
 def find_fo3_install() -> Path | None:
     """Locate the Fallout 3 install folder via Steam libraries, or None."""
     try:
-        from Utils.steam_finder import find_game_by_steam_id, find_steam_libraries
+        from Utils.wine_proton.steam_finder import find_game_by_steam_id, find_steam_libraries
         libs = find_steam_libraries()
         for sid in _FO3_STEAM_IDS:
             hit = find_game_by_steam_id(libs, sid, _FO3_EXE_NAME)

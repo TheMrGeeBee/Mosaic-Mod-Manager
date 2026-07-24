@@ -276,7 +276,7 @@ class ReShadeView(QWidget):
         return page
 
     def _browse_preset(self):
-        from Utils.portal_filechooser import pick_preset_file
+        from Utils.wine_proton.portal_filechooser import pick_preset_file
         # Callback fires on the portal WORKER thread — marshal via Signal.
         pick_preset_file(self.tr("Select a ReShade preset (.ini)"),
                          lambda path: safe_emit(self._preset_picked_sig, path))
@@ -466,8 +466,8 @@ class ReShadeView(QWidget):
         return page
 
     def _refresh_d3d_step(self):
-        from Utils.protontricks import D3D_DEP_KEY, is_dep_installed
-        from Utils.steam_finder import game_steam_id
+        from Utils.wine_proton.protontricks import D3D_DEP_KEY, is_dep_installed
+        from Utils.wine_proton.steam_finder import game_steam_id
         steam_id = game_steam_id(self._game)
         prefix = getattr(self._game, "_prefix_path", None)
         has_prefix = bool(prefix) and Path(prefix).is_dir()
@@ -503,7 +503,7 @@ class ReShadeView(QWidget):
         game = self._game
 
         def worker():
-            from Utils.proton_tools import install_d3dcompiler_47
+            from Utils.wine_proton.proton_tools import install_d3dcompiler_47
             ok = False
             try:
                 ok = install_d3dcompiler_47(

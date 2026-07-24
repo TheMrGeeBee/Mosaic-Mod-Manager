@@ -34,7 +34,7 @@ from typing import TYPE_CHECKING, Callable
 if TYPE_CHECKING:
     from Games.base_game import BaseGame
 
-from Utils.wine_paths import to_wine_path as _to_wine_path
+from Utils.wine_proton.wine_paths import to_wine_path as _to_wine_path
 
 DUMMY_DIRNAME = "amm_mo2_dummy"
 _PROFILE_NAME = "Default"

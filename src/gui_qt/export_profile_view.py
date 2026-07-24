@@ -774,7 +774,7 @@ class ExportProfileView(QWidget):
         pd = self._profile_dir()
         profile_name = pd.name if pd else "manifest"
         default_name = f"{profile_name}_export.amethyst"
-        from Utils.portal_filechooser import pick_save_file
+        from Utils.wine_proton.portal_filechooser import pick_save_file
         pick_save_file(
             self.tr("Export Amethyst Manifest"),
             lambda path: self._save_path_picked.emit(path),

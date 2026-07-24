@@ -27,7 +27,7 @@ if TYPE_CHECKING:
 _GITHUB_API = "https://api.github.com/repos/hakasapl/PGPatcher/releases/latest"
 _PATCHER_EXE = "PGPatcher.exe"
 _PATCHER_DIR = "PGPatcher"
-# .NET 8 install runs through Utils.proton_tools.install_dotnet_runtime.
+# .NET 8 install runs through Utils.wine_proton.proton_tools.install_dotnet_runtime.
 _AMBER = "#e0a83c"
 
 _PG_DOWNLOAD, _PG_PROTON, _PG_DEPS, _PG_CONFIG, _PG_DEPLOY, _PG_RUN = range(6)
@@ -167,7 +167,7 @@ class PGPatcherView(WizardViewBase):
 
         def worker():
             from Utils.exe_launch import resolve_tool_prefix
-            from Utils.protontricks import (
+            from Utils.wine_proton.protontricks import (
                 D3D_DEP_KEY, dotnet_dep_key, install_d3dcompiler_47,
                 is_dep_installed,
             )
@@ -216,7 +216,7 @@ class PGPatcherView(WizardViewBase):
                     safe_emit(self._deps_done_sig, True)
                     return
 
-                from Utils.proton_tools import install_dotnet_runtime
+                from Utils.wine_proton.proton_tools import install_dotnet_runtime
                 ok = install_dotnet_runtime(
                     "8", proton_script, env, prefix_path,
                     log_fn=_wlog,

@@ -4,7 +4,7 @@ improvement: the Tk panel hardcodes ``native,builtin`` for every DLL, whereas
 this offers a PER-DLL load-order picker (native / builtin / native,builtin /
 builtin,native / disabled).
 
-The persistence reuses the neutral ``Utils.wine_dll_config`` +
+The persistence reuses the neutral ``Utils.wine_proton.wine_dll_config`` +
 ``Utils.deploy.deploy_wine_dll`` helpers unchanged — those already write whatever value
 string they're given, so per-order flexibility is a pure UI change. Overrides are
 saved to config and applied to the prefix's ``user.reg`` on "Save & Apply".
@@ -23,7 +23,7 @@ from PySide6.QtWidgets import (
 
 from gui_qt.theme_qt import active_palette, _c, danger_close_button, contrast_text
 from gui_qt.wheel_guard import no_wheel
-from Utils.wine_dll_config import (
+from Utils.wine_proton.wine_dll_config import (
     load_wine_dll_overrides, save_wine_dll_overrides,
 )
 

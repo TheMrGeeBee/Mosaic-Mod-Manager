@@ -20,11 +20,11 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from Games.base_game import BaseGame
 
-from Utils.protontricks import dotnet_dep_key as _dotnet_dep_key
+from Utils.wine_proton.protontricks import dotnet_dep_key as _dotnet_dep_key
 
 EXE_NAME = "Pandora Behaviour Engine+.exe"
 
-# .NET 10 install now runs through Utils.proton_tools.install_dotnet_runtime
+# .NET 10 install now runs through Utils.wine_proton.proton_tools.install_dotnet_runtime
 # (single source of truth for URL/filename/exit-code handling).
 NET10_DEP_KEY = _dotnet_dep_key("10")
 
@@ -45,7 +45,7 @@ def find_pandora_exe(game: "BaseGame") -> Path | None:
 
 def net10_installed(compat_data: Path) -> bool:
     """True when .NET 10 is already marked installed in this prefix."""
-    from Utils.protontricks import is_dep_installed
+    from Utils.wine_proton.protontricks import is_dep_installed
     return is_dep_installed(Path(compat_data) / "pfx", NET10_DEP_KEY)
 
 
@@ -57,7 +57,7 @@ def install_net10(proton_script: Path, compat_data: Path, env: dict,
     *status_fn* receives short user-facing progress strings; *log_fn* the
     detailed log lines.
     """
-    from Utils.proton_tools import install_dotnet_runtime
+    from Utils.wine_proton.proton_tools import install_dotnet_runtime
 
     ok = install_dotnet_runtime(
         "10", proton_script, env, Path(compat_data) / "pfx",
@@ -84,7 +84,7 @@ def run_pandora(exe: Path, game: "BaseGame", proton_script: Path,
     from Utils.bethesda_registry import maybe_register_for_game
     from Utils.exe_args_builder import _bootstrap_pandora_settings
     from Utils.exe_launch import shutdown_prefix_wineserver
-    from Utils.wine_paths import to_wine_path
+    from Utils.wine_proton.wine_paths import to_wine_path
 
     game_path = game.get_game_path()
     if game_path is None:

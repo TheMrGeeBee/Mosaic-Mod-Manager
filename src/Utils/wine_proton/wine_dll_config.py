@@ -79,7 +79,7 @@ def deploy_game_wine_dll_overrides(
     # Classic Lutris prefixes lack the steamuser account handler paths
     # assume; make sure the compat symlink exists before touching the prefix.
     try:
-        from Utils.lutris_finder import is_lutris_prefix, ensure_steamuser_compat
+        from Utils.wine_proton.lutris_finder import is_lutris_prefix, ensure_steamuser_compat
         if is_lutris_prefix(prefix_path):
             ensure_steamuser_compat(prefix_path)
     except Exception:

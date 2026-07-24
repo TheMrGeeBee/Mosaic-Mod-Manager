@@ -9,7 +9,7 @@ functions below; the backend calls ``ask_choice`` / ``warn`` and gets a no-op
 fallback when no GUI is attached (headless / collection / CLI installs).
 
 This mirrors the logging glue in ``Utils.app_log`` (``set_app_log``) and the
-file-picker dispatcher in ``Utils.portal_filechooser``
+file-picker dispatcher in ``Utils.wine_proton.portal_filechooser``
 (``set_main_thread_dispatcher``).
 
 Navigation sentinels

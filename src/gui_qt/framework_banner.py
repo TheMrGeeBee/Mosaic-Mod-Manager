@@ -3,7 +3,7 @@
 A thin vertical stack of colored rows, one per framework the active game declares
 (SKSE, BepInEx, RED4ext, …), each saying whether it's installed / staged / present
 but disabled / missing. Display-only, mirroring the Tk plugin-panel banner. Data
-comes from `Utils.framework_detect.detect_frameworks` (toolkit-neutral); this
+comes from `Utils.wine_proton.framework_detect.detect_frameworks` (toolkit-neutral); this
 widget only maps each state to the matching theme colors.
 """
 
@@ -13,7 +13,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QLabel
 
 from gui_qt.theme_qt import active_palette, _c
-from Utils.framework_detect import (
+from Utils.wine_proton.framework_detect import (
     STATE_INSTALLED, STATE_NOT_DEPLOYED, STATE_NOT_ENABLED, STATE_MISSING,
 )
 

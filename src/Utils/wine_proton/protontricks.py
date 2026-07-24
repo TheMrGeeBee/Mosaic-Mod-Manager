@@ -197,7 +197,7 @@ def _get_proton_bin() -> str | None:
     Protons are skipped: their wine binaries need the Steam sandbox's runtime
     libraries and break when run bare (winetricks runs wine directly).
     """
-    from Utils.steam_finder import (
+    from Utils.wine_proton.steam_finder import (
         list_installed_proton,
         _proton_script_in_steam_flatpak,
     )
@@ -221,7 +221,7 @@ def wine_bin_dir_for_prefix(prefix_path, env: dict | None = None) -> str | None:
     it launches the runner).
     """
     try:
-        from Utils.lutris_finder import (
+        from Utils.wine_proton.lutris_finder import (
             is_lutris_prefix, find_lutris_wine_for_prefix, lutris_wine_env)
         if not is_lutris_prefix(prefix_path):
             return None
@@ -412,7 +412,7 @@ def install_winetricks_verb(
             return True
         _log("Falling back to protontricks …")
 
-    from Utils.steam_finder import game_steam_id
+    from Utils.wine_proton.steam_finder import game_steam_id
     steam_id = game_steam_id(game)
     if steam_id and _get_protontricks_cmd(steam_id) is not None:
         if _install_via_protontricks(steam_id, verb, _log, timeout):
@@ -535,7 +535,7 @@ def build_proton_env_for_game(game) -> "tuple[Path, dict] | tuple[None, None]":
     Proton install / prefix can be found. The env is suitable for
     ``python3 <proton_script> run <installer.exe> …``.
     """
-    from Utils.steam_finder import (
+    from Utils.wine_proton.steam_finder import (
         find_any_installed_proton,
         find_proton_for_game,
         find_steam_root_for_proton_script,
@@ -549,7 +549,7 @@ def build_proton_env_for_game(game) -> "tuple[Path, dict] | tuple[None, None]":
 
     # Classic lutris-wine prefixes run the installer with the Lutris runner's
     # own wine binary (proton_run_command handles the wine-binary form).
-    from Utils.proton_tools import _resolve_lutris_wine_env
+    from Utils.wine_proton.proton_tools import _resolve_lutris_wine_env
     wine_bin, wenv = _resolve_lutris_wine_env(prefix_path)
     if wine_bin is not None:
         return wine_bin, wenv
@@ -557,20 +557,20 @@ def build_proton_env_for_game(game) -> "tuple[Path, dict] | tuple[None, None]":
     steam_id = game_steam_id(game)
     proton_script = find_proton_for_game(steam_id) if steam_id else None
 
-    from Utils.proton_prefix import read_prefix_runner as _read_prefix_runner, \
+    from Utils.wine_proton.proton_prefix import read_prefix_runner as _read_prefix_runner, \
         resolve_compat_data as _resolve_compat_data
     compat_data = _resolve_compat_data(prefix_path)
 
     if proton_script is None:
         try:
-            from Utils.heroic_finder import find_heroic_proton_for_prefix
+            from Utils.wine_proton.heroic_finder import find_heroic_proton_for_prefix
             proton_script = find_heroic_proton_for_prefix(prefix_path)
         except Exception:
             proton_script = None
 
     if proton_script is None:
         try:
-            from Utils.lutris_finder import find_lutris_proton_name_for_prefix
+            from Utils.wine_proton.lutris_finder import find_lutris_proton_name_for_prefix
             lutris_runner = find_lutris_proton_name_for_prefix(prefix_path)
         except Exception:
             lutris_runner = None
@@ -618,7 +618,7 @@ def install_vcredist(
 
     # Flatpak without the Compat.i386 extension: wine would die with the
     # cryptic "/lib/ld-linux.so.2: could not open" — fail with the fix instead.
-    from Utils.flatpak_i386 import preflight_i386_error
+    from Utils.wine_proton.flatpak_i386 import preflight_i386_error
     i386_err = preflight_i386_error(proton_script)
     if i386_err:
         _log(f"VC++ Redistributable: {i386_err}")
@@ -634,7 +634,7 @@ def install_vcredist(
         else:
             _log("Using cached VC++ Redistributable installer.")
         _log("Installing VC++ Redistributable in game prefix (silent) — please wait …")
-        from Utils.steam_finder import proton_run_command
+        from Utils.wine_proton.steam_finder import proton_run_command
         proc = subprocess.run(
             proton_run_command(proton_script, "runinprefix",
              str(cache_path), "/install", "/quiet", "/norestart",

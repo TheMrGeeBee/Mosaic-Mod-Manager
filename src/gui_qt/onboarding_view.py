@@ -431,7 +431,7 @@ class OnboardingView(QWidget):
         return row
 
     def _browse(self, which: str):
-        from Utils.portal_filechooser import pick_folder
+        from Utils.wine_proton.portal_filechooser import pick_folder
         title = ("Select Default Mod Staging Folder" if which == "staging"
                  else "Select Download Cache Folder")
 

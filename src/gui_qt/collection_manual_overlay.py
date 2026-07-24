@@ -236,7 +236,7 @@ class CollectionManualOverlay(QWidget):
                 open_url(url)
 
     def _select_clicked(self):
-        from Utils.portal_filechooser import pick_file
+        from Utils.wine_proton.portal_filechooser import pick_file
         q = self._queue
 
         def _on_picked(path):

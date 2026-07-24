@@ -282,7 +282,7 @@ class SeparatorSettingsView(QWidget):
 
     # ---- deploy handling -------------------------------------------------
     def _on_browse(self):
-        from Utils.portal_filechooser import pick_folder
+        from Utils.wine_proton.portal_filechooser import pick_folder
         pick_folder("Select deployment directory",
                     lambda chosen: self._folder_picked.emit(chosen))
 

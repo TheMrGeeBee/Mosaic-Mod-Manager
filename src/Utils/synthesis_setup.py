@@ -41,8 +41,8 @@ from Utils.config_paths import (
     get_game_config_dir,
     get_vcredist_cache_path,
 )
-from Utils.protontricks import strip_appimage_env
-from Utils.steam_finder import list_installed_proton
+from Utils.wine_proton.protontricks import strip_appimage_env
+from Utils.wine_proton.steam_finder import list_installed_proton
 
 if TYPE_CHECKING:
     from Games.base_game import BaseGame
@@ -1139,9 +1139,9 @@ def launch_synthesis(game: "BaseGame", proton_script: Path, profile: str,
     # Run via `proton run` so the Steam Linux Runtime sniper container provides
     # libicuuc/libicuin (Wine's icu.dll stub forwards into them).
     # Scrub AppImage loader/bundle pollution so the host Proton's Vulkan probe
-    # can load libvulkan (see Utils.protontricks.strip_appimage_env).
-    from Utils.protontricks import strip_appimage_env
-    from Utils.steam_finder import proton_run_command
+    # can load libvulkan (see Utils.wine_proton.protontricks.strip_appimage_env).
+    from Utils.wine_proton.protontricks import strip_appimage_env
+    from Utils.wine_proton.steam_finder import proton_run_command
     env = strip_appimage_env(os.environ.copy())
     env["STEAM_COMPAT_DATA_PATH"] = str(synthesis_prefix_parent(game))
     env["STEAM_COMPAT_CLIENT_INSTALL_PATH"] = str(

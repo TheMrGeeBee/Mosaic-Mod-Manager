@@ -131,7 +131,7 @@ class SmapiView(WizardViewBase):
             safe_emit(self._dl_next_sig)
 
     def _browse_smapi(self):
-        from Utils.portal_filechooser import pick_file
+        from Utils.wine_proton.portal_filechooser import pick_file
         pick_file(self.tr("Select the SMAPI archive"),
                   lambda p: safe_emit(self._picked_sig, p))
 

@@ -356,7 +356,7 @@ class XEditView(QWidget):
                 err_text())
 
     def _browse_archive(self):
-        from Utils.portal_filechooser import pick_file
+        from Utils.wine_proton.portal_filechooser import pick_file
         # Portal callback fires on a WORKER thread — marshal via Signal.
         pick_file(self.tr("Select the {0} archive").format(self._xedit_name),
                   lambda *a: safe_emit(self._picked_sig, *a))
@@ -573,7 +573,7 @@ class XEditView(QWidget):
                 load_tool_launch_args, parse_launch_args, resolve_tool_prefix,
                 run_tool_logged, shutdown_prefix_wineserver,
             )
-            from Utils.wine_paths import to_wine_path
+            from Utils.wine_proton.wine_paths import to_wine_path
             from Utils.xedit_tools import (
                 finalize_xedit_saves, prepare_xedit_prefix, restore_after_xedit,
             )

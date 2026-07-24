@@ -20,7 +20,7 @@ from pathlib import Path
 import xml.etree.ElementTree as ET
 from typing import Callable, NamedTuple
 
-from Utils.wine_paths import to_wine_path as _to_wine_path
+from Utils.wine_proton.wine_paths import to_wine_path as _to_wine_path
 
 
 # ---------------------------------------------------------------------------

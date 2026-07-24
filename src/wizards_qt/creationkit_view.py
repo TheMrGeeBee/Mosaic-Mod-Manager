@@ -208,7 +208,7 @@ class CreationKitView(WizardViewBase):
                 link_mygames, link_plugins_txt, resolve_tool_prefix,
                 run_tool_logged, shutdown_prefix_wineserver,
             )
-            from Utils.protontricks import (
+            from Utils.wine_proton.protontricks import (
                 D3D_DEP_KEY, VCREDIST_DEP_KEY, install_d3dcompiler_47,
                 install_vcredist, is_dep_installed,
             )

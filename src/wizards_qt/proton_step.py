@@ -91,7 +91,7 @@ class ProtonStepWidget(QWidget):
         head.setStyleSheet(f"color:{_c(p,'TEXT_MAIN')}; font-weight:600;")
         v.addWidget(head)
 
-        from Utils.steam_finder import list_installed_proton
+        from Utils.wine_proton.steam_finder import list_installed_proton
         self._versions = [s.parent.name for s in list_installed_proton()]
         if not self._versions:
             err = QLabel(self.tr("No Proton versions were found.\n\n"
@@ -237,7 +237,7 @@ class ProtonStepWidget(QWidget):
     # ---- defaults / state ---------------------------------------------------
     def _initial_version(self) -> str:
         """Saved per-exe override, else the game's own Proton, else first."""
-        from Utils.steam_finder import find_proton_for_game, game_steam_id
+        from Utils.wine_proton.steam_finder import find_proton_for_game, game_steam_id
         saved = load_proton_override(self._game, self._tool_exe_name) or ""
         if not saved:
             steam_id = game_steam_id(self._game)

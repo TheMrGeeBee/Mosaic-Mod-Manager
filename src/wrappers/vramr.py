@@ -32,7 +32,7 @@ from typing import Callable
 _ANSI_RE = re.compile(r"\x1b\[[0-9;]*[A-Za-z]|\x1b\[[?][0-9;]*[A-Za-z]|\x1b[A-Za-z]|\r")
 
 from Utils.config_paths import get_config_dir, get_wine_prefixes_dir
-from Utils.steam_finder import find_wine
+from Utils.wine_proton.steam_finder import find_wine
 
 
 # ── Presets ────────────────────────────────────────────────────────────────

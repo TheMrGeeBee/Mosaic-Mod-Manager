@@ -36,7 +36,7 @@ from Utils.config_paths import (
     get_game_config_path,
     get_profile_exe_args_path,
 )
-from Utils.protontricks import strip_appimage_env
+from Utils.wine_proton.protontricks import strip_appimage_env
 from Utils.xdg import spawn_watched
 
 _LAUNCH_MODE_FILE = "exe_launch_mode.json"
@@ -284,7 +284,7 @@ def detect_framework_exes(game, framework_states: "dict | None" = None) -> list[
         return []
     if not game_is_steam_install(game):
         return []
-    from Utils.framework_detect import STATE_NOT_DEPLOYED, resolve_file_ci
+    from Utils.wine_proton.framework_detect import STATE_NOT_DEPLOYED, resolve_file_ci
     hidden = load_hidden_auto_exes(game)
     game_exe = resolve_game_exe(game)
     out: list[Path] = []
@@ -622,7 +622,7 @@ def game_exe_key(game) -> str:
 
 
 def effective_steam_id(game) -> str:
-    from Utils.steam_finder import game_steam_id
+    from Utils.wine_proton.steam_finder import game_steam_id
     return game_steam_id(game)
 
 
@@ -631,7 +631,7 @@ def game_is_steam_install(game) -> bool:
     game_path = game.get_game_path() if hasattr(game, "get_game_path") else None
     if game_path is None:
         return False
-    from Utils.steam_finder import find_steam_libraries
+    from Utils.wine_proton.steam_finder import find_steam_libraries
     try:
         resolved = game_path.resolve()
         for lib in find_steam_libraries():
@@ -646,7 +646,7 @@ def heroic_app_names_for_launch(game) -> list:
     """Heroic app names for launch — detected by scanning Heroic's
     installed.json for the game's exe, plus legacy handler/paths.json values."""
     names: list[str] = []
-    from Utils.heroic_finder import find_heroic_app_name_by_exe
+    from Utils.wine_proton.heroic_finder import find_heroic_app_name_by_exe
     exe_names = [getattr(game, "exe_name", None)]
     exe_names += list(getattr(game, "exe_name_alts", []) or [])
     for exe in [e for e in exe_names if e]:
@@ -676,7 +676,7 @@ def game_is_heroic_install(game) -> bool:
     app_names = heroic_app_names_for_launch(game)
     if not app_names:
         return False
-    from Utils.heroic_finder import find_heroic_launch_info
+    from Utils.wine_proton.heroic_finder import find_heroic_launch_info
     try:
         return find_heroic_launch_info(app_names) is not None
     except Exception:
@@ -687,7 +687,7 @@ def lutris_slugs_for_launch(game) -> list:
     """Lutris slugs for launch — detected by matching the game's exe against
     Lutris's installed games, plus the saved paths.json value (written when
     the game was configured via Lutris detection)."""
-    from Utils.lutris_finder import find_lutris_slugs_by_exes
+    from Utils.wine_proton.lutris_finder import find_lutris_slugs_by_exes
     exe_names = [getattr(game, "exe_name", None)]
     exe_names += list(getattr(game, "exe_name_alts", []) or [])
     try:
@@ -714,7 +714,7 @@ def game_is_lutris_install(game) -> bool:
     slugs = lutris_slugs_for_launch(game)
     if not slugs:
         return False
-    from Utils.lutris_finder import find_lutris_launch_info
+    from Utils.wine_proton.lutris_finder import find_lutris_launch_info
     try:
         return find_lutris_launch_info(slugs) is not None
     except Exception:
@@ -844,7 +844,7 @@ def launch_via_heroic(heroic_app_names: list, log_fn=_noop_log) -> bool:
     Heroic installs don't do — fall through to invoking the Heroic flatpak /
     binary directly with the URL as argument (Heroic accepts it via its
     protocol Exec line)."""
-    from Utils.heroic_finder import find_heroic_launch_info
+    from Utils.wine_proton.heroic_finder import find_heroic_launch_info
     info = find_heroic_launch_info(heroic_app_names)
     if info is None:
         log_fn("Play: game not found in Heroic library.")
@@ -887,7 +887,7 @@ def launch_via_lutris(slugs: list, log_fn=_noop_log) -> bool:
     invoked with ``flatpak run``; from inside our own sandbox everything is
     forwarded to the host via ``flatpak-spawn --host`` (same chain-on-failure
     pattern as launch_via_steam)."""
-    from Utils.lutris_finder import find_lutris_launch_info
+    from Utils.wine_proton.lutris_finder import find_lutris_launch_info
     try:
         info = find_lutris_launch_info(slugs)
     except Exception:
@@ -1038,7 +1038,7 @@ def enable_show_dotfiles(proton_script: Path, env: dict,
     existing value — so it's safe to call on every prefix resolution, not just
     on first creation; that also repairs prefixes made before this behaviour.
     """
-    from Utils.steam_finder import proton_run_command
+    from Utils.wine_proton.steam_finder import proton_run_command
     try:
         subprocess.run(
             # runinprefix: no steam.exe shim, so the write doesn't flash the
@@ -1069,7 +1069,7 @@ def get_tool_prefix_env(
     set SteamAppId — see the app-context note below (the tool env pins app 0 so
     Steam Input doesn't apply the game's controller profile to the tool).
     """
-    from Utils.steam_finder import (
+    from Utils.wine_proton.steam_finder import (
         find_any_installed_proton,
         find_steam_root_for_proton_script,
         proton_run_command,
@@ -1347,7 +1347,7 @@ def get_game_prefix_env(game, log_fn=_noop_log, *,
     GOG installs — mirrors the Tk downgrade/Morrowind wizards' resolver).
     Returns None on failure (after logging why).
     """
-    from Utils.steam_finder import (
+    from Utils.wine_proton.steam_finder import (
         find_proton_for_game, find_steam_root_for_proton_script,
     )
     pfx = game.get_prefix_path() if hasattr(game, "get_prefix_path") else None
@@ -1359,23 +1359,23 @@ def get_game_prefix_env(game, log_fn=_noop_log, *,
     # Classic lutris-wine prefixes run tools with the Lutris runner's own
     # wine binary (proton_run_command handles the wine-binary form); the
     # prefix root doubles as the compat-data path.
-    from Utils.proton_tools import _resolve_lutris_wine_env
+    from Utils.wine_proton.proton_tools import _resolve_lutris_wine_env
     wine_bin, wenv = _resolve_lutris_wine_env(Path(pfx), log_fn)
     if wine_bin is not None:
         return wine_bin, Path(pfx), wenv
 
-    from Utils.proton_prefix import resolve_compat_data
+    from Utils.wine_proton.proton_prefix import resolve_compat_data
     steam_id = effective_steam_id(game)
     proton_script = find_proton_for_game(steam_id) if steam_id else None
     if proton_script is None and allow_runner_fallback:
-        from Utils.proton_prefix import read_prefix_runner
-        from Utils.steam_finder import find_any_installed_proton
+        from Utils.wine_proton.proton_prefix import read_prefix_runner
+        from Utils.wine_proton.steam_finder import find_any_installed_proton
         preferred_runner = read_prefix_runner(resolve_compat_data(Path(pfx)))
         if not preferred_runner:
             # Fresh Lutris umu prefixes record the runner in the game yml
             # rather than config_info.
             try:
-                from Utils.lutris_finder import find_lutris_proton_name_for_prefix
+                from Utils.wine_proton.lutris_finder import find_lutris_proton_name_for_prefix
                 preferred_runner = find_lutris_proton_name_for_prefix(Path(pfx)) or ""
             except Exception:
                 preferred_runner = ""
@@ -1449,7 +1449,7 @@ def resolve_tool_prefix(exe: Path, game, proton_name: str, prefix_mode: str,
     else:
         target = isolated_prefix_dir
         if prefix_mode == PREFIX_MODE_SHARED:
-            from Utils.steam_finder import find_any_installed_proton
+            from Utils.wine_proton.steam_finder import find_any_installed_proton
             proton_script = find_any_installed_proton(proton_name)
             if proton_script is None:
                 log_fn(f"could not find Proton '{proton_name}'.")
@@ -1505,7 +1505,7 @@ def run_tool_logged(
     exit code. *proton_script* and *env* come from ``resolve_tool_prefix``;
     *extra_args* are appended after the exe (e.g. xEdit's data-path flag).
     """
-    from Utils.steam_finder import proton_run_command
+    from Utils.wine_proton.steam_finder import proton_run_command
 
     label = label or exe.name
 
@@ -1604,7 +1604,7 @@ WINEPREFIX + Proton's bin on PATH, ``wine start.exe <exe>``), with only two
             None,
         )
     if wine_bin is None:
-        from Utils.protontricks import _get_proton_bin
+        from Utils.wine_proton.protontricks import _get_proton_bin
         found = _get_proton_bin()
         wine_bin = Path(found) / "wine" if found else None
     if wine_bin is None or not wine_bin.is_file():
@@ -1660,7 +1660,7 @@ WINEPREFIX + Proton's bin on PATH, ``wine start.exe <exe>``), with only two
 def launch_winetricks_in_prefix(wineprefix: Path, log_fn=_noop_log) -> None:
     """Launch the winetricks GUI against *wineprefix* (a .../pfx dir),
     downloading winetricks/cabextract on demand."""
-    from Utils.protontricks import (
+    from Utils.wine_proton.protontricks import (
         _bundled_winetricks,
         _get_proton_bin,
         cabextract_installed,
@@ -1685,7 +1685,7 @@ def launch_winetricks_in_prefix(wineprefix: Path, log_fn=_noop_log) -> None:
     env = strip_appimage_env(os.environ.copy())
     env["WINEPREFIX"] = str(wineprefix)
     path_prefix = str(wt.parent)
-    from Utils.protontricks import wine_bin_dir_for_prefix
+    from Utils.wine_proton.protontricks import wine_bin_dir_for_prefix
     proton_bin = wine_bin_dir_for_prefix(wineprefix, env) or _get_proton_bin()
     if proton_bin:
         path_prefix = proton_bin + os.pathsep + path_prefix
@@ -1712,8 +1712,8 @@ def launch_wine_tool_in_prefix(proton_script: Path, prefix_dir: Path, env: dict,
     the raw ``files/bin/wine`` binary core-dumps on modern GE-Proton) and, inside
     our own Flatpak sandbox, forwards the launch to the host.
     """
-    from Utils.proton_tools import _host_forward
-    from Utils.steam_finder import proton_run_command
+    from Utils.wine_proton.proton_tools import _host_forward
+    from Utils.wine_proton.steam_finder import proton_run_command
 
     env["WINEPREFIX"] = str(prefix_dir / "pfx")
     cmd = proton_run_command(proton_script, "runinprefix", tool, env=env)
@@ -1827,8 +1827,8 @@ def launch_exe_via_proton(exe_path: Path, game, log_fn=_noop_log) -> None:
     status in Steam, and the Steam Linux Runtime container is used (fixes
     missing audio vs a raw `proton run`).
     """
-    from Utils.proton_prefix import read_prefix_runner, resolve_compat_data
-    from Utils.steam_finder import (
+    from Utils.wine_proton.proton_prefix import read_prefix_runner, resolve_compat_data
+    from Utils.wine_proton.steam_finder import (
         find_any_installed_proton,
         find_proton_for_game,
         find_steam_root_for_proton_script,
@@ -1869,7 +1869,7 @@ def launch_exe_via_proton(exe_path: Path, game, log_fn=_noop_log) -> None:
         proton_script = None
         lutris_is_prefix = False
         try:
-            from Utils.lutris_finder import (
+            from Utils.wine_proton.lutris_finder import (
                 is_lutris_prefix, find_lutris_wine_for_prefix,
                 find_lutris_proton_name_for_prefix, lutris_wine_env)
             lutris_is_prefix = is_lutris_prefix(prefix_path)
@@ -1901,7 +1901,7 @@ def launch_exe_via_proton(exe_path: Path, game, log_fn=_noop_log) -> None:
             # Heroic records the game's runner in its GamesConfig — using it
             # keeps tool launches on the same Proton Heroic itself uses.
             try:
-                from Utils.heroic_finder import find_heroic_proton_for_prefix
+                from Utils.wine_proton.heroic_finder import find_heroic_proton_for_prefix
                 proton_script = find_heroic_proton_for_prefix(prefix_path)
             except Exception:
                 proton_script = None
@@ -1937,7 +1937,7 @@ def launch_exe_via_proton(exe_path: Path, game, log_fn=_noop_log) -> None:
             # owned there, and runs outside the Steam Linux Runtime container
             # (broken audio on some setups). umu runs Proton inside the
             # container with no Steam client attach at all.
-            from Utils.lutris_finder import find_umu_run
+            from Utils.wine_proton.lutris_finder import find_umu_run
             umu_bin = find_umu_run()
             if umu_bin is None:
                 log_fn("Run EXE: umu-run not found — falling back to Proton "
@@ -2017,7 +2017,7 @@ def launch_exe_via_proton(exe_path: Path, game, log_fn=_noop_log) -> None:
         env.update(env_updates)
 
     if umu_bin is not None:
-        from Utils.lutris_finder import umu_run_command
+        from Utils.wine_proton.lutris_finder import umu_run_command
         base_cmd = umu_run_command(umu_bin, str(exe_path), env=env) + extra_args
     else:
         # "runinprefix" skips Proton's steam.exe shim, so launching a tool
@@ -2065,7 +2065,7 @@ def resolve_jar_prefix_env(jar_path: Path, game, log_fn=_noop_log):
     (after logging why). First use of an isolated prefix runs wineboot — call
     from a worker thread.
     """
-    from Utils.steam_finder import (
+    from Utils.wine_proton.steam_finder import (
         find_any_installed_proton, list_installed_proton,
     )
     override = load_proton_override(game, jar_path.name)
@@ -2118,8 +2118,8 @@ def launch_jar(jar_path: Path, game, log_fn=_noop_log) -> None:
         result = resolve_jar_prefix_env(jar_path, game, log_fn=log_fn)
         if result is None:
             return
-        from Utils.steam_finder import proton_run_command
-        from Utils.wine_paths import to_wine_path
+        from Utils.wine_proton.steam_finder import proton_run_command
+        from Utils.wine_proton.wine_paths import to_wine_path
         proton_script, compat_data, env = result
         jar_token = to_wine_path(jar_path)
         # Windows target: keep backslashes in paths and any file arguments the
@@ -2130,7 +2130,7 @@ def launch_jar(jar_path: Path, game, log_fn=_noop_log) -> None:
         # path (C:\java8\bin\java.exe) rather than a Z: path — a Z: path into
         # the prefix's own drive (and one with spaces, e.g. "Proton -
         # Experimental") is what made the launch fail.
-        from Utils.jre_prefix import java_exe_in_prefix, JAVA_EXE_WIN
+        from Utils.wine_proton.jre_prefix import java_exe_in_prefix, JAVA_EXE_WIN
         java_native = java_exe_in_prefix(compat_data)
         if not java_native.is_file():
             log_fn("Run JAR: no Java in this prefix — click 'Install Java into "

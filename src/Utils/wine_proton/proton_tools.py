@@ -15,7 +15,7 @@ import subprocess
 from pathlib import Path
 from typing import Callable
 
-from Utils.steam_finder import proton_run_command
+from Utils.wine_proton.steam_finder import proton_run_command
 
 LogFn = Callable[[str], None]
 
@@ -73,7 +73,7 @@ def install_dotnet_runtime(
     """
     from Utils.ca_bundle import download_file
     from Utils.config_paths import get_dotnet_cache_dir
-    from Utils.protontricks import dotnet_dep_key, mark_dep_installed
+    from Utils.wine_proton.protontricks import dotnet_dep_key, mark_dep_installed
 
     _status = status_fn or (lambda _m: None)
 
@@ -132,7 +132,7 @@ def _resolve_lutris_wine_env(prefix_path, log_fn: LogFn = _noop):
     invocation.
     """
     try:
-        from Utils.lutris_finder import (
+        from Utils.wine_proton.lutris_finder import (
             is_lutris_prefix, find_lutris_wine_for_prefix, lutris_wine_env)
         if not is_lutris_prefix(prefix_path):
             return None, None
@@ -141,7 +141,7 @@ def _resolve_lutris_wine_env(prefix_path, log_fn: LogFn = _noop):
         return None, None
     if wine_bin is None:
         return None, None
-    from Utils.protontricks import strip_appimage_env
+    from Utils.wine_proton.protontricks import strip_appimage_env
     env = strip_appimage_env(os.environ.copy())
     env.update(lutris_wine_env(wine_bin, prefix_path))
     log_fn(f"Proton Tools: Lutris prefix — using Lutris wine runner "
@@ -157,7 +157,7 @@ def resolve_proton_env(game, log_fn: LogFn = _noop):
     For classic lutris-wine prefixes the first element is the runner's wine
     *binary* instead of a proton script (see ``_resolve_lutris_wine_env``).
     """
-    from Utils.steam_finder import (
+    from Utils.wine_proton.steam_finder import (
         find_any_installed_proton,
         find_proton_for_game,
         game_steam_id,
@@ -176,14 +176,14 @@ def resolve_proton_env(game, log_fn: LogFn = _noop):
     steam_id = game_steam_id(game)
     proton_script = find_proton_for_game(steam_id) if steam_id else None
 
-    from Utils.proton_prefix import resolve_compat_data, read_prefix_runner
+    from Utils.wine_proton.proton_prefix import resolve_compat_data, read_prefix_runner
     compat_data = resolve_compat_data(prefix_path)
 
     if proton_script is None:
         # Heroic-managed prefixes have no Steam CompatToolMapping, but the
         # exact Proton build is recorded in GamesConfig/<app>.json — use it.
         try:
-            from Utils.heroic_finder import find_heroic_proton_for_prefix
+            from Utils.wine_proton.heroic_finder import find_heroic_proton_for_prefix
             proton_script = find_heroic_proton_for_prefix(prefix_path)
         except Exception:
             proton_script = None
@@ -195,7 +195,7 @@ def resolve_proton_env(game, log_fn: LogFn = _noop):
         # Lutris umu/Proton games record the runner in the prefix's
         # config_info after the first run, or in the game's yml before that.
         try:
-            from Utils.lutris_finder import find_lutris_proton_name_for_prefix
+            from Utils.wine_proton.lutris_finder import find_lutris_proton_name_for_prefix
             lutris_runner = find_lutris_proton_name_for_prefix(prefix_path)
         except Exception:
             lutris_runner = None
@@ -223,7 +223,7 @@ def resolve_proton_env(game, log_fn: LogFn = _noop):
         log_fn("Proton Tools: could not determine Steam root for the selected Proton tool.")
         return None, None
 
-    from Utils.protontricks import strip_appimage_env
+    from Utils.wine_proton.protontricks import strip_appimage_env
     env = strip_appimage_env(os.environ.copy())
     env["STEAM_COMPAT_DATA_PATH"] = str(compat_data)
     env["STEAM_COMPAT_CLIENT_INSTALL_PATH"] = str(steam_root)
@@ -319,7 +319,7 @@ def launch_winetricks(game, log_fn: LogFn = _noop) -> None:
     """Download winetricks/cabextract if needed, then launch the winetricks GUI
     against the game's prefix. Blocking on the (small) downloads — call from a
     worker thread."""
-    from Utils.protontricks import (
+    from Utils.wine_proton.protontricks import (
         _bundled_winetricks,
         _get_proton_bin,
         cabextract_installed,
@@ -341,7 +341,7 @@ def launch_winetricks(game, log_fn: LogFn = _noop) -> None:
         log_fn("Proton Tools: cabextract not found — downloading a portable copy …")
         if not install_cabextract(log_fn=lambda m: log_fn(f"Proton Tools: {m}")):
             return
-    from Utils.protontricks import strip_appimage_env, wine_bin_dir_for_prefix
+    from Utils.wine_proton.protontricks import strip_appimage_env, wine_bin_dir_for_prefix
     wt = _bundled_winetricks()
     env = strip_appimage_env(os.environ.copy())
     env["WINEPREFIX"] = str(prefix_path)
@@ -388,13 +388,13 @@ def install_vcredist(game, log_fn: LogFn = _noop) -> bool:
     if proton_script is None:
         return False
     prefix_path = getattr(game, "_prefix_path", None)
-    from Utils.protontricks import install_vcredist as _impl
+    from Utils.wine_proton.protontricks import install_vcredist as _impl
     return bool(_impl(proton_script, env, log_fn=log_fn, prefix_path=prefix_path))
 
 
 def install_d3dcompiler_47(game, log_fn: LogFn = _noop) -> bool:
-    from Utils.protontricks import install_d3dcompiler_47 as _impl
-    from Utils.steam_finder import game_steam_id
+    from Utils.wine_proton.protontricks import install_d3dcompiler_47 as _impl
+    from Utils.wine_proton.steam_finder import game_steam_id
     steam_id = game_steam_id(game)
     prefix_path = getattr(game, "_prefix_path", None)
     return bool(_impl(steam_id, log_fn=log_fn, prefix_path=prefix_path))
@@ -406,7 +406,7 @@ def install_xact(game, log_fn: LogFn = _noop) -> bool:
     for games/mods that hit its edge cases (crackling, silent voices/effects,
     audio crashes). Unattended; each verb is skip-if-recorded, so re-running
     is instant."""
-    from Utils.protontricks import install_winetricks_verb
+    from Utils.wine_proton.protontricks import install_winetricks_verb
     ok = True
     for verb in ("xact", "xact_x64"):
         ok = install_winetricks_verb(game, verb, log_fn=log_fn) and ok

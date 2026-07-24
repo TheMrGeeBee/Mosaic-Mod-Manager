@@ -175,7 +175,7 @@ class BodySlideView(WizardViewBase):
             from Utils.exe_launch import (
                 resolve_tool_prefix, run_tool_logged, shutdown_prefix_wineserver,
             )
-            from Utils.steam_finder import proton_run_command
+            from Utils.wine_proton.steam_finder import proton_run_command
             _wlog = lambda m: self._log(f"{name} Wizard: {m}")
             gl_log = None
             try:

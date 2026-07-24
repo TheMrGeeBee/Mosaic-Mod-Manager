@@ -16,7 +16,7 @@ all. Registering ourselves covers both cases.
 from __future__ import annotations
 
 import subprocess
-from Utils.steam_finder import proton_run_command
+from Utils.wine_proton.steam_finder import proton_run_command
 from pathlib import Path
 from typing import Callable
 

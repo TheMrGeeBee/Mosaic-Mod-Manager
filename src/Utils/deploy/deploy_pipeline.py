@@ -26,7 +26,7 @@ from Utils.filemap import build_filemap
 from Utils.profile.profile_backup import create_backup
 from Utils.profile.profile_state import read_excluded_mod_files
 from Utils.ui_config import load_normalize_folder_case
-from Utils.wine_dll_config import deploy_game_wine_dll_overrides
+from Utils.wine_proton.wine_dll_config import deploy_game_wine_dll_overrides
 
 
 LogFn = Callable[[str], None]
@@ -568,7 +568,7 @@ def run_deploy_pipeline(
         # its sandbox and can't follow symlinks whose targets aren't mounted
         # there — grant staging/profile access up front (GH#275).
         try:
-            from Utils.flatpak_sandbox import ensure_symlink_target_access
+            from Utils.wine_proton.flatpak_sandbox import ensure_symlink_target_access
             ensure_symlink_target_access(
                 game,
                 game_root=Path(game_root) if game_root else None,

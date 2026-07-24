@@ -413,7 +413,7 @@ class WizardViewBase(QWidget):
             self._set_status(self._locate_status, self._locate_not_found, err_text())
 
     def _browse_archive(self):
-        from Utils.portal_filechooser import pick_file
+        from Utils.wine_proton.portal_filechooser import pick_file
         # Portal callback fires on a WORKER thread — marshal via Signal.
         pick_file(self._locate_pick_title,
                   lambda p: safe_emit(self._picked_sig, p))

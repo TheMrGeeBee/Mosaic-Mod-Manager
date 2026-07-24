@@ -192,7 +192,7 @@ class GameState:
     def _detect_frameworks(self, g) -> list:
         """Framework banner statuses (worker-side; see ConflictData)."""
         try:
-            from Utils.framework_detect import detect_frameworks
+            from Utils.wine_proton.framework_detect import detect_frameworks
             staging = self.staging_dir()
             fm = (staging.parent / "filemap.txt") if staging is not None else None
             return detect_frameworks(g, fm, self.modlist_path(),

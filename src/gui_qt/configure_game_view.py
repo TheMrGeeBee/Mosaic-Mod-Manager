@@ -62,7 +62,7 @@ def _lutris_available(game) -> bool:
     if not getattr(game, "exe_name", None):
         return False
     try:
-        from Utils.lutris_finder import find_lutris_roots
+        from Utils.wine_proton.lutris_finder import find_lutris_roots
         return bool(find_lutris_roots())
     except Exception:
         return False
@@ -740,7 +740,7 @@ class ConfigureGameView(QWidget):
         # pick_folder's callback fires on the portal WORKER thread — marshal to
         # the GUI thread via a Signal before touching any widget (see the note
         # on _ScanSignals). Calling _set_game here directly would segfault Qt.
-        from Utils.portal_filechooser import pick_folder
+        from Utils.wine_proton.portal_filechooser import pick_folder
         pick_folder("Select game install folder",
                     lambda path: self._sig.game_picked.emit(path))
 
@@ -749,7 +749,7 @@ class ConfigureGameView(QWidget):
             self._set_game(Path(path), source="manual")
 
     def _browse_prefix(self):
-        from Utils.portal_filechooser import pick_folder
+        from Utils.wine_proton.portal_filechooser import pick_folder
         pick_folder("Select Proton/Wine prefix (pfx)",
                     lambda path: self._sig.prefix_picked.emit(path))
 
@@ -758,7 +758,7 @@ class ConfigureGameView(QWidget):
             self._set_prefix(Path(path))
 
     def _browse_staging(self):
-        from Utils.portal_filechooser import pick_folder
+        from Utils.wine_proton.portal_filechooser import pick_folder
         pick_folder("Select mod staging folder",
                     lambda path: self._sig.staging_picked.emit(path))
 
@@ -834,9 +834,9 @@ class ConfigureGameView(QWidget):
         game_name = getattr(g, "name", repr(g))
         app_log(f"[Configure Game] Auto-detecting: {game_name}")
         try:
-            from Utils.steam_finder import (
+            from Utils.wine_proton.steam_finder import (
                 find_steam_libraries, find_game_by_steam_id, find_game_in_libraries)
-            from Utils.heroic_finder import (
+            from Utils.wine_proton.heroic_finder import (
                 find_heroic_game, find_heroic_game_info_by_exe)
             exe_names = [getattr(g, "exe_name", None)] + list(
                 getattr(g, "exe_name_alts", []) or [])
@@ -859,7 +859,7 @@ class ConfigureGameView(QWidget):
                     source = "heroic"
                     app_log(f"[Configure Game] Found via Heroic app name: {found}")
             if not found:
-                from Utils.lutris_finder import find_lutris_game_info_by_exe
+                from Utils.wine_proton.lutris_finder import find_lutris_game_info_by_exe
                 app_log(f"[Configure Game] Checking Lutris (exe names: {exe_names})")
                 for exe in exe_names:
                     info = find_lutris_game_info_by_exe(exe)
@@ -945,7 +945,7 @@ class ConfigureGameView(QWidget):
         from Utils.app_log import app_log
         found = None
         try:
-            from Utils.steam_finder import scan_drives_for_exe
+            from Utils.wine_proton.steam_finder import scan_drives_for_exe
             app_log(f"[Configure Game] Scanning all drives for: {exe_names}")
             found = scan_drives_for_exe(exe_names)
             app_log(f"[Configure Game] Drive scan result: {found or 'not found'}")
@@ -976,8 +976,8 @@ class ConfigureGameView(QWidget):
         g = self._game
         found = None
         try:
-            from Utils.steam_finder import find_prefix
-            from Utils.heroic_finder import find_heroic_prefix
+            from Utils.wine_proton.steam_finder import find_prefix
+            from Utils.wine_proton.heroic_finder import find_heroic_prefix
             sid = getattr(g, "steam_id", None)
             ids = [sid] + [str(s) for s in getattr(g, "alt_steam_ids", []) or [] if s]
             for s in [x for x in ids if x]:
@@ -987,7 +987,7 @@ class ConfigureGameView(QWidget):
             if not found and _heroic_app_names(g):
                 found = find_heroic_prefix(_heroic_app_names(g))
             if not found:
-                from Utils.lutris_finder import find_lutris_game_info_by_exe
+                from Utils.wine_proton.lutris_finder import find_lutris_game_info_by_exe
                 exe_names = [getattr(g, "exe_name", None)] + list(
                     getattr(g, "exe_name_alts", []) or [])
                 for exe in [e for e in exe_names if e]:
@@ -1022,7 +1022,7 @@ class ConfigureGameView(QWidget):
         # typo (it simply doesn't exist in here) — tell the user what it
         # actually is and how to grant access before letting them save a
         # config that can never work.
-        from Utils.sandbox_paths import flatpak_blocked_path_hint
+        from Utils.wine_proton.sandbox_paths import flatpak_blocked_path_hint
         for candidate, status in (
             (self._found_path, self._game_status),
             (self._staging_edit.text().strip() or None, self._staging_status),
@@ -1174,7 +1174,7 @@ class ConfigureGameView(QWidget):
         if not files:
             self._finalize_save()
             return
-        from Utils.prefix_manager import fmt_size
+        from Utils.wine_proton.prefix_manager import fmt_size
         from gui_qt.confirm_overlay import ConfirmOverlay
         body = (f"The staging location for {self._game.name} has changed.\n\n"
                 f"Move {fmt_size(size)} of mods, profiles and overwrite "
@@ -1249,7 +1249,7 @@ class ConfigureGameView(QWidget):
 
         def _worker():
             from Utils.app_log import app_log
-            from Utils.protontricks import (
+            from Utils.wine_proton.protontricks import (
                 D3D_DEP_KEY,
                 VCREDIST_DEP_KEY,
                 _install_via_winetricks,
@@ -1258,7 +1258,7 @@ class ConfigureGameView(QWidget):
                 install_vcredist,
                 is_dep_installed,
             )
-            from Utils.steam_finder import game_steam_id
+            from Utils.wine_proton.steam_finder import game_steam_id
 
             _proton: tuple = ()
 

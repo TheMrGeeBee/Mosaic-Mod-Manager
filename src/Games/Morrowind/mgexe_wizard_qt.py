@@ -264,7 +264,7 @@ class MGEXEView(WizardViewBase):
     def _run_exe(self, exe: Path):
         import subprocess
         from Utils.exe_launch import get_game_prefix_env
-        from Utils.steam_finder import proton_run_command
+        from Utils.wine_proton.steam_finder import proton_run_command
         result = get_game_prefix_env(
             self._game, log_fn=lambda m: self._log(f"MGE XE Wizard: {m}"),
             allow_runner_fallback=True)
