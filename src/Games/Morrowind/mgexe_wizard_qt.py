@@ -169,7 +169,7 @@ class MGEXEView(WizardViewBase):
             self._do_manual()
 
     def _do_installer(self):
-        from Utils.wizard_archives import extract_archive
+        from Utils.wizard_support.wizard_archives import extract_archive
         try:
             if self._game_root is None:
                 raise RuntimeError("Game path is not configured.")
@@ -217,7 +217,7 @@ class MGEXEView(WizardViewBase):
             safe_emit(self._install_done_sig)
 
     def _do_manual(self):
-        from Utils.wizard_archives import install_archive_payload
+        from Utils.wizard_support.wizard_archives import install_archive_payload
         try:
             archive = self._archive_path
             if archive is None or not archive.is_file():

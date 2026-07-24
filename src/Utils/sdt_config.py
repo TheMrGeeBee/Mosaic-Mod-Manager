@@ -4,7 +4,7 @@ GUI-neutral SSE Display Tweaks config schema + INI parse/render/load/save.
 Moved out of wizards/sse_display_tweaks.py (which imports customtkinter) so
 the Qt config-editor view can share it. The schema, parse_ini/render_ini,
 the documented default template and the layered value loader all live here;
-the filemap lookup reuses Utils.wizard_gates.filemap_find.
+the filemap lookup reuses Utils.wizard_support.wizard_gates.filemap_find.
 """
 
 from __future__ import annotations
@@ -983,7 +983,7 @@ def _schema_defaults() -> dict[tuple[str, str], tuple[str, bool]]:
 
 def is_installed(game: "BaseGame") -> bool:
     """True when SSEDisplayTweaks.dll is the winning file in the filemap."""
-    from Utils.wizard_gates import filemap_find
+    from Utils.wizard_support.wizard_gates import filemap_find
     return filemap_find(game, REL_DLL_PATH) is not None
 
 
@@ -995,7 +995,7 @@ def load_initial_values(
     Order: managed-mod ini -> filemap winner -> schema defaults. Loaded values
     overlay the schema defaults so every schema key still gets a row.
     """
-    from Utils.wizard_gates import filemap_find
+    from Utils.wizard_support.wizard_gates import filemap_find
 
     values = _schema_defaults()
     source = "built-in defaults"

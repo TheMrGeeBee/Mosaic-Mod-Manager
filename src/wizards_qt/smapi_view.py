@@ -97,7 +97,7 @@ class SmapiView(WizardViewBase):
         from Utils.modding_tools.smapi_installer import (
             download_smapi, fetch_latest_smapi_asset,
         )
-        from Utils.wizard_archives import get_downloads_dir
+        from Utils.wizard_support.wizard_archives import get_downloads_dir
         try:
             safe_emit(self._dl_status_sig,
                       self.tr("Fetching latest SMAPI release from GitHub…"), "")

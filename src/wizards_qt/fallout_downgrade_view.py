@@ -89,7 +89,7 @@ class FalloutDowngradeView(WizardViewBase):
             self._log(f"Downgrade Wizard: {exc}")
 
     def _do_extract(self):
-        from Utils.wizard_archives import extract_archive
+        from Utils.wizard_support.wizard_archives import extract_archive
         game_root = self._game_root
         if game_root is None:
             raise RuntimeError(self.tr("Game path is not configured."))

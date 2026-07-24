@@ -76,7 +76,7 @@ def arm_nexus_auto_fetch(*, api, url: str, file_id: int, keywords: list[str],
         return False
     game_domain, mod_id = parsed
     from Utils.downloads.mpi_auto_fetch import start_auto_fetch
-    from Utils.wizard_archives import find_archive, get_downloads_dir
+    from Utils.wizard_support.wizard_archives import find_archive, get_downloads_dir
     tr = QCoreApplication.translate
     last_pct = [-1]
     armed_at = time.time()
@@ -402,7 +402,7 @@ class WizardViewBase(QWidget):
         self._locate_rescan()
 
     def _locate_rescan(self):
-        from Utils.wizard_archives import find_archive, get_downloads_dir
+        from Utils.wizard_support.wizard_archives import find_archive, get_downloads_dir
         found = find_archive(get_downloads_dir(), self._locate_keywords)
         if found:
             self._archive_found(found, self.tr("Found: {0}").format(found.name))
@@ -458,7 +458,7 @@ class WizardViewBase(QWidget):
 
         def worker():
             import shutil
-            from Utils.wizard_archives import extract_archive
+            from Utils.wizard_support.wizard_archives import extract_archive
             from Utils.modding_tools.xedit_tools import applications_dir, flatten_subdirs
             try:
                 if archive is None or not archive.is_file():
@@ -539,7 +539,7 @@ class WizardViewBase(QWidget):
         def worker():
             import tempfile
             from Utils.ca_bundle import download_file
-            from Utils.wizard_archives import (
+            from Utils.wizard_support.wizard_archives import (
                 extract_archive, fetch_latest_github_asset,
             )
             from Utils.modding_tools.xedit_tools import applications_dir, flatten_subdirs

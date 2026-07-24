@@ -5,7 +5,7 @@ FNVEdit / … + QuickAutoClean, TexGen, DynDOLOD, xLODGen).
 Moved out of wizards/sseedit.py and wizards/dyndolod.py (which import
 customtkinter) so the Qt wizard views can share them. Prefix resolution and
 the plugins.txt / My Games links live in Utils.exe_launch.exe_launch; archive
-download/locate/extract lives in Utils.wizard_archives.
+download/locate/extract lives in Utils.wizard_support.wizard_archives.
 """
 
 from __future__ import annotations

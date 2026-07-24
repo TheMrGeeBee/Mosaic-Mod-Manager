@@ -37,9 +37,9 @@ def find_pandora_exe(game: "BaseGame") -> Path | None:
     """Search the mod staging directory for Pandora Behaviour Engine+.exe.
 
     Uses the memory-cached modindex (with a disk-walk fallback) so gating the
-    wizard stays fast on large modlists — see Utils.wizard_gates.find_staged_exe.
+    wizard stays fast on large modlists — see Utils.wizard_support.wizard_gates.find_staged_exe.
     """
-    from Utils.wizard_gates import find_staged_exe
+    from Utils.wizard_support.wizard_gates import find_staged_exe
     return find_staged_exe(game, EXE_NAME)
 
 

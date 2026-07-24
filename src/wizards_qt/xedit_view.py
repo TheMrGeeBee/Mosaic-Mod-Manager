@@ -337,7 +337,7 @@ class XEditView(QWidget):
         return page
 
     def _scan_downloads(self):
-        from Utils.wizard_archives import find_archive, get_downloads_dir
+        from Utils.wizard_support.wizard_archives import find_archive, get_downloads_dir
         found = find_archive(get_downloads_dir(), [self._archive_keyword])
         if found:
             self._archive_path = found
@@ -383,7 +383,7 @@ class XEditView(QWidget):
         exe_name, app_dir = self._exe_name, self._app_dir
 
         def worker():
-            from Utils.wizard_archives import extract_archive
+            from Utils.wizard_support.wizard_archives import extract_archive
             from Utils.modding_tools.xedit_tools import applications_dir, flatten_subdirs
             try:
                 if archive is None or not archive.is_file():

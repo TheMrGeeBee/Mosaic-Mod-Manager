@@ -228,7 +228,7 @@ class DynDOLODView(QWidget):
         def worker():
             import tempfile
             from Utils.ca_bundle import download_file
-            from Utils.wizard_archives import (
+            from Utils.wizard_support.wizard_archives import (
                 extract_archive, fetch_latest_github_asset,
             )
             from Utils.modding_tools.xedit_tools import applications_dir, flatten_subdirs
@@ -309,7 +309,7 @@ class DynDOLODView(QWidget):
         return page
 
     def _scan_downloads(self):
-        from Utils.wizard_archives import find_archive, get_downloads_dir
+        from Utils.wizard_support.wizard_archives import find_archive, get_downloads_dir
         found = find_archive(get_downloads_dir(), [self._archive_kw])
         if found:
             self._archive_path = found
@@ -352,7 +352,7 @@ class DynDOLODView(QWidget):
         exe_name, app_dir, name = self._exe_name, self._app_dir, self._name
 
         def worker():
-            from Utils.wizard_archives import extract_archive
+            from Utils.wizard_support.wizard_archives import extract_archive
             from Utils.modding_tools.xedit_tools import applications_dir, flatten_subdirs
             try:
                 if archive is None or not archive.is_file():

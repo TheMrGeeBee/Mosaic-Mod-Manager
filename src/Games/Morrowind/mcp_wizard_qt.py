@@ -100,7 +100,7 @@ class MCPView(WizardViewBase):
                              name="mcp-run").start()
 
     def _do_extract(self):
-        from Utils.wizard_archives import extract_archive
+        from Utils.wizard_support.wizard_archives import extract_archive
         try:
             if self._game_root is None:
                 raise RuntimeError("Game path is not configured.")

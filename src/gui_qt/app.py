@@ -8198,7 +8198,7 @@ class MainWindow(QMainWindow):
             self._add_prefix_manager_action(menu)
             return
         from Utils.plugins.plugin_loader import get_all_wizard_tools
-        from Utils.wizard_catalog import group_by_category
+        from Utils.wizard_support.wizard_catalog import group_by_category
         from wizards_qt import EXCLUDED, get_spec
         try:
             tools = [t for t in get_all_wizard_tools(game)

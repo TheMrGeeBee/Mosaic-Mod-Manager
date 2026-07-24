@@ -50,7 +50,7 @@ def pick_ckpe_asset(assets: list[dict]) -> "tuple[str, str] | None":
     contains ``sse`` and not ``noavx``; falls back to the first non-noavx
     archive when no ``sse`` token is present.
     """
-    from Utils.wizard_archives import is_archive
+    from Utils.wizard_support.wizard_archives import is_archive
 
     archives = [
         a for a in assets
@@ -80,7 +80,7 @@ def install_ckpe_mod(game: "BaseGame", *,
     import tempfile
 
     from Utils.ca_bundle import download_file, get_ssl_context
-    from Utils.wizard_archives import extract_archive
+    from Utils.wizard_support.wizard_archives import extract_archive
     from Utils.mods.install_as_mod import index_installed_mod, register_as_mod_neutral
 
     req = urllib.request.Request(

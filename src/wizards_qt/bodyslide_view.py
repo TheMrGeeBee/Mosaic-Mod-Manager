@@ -22,7 +22,7 @@ from PySide6.QtWidgets import QHBoxLayout, QLabel, QLineEdit, QPushButton, QWidg
 from gui_qt.safe_emit import safe_emit
 from wizards_qt._view_base import GREEN, RED, WizardViewBase
 from Utils.modding_tools.bodyslide_tools import sanitize_output_name
-from Utils.wizard_gates import find_staged_exe
+from Utils.wizard_support.wizard_gates import find_staged_exe
 
 if TYPE_CHECKING:
     from Games.base_game import BaseGame

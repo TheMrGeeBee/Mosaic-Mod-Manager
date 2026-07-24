@@ -13,7 +13,7 @@ SKSE VR …), parameterized via WizardTool.extra:
 Flow: [version select] → download (auto with progress, OR manual page +
 locate-in-Downloads) → extract to game root (restore-to-vanilla first) /
 Root_Folder / managed root-flagged mod. All heavy work runs on daemon threads
-with Signals; download/locate/extract logic lives in Utils.wizard_archives.
+with Signals; download/locate/extract logic lives in Utils.wizard_support.wizard_archives.
 """
 
 from __future__ import annotations
@@ -30,7 +30,7 @@ from PySide6.QtWidgets import (
 
 from gui_qt.theme_qt import active_palette, _c, button_qss, ok_text, err_text
 from gui_qt.safe_emit import safe_emit
-from Utils.wizard_archives import (
+from Utils.wizard_support.wizard_archives import (
     fetch_latest_github_asset, find_archive, get_downloads_dir,
     install_archive_payload,
 )

@@ -3,7 +3,7 @@ GUI-neutral Engine Fixes config schema + TOML parse/render/load/save.
 
 Moved out of wizards/engine_fixes.py (which imports customtkinter) so the Qt
 config-editor view can share it.  The filemap lookup reuses
-Utils.wizard_gates.filemap_find.
+Utils.wizard_support.wizard_gates.filemap_find.
 """
 
 from __future__ import annotations
@@ -405,7 +405,7 @@ def schema_defaults() -> dict[tuple[str, str], str]:
 
 def is_installed(game: "BaseGame") -> bool:
     """True when EngineFixes.dll is the winning file in the filemap."""
-    from Utils.wizard_gates import filemap_find
+    from Utils.wizard_support.wizard_gates import filemap_find
     return filemap_find(game, REL_DLL_PATH) is not None
 
 
@@ -415,7 +415,7 @@ def load_initial_values(game: "BaseGame") -> tuple[dict[tuple[str, str], str], s
     Order: managed-mod toml -> filemap winner -> schema defaults. Loaded
     values overlay the schema defaults so every schema key still gets a row.
     """
-    from Utils.wizard_gates import filemap_find
+    from Utils.wizard_support.wizard_gates import filemap_find
 
     values = _schema_defaults()
     source = "built-in defaults"

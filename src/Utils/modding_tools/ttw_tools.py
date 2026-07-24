@@ -69,7 +69,7 @@ def download_installer(game: "BaseGame",
     import tempfile
     import urllib.request
     from Utils.ca_bundle import download_file, get_ssl_context
-    from Utils.wizard_archives import extract_archive
+    from Utils.wizard_support.wizard_archives import extract_archive
 
     req = urllib.request.Request(
         GITHUB_API_URL,
@@ -137,7 +137,7 @@ def find_mpi_archive(keywords: "list[str]") -> "Path | None":
     """Newest archive matching all *keywords* across the configured download
     locations, or None."""
     from Utils.downloads.download_locations import get_effective_download_locations
-    from Utils.wizard_archives import find_archive
+    from Utils.wizard_support.wizard_archives import find_archive
 
     best: "Path | None" = None
     best_mtime = -1.0
@@ -161,7 +161,7 @@ def extract_mpi_from_archive(archive: Path, dest_dir: Path,
     name is reused. Raises when the archive holds no .mpi."""
     import shutil
     import tempfile
-    from Utils.wizard_archives import extract_to_dir
+    from Utils.wizard_support.wizard_archives import extract_to_dir
 
     tmp = Path(tempfile.mkdtemp())
     try:
