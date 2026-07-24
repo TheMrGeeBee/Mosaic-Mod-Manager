@@ -114,7 +114,7 @@ def load_data_entries(game, filemap_path: Path,
     root_entries = parse_filemap(filemap_path.parent / "filemap_root.txt")
     if root_entries and deploys_to_subfolder(game):
         try:
-            from Utils.game_helpers import game_data_subpath
+            from Utils.exe_launch.game_helpers import game_data_subpath
             prefix = game_data_subpath(game).lower()
         except Exception:
             prefix = ""

@@ -266,7 +266,7 @@ def resolve_plugin_paths_for_game(game, data_dir: Path | None = None
         filemap_path = (staging.parent / "filemap.txt") if staging else None
         root_fm = (staging.parent / "filemap_root.txt") if staging else None
         try:
-            from Utils.game_helpers import game_data_subpath
+            from Utils.exe_launch.game_helpers import game_data_subpath
             root_prefix = game_data_subpath(game)
         except Exception:
             root_prefix = ""
@@ -324,7 +324,7 @@ def _filemap_deployed_plugins(game, plugin_exts: tuple[str, ...]) -> dict[str, s
     fm_root = staging.parent / "filemap_root.txt"
     if fm_root.is_file():
         try:
-            from Utils.game_helpers import game_data_subpath
+            from Utils.exe_launch.game_helpers import game_data_subpath
             prefix = game_data_subpath(game)
         except Exception:
             prefix = ""
@@ -377,7 +377,7 @@ def load_plugins(game, profile: str,
     # Full vanilla set: base + DLC + Creation Club (.ccc), filtered to files
     # present in Data — same resolver the Tk app uses.
     try:
-        from Utils.game_helpers import _vanilla_plugins_for_game
+        from Utils.exe_launch.game_helpers import _vanilla_plugins_for_game
         with span("plugins.vanilla_resolve"):
             vanilla = _vanilla_plugins_for_game(game)
     except Exception:
@@ -623,7 +623,7 @@ def _scan_orphan_plugins(game, data_dir: Path | None,
     if data_dir is None or not data_dir.is_dir():
         return []
     try:
-        from Utils.game_helpers import foreign_deployed_plugin_basenames
+        from Utils.exe_launch.game_helpers import foreign_deployed_plugin_basenames
         foreign = foreign_deployed_plugin_basenames(game)
     except Exception:
         foreign = set()

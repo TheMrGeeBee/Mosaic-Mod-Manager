@@ -152,7 +152,7 @@ class ProfileSettingsView(QWidget):
 
     # -- profile helpers (neutral, ported from the Tk overlay) --------------
     def _get_profile_dir(self, profile: str) -> Path:
-        from Utils.game_helpers import _GAMES
+        from Utils.exe_launch.game_helpers import _GAMES
         game = _GAMES.get(self._game_name)
         if game is not None:
             return game.get_profile_root() / "profiles" / profile
@@ -160,7 +160,7 @@ class ProfileSettingsView(QWidget):
         return get_profiles_dir() / self._game_name / "profiles" / profile
 
     def _profiles(self) -> list[str]:
-        from Utils.game_helpers import _profiles_for_game
+        from Utils.exe_launch.game_helpers import _profiles_for_game
         return _profiles_for_game(self._game_name)
 
     def _is_original_default(self, profile: str) -> bool:
@@ -397,7 +397,7 @@ class ProfileSettingsView(QWidget):
             if not ok:
                 return
             profile_dir = self._get_profile_dir(profile)
-            from Utils.game_helpers import _GAMES
+            from Utils.exe_launch.game_helpers import _GAMES
             game = _GAMES.get(self._game_name)
             is_deployed = bool(
                 game is not None and game.is_configured()
@@ -441,7 +441,7 @@ class ProfileSettingsView(QWidget):
             except Exception:
                 pass
 
-        from Utils.game_helpers import _GAMES
+        from Utils.exe_launch.game_helpers import _GAMES
         game = _GAMES.get(self._game_name)
 
         def worker():

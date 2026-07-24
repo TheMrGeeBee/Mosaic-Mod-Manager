@@ -14,7 +14,7 @@ from pathlib import Path
 # Crash-proof diagnostic prints (Flatpak stdout can raise BrokenPipeError and
 # kill worker threads). See Utils.app_log.safe_print.
 from Utils.app_log import safe_print as print  # noqa: A004
-from Utils.game_helpers import (
+from Utils.exe_launch.game_helpers import (
     _load_games, _profiles_for_game, _load_last_game, _save_last_game, _GAMES,
 )
 from Utils.ui_config import load_last_session, save_last_session

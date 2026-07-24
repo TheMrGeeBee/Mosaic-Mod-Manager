@@ -98,7 +98,7 @@ class BethiniView(WizardViewBase):
         proton_name, prefix_mode = self._proton_name, self._prefix_mode
 
         def worker():
-            from Utils.exe_launch import (
+            from Utils.exe_launch.exe_launch import (
                 PREFIX_MODE_GAME, link_mygames, link_plugins_txt,
                 resolve_tool_prefix, run_tool_logged, shutdown_prefix_wineserver,
             )

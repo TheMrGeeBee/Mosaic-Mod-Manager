@@ -172,7 +172,7 @@ class BodySlideView(WizardViewBase):
         def worker():
             import subprocess
             from Utils.modding_tools.bodyslide_tools import apply_output_redirect
-            from Utils.exe_launch import (
+            from Utils.exe_launch.exe_launch import (
                 resolve_tool_prefix, run_tool_logged, shutdown_prefix_wineserver,
             )
             from Utils.wine_proton.steam_finder import proton_run_command

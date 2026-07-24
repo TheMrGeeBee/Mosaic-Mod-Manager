@@ -1530,7 +1530,7 @@ def _collection_plugin_context(game, profile_dir: "Path | None"
             pass
     if game is not None:
         try:
-            from Utils.game_helpers import _vanilla_plugins_for_game
+            from Utils.exe_launch.game_helpers import _vanilla_plugins_for_game
             for vname_lower in _vanilla_plugins_for_game(game).keys():
                 installed_files.add(vname_lower)
                 active_files.add(vname_lower)
@@ -2690,7 +2690,7 @@ def _add_plugins(game, profile_dir: Path, dest_root: Path, log_fn: LogFn) -> Non
         # deploy NESTED (never loadable) isn't scanned.
         scan_dirs = [dest_root]
         try:
-            from Utils.game_helpers import game_data_subpath
+            from Utils.exe_launch.game_helpers import game_data_subpath
             sub = game_data_subpath(game)
             strips = {s.lower() for s in
                       (getattr(game, "mod_folder_strip_prefixes", None) or ())}

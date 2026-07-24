@@ -8,7 +8,7 @@ longer scans the staging tree. Entries are manual custom exes, plus
 auto-detected framework launchers (installed script extenders) for which
 Remove becomes "Hide from dropdown" (they aren't in custom_exes.json).
 
-All persistence goes through Utils.exe_launch (same files the Tk app uses).
+All persistence goes through Utils.exe_launch.exe_launch (same files the Tk app uses).
 The prefix tool workers run on daemon threads and only touch log_fn (the
 app's thread-safe _append_log) — never widgets.
 """
@@ -28,7 +28,7 @@ from PySide6.QtWidgets import (
 from gui_qt.theme_qt import active_palette, _c, danger_close_button, button_qss
 from gui_qt.wheel_guard import no_wheel
 from gui_qt.worker import run_in_worker
-from Utils import exe_launch
+from Utils.exe_launch import exe_launch
 from Utils.wine_proton.wine_paths import to_wine_path
 
 

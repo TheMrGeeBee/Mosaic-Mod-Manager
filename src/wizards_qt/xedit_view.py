@@ -569,7 +569,7 @@ class XEditView(QWidget):
         proton_name, prefix_mode = self._proton_name, self._prefix_mode
 
         def worker():
-            from Utils.exe_launch import (
+            from Utils.exe_launch.exe_launch import (
                 load_tool_launch_args, parse_launch_args, resolve_tool_prefix,
                 run_tool_logged, shutdown_prefix_wineserver,
             )

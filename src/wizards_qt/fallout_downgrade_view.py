@@ -107,7 +107,7 @@ class FalloutDowngradeView(WizardViewBase):
 
     def _do_run_patcher(self):
         import subprocess
-        from Utils.exe_launch import get_game_prefix_env
+        from Utils.exe_launch.exe_launch import get_game_prefix_env
         from Utils.wine_proton.steam_finder import proton_run_command
 
         game_root = self._game_root

@@ -107,7 +107,7 @@ class WryeBashView(WizardViewBase):
         proton_name, prefix_mode = self._proton_name, self._prefix_mode
 
         def worker():
-            from Utils.exe_launch import (
+            from Utils.exe_launch.exe_launch import (
                 resolve_tool_prefix, run_tool_logged, shutdown_prefix_wineserver,
             )
             from Utils.modding_tools.xedit_tools import prepare_xedit_prefix

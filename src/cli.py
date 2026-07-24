@@ -174,7 +174,7 @@ def main():
         cmd_clear_credentials()
         return
 
-    from Utils.game_loader import discover_games
+    from Utils.exe_launch.game_loader import discover_games
     games = discover_games()
 
     if args.command == "list-games":

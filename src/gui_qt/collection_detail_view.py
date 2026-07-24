@@ -464,7 +464,7 @@ class CollectionDetailView(QWidget):
         if not slug or self._game is None:
             return None
         try:
-            from Utils.game_helpers import find_profile_with_collection_slug
+            from Utils.exe_launch.game_helpers import find_profile_with_collection_slug
             from Utils.profile.profile_state import read_collection_revision
             pname = find_profile_with_collection_slug(self._game.name, slug)
             if not pname:
@@ -481,7 +481,7 @@ class CollectionDetailView(QWidget):
         if not slug or self._game is None:
             return None, None
         try:
-            from Utils.game_helpers import find_profile_with_collection_slug
+            from Utils.exe_launch.game_helpers import find_profile_with_collection_slug
             pname = find_profile_with_collection_slug(self._game.name, slug)
             if not pname:
                 return None, None

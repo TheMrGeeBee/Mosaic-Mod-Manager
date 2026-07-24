@@ -241,7 +241,7 @@ class PandoraView(QWidget):
         proton_name, prefix_mode = self._proton_name, self._prefix_mode
 
         def worker():
-            from Utils.exe_launch import resolve_tool_prefix
+            from Utils.exe_launch.exe_launch import resolve_tool_prefix
             from Utils.modding_tools.pandora_tools import install_net10, net10_installed
             try:
                 safe_emit(self._deps_status_sig,

@@ -166,7 +166,7 @@ class PGPatcherView(WizardViewBase):
         proton_name, prefix_mode = self._proton_name, self._prefix_mode
 
         def worker():
-            from Utils.exe_launch import resolve_tool_prefix
+            from Utils.exe_launch.exe_launch import resolve_tool_prefix
             from Utils.wine_proton.protontricks import (
                 D3D_DEP_KEY, dotnet_dep_key, install_d3dcompiler_47,
                 is_dep_installed,
@@ -248,7 +248,7 @@ class PGPatcherView(WizardViewBase):
                     raise RuntimeError(self.tr(
                         "{0} not found — please restart the wizard.").format(
                             _PATCHER_EXE))
-                from Utils.exe_args_builder import _bootstrap_pgpatcher_settings
+                from Utils.exe_launch.exe_args_builder import _bootstrap_pgpatcher_settings
                 _bootstrap_pgpatcher_settings(
                     exe,
                     game.get_game_path(),
@@ -350,7 +350,7 @@ class PGPatcherView(WizardViewBase):
 
         def worker():
             from Utils.bethesda_registry import maybe_register_for_game
-            from Utils.exe_launch import (
+            from Utils.exe_launch.exe_launch import (
                 link_plugins_txt, resolve_tool_prefix, run_tool_logged,
                 shutdown_prefix_wineserver,
             )
@@ -379,7 +379,7 @@ class PGPatcherView(WizardViewBase):
                 # ran before the dummy was built, so this is the
                 # authoritative write of modmanager.type.
                 try:
-                    from Utils.exe_args_builder import _bootstrap_pgpatcher_settings
+                    from Utils.exe_launch.exe_args_builder import _bootstrap_pgpatcher_settings
                     _bootstrap_pgpatcher_settings(
                         exe,
                         game.get_game_path(),

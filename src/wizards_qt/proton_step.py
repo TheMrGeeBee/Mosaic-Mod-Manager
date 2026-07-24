@@ -5,7 +5,7 @@ Lets the user pick a Proton version and a prefix placement for a wizard tool:
 isolated (prefix_<Proton>/ next to the exe, default), shared
 (wine_prefixes/shared_<Proton>/), or the game's own prefix. The pick persists
 per-exe (shared with the Mod Files exe launcher and the Tk wizards) via
-Utils.exe_launch. Includes the optional env-vars entry and the
+Utils.exe_launch.exe_launch. Includes the optional env-vars entry and the
 double-click-to-confirm Delete Prefix button.
 
 Embed one per wizard view; `on_continue(proton_name, prefix_mode)` fires after
@@ -26,7 +26,7 @@ from PySide6.QtWidgets import (
 
 from gui_qt.theme_qt import active_palette, _c, button_qss, ok_text, err_text
 from gui_qt.safe_emit import safe_emit
-from Utils.exe_launch import (
+from Utils.exe_launch.exe_launch import (
     PREFIX_MODE_GAME, PREFIX_MODE_ISOLATED, PREFIX_MODE_SHARED,
     load_prefix_mode, load_proton_override, load_tool_launch_args,
     load_tool_launch_env, load_winetricks_style, save_prefix_mode,

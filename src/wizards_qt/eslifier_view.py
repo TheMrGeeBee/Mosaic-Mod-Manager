@@ -115,7 +115,7 @@ class ESLifierView(WizardViewBase):
 
         def worker():
             from Utils.modding_tools.eslifier_tools import cleanup_scan_mirror, write_settings
-            from Utils.exe_launch import (
+            from Utils.exe_launch.exe_launch import (
                 resolve_tool_prefix, run_tool_logged, shutdown_prefix_wineserver,
             )
             _wlog = lambda m: self._log(f"ESLifier Wizard: {m}")

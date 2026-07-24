@@ -4,7 +4,7 @@ FNVEdit / … + QuickAutoClean, TexGen, DynDOLOD, xLODGen).
 
 Moved out of wizards/sseedit.py and wizards/dyndolod.py (which import
 customtkinter) so the Qt wizard views can share them. Prefix resolution and
-the plugins.txt / My Games links live in Utils.exe_launch; archive
+the plugins.txt / My Games links live in Utils.exe_launch.exe_launch; archive
 download/locate/extract lives in Utils.wizard_archives.
 """
 
@@ -399,7 +399,7 @@ def prepare_xedit_prefix(
         log_fn=_log,
     )
 
-    from Utils.exe_launch import link_mygames, link_plugins_txt
+    from Utils.exe_launch.exe_launch import link_mygames, link_plugins_txt
     link_plugins_txt(game, pfx, _log)
     link_mygames(game, pfx, _log)
 

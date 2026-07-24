@@ -68,7 +68,7 @@ def sync_plugins_for_mods(game, profile_dir: Path | None,
     # the data dir (never loadable) isn't scanned by mistake.
     data_subs: "set[str] | None" = None
     try:
-        from Utils.game_helpers import game_data_subpath
+        from Utils.exe_launch.game_helpers import game_data_subpath
         sub = game_data_subpath(game)
         strips = {s.lower() for s in
                   (getattr(game, "mod_folder_strip_prefixes", None) or ())}

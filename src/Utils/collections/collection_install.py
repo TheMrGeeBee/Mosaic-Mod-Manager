@@ -1895,7 +1895,7 @@ def _apply_manifest_separators(profile_dir, modlist_path, collection_schema, log
 
 def _write_collection_plugins(game, profile_dir, plugins_path, collection_schema,
                               overwrite_existing, _is_append_run, log, _set_status):
-    from Utils.game_helpers import _vanilla_plugins_for_game
+    from Utils.exe_launch.game_helpers import _vanilla_plugins_for_game
     schema_plugins: list[dict] = collection_schema.get("plugins", [])
     if schema_plugins and overwrite_existing is None:
         try:

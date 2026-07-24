@@ -117,7 +117,7 @@ def sandbox_app_for_game(game, game_root: Optional[Path]) -> Optional[str]:
             return STEAM_FLATPAK_ID
     if _heroic_flatpak_present():
         try:
-            from Utils.exe_launch import game_is_heroic_install
+            from Utils.exe_launch.exe_launch import game_is_heroic_install
             if game_is_heroic_install(game):
                 return HEROIC_FLATPAK_ID
         except Exception:
@@ -128,7 +128,7 @@ def sandbox_app_for_game(game, game_root: Optional[Path]) -> Optional[str]:
     # and Flatseal-tightened setups.
     if (_HOME / ".var" / "app" / LUTRIS_FLATPAK_ID).is_dir():
         try:
-            from Utils.exe_launch import game_is_lutris_install
+            from Utils.exe_launch.exe_launch import game_is_lutris_install
             if game_is_lutris_install(game):
                 return LUTRIS_FLATPAK_ID
         except Exception:

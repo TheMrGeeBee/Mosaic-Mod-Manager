@@ -95,7 +95,7 @@ _RESTART_REQUESTED = False
 _WIZARD_HANDOFF = object()
 
 
-# Quick-configure submenu labels come from the GUI-free Utils.quick_configure and
+# Quick-configure submenu labels come from the GUI-free Utils.exe_launch.quick_configure and
 # are shown via self.tr(opt["label"]) / self.tr(clabel) in MainWindow — but
 # lupdate can't see through that variable, so the source literals are registered
 # here (context "MainWindow", matching the tr() call site) for extraction. Keep
@@ -631,7 +631,7 @@ class MainWindow(QMainWindow):
         # last game is removed). Deferred so the window finishes building first.
         self._onboarding_view = None
         from Utils.ui_config import load_onboarding_complete
-        from Utils.game_helpers import _GAMES
+        from Utils.exe_launch.game_helpers import _GAMES
         configured = sum(1 for g in _GAMES.values() if g.is_configured())
         if not load_onboarding_complete() or configured == 0:
             QTimer.singleShot(0, self._open_onboarding_tab)
@@ -682,7 +682,7 @@ class MainWindow(QMainWindow):
         from the list with no trace, which reads as "my game/mods got deleted"
         (mods are safe — they live in ~/.config and Profiles/, untouched)."""
         try:
-            from Utils.game_loader import get_load_failures
+            from Utils.exe_launch.game_loader import get_load_failures
             failures = get_load_failures()
         except Exception:
             return
@@ -2180,7 +2180,7 @@ class MainWindow(QMainWindow):
             self._tabs.close_tab("custom_game")
             if saved_defn is None:
                 return
-            from Utils.game_helpers import _load_games, _GAMES
+            from Utils.exe_launch.game_helpers import _load_games, _GAMES
             names = _load_games()
             self._gs.game_names = names
             real_names = [n for n in names if n != "No games configured"]
@@ -2218,7 +2218,7 @@ class MainWindow(QMainWindow):
 
         def _done(saved_defn, deleted):
             self._tabs.close_tab("custom_game")
-            from Utils.game_helpers import _load_games
+            from Utils.exe_launch.game_helpers import _load_games
             names = _load_games()
             self._gs.game_names = names
             real_names = [n for n in names if n != "No games configured"]
@@ -2297,7 +2297,7 @@ class MainWindow(QMainWindow):
         if status == "unchanged":
             self._notify(self.tr("Handler is already up to date."), "info")
             return
-        from Utils.game_helpers import _load_games
+        from Utils.exe_launch.game_helpers import _load_games
         names = _load_games()
         self._gs.game_names = names
         real_names = [n for n in names if n != "No games configured"]
@@ -2346,7 +2346,7 @@ class MainWindow(QMainWindow):
         daemon thread — it's pure cleanup and may touch slow drives.
         """
         import threading
-        from Utils.game_helpers import _GAMES
+        from Utils.exe_launch.game_helpers import _GAMES
 
         games = [g for g in _GAMES.values() if g.is_configured()]
 
@@ -2624,7 +2624,7 @@ class MainWindow(QMainWindow):
         so an open Add-Game picker (and the game selector) sees them, and pull
         down any missing custom-game banner images."""
         try:
-            from Utils.game_helpers import _load_games, _GAMES
+            from Utils.exe_launch.game_helpers import _load_games, _GAMES
             _load_games()
         except Exception:
             return
@@ -2678,7 +2678,7 @@ class MainWindow(QMainWindow):
     def _open_add_game_tab(self):
         """Open the Add Game card-grid picker as a (detachable) tab."""
         from gui_qt.add_game_view import AddGameView
-        from Utils.game_helpers import _load_games, _GAMES
+        from Utils.exe_launch.game_helpers import _load_games, _GAMES
         _load_games()   # refresh registry (populates _GAMES with ALL games)
         page = AddGameView(dict(_GAMES),
                            on_select=self._on_add_game_select,
@@ -2840,7 +2840,7 @@ class MainWindow(QMainWindow):
         """Return (name, game) for the configured game matching *game_domain*,
         honouring the Enderal→Skyrim exception if the current game already
         accepts this domain. None if nothing configured matches."""
-        from Utils.game_helpers import _GAMES
+        from Utils.exe_launch.game_helpers import _GAMES
         current = self._gs.game
         current_domain = (getattr(current, "nexus_game_domain", "") or "") if current else ""
         if (current is not None and current.is_configured()
@@ -3169,7 +3169,7 @@ class MainWindow(QMainWindow):
             self._notify(self.tr("No configured game selected."), "warning")
             return
         pdir = self._gs.profile_dir()
-        from Utils.game_helpers import get_collection_url_from_profile
+        from Utils.exe_launch.game_helpers import get_collection_url_from_profile
         url = get_collection_url_from_profile(pdir) if pdir is not None else None
         if not url:
             self._notify(self.tr("The active profile isn't a collection profile."),
@@ -3343,7 +3343,7 @@ class MainWindow(QMainWindow):
         the pipeline with the chosen mode. Mirrors Tk _continue_install_collection:
         if this exact collection+revision URL is already in a profile → Continue;
         else → New/Append."""
-        from Utils.game_helpers import (
+        from Utils.exe_launch.game_helpers import (
             find_profile_with_collection_url, _profiles_for_game)
         game = info["game"]; slug = info["slug"]; domain = info["domain"]
         rev = info["revision"]
@@ -3381,7 +3381,7 @@ class MainWindow(QMainWindow):
         then continue into the profile that already claims this collection.
         Already-installed mods skip by file_id (Tk parity)."""
         game = info["game"]; slug = info["slug"]
-        from Utils.game_helpers import find_profile_with_collection_slug
+        from Utils.exe_launch.game_helpers import find_profile_with_collection_slug
         from Utils.profile.profile_state import write_collection_install_paused
         try:
             pname = find_profile_with_collection_slug(game.name, slug)
@@ -3411,7 +3411,7 @@ class MainWindow(QMainWindow):
         diff, confirm via UpdateOverlay, remove stale/bundled/patched mods, stash
         an order-preserving update_context, then continue-install."""
         game = info["game"]; slug = info["slug"]; mods = info["mods"]
-        from Utils.game_helpers import find_profile_with_collection_slug
+        from Utils.exe_launch.game_helpers import find_profile_with_collection_slug
         try:
             pname = find_profile_with_collection_slug(game.name, slug)
         except Exception:
@@ -3616,7 +3616,7 @@ class MainWindow(QMainWindow):
         # detail-view list; *mods* already excludes them.
         skipped_mods = list(info.get("skipped_mods") or [])
 
-        from Utils.game_helpers import _create_profile, _profiles_for_game
+        from Utils.exe_launch.game_helpers import _create_profile, _profiles_for_game
         from Utils.profile.profile_state import write_collection_optional_skipped
         import re as _re
 
@@ -3746,7 +3746,7 @@ class MainWindow(QMainWindow):
                                   skipped):
         """Record the collection URL + revision + skipped-optionals on a profile
         that claims this collection (new / continue modes)."""
-        from Utils.game_helpers import save_collection_url_to_profile
+        from Utils.exe_launch.game_helpers import save_collection_url_to_profile
         from Utils.profile.profile_state import (
             write_collection_revision, write_collection_optional_skipped)
         try:
@@ -4253,7 +4253,7 @@ class MainWindow(QMainWindow):
             self._notify(self.tr("No configured game selected."), "warning")
             return
         pdir = self._gs.profile_dir()
-        from Utils.game_helpers import get_collection_url_from_profile
+        from Utils.exe_launch.game_helpers import get_collection_url_from_profile
         url = get_collection_url_from_profile(pdir) if pdir is not None else None
         if not url:
             self._notify(self.tr("The active profile isn't a collection profile."),
@@ -5031,7 +5031,7 @@ class MainWindow(QMainWindow):
 
         def _resolve_worker():
             import concurrent.futures as _cf
-            from Utils.quick_update import resolve_quick_update_target
+            from Utils.exe_launch.quick_update import resolve_quick_update_target
             queue = []
             skipped = []   # (mod_name, reason)
 
@@ -6483,7 +6483,7 @@ class MainWindow(QMainWindow):
 
     def _on_add_game_add(self, name: str):
         """An unconfigured game was picked → open the configure-game tab."""
-        from Utils.game_helpers import _GAMES
+        from Utils.exe_launch.game_helpers import _GAMES
         game = _GAMES.get(name)
         if game is None:
             self._append_log(f"[game] {name} not found in registry")
@@ -6508,7 +6508,7 @@ class MainWindow(QMainWindow):
             if saved or removed:
                 # Refresh the game registry + selector; switch to the game if it
                 # is now configured, else fall back to the current/ first game.
-                from Utils.game_helpers import _load_games
+                from Utils.exe_launch.game_helpers import _load_games
                 names = _load_games()
                 self._gs.game_names = names
                 # _load_games returns the ["No games configured"] sentinel when
@@ -6912,7 +6912,7 @@ class MainWindow(QMainWindow):
         """Create a new profile for the active game and switch to it. Mirrors the
         Tk top_bar._on_add_profile flow: reject an existing name, create via the
         neutral _create_profile, repopulate the selector, select + reload."""
-        from Utils.game_helpers import _create_profile, _profiles_for_game
+        from Utils.exe_launch.game_helpers import _create_profile, _profiles_for_game
         game_name = self._gs.game_name
         if not game_name:
             return
@@ -6973,7 +6973,7 @@ class MainWindow(QMainWindow):
             self._play_auto_exe_names = set()
             self._play_exe_selector.set_items(["—"], current="—")
             return
-        from Utils.exe_launch import detect_framework_exes, load_custom_exes
+        from Utils.exe_launch.exe_launch import detect_framework_exes, load_custom_exes
         self._play_exe_paths = {}
         self._play_auto_exe_names = set()
         items = [game.name]
@@ -7052,7 +7052,7 @@ class MainWindow(QMainWindow):
             self._notify(self.tr("No game selected."), "warning")
             return
         # Picker callback fires on the portal WORKER thread → marshal via Signal.
-        from Utils.exe_launch import EXE_PICKER_FILTERS
+        from Utils.exe_launch.exe_launch import EXE_PICKER_FILTERS
         from Utils.wine_proton.portal_filechooser import pick_file
         pick_file("Select executable",
                   lambda p: self._custom_exe_picked.emit(p),
@@ -7062,7 +7062,7 @@ class MainWindow(QMainWindow):
         game = self._gs.game
         if path is None or game is None:
             return
-        from Utils.exe_launch import add_custom_exe
+        from Utils.exe_launch.exe_launch import add_custom_exe
         add_custom_exe(game, path)
         self._refresh_play_selector()
         if path.name in self._play_exe_paths:
@@ -7074,7 +7074,7 @@ class MainWindow(QMainWindow):
         if game is None or not hasattr(game, "get_mod_staging_path"):
             self._notify(self.tr("No game selected."), "warning")
             return
-        from Utils.exe_launch import scan_staging_exes
+        from Utils.exe_launch.exe_launch import scan_staging_exes
         exes = scan_staging_exes(game)
         if not exes:
             self._notify(self.tr("No executables found in staging."), "info")
@@ -7102,7 +7102,7 @@ class MainWindow(QMainWindow):
         if game_path is None:
             self._notify(self.tr("No game folder configured."), "warning")
             return
-        from Utils.exe_launch import scan_game_folder_exes
+        from Utils.exe_launch.exe_launch import scan_game_folder_exes
         exes = scan_game_folder_exes(game)
         if not exes:
             self._notify(self.tr("No executables found in the game folder."),
@@ -7131,7 +7131,7 @@ class MainWindow(QMainWindow):
         game = self._gs.game
         if not paths or game is None:
             return
-        from Utils.exe_launch import add_custom_exe
+        from Utils.exe_launch.exe_launch import add_custom_exe
         for path in paths:
             add_custom_exe(game, path)
         self._refresh_play_selector()
@@ -7160,7 +7160,7 @@ class MainWindow(QMainWindow):
             self._notify(self.tr("No configured game selected."), "warning")
             return
         import threading
-        from Utils import exe_launch
+        from Utils.exe_launch import exe_launch
         label = self._play_exe_selector.current()
         exe_path = self._play_exe_paths.get(label)
         # First breadcrumb of every launch: proves the click reached the
@@ -7287,7 +7287,7 @@ class MainWindow(QMainWindow):
     def _open_launcher_settings(self, game):
         """Borderless overlay with the game-launch settings (Tk: game-exe
         branch of the Configure dialog)."""
-        from Utils import exe_launch
+        from Utils.exe_launch import exe_launch
         from gui_qt.launcher_settings_overlay import LauncherSettingsOverlay
         exe_key = exe_launch.game_exe_key(game)
 
@@ -7866,7 +7866,7 @@ class MainWindow(QMainWindow):
         profile's Configure-view options as inline checkable/radio entries that
         flip live when clicked (like saving that one field would). Returns a list
         of SelectorButton action entries, or [] when the game has no options."""
-        from Utils.quick_configure import build_quick_configure_options
+        from Utils.exe_launch.quick_configure import build_quick_configure_options
         try:
             options = build_quick_configure_options(game)
         except Exception as e:
@@ -7904,7 +7904,7 @@ class MainWindow(QMainWindow):
             return
         # Deploy method can't change while mods are deployed (would strand them).
         if opt["key"] == "deploy_mode":
-            from Utils.quick_configure import deploy_mode_change_blocked
+            from Utils.exe_launch.quick_configure import deploy_mode_change_blocked
             if deploy_mode_change_blocked(game, value):
                 self._notify(
                     self.tr("Cannot change the deploy method while mods are "

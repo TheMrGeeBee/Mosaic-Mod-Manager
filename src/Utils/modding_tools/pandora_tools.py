@@ -82,8 +82,8 @@ def run_pandora(exe: Path, game: "BaseGame", proton_script: Path,
     Settings.json) still happens the same way.
     """
     from Utils.bethesda_registry import maybe_register_for_game
-    from Utils.exe_args_builder import _bootstrap_pandora_settings
-    from Utils.exe_launch import shutdown_prefix_wineserver
+    from Utils.exe_launch.exe_args_builder import _bootstrap_pandora_settings
+    from Utils.exe_launch.exe_launch import shutdown_prefix_wineserver
     from Utils.wine_proton.wine_paths import to_wine_path
 
     game_path = game.get_game_path()
@@ -128,7 +128,7 @@ def run_pandora(exe: Path, game: "BaseGame", proton_script: Path,
     env["PROTON_USE_WINED3D"] = "1"
     env["WINE_D3D_CONFIG"] = "renderer=gdi"
 
-    from Utils.exe_launch import run_tool_logged, run_tool_winetricks_style
+    from Utils.exe_launch.exe_launch import run_tool_logged, run_tool_winetricks_style
     log_fn(f"launching {exe} via Proton")
     log_fn(
         "  env: "

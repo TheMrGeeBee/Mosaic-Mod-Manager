@@ -10,7 +10,7 @@ Uses spec_from_file_location so folder names with spaces (e.g. "Stardew Valley")
 work without needing a valid dotted module path.
 
 Usage:
-    from Utils.game_loader import discover_games
+    from Utils.exe_launch.game_loader import discover_games
     games = discover_games()          # {game.name: BaseGame instance}
     sse = games["Skyrim Special Edition"]
 """
