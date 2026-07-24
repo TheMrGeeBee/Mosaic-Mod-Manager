@@ -1,14 +1,14 @@
 # Amethyst Mod Manager — Fork (BG3 modding focus)
 
 ## Project context
-- Personal fork of TheMrGeeBee/Amethyst-Mod-Manager (upstream: ChrisDKN's Amethyst Mod Manager, GPL-3)
+- Independent fork of ChrisDKN/Amethyst-Mod-Manager (GPL-3). As of 2026-07-24 this is no longer maintained as an upstream-tracking fork: the last PR upstream was closed with no maintainer interest, and the project is going independent — no more PRs upstream, no `upstream` git remote, no upstream syncing
 - Focus: Baldur's Gate 3 modding support
-- Upstream remote is tracked separately from origin; upstream maintainer communication has historically been difficult — do not assume upstream will merge quickly or engage constructively
+- A new project name and new graphics/branding are planned but not yet decided — do not assume or invent a name; ask first, and check GitHub/AUR/Nexus availability before adopting one
+- GPL-3 obligations remain regardless of divergence: keep original copyright/license notices intact; an ATTRIBUTION.md crediting ChrisDKN's original project is planned but not yet created
+- See `.claude/rules/consolidation-instructions.md` for the independence-transition checklist (naming, ATTRIBUTION.md, hardcoded upstream references still to audit) and file-consolidation conventions
 
-## Version & sync rules
-- Fork's version always wins over upstream on conflict (e.g. `2.0.4-beta.X` beats `2.0.3-beta.X`)
-- Use `sync-upstream.sh` (repo root) for upstream merges — it has an explicit confirmation gate before touching `upstream/Testing`. Never bypass that gate.
-- Before opening a PR upstream, create a clean branch — branch contamination from other work has previously forced a close/recreate (see PR #264 history)
+## Version history note
+- `sync-upstream.sh` and the `upstream` git remote were removed 2026-07-24 — historical only, no longer applicable. The old rule "fork's version always wins over upstream on conflict" no longer applies since there's nothing to conflict with.
 
 ## CI/CD
 - Three workflows: `test-build.yml`, `build.yml`, `release.yml`
