@@ -76,7 +76,7 @@ def load_data_entries(game, filemap_path: Path,
     if modlist_path.is_file():
         try:
             from Utils.modlist import read_modlist
-            from Utils.deploy import (
+            from Utils.deploy.deploy import (
                 load_separator_deploy_paths, expand_separator_deploy_paths)
             sep_paths = load_separator_deploy_paths(profile_dir)
             if sep_paths:
@@ -259,7 +259,7 @@ def resolve_data_entries(game, entries: list[tuple[str, str]],
     def _routes_to_root(rule) -> bool:
         return _subfolder_deploy and not getattr(rule, "to_prefix", False) and not rule.dest
 
-    from Utils.deploy_custom_rules import _sibling_container
+    from Utils.deploy.deploy_custom_rules import _sibling_container
     claimed: set[int] = set()
     for rule, folders, exts, filenames in _rules:
         new_primary_idxs: list[int] = []

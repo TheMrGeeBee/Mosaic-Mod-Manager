@@ -1151,7 +1151,7 @@ def _show_overwrite_log(view, boundary_name=None):
     is_root = boundary_name == ROOT_FOLDER_NAME
     text = ""
     try:
-        from Utils.deploy_shared import OVERWRITE_LOG_NAME
+        from Utils.deploy.deploy_shared import OVERWRITE_LOG_NAME
         base = (game.get_effective_root_folder_path() if is_root
                 else game.get_effective_overwrite_path())
         log_path = base / OVERWRITE_LOG_NAME

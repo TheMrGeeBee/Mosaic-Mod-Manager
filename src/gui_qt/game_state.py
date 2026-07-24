@@ -159,7 +159,7 @@ class GameState:
         g = self.game
         if g is None or not self.profile:
             return ConflictData()
-        from Utils.deploy_pipeline import _build_filemap_for_game
+        from Utils.deploy.deploy_pipeline import _build_filemap_for_game
         from gui_qt.modlist_data import display_codes_from_conflict_map
         from Utils.perftrace import span
         log = log_fn or (lambda _m: None)
@@ -289,7 +289,7 @@ class GameState:
         try:
             rules = list(getattr(g, "custom_routing_rules", None) or [])
             if any(r.dest == "" and not r.to_prefix for r in rules):
-                from Utils.deploy_custom_rules import mods_matching_root_rules
+                from Utils.deploy.deploy_custom_rules import mods_matching_root_rules
                 with span("flag_mods: root-rule match"):
                     mod_files = {
                         name: (list(entry[0].values()) + list(entry[1].values()))

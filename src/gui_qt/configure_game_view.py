@@ -31,7 +31,7 @@ from gui_qt.worker import run_in_worker, NO_EMIT
 # Crash-proof diagnostic prints (Flatpak stdout can raise BrokenPipeError and
 # kill worker threads). See Utils.app_log.safe_print.
 from Utils.app_log import safe_print as print  # noqa: A004
-from Utils.deploy import LinkMode
+from Utils.deploy.deploy import LinkMode
 
 # Left column width — the image panel and the options panel share it.
 _LEFT_COL_W = 240
@@ -1364,7 +1364,7 @@ class ConfigureGameView(QWidget):
             except Exception:
                 pass
             try:
-                from Utils.deploy import restore_root_folder
+                from Utils.deploy.deploy import restore_root_folder
                 rf = profile_root / "Root_Folder"
                 game_root = g.get_game_path()
                 if rf.is_dir() and game_root:
@@ -1434,7 +1434,7 @@ class ConfigureGameView(QWidget):
 
         def worker():
             try:
-                from Utils.deploy import (
+                from Utils.deploy.deploy import (
                     remove_deployed_files, restore_filemap_from_root)
                 tgt = Path(target)
                 removed = 0

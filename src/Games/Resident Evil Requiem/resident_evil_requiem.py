@@ -23,7 +23,7 @@ Mod structure:
 from pathlib import Path
 
 from Games.base_game import BaseGame
-from Utils.deploy import (
+from Utils.deploy.deploy import (
     CustomRule,
     LinkMode,
     deploy_custom_rules,

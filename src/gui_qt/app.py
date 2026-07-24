@@ -2351,7 +2351,7 @@ class MainWindow(QMainWindow):
         games = [g for g in _GAMES.values() if g.is_configured()]
 
         def _run():
-            from Utils.deploy_standard import sweep_deploy_trash
+            from Utils.deploy.deploy_standard import sweep_deploy_trash
             for game in games:
                 try:
                     data = game.get_mod_data_path()
@@ -7445,7 +7445,7 @@ class MainWindow(QMainWindow):
         import threading
 
         def worker():
-            from Utils.deploy_pipeline import run_deploy_pipeline
+            from Utils.deploy.deploy_pipeline import run_deploy_pipeline
             ok = False
             warns = []
             try:
@@ -7541,7 +7541,7 @@ class MainWindow(QMainWindow):
         """Restore every configured game that has an active deployment back to
         vanilla. Ported from gui.py `_restore_all_on_close`."""
         from gui_qt.game_state import _GAMES
-        from Utils.deploy import restore_root_folder
+        from Utils.deploy.deploy import restore_root_folder
 
         games = [g for g in _GAMES.values()
                  if g.is_configured() and g.get_deploy_active()
@@ -7611,12 +7611,12 @@ class MainWindow(QMainWindow):
         profile = self._gs.profile
 
         import threading
-        from Utils.deploy import restore_root_folder
+        from Utils.deploy.deploy import restore_root_folder
 
         def worker():
             ok = True
             try:
-                from Utils.deploy_pipeline import check_paths_mounted
+                from Utils.deploy.deploy_pipeline import check_paths_mounted
                 err = check_paths_mounted(game)
                 if err:
                     self._op_log.emit(f"Restore aborted: {err}")
@@ -11956,7 +11956,7 @@ class MainWindow(QMainWindow):
             with self._conflict_build_lock:
                 if gen != self._conflict_gen:
                     return   # superseded while waiting — the newer build covers us
-                from Utils.deploy_pipeline import _build_filemap_for_game
+                from Utils.deploy.deploy_pipeline import _build_filemap_for_game
 
                 def _fm_log(m):
                     m = str(m)

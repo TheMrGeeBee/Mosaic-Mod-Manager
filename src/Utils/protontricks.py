@@ -475,7 +475,7 @@ def _install_d3dcompiler_47_fxc2(prefix_path: Path, log_fn: Callable[[str], None
             except OSError as exc:
                 log_fn(f"Failed to write 32-bit d3dcompiler_47.dll to syswow64: {exc}")
 
-    from Utils.deploy_wine_dll import apply_wine_dll_overrides
+    from Utils.deploy.deploy_wine_dll import apply_wine_dll_overrides
     apply_wine_dll_overrides(prefix_path, {"d3dcompiler_47": "native"}, log_fn=log_fn)
     log_fn("d3dcompiler_47 installed (fxc2).")
     return True

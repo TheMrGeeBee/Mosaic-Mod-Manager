@@ -13,7 +13,7 @@ from pathlib import Path
 import stat
 
 from Games.base_game import BaseGame, WizardTool
-from Utils.deploy import LinkMode, deploy_core, deploy_custom_rules, deploy_filemap, load_per_mod_strip_prefixes, load_separator_deploy_paths, expand_separator_deploy_paths, expand_separator_link_modes, expand_separator_raw_deploy, cleanup_custom_deploy_dirs, move_to_core, restore_custom_rules, restore_data_core
+from Utils.deploy.deploy import LinkMode, deploy_core, deploy_custom_rules, deploy_filemap, load_per_mod_strip_prefixes, load_separator_deploy_paths, expand_separator_deploy_paths, expand_separator_link_modes, expand_separator_raw_deploy, cleanup_custom_deploy_dirs, move_to_core, restore_custom_rules, restore_data_core
 from Utils.modlist import read_modlist
 from Utils.config_paths import get_profiles_dir
 
@@ -93,7 +93,7 @@ class Subnautica(BaseGame):
 
     @property
     def custom_routing_rules(self) -> list:
-        from Utils.deploy import CustomRule
+        from Utils.deploy.deploy import CustomRule
         return [
             CustomRule(dest="", filenames=["winhttp.dll"], flatten=True, loose_only=True),
             CustomRule(dest="", filenames=["version.dll"], flatten=True, loose_only=True),

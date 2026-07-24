@@ -13,7 +13,7 @@ import shutil
 from pathlib import Path
 
 from Utils.app_log import safe_log as _safe_log
-from Utils.deploy_shared import (
+from Utils.deploy.deploy_shared import (
     LinkMode,
     _FILEMAP_SNAPSHOT_NAME,
     _OVERWRITE_NAME,

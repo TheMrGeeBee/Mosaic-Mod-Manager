@@ -18,7 +18,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from Utils.config_paths import get_game_config_dir, get_game_config_path
-from Utils.deploy import LinkMode
+from Utils.deploy.deploy import LinkMode
 from Utils.steam_finder import find_prefix as _find_steam_prefix
 
 if TYPE_CHECKING:
@@ -1025,7 +1025,7 @@ class BaseGame(ABC):
     @property
     def custom_routing_rules(self) -> list:
         """
-        A list of CustomRule objects (from Utils.deploy) that route specific
+        A list of CustomRule objects (from Utils.deploy.deploy) that route specific
         file types to a game-root-relative destination directory during deploy.
 
         Files matching a rule are placed under game_root / rule.dest and are
@@ -1035,7 +1035,7 @@ class BaseGame(ABC):
 
         Example (RE Engine .pak files, flattened to one folder)::
 
-            from Utils.deploy import CustomRule
+            from Utils.deploy.deploy import CustomRule
             return [CustomRule(dest="pak_mods", extensions=[".pak"], flatten=True)]
 
         Return an empty list (the default) to use normal routing for all files.
@@ -1044,7 +1044,7 @@ class BaseGame(ABC):
 
     @property
     def restore_whitelist(self) -> list:
-        """A list of RestoreWhitelistRule objects (from Utils.deploy) that keep
+        """A list of RestoreWhitelistRule objects (from Utils.deploy.deploy) that keep
         matching runtime files in the game folder on restore instead of moving
         them to overwrite/ or Root_Folder/.  See RestoreWhitelistRule for the
         anchored, glob-capable matching rules.  Default: protect nothing.
@@ -1060,7 +1060,7 @@ class BaseGame(ABC):
         rules = self.restore_whitelist
         if not rules:
             return None
-        from Utils.deploy import build_restore_whitelist_matcher
+        from Utils.deploy.deploy import build_restore_whitelist_matcher
         return build_restore_whitelist_matcher(rules, rel_prefix=rel_prefix)
 
     @property
@@ -1420,7 +1420,7 @@ class BaseGame(ABC):
         if getattr(self, "_defer_runtime_snapshot", False):
             self._deferred_snapshot_requested = True
             return
-        from Utils.deploy import _write_deploy_snapshot, _FILEMAP_SNAPSHOT_NAME
+        from Utils.deploy.deploy import _write_deploy_snapshot, _FILEMAP_SNAPSHOT_NAME
         gp = self.get_game_path()
         if not gp:
             return
@@ -1435,7 +1435,7 @@ class BaseGame(ABC):
 
         No-op if no snapshot exists.  Deletes the snapshot after sweeping.
         """
-        from Utils.deploy import _move_runtime_files, _FILEMAP_SNAPSHOT_NAME
+        from Utils.deploy.deploy import _move_runtime_files, _FILEMAP_SNAPSHOT_NAME
         gp = self.get_game_path()
         snap = self.get_effective_filemap_path().parent / _FILEMAP_SNAPSHOT_NAME
         if not (gp and snap.is_file()):

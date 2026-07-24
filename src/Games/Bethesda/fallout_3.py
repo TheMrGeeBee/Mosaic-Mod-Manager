@@ -14,7 +14,7 @@ from pathlib import Path
 
 from Games.base_game import BaseGame, WizardTool, MODERN_DIRECTX_DEPS
 from Games.Bethesda.bethesda_ini import _read_ini_key, _set_ini_key
-from Utils.deploy import LinkMode, deploy_core, deploy_custom_rules, deploy_filemap, load_per_mod_strip_prefixes, load_separator_deploy_paths, expand_separator_deploy_paths, expand_separator_link_modes, expand_separator_raw_deploy, cleanup_custom_deploy_dirs, restore_custom_rules, move_to_core, restore_data_core
+from Utils.deploy.deploy import LinkMode, deploy_core, deploy_custom_rules, deploy_filemap, load_per_mod_strip_prefixes, load_separator_deploy_paths, expand_separator_deploy_paths, expand_separator_link_modes, expand_separator_raw_deploy, cleanup_custom_deploy_dirs, restore_custom_rules, move_to_core, restore_data_core
 from Utils.modlist import read_modlist
 from Utils.config_paths import get_profiles_dir
 
@@ -240,7 +240,7 @@ class Fallout_3(BaseGame):
     
     @property
     def custom_routing_rules(self) -> list:
-        from Utils.deploy import CustomRule
+        from Utils.deploy.deploy import CustomRule
         return [
             CustomRule(dest="", filenames=["fose_loader.exe"], flatten=True, loose_only=True),
             CustomRule(dest="", folders=["Data"], flatten=True, loose_only=True),
@@ -250,7 +250,7 @@ class Fallout_3(BaseGame):
 
     def _saves_routing_rule(self, extensions: list[str]):
         """Route loose save files into the prefix's My Games Saves folder, mirrored to the GOG variant if that folder exists."""
-        from Utils.deploy import CustomRule
+        from Utils.deploy.deploy import CustomRule
         gog_sub = self._MYGAMES_SUBPATH_GOG or Path(f"{self._MYGAMES_SUBPATH} GOG")
         mirrors: list[str] = []
         if self._prefix_path is not None and (self._prefix_path / self._MYGAMES_DOCS / gog_sub).is_dir():

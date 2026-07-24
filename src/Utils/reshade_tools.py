@@ -591,7 +591,7 @@ def install_reshade_files(
     after this returns (a managed-mod install changes modlist.txt). Touching
     widgets from this worker-thread call would spawn a stray floating window.
     """
-    from Utils.deploy import apply_wine_dll_overrides
+    from Utils.deploy.deploy import apply_wine_dll_overrides
     from Utils.mod_name_utils import sanitize_mod_folder_name
 
     # ReShade must live next to the rendering exe. Ask the game handler for the

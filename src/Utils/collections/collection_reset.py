@@ -512,7 +512,7 @@ def reset_collection_load_order(profile_dir: Path, manifest: dict,
                 _write_collection_plugins, _loot_available)
             if getattr(game, "loot_sort_enabled", False) and _loot_available():
                 try:
-                    from Utils.deploy_pipeline import _build_filemap_for_game
+                    from Utils.deploy.deploy_pipeline import _build_filemap_for_game
                     _build_filemap_for_game(game, profile_dir.name, log_fn=log)
                 except Exception as exc:
                     log(f"Reset load order: filemap rebuild before LOOT failed: {exc}")

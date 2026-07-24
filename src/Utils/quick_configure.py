@@ -26,7 +26,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from Utils.deploy import LinkMode
+from Utils.deploy.deploy import LinkMode
 
 
 def _toggle_attr(game, attr: str, default: bool):

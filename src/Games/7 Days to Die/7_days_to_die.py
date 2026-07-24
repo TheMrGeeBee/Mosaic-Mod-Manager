@@ -43,7 +43,7 @@ import shutil
 from pathlib import Path
 
 from Games.base_game import BaseGame
-from Utils.deploy import LinkMode
+from Utils.deploy.deploy import LinkMode
 from Utils.modlist import read_modlist
 from Utils.config_paths import get_profiles_dir
 from Utils.profile_state import read_excluded_mod_files
@@ -544,7 +544,7 @@ class SevenDaysToDie(BaseGame):
                 _log(f"  Rescued {len(rescued)} runtime file(s) into overwrite/.")
                 # Feed the same restore log the standard deploy writes so the
                 # rescued files show under Overwrite ▸ Log in the modlist.
-                from Utils.deploy_shared import _append_overwrite_log
+                from Utils.deploy.deploy_shared import _append_overwrite_log
                 _append_overwrite_log(overwrite_dir, rescued, log_fn=_log)
             if preserved:
                 _log(f"  Left {preserved} non-deployed entry/entries in place.")

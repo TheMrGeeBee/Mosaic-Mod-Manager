@@ -31,7 +31,7 @@ Mod structure:
 from pathlib import Path
 
 from Games.base_game import BaseGame, WizardTool
-from Utils.deploy import (
+from Utils.deploy.deploy import (
     LinkMode,
     cleanup_custom_deploy_dirs,
     deploy_core,
@@ -118,7 +118,7 @@ class Darktide(BaseGame):
 
     @property
     def custom_routing_rules(self) -> list:
-        from Utils.deploy import CustomRule
+        from Utils.deploy.deploy import CustomRule
         return [
             CustomRule(dest="", folders=["binaries"], flatten=True),
             CustomRule(dest="", folders=["bundle"], flatten=True),

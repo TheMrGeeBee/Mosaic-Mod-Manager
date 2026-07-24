@@ -108,7 +108,7 @@ def _update_target_index(game, target_staging: Path, target_profile_dir: Path,
     swallowed (the next full Refresh rescans it)."""
     try:
         from Utils.filemap import rescan_mods_in_index
-        from Utils.deploy import load_per_mod_strip_prefixes
+        from Utils.deploy.deploy import load_per_mod_strip_prefixes
         index_dir = Path(target_staging).parent
         # A root-flagged mod must NOT have strip_prefixes applied. The flag
         # lives in the mod's own meta.ini (copied verbatim into dest_root); read

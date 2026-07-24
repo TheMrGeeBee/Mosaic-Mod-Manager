@@ -19,7 +19,7 @@ from pathlib import Path
 
 from Games.base_game import BaseGame, WizardTool
 from Utils.config_paths import get_profiles_dir
-from Utils.deploy import (
+from Utils.deploy.deploy import (
     LinkMode,
     deploy_filemap,
     load_per_mod_strip_prefixes,

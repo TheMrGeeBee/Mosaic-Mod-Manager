@@ -1113,7 +1113,7 @@ def deploy_active_profile(game: "BaseGame", profile: str, log: LogFn) -> bool:
     the old bespoke copy did.  Called from the synthesis wizard's launch worker
     thread.
     """
-    from Utils.deploy_pipeline import run_deploy_pipeline
+    from Utils.deploy.deploy_pipeline import run_deploy_pipeline
 
     log(f"Deploying profile '{profile}' before launch …")
     return run_deploy_pipeline(game, profile, log_fn=log)

@@ -190,7 +190,7 @@ def cleanup_cancelled_install(game, profile_dir: "Path | None", *,
         except Exception as exc:
             log_fn(f"Cancel: restore failed: {exc}")
         try:
-            from Utils.deploy import restore_root_folder
+            from Utils.deploy.deploy import restore_root_folder
             root_folder_dir = game.get_effective_root_folder_path()
             game_root = game.get_game_path()
             if root_folder_dir.is_dir() and game_root:
@@ -1315,7 +1315,7 @@ def run_collection_install(
         try:
             log("Updating mod index…")
             from Utils.filemap import rebuild_mod_index
-            from Utils.deploy import load_per_mod_strip_prefixes
+            from Utils.deploy.deploy import load_per_mod_strip_prefixes
             from Nexus.nexus_meta import collect_root_flagged_mods
             _staging = game.get_effective_mod_staging_path()
             try:
@@ -1399,7 +1399,7 @@ def run_collection_install(
     if (not _col_pause.is_set() and overwrite_existing is None
             and getattr(game, "loot_sort_enabled", False) and _loot_available()):
         try:
-            from Utils.deploy_pipeline import _build_filemap_for_game
+            from Utils.deploy.deploy_pipeline import _build_filemap_for_game
             _build_filemap_for_game(game, profile_dir.name, log_fn=log)
         except Exception as exc:
             log(f"Collection install: filemap rebuild before LOOT failed: {exc}")

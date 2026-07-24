@@ -46,7 +46,7 @@ def remove_mods(game, profile_dir: Path, mod_names: list[str], log_fn=None) -> N
         deploy_active = True
     if deploy_active:
         try:
-            from Utils.deploy import undeploy_mod_files
+            from Utils.deploy.deploy import undeploy_mod_files
             undeploy_mod_files(
                 mod_names,
                 game.get_mod_data_path(),

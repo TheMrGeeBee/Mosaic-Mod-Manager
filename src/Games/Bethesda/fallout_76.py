@@ -77,7 +77,7 @@ class Fallout_76(Fallout_3):
 
     @property
     def custom_routing_rules(self) -> list:
-        from Utils.deploy import CustomRule
+        from Utils.deploy.deploy import CustomRule
         return [
             CustomRule(dest="", filenames=["dxgi.dll"], flatten=True),
             CustomRule(dest="", folders=["Data"], flatten=True, loose_only=True),

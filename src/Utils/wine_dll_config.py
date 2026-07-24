@@ -98,5 +98,5 @@ def deploy_game_wine_dll_overrides(
         return
 
     _log("Applying Wine DLL overrides to Proton prefix ...")
-    from Utils.deploy import apply_wine_dll_overrides
+    from Utils.deploy.deploy import apply_wine_dll_overrides
     apply_wine_dll_overrides(prefix_path, to_apply, log_fn=_log)

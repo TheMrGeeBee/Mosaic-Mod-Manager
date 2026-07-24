@@ -203,7 +203,7 @@ class CreationKitView(WizardViewBase):
 
         def worker():
             from Utils.bethesda_registry import maybe_register_for_game
-            from Utils.deploy import apply_wine_dll_overrides
+            from Utils.deploy.deploy import apply_wine_dll_overrides
             from Utils.exe_launch import (
                 link_mygames, link_plugins_txt, resolve_tool_prefix,
                 run_tool_logged, shutdown_prefix_wineserver,

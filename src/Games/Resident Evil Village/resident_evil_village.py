@@ -38,7 +38,7 @@ import tempfile
 from pathlib import Path
 
 from Games.base_game import BaseGame
-from Utils.deploy import (
+from Utils.deploy.deploy import (
     LinkMode,
     cleanup_custom_deploy_dirs,
     deploy_filemap_to_root,

@@ -19,7 +19,7 @@ from pathlib import Path
 from Utils.app_log import safe_log as _safe_log, app_log as _app_log
 from Utils.atomic_write import atomic_writer
 from Utils.path_utils import has_path_traversal as _has_traversal
-from Utils.deploy_shared import (
+from Utils.deploy.deploy_shared import (
     LinkMode,
     _OVERWRITE_NAME,
     _default_core,
@@ -363,7 +363,7 @@ def move_to_core(
 
     # Incremental fast path: the current deployment (and its core backup)
     # stays in place — deploy_filemap diffs into it instead.
-    from Utils import deploy_incremental as _incr
+    from Utils.deploy import deploy_incremental as _incr
     if _incr.active_for(deploy_dir) is not None:
         if marker.is_file() and core_dir.is_dir():
             _log(f"  Incremental deploy — keeping {deploy_dir.name}/ and the "
@@ -475,7 +475,7 @@ def deploy_filemap(
     _per_mode = per_mod_link_modes
     _per_merge: set[str] = set()
     try:
-        from Utils.deploy_shared import (
+        from Utils.deploy.deploy_shared import (
             load_separator_deploy_paths as _lsdp,
             expand_separator_link_modes as _eslm,
             expand_separator_merge_dirs as _esmd,
@@ -652,7 +652,7 @@ def deploy_filemap(
     # this deploy dir, diff the new task set against the previous deploy and
     # only unlink/link what changed (raises IncrementalFallback on anomaly —
     # the pipeline catches it and reruns the full restore + deploy).
-    from Utils import deploy_incremental as _incr
+    from Utils.deploy import deploy_incremental as _incr
     _incr_plan = _incr.active_for(deploy_dir)
     if _incr_plan is not None:
         return _incr.apply_incremental(
@@ -684,7 +684,7 @@ def deploy_filemap(
     # otherwise the rmtree below would destroy the backed-up originals.
     if _custom_log_path.is_file():
         _log("  Previous custom-deploy log still present — restoring it before redeploying.")
-        from Utils.deploy_shared import cleanup_custom_deploy_dirs
+        from Utils.deploy.deploy_shared import cleanup_custom_deploy_dirs
         cleanup_custom_deploy_dirs(
             filemap_path.parent, [], log_fn=log_fn, filemap_path=filemap_path,
         )
@@ -1050,7 +1050,7 @@ def deploy_core(
 
     # Incremental fast path: the diff in deploy_filemap already refilled any
     # vanilla gaps (and owns the vanilla_deployed.txt manifest) — skip.
-    from Utils import deploy_incremental as _incr
+    from Utils.deploy import deploy_incremental as _incr
     if _incr.active_for(deploy_dir) is not None:
         return 0
 
@@ -1821,7 +1821,7 @@ def undeploy_mod_files(
 
     if targets:
         import concurrent.futures
-        from Utils.deploy_shared import _deploy_workers
+        from Utils.deploy.deploy_shared import _deploy_workers
         with concurrent.futures.ThreadPoolExecutor(max_workers=_deploy_workers()) as pool:
             for n, k, parent, warn in pool.map(_unlink_one, targets):
                 removed += n

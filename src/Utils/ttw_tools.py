@@ -256,7 +256,7 @@ def restore_to_vanilla(game: "BaseGame", current_profile: str,
     fnv_root: "Path | None" = None
     success = True
     try:
-        from Utils.deploy_pipeline import check_paths_mounted
+        from Utils.deploy.deploy_pipeline import check_paths_mounted
         mount_err = check_paths_mounted(game)
         if mount_err:
             log_fn(f"Restore aborted: {mount_err}")
@@ -273,7 +273,7 @@ def restore_to_vanilla(game: "BaseGame", current_profile: str,
 
         game.restore(log_fn=log_fn)
 
-        from Utils.deploy import restore_root_folder
+        from Utils.deploy.deploy import restore_root_folder
         root_folder_dir = game.get_effective_root_folder_path()
         if root_folder_dir.is_dir() and game_root:
             restore_root_folder(root_folder_dir, game_root, log_fn=log_fn)

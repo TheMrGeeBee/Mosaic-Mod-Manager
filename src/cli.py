@@ -90,7 +90,7 @@ def cmd_deploy(games: dict, key: str, profile: str):
         print(f"Error: game '{game.name}' is not configured (game path not set).", file=sys.stderr)
         sys.exit(1)
 
-    from Utils.deploy_pipeline import run_deploy_pipeline
+    from Utils.deploy.deploy_pipeline import run_deploy_pipeline
 
     profile_dir = game.get_profile_root() / "profiles" / profile
     if not profile_dir.is_dir():
@@ -121,7 +121,7 @@ def cmd_restore(games: dict, key: str):
         print(f"Error: game '{game.name}' is not configured (game path not set).", file=sys.stderr)
         sys.exit(1)
 
-    from Utils.deploy import restore_root_folder
+    from Utils.deploy.deploy import restore_root_folder
 
     game_root = game.get_game_path()
     profile_root = game.get_profile_root()

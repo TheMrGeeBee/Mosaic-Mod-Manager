@@ -2579,7 +2579,7 @@ def _update_indexes(game, profile_dir: Path, mod_name: str, dest_root: Path,
                     log_fn: LogFn) -> None:
     try:
         from Utils.filemap import rescan_mods_in_index
-        from Utils.deploy import load_per_mod_strip_prefixes
+        from Utils.deploy.deploy import load_per_mod_strip_prefixes
         # The index MUST live where build_filemap reads it — next to the
         # effective filemap (= staging.parent / game root), NOT the profile dir.
         # Writing it to the profile dir leaves a fresh install invisible to the

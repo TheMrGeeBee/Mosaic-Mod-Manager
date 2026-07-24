@@ -27,7 +27,7 @@ def cet_symlink_conflict(game) -> bool:
     * The deploy mode is HARDLINK but the game folder is on a different
       filesystem than the mod staging folder, so ``os.link`` hits EXDEV and the
       deploy silently falls back to symlinks (see
-      :mod:`Utils.deploy_shared`). The user never picked symlink, but CET breaks
+      :mod:`Utils.deploy.deploy_shared`). The user never picked symlink, but CET breaks
       all the same.
 
     Any missing attribute, non-Cyberpunk game, hardlink mode with matching
@@ -35,7 +35,7 @@ def cet_symlink_conflict(game) -> bool:
     if getattr(game, "name", "") != "Cyberpunk 2077":
         return False
     try:
-        from Utils.deploy import LinkMode
+        from Utils.deploy.deploy import LinkMode
         if not hasattr(game, "get_deploy_mode"):
             return False
         mode = game.get_deploy_mode()

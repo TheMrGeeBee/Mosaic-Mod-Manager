@@ -41,7 +41,7 @@ from pathlib import Path
 
 from Games.base_game import BaseGame
 from Games.ue5_game import UE5Game, UE5Rule
-from Utils.deploy import (
+from Utils.deploy.deploy import (
     CustomRule,
     LinkMode,
     RestoreWhitelistRule,

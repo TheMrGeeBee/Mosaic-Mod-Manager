@@ -48,7 +48,7 @@ def compute_mod_conflicts(
     load order (high→low or as snapshotted); *modlist_path* defaults to
     profile_dir/modlist.txt.
     """
-    from Utils.deploy_shared import load_per_mod_strip_prefixes
+    from Utils.deploy.deploy_shared import load_per_mod_strip_prefixes
 
     if modlist_path is None:
         modlist_path = profile_dir / "modlist.txt"

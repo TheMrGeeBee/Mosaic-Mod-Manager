@@ -31,7 +31,7 @@ appid — the prefix path is user-configurable, with a best-effort search.
 from pathlib import Path
 
 from Games.base_game import BaseGame
-from Utils.deploy import (
+from Utils.deploy.deploy import (
     CustomRule, LinkMode, deploy_filemap, deploy_core, move_to_core,
     restore_data_core, deploy_custom_rules, load_per_mod_strip_prefixes,
     load_separator_deploy_paths, expand_separator_deploy_paths,

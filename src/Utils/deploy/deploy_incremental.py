@@ -40,7 +40,7 @@ from pathlib import Path
 
 from Utils.app_log import safe_log as _safe_log
 from Utils.atomic_write import atomic_writer
-from Utils.deploy_shared import (
+from Utils.deploy.deploy_shared import (
     LinkMode,
     _OVERWRITE_NAME,
     _append_overwrite_log,
@@ -188,7 +188,7 @@ def plan_incremental(game, profile: str, mode: LinkMode,
         if deploy_dir is None or not deploy_dir.is_dir():
             return _skip("no deploy directory")
 
-        from Utils.deploy_standard import (
+        from Utils.deploy.deploy_standard import (
             _DEPLOY_MARKER_NAME, _DEPLOY_STATS_NAME, _load_deploy_stats)
 
         if not (deploy_dir / _DEPLOY_MARKER_NAME).is_file():
@@ -208,7 +208,7 @@ def plan_incremental(game, profile: str, mode: LinkMode,
         # Per-separator overrides drive the wholesale-replace / dir-symlink /
         # per-mod link-mode machinery in the full path — v1 of the diff does
         # not mirror them, so any configured override falls back.
-        from Utils.deploy_shared import load_separator_deploy_paths
+        from Utils.deploy.deploy_shared import load_separator_deploy_paths
         profile_dir = game.get_profile_root() / "profiles" / profile
         for info in (load_separator_deploy_paths(profile_dir) or {}).values():
             if not isinstance(info, dict):
@@ -263,7 +263,7 @@ def apply_incremental(
     IncrementalFallback on any anomaly.
     """
     _log = _safe_log(log_fn)
-    from Utils.deploy_standard import (
+    from Utils.deploy.deploy_standard import (
         _DEPLOY_STATS_NAME, _MTIME_TOLERANCE_NS, _VANILLA_DEPLOYED_NAME,
         _load_vanilla_deployed, _write_deploy_stats, _write_vanilla_deployed)
 
@@ -424,7 +424,7 @@ def apply_incremental(
             mod_name = rel_mod[rel_lower][1]
             if mod_name != _OVERWRITE_NAME and staging_root is not None \
                     and rel_str.lower().endswith((".esp", ".esm", ".esl")):
-                from Utils.deploy_standard import _tag_mod_xedit_modified
+                from Utils.deploy.deploy_standard import _tag_mod_xedit_modified
                 _tag_mod_xedit_modified(Path(staging_root) / mod_name,
                                         os.path.basename(rel_str))
             return
@@ -618,7 +618,7 @@ def _verify(new_tasks: dict, final_placed: "set[str]", eff_mode_fn,
     """AMM_DEPLOY_VERIFY=1 — check every placed rel is correctly linked and
     every uncovered vanilla file is present.  Logs a summary, never raises.
     A debugging aid: clarity over speed."""
-    from Utils.deploy_standard import _MTIME_TOLERANCE_NS
+    from Utils.deploy.deploy_standard import _MTIME_TOLERANCE_NS
 
     mismatches = 0
 

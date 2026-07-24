@@ -7,7 +7,7 @@ separate "Change separator color" menu item.
 
 Persistence is neutral (Utils.profile_state read/write helpers), keyed by the
 separator's internal `..._separator` name — the same shape the Tk app writes, so
-existing data round-trips and the deploy pipeline (Utils.deploy_shared) picks the
+existing data round-trips and the deploy pipeline (Utils.deploy.deploy_shared) picks the
 paths up unchanged.
 
 on_save(color: str | None, deploy: dict | None) is called on Save:

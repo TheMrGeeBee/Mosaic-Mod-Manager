@@ -14,14 +14,14 @@ import traceback
 from pathlib import Path
 from typing import Callable, Optional
 
-from Utils.deploy import (
+from Utils.deploy.deploy import (
     LinkMode,
     deploy_root_folder,
     deploy_root_flagged_mods,
     load_per_mod_strip_prefixes,
     restore_root_folder,
 )
-from Utils.deploy_shared import _FILEMAP_SNAPSHOT_NAME
+from Utils.deploy.deploy_shared import _FILEMAP_SNAPSHOT_NAME
 from Utils.filemap import build_filemap
 from Utils.profile_backup import create_backup
 from Utils.profile_state import read_excluded_mod_files
@@ -255,7 +255,7 @@ def _make_custom_routing_conflict_key_fn(game):
     rules = getattr(game, "custom_routing_rules", None)
     if not rules:
         return None
-    from Utils.deploy_custom_rules import compute_routed_dest, normalise_rules
+    from Utils.deploy.deploy_custom_rules import compute_routed_dest, normalise_rules
 
     norm = normalise_rules(rules)
     strip = {p.lower() for p in (getattr(game, "mod_folder_strip_prefixes", None) or ())}
@@ -461,8 +461,8 @@ def run_deploy_pipeline(
     _t_start = _time.perf_counter()
 
     try:
-        from Utils import deploy_incremental as _incr
-        from Utils.deploy_incremental import IncrementalFallback
+        from Utils.deploy import deploy_incremental as _incr
+        from Utils.deploy.deploy_incremental import IncrementalFallback
 
         # Restore against the last-deployed profile so runtime files (saves,
         # ShaderCache, etc.) land in *that* profile's overwrite/ folder.

@@ -15,7 +15,7 @@ import shutil
 from pathlib import Path
 
 from Utils.app_log import safe_log as _safe_log
-from Utils.deploy_shared import (
+from Utils.deploy.deploy_shared import (
     CustomRule,
     LinkMode,
     _deploy_workers,
@@ -339,7 +339,7 @@ def deploy_custom_rules(
     _per_mode = per_mod_link_modes
     if _per_mode is None:
         try:
-            from Utils.deploy_shared import (
+            from Utils.deploy.deploy_shared import (
                 load_separator_deploy_paths as _lsdp,
                 expand_separator_link_modes as _eslm,
             )
@@ -357,7 +357,7 @@ def deploy_custom_rules(
     _raw_mods = raw_mods
     if _raw_mods is None:
         try:
-            from Utils.deploy_shared import (
+            from Utils.deploy.deploy_shared import (
                 load_separator_deploy_paths as _lsdp_raw,
                 expand_separator_raw_deploy as _esrd,
             )

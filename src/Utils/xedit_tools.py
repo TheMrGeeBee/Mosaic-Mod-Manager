@@ -285,7 +285,7 @@ def restore_after_xedit(game: "BaseGame", display_name: str, log_fn=None) -> Non
             # Restore Root_Folder too, so root-deployed files are removed
             # from the game directory exactly like the Restore button does
             # (game.restore only handles the Data/ deploy).
-            from Utils.deploy import restore_root_folder
+            from Utils.deploy.deploy import restore_root_folder
             root_folder_dir = game.get_effective_root_folder_path()
             game_root = game.get_game_path()
             if root_folder_dir.is_dir() and game_root:

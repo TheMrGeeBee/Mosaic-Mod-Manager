@@ -142,7 +142,7 @@ def index_installed_mod(
     """
     try:
         from Utils.filemap import rescan_mods_in_index
-        from Utils.deploy import load_per_mod_strip_prefixes
+        from Utils.deploy.deploy import load_per_mod_strip_prefixes
 
         staging = game.get_effective_mod_staging_path()
         if staging is None:
