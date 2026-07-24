@@ -164,7 +164,7 @@ def compute_mod_conflicts(
     # Wins against BSA-only losers (engine rule: loose > BSA).
     if archive_exts and bsa_index_path is not None and bsa_index_path.is_file():
         try:
-            from Utils.bsa_filemap import read_bsa_index as _read_bi
+            from Utils.archives.bsa_filemap import read_bsa_index as _read_bi
             _bi = _read_bi(bsa_index_path) or {}
             for loser_mod in beaten_mods:
                 archives = _bi.get(loser_mod)
@@ -214,7 +214,7 @@ def compute_mod_conflicts(
     # BSA-vs-BSA conflicts — append rows from this mod's archives.
     if archive_exts and bsa_index_path is not None and bsa_index_path.is_file():
         try:
-            from Utils.bsa_filemap import read_bsa_index, compute_bsa_winner_map
+            from Utils.archives.bsa_filemap import read_bsa_index, compute_bsa_winner_map
             from Utils.modlist import read_modlist as _read_ml
             bsa_index = read_bsa_index(bsa_index_path) or {}
             entries_ml = _read_ml(modlist_path)

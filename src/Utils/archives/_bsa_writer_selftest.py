@@ -29,9 +29,9 @@ _SRC_ROOT = Path(__file__).resolve().parents[1]
 if str(_SRC_ROOT) not in sys.path:
     sys.path.insert(0, str(_SRC_ROOT))
 
-from Utils.bsa_extract import BsaExtractError, extract_bsa  # noqa: E402
-from Utils.bsa_reader import read_bsa_file_list  # noqa: E402
-from Utils.bsa_writer import (  # noqa: E402
+from Utils.archives.bsa_extract import BsaExtractError, extract_bsa  # noqa: E402
+from Utils.archives.bsa_reader import read_bsa_file_list  # noqa: E402
+from Utils.archives.bsa_writer import (  # noqa: E402
     BsaWriteError,
     is_our_stub_plugin,
     is_packable,
@@ -565,7 +565,7 @@ def test_oversized_file_rejected() -> None:
     # We can't actually allocate 1 GiB on disk in CI/dev loops, so we
     # monkey-patch read_bytes to return a stubbed-large payload.  This
     # exercises the size-field guard path without writing 1 GiB of data.
-    from Utils import bsa_writer
+    from Utils.archives import bsa_writer
     real_read_bytes = Path.read_bytes
     big = 0x40000001  # one byte past _FILE_SIZE_MASK
     class _BigBytes(bytes):

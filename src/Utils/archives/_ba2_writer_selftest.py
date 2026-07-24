@@ -26,11 +26,11 @@ _SRC_ROOT = Path(__file__).resolve().parents[1]
 if str(_SRC_ROOT) not in sys.path:
     sys.path.insert(0, str(_SRC_ROOT))
 
-from Utils.ba2_extract import Ba2ExtractError, extract_ba2  # noqa: E402
-from Utils.ba2_writer import (  # noqa: E402
+from Utils.archives.ba2_extract import Ba2ExtractError, extract_ba2  # noqa: E402
+from Utils.archives.ba2_writer import (  # noqa: E402
     Ba2WriteError, ba2_hash, write_ba2, write_ba2_textures,
 )
-from Utils.bsa_reader import read_bsa_file_list  # noqa: E402
+from Utils.archives.bsa_reader import read_bsa_file_list  # noqa: E402
 
 
 # ---------------------------------------------------------------------------

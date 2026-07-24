@@ -344,7 +344,7 @@ class GameState:
         exts = frozenset(getattr(g, "archive_extensions", frozenset()) or frozenset())
         if not exts:
             return empty
-        from Utils.ue_pak_reader import UE_ARCHIVE_EXTENSIONS
+        from Utils.archives.ue_pak_reader import UE_ARCHIVE_EXTENSIONS
         if not (exts & UE_ARCHIVE_EXTENSIONS):
             try:
                 from Utils.ui_config import load_hide_bsa_conflicts
@@ -357,7 +357,7 @@ class GameState:
         if staging is None or ml is None or not ml.is_file():
             return empty
         try:
-            from Utils.bsa_filemap import build_bsa_conflicts, rebuild_bsa_index
+            from Utils.archives.bsa_filemap import build_bsa_conflicts, rebuild_bsa_index
             from Utils.plugins import read_loadorder
         except Exception:
             return empty

@@ -47,7 +47,7 @@ class Ba2WriteError(Exception):
 # the packing rules stay in lockstep.
 # ---------------------------------------------------------------------------
 
-from Utils.bsa_writer import is_packable, _INCOMPRESSIBLE_EXT  # noqa: E402
+from Utils.archives.bsa_writer import is_packable, _INCOMPRESSIBLE_EXT  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Hash — FO4 BA2 CRC-32 variant.  zlib.crc32 won't do because zlib's
@@ -830,7 +830,7 @@ def write_ba2_textures(
 # we just point callers there.
 # ---------------------------------------------------------------------------
 
-from Utils.bsa_writer import (  # noqa: E402  (re-export)
+from Utils.archives.bsa_writer import (  # noqa: E402  (re-export)
     is_our_stub_plugin,
     write_stub_plugin,
 )

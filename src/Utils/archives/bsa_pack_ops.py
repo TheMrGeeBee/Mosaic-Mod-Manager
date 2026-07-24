@@ -1,7 +1,7 @@
 """Neutral (GUI-free) orchestration for BSA / BA2 packing and unpacking.
 
-The pure-Python archive backend already lives in :mod:`Utils.bsa_writer`,
-:mod:`Utils.ba2_writer`, :mod:`Utils.bsa_extract`, :mod:`Utils.ba2_extract`.
+The pure-Python archive backend already lives in :mod:`Utils.archives.bsa_writer`,
+:mod:`Utils.archives.ba2_writer`, :mod:`Utils.archives.bsa_extract`, :mod:`Utils.archives.ba2_extract`.
 This module hosts the *decision* logic that sits above them — which archive
 kind a game packs, how the archive is named, whether a stub plugin is needed,
 which files to keep loose, the split-textures multi-pass, the delete-loose
@@ -19,13 +19,13 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable
 
-from Utils.ba2_writer import (
+from Utils.archives.ba2_writer import (
     Ba2WriteError,
     ba2_version_for_game,
     write_ba2,
     write_ba2_textures,
 )
-from Utils.bsa_writer import (
+from Utils.archives.bsa_writer import (
     BsaWriteError,
     bsa_version_for_game,
     is_our_stub_plugin,
@@ -446,7 +446,7 @@ def collect_unpack_groups(mod_dir: Path, plugin_exts=None) -> list[UnpackGroup]:
     matching plugin)" bucket for orphan archives. Port of
     ``BsaUnpackOverlay._collect_groups`` / ``_build_group``.
     """
-    from Utils.bsa_reader import read_bsa_file_list
+    from Utils.archives.bsa_reader import read_bsa_file_list
 
     exts = {e.lower() for e in (plugin_exts or _DEFAULT_PLUGIN_EXTS)}
     archives_by_stem: dict[str, list[Path]] = {}
@@ -539,8 +539,8 @@ def run_unpack(
     thread. Raises :class:`UnpackCancelled` on cancel, or the underlying
     extract errors otherwise. Port of the ``_worker`` body in Tk ``_do_unpack_bsa``.
     """
-    from Utils.ba2_extract import Ba2ExtractError, extract_ba2
-    from Utils.bsa_extract import BsaExtractError, extract_bsa
+    from Utils.archives.ba2_extract import Ba2ExtractError, extract_ba2
+    from Utils.archives.bsa_extract import BsaExtractError, extract_bsa
 
     total_count = 0
     all_written: list[str] = []

@@ -71,7 +71,7 @@ class BsaWriteError(Exception):
     behind on the destination path; a stale .bsa.tmp may remain on disk."""
 
 
-# Re-export for callers importing Utils.bsa_writer.is_packable.
+# Re-export for callers importing Utils.archives.bsa_writer.is_packable.
 from Utils.archive_rules import is_packable  # noqa: F401
 
 # Per-extension "do not compress" list — kept here because it drives

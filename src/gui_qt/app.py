@@ -1061,9 +1061,9 @@ class MainWindow(QMainWindow):
             rel = _P(archive_path).resolve().relative_to(staging.resolve())
             mod_name = rel.parts[0]
 
-            from Utils.bsa_filemap import read_bsa_index, compute_bsa_winner_map
+            from Utils.archives.bsa_filemap import read_bsa_index, compute_bsa_winner_map
             from Utils.modlist import read_modlist
-            from Utils.ue_pak_reader import UE_ARCHIVE_EXTENSIONS
+            from Utils.archives.ue_pak_reader import UE_ARCHIVE_EXTENSIONS
             index = read_bsa_index(staging.parent / "bsa_index.bin") or {}
             enabled = [e for e in read_modlist(ml)
                        if not e.is_separator and e.enabled]
@@ -5848,7 +5848,7 @@ class MainWindow(QMainWindow):
             plugin_order = []
         plugin_exts = frozenset(x.lower() for x in
                                 (getattr(game, "plugin_extensions", []) or ()))
-        from Utils.ue_pak_reader import UE_ARCHIVE_EXTENSIONS
+        from Utils.archives.ue_pak_reader import UE_ARCHIVE_EXTENSIONS
         archive_exts = frozenset(
             getattr(game, "archive_extensions", frozenset()) or frozenset())
         ctx = {
@@ -9753,7 +9753,7 @@ class MainWindow(QMainWindow):
             "filetypes", self._mod_files_view.filetype_items())
 
     def _update_mf_footer_buttons(self):
-        import Utils.bsa_pack_ops as ops
+        import Utils.archives.bsa_pack_ops as ops
         pack_btn = getattr(self, "_mf_pack_btn", None)
         unpack_btn = getattr(self, "_mf_unpack_btn", None)
         if pack_btn is None or unpack_btn is None:
@@ -9804,7 +9804,7 @@ class MainWindow(QMainWindow):
         return getattr(game, "plugin_extensions", None) or (".esp", ".esm", ".esl")
 
     def _on_pack_bsa(self):
-        import Utils.bsa_pack_ops as ops
+        import Utils.archives.bsa_pack_ops as ops
         from gui_qt.bsa_pack_overlay import BsaPackOverlay
 
         if self._bsa_op_running:
@@ -9840,7 +9840,7 @@ class MainWindow(QMainWindow):
 
     def _start_pack_bsa(self, plan, opts):
         import threading
-        import Utils.bsa_pack_ops as ops
+        import Utils.archives.bsa_pack_ops as ops
         from gui_qt.safe_emit import safe_emit
 
         mv = self._mod_files_view
@@ -9885,7 +9885,7 @@ class MainWindow(QMainWindow):
         threading.Thread(target=worker, daemon=True).start()
 
     def _on_unpack_bsa(self):
-        import Utils.bsa_pack_ops as ops
+        import Utils.archives.bsa_pack_ops as ops
         from gui_qt.bsa_unpack_overlay import BsaUnpackOverlay
 
         if self._bsa_op_running:
@@ -9917,7 +9917,7 @@ class MainWindow(QMainWindow):
 
     def _start_unpack_bsa(self, mod_dir, archive_paths):
         import threading
-        import Utils.bsa_pack_ops as ops
+        import Utils.archives.bsa_pack_ops as ops
         from gui_qt.safe_emit import safe_emit
 
         mod_name = getattr(self._mod_files_view, "_mod_name", None)
@@ -9951,7 +9951,7 @@ class MainWindow(QMainWindow):
 
     def _on_bsa_op_done(self, info: dict):
         """UI-thread completion for pack/unpack workers (see _bsa_op_done)."""
-        import Utils.bsa_pack_ops as ops
+        import Utils.archives.bsa_pack_ops as ops
 
         self._bsa_op_running = False
         if self._progress_popup is not None:

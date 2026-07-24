@@ -733,7 +733,7 @@ class PluginView(QTreeView):
         if not mods or bsa_index_path is None:
             return set()
         try:
-            from Utils.bsa_filemap import read_bsa_index, _bsa_owning_plugin
+            from Utils.archives.bsa_filemap import read_bsa_index, _bsa_owning_plugin
         except Exception:
             return set()
         idx = read_bsa_index(bsa_index_path) or {}

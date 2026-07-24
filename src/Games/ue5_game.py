@@ -356,7 +356,7 @@ class UE5Game(BaseGame):
     def archive_extensions(self) -> frozenset[str]:
         """Scan UE .pak and IoStore .utoc TOCs so mods that ship the same
         asset paths inside different archives get archive-conflict flags
-        (Utils.ue_pak_reader).  Companion .ucas files hold only bulk data
+        (Utils.archives.ue_pak_reader).  Companion .ucas files hold only bulk data
         (no names) and are skipped."""
         return frozenset({".pak", ".utoc"})
 

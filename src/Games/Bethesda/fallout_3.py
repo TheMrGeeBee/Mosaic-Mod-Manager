@@ -1185,7 +1185,7 @@ class Fallout_3(BaseGame):
         if self._game_path is None:
             _log("  WARN: Game path not set — skipping dummy BSA write.")
             return
-        from Utils.bsa_invalidation import write_dummy_bsa
+        from Utils.archives.bsa_invalidation import write_dummy_bsa
         try:
             write_dummy_bsa(self._game_path / "Data" / bsa_name, bsa_version)
         except OSError as exc:
@@ -1215,7 +1215,7 @@ class Fallout_3(BaseGame):
         bsa_name = self._invalidation_bsa_name
         if bsa_name is None:
             return ""
-        from Utils.bsa_invalidation import (
+        from Utils.archives.bsa_invalidation import (
             ensure_in_archive_list, append_to_archive_list,
             remove_many_from_archive_list,
         )
@@ -1252,7 +1252,7 @@ class Fallout_3(BaseGame):
         bsa_name = self._invalidation_bsa_name
         if bsa_name is None:
             return
-        from Utils.bsa_invalidation import (
+        from Utils.archives.bsa_invalidation import (
             remove_from_archive_list, remove_many_from_archive_list,
         )
         key = self._invalidation_archive_list_key

@@ -594,7 +594,7 @@ def build_mods_with_bsa(staging_parent: Path) -> set[str]:
     if not idx.is_file():
         return set()
     try:
-        from Utils.bsa_filemap import read_bsa_index
+        from Utils.archives.bsa_filemap import read_bsa_index
         index = read_bsa_index(idx) or {}
     except Exception:
         return set()

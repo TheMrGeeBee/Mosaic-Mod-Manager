@@ -82,7 +82,7 @@ def remove_mods(game, profile_dir: Path, mod_names: list[str], log_fn=None) -> N
     except Exception as exc:
         log(f"index cleanup during remove failed: {exc}")
     try:
-        from Utils.bsa_filemap import remove_from_bsa_index
+        from Utils.archives.bsa_filemap import remove_from_bsa_index
         remove_from_bsa_index(index_path.parent / "bsa_index.bin", mod_names)
     except Exception:
         pass

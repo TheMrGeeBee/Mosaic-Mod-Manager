@@ -131,7 +131,7 @@ def _update_target_index(game, target_staging: Path, target_profile_dir: Path,
         archive_exts = frozenset(
             getattr(game, "archive_extensions", frozenset()) or frozenset())
         if archive_exts:
-            from Utils.bsa_filemap import update_bsa_index
+            from Utils.archives.bsa_filemap import update_bsa_index
             update_bsa_index(index_dir / "bsa_index.bin",
                              mod_name, dest_root, archive_exts)
     except Exception:

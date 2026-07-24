@@ -36,7 +36,7 @@ from pathlib import Path
 from typing import Callable, Optional
 
 from Utils.app_log import app_log
-from Utils.pak_reader import extract_meta_lsx
+from Utils.archives.pak_reader import extract_meta_lsx
 
 _SECTION = "General"
 

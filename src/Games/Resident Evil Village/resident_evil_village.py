@@ -47,7 +47,7 @@ from Utils.deploy import (
 )
 from Utils.modlist import read_modlist
 from Utils.config_paths import get_profiles_dir
-from Utils.re_pak_patcher import (
+from Utils.archives.re_pak_patcher import (
     find_pak_files,
     hash_filepath,
     patch_pak_file,
