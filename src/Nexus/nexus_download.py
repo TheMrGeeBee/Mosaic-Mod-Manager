@@ -38,7 +38,7 @@ import requests
 
 from .nexus_api import NexusAPI, NexusDownloadLink, NexusAPIError
 from .nxm_handler import NxmLink
-from Utils import bandwidth_limit
+from Utils.downloads import bandwidth_limit
 from Utils.app_log import app_log
 from Utils.ca_bundle import resolve_ca_bundle
 

@@ -767,7 +767,7 @@ class SettingsView(QWidget):
 
     def _save_speed_limit(self, value: int):
         # Apply to in-flight downloads immediately, then persist.
-        from Utils import bandwidth_limit
+        from Utils.downloads import bandwidth_limit
         bandwidth_limit.set_limit_mbps(float(value))
         self._safe_save(uc.save_download_speed_limit, float(value))
 
