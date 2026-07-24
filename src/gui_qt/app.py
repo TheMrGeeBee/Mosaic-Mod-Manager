@@ -1028,7 +1028,7 @@ class MainWindow(QMainWindow):
         clicking another archive swaps it in place. Replaces the old Tk Archive
         tab; the TOC is read without decompressing any file data."""
         from pathlib import Path as _P
-        from gui_qt.bsa_preview import BsaPreview
+        from gui_qt.bsa.bsa_preview import BsaPreview
         name = rel_str.replace("\\", "/").rsplit("/", 1)[-1]
         existing = getattr(self, "_bsa_preview_widget", None)
         if existing is not None and self._tabs.has_key("mf_bsa_preview"):
@@ -9805,7 +9805,7 @@ class MainWindow(QMainWindow):
 
     def _on_pack_bsa(self):
         import Utils.archives.bsa_pack_ops as ops
-        from gui_qt.bsa_pack_overlay import BsaPackOverlay
+        from gui_qt.bsa.bsa_pack_overlay import BsaPackOverlay
 
         if self._bsa_op_running:
             self._notify(self.tr("An archive operation is already running."), "warning")
@@ -9886,7 +9886,7 @@ class MainWindow(QMainWindow):
 
     def _on_unpack_bsa(self):
         import Utils.archives.bsa_pack_ops as ops
-        from gui_qt.bsa_unpack_overlay import BsaUnpackOverlay
+        from gui_qt.bsa.bsa_unpack_overlay import BsaUnpackOverlay
 
         if self._bsa_op_running:
             self._notify(self.tr("An archive operation is already running."), "warning")

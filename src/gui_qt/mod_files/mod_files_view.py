@@ -466,7 +466,7 @@ class ModFilesView(QWidget):
         if node.rel_str is None:
             return
         ext = Path(node.rel_str).suffix.lower()
-        from gui_qt.bsa_preview import ARCHIVE_EXTS
+        from gui_qt.bsa.bsa_preview import ARCHIVE_EXTS
         if ext in ARCHIVE_EXTS:
             target = self._disk_path_for(node)
             if target is None or not target.is_file():
