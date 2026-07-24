@@ -889,14 +889,14 @@ class CustomGameView(QWidget):
             self._validation.setText(err)
             return
         self._validation.setText("")
-        from gui_qt.share_code_overlay import CustomGameExportOverlay
+        from gui_qt.overlays.share_code_overlay import CustomGameExportOverlay
         defn = self._collect_definition()
         code = encode_custom_game_definition(defn)
         CustomGameExportOverlay(self.window(), code, game_name=defn.get("name", ""))
 
     def _on_import_code(self):
         """Prefill the (define-mode) form from a pasted share code."""
-        from gui_qt.share_code_overlay import CustomGameImportOverlay
+        from gui_qt.overlays.share_code_overlay import CustomGameImportOverlay
 
         def _done(defn):
             if not defn:

@@ -242,7 +242,7 @@ def _delete_selected(win):
         if rows:
             m.save()
 
-    from gui_qt.confirm_overlay import ConfirmOverlay
+    from gui_qt.overlays.confirm_overlay import ConfirmOverlay
     ConfirmOverlay.show_over(
         view, "Remove mod" if n == 1 else "Remove mods",
         prompt + "\n\nThis deletes the mod folder(s) and cannot be undone.",

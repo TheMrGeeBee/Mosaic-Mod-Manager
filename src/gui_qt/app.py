@@ -749,7 +749,7 @@ class MainWindow(QMainWindow):
         else:
             from Utils.wine_proton.flatpak_i386 import MANUAL_INSTALL_CMD
             self._append_log(f"[flatpak] install manually: {MANUAL_INSTALL_CMD}")
-            from gui_qt.confirm_overlay import ConfirmOverlay
+            from gui_qt.overlays.confirm_overlay import ConfirmOverlay
 
             def _done(dont_show_again: bool):
                 if dont_show_again:
@@ -1579,7 +1579,7 @@ class MainWindow(QMainWindow):
             self._downloads_view.clear_checks()
             self._downloads_view.refresh()
 
-        from gui_qt.confirm_overlay import ConfirmOverlay
+        from gui_qt.overlays.confirm_overlay import ConfirmOverlay
         ConfirmOverlay.show_over(
             self, self.tr("Remove archives"),
             self.tr("Permanently delete {0} archive(s) from disk?\n\n").format(len(paths))
@@ -1640,7 +1640,7 @@ class MainWindow(QMainWindow):
         if clashes:
             names = "\n".join(Path(p).name for p in clashes[:20])
             more = f"\n… and {len(clashes) - 20} more" if len(clashes) > 20 else ""
-            from gui_qt.confirm_overlay import ConfirmOverlay
+            from gui_qt.overlays.confirm_overlay import ConfirmOverlay
             ConfirmOverlay.show_over(
                 self, self.tr("Overwrite archives"),
                 self.tr("{0} file(s) already exist in that folder and will be "
@@ -2466,7 +2466,7 @@ class MainWindow(QMainWindow):
     def _on_app_update_found(self, payload):
         """Show the update banner over the modlist panel (UI thread)."""
         current, latest, mode, is_prerelease, is_downgrade = payload
-        from gui_qt.update_overlay import UpdateOverlay
+        from gui_qt.overlays.update_overlay import UpdateOverlay
 
         # Dismiss any prior banner so re-checking (e.g. after toggling the
         # pre-release setting) doesn't stack multiple overlays.
@@ -2534,7 +2534,7 @@ class MainWindow(QMainWindow):
         only apply on a fresh launch. The value is already persisted by the
         caller; confirm, then restart on OK — on Cancel it applies next launch."""
         try:
-            from gui_qt.confirm_overlay import ConfirmOverlay
+            from gui_qt.overlays.confirm_overlay import ConfirmOverlay
             ConfirmOverlay.show_over(
                 self,
                 self.tr("Restart to change UI scale?"),
@@ -2554,7 +2554,7 @@ class MainWindow(QMainWindow):
         on a fresh launch. The value is already persisted by the caller; confirm,
         then restart on OK — on Cancel it applies next launch."""
         try:
-            from gui_qt.confirm_overlay import ConfirmOverlay
+            from gui_qt.overlays.confirm_overlay import ConfirmOverlay
             ConfirmOverlay.show_over(
                 self,
                 self.tr("Restart to change theme?"),
@@ -2581,7 +2581,7 @@ class MainWindow(QMainWindow):
         confirm first (a restart is disruptive) then restart on OK — on Cancel
         the new language simply applies at the next manual launch."""
         try:
-            from gui_qt.confirm_overlay import ConfirmOverlay
+            from gui_qt.overlays.confirm_overlay import ConfirmOverlay
             ConfirmOverlay.show_over(
                 self,
                 self.tr("Restart to change language?"),
@@ -3139,7 +3139,7 @@ class MainWindow(QMainWindow):
             threading.Thread(target=_worker, daemon=True,
                              name="appended-col-remove").start()
 
-        from gui_qt.confirm_overlay import ConfirmOverlay
+        from gui_qt.overlays.confirm_overlay import ConfirmOverlay
         ConfirmOverlay.show_over(self, self.tr("Remove appended collection"),
                                  body, _confirmed,
                                  confirm_label=self.tr("Remove"))
@@ -3988,7 +3988,7 @@ class MainWindow(QMainWindow):
             ctl.stop.set()
 
     def _on_col_cancel_clicked(self):
-        from gui_qt.confirm_overlay import ConfirmOverlay
+        from gui_qt.overlays.confirm_overlay import ConfirmOverlay
 
         def _done(confirmed):
             if not confirmed:
@@ -4200,7 +4200,7 @@ class MainWindow(QMainWindow):
         self._col_offsite = []
         if not offsite:
             return
-        from gui_qt.confirm_overlay import ConfirmOverlay
+        from gui_qt.overlays.confirm_overlay import ConfirmOverlay
         names = [name or url for name, url in offsite]
         shown = "\n".join(f"• {n}" for n in names[:8])
         if len(names) > 8:
@@ -4372,7 +4372,7 @@ class MainWindow(QMainWindow):
             ok2, msg = self._oauth_client.submit_manual_code(blob)
             self._notify(msg, "info" if ok2 else "warning")
 
-        from gui_qt.text_input_overlay import TextInputOverlay
+        from gui_qt.overlays.text_input_overlay import TextInputOverlay
         TextInputOverlay.show_over(
             self, "Paste Nexus login code",
             "Paste the code from the Nexus 'Having issues?' page:", _pasted,
@@ -6017,7 +6017,7 @@ class MainWindow(QMainWindow):
 
         if len(names) == 1 and existing:
             # Single mod already there → Replace / Rename / Cancel.
-            from gui_qt.mod_exists_overlay import ModExistsOverlay
+            from gui_qt.overlays.mod_exists_overlay import ModExistsOverlay
             nm = names[0]
 
             def _resolved(action, _nm=nm):
@@ -6034,7 +6034,7 @@ class MainWindow(QMainWindow):
             ModExistsOverlay.show_over(self, nm, False, _resolved)
         else:
             # Several already there → one Replace-or-skip prompt (Tk parity).
-            from gui_qt.confirm_overlay import ConfirmOverlay
+            from gui_qt.overlays.confirm_overlay import ConfirmOverlay
 
             def _resolved(replace):
                 if replace:
@@ -6767,7 +6767,7 @@ class MainWindow(QMainWindow):
             self._notify(
                 self.tr("No mods with a Nexus mod + file ID to share."), "warning")
             return
-        from gui_qt.share_code_overlay import ShareCodeExportOverlay
+        from gui_qt.overlays.share_code_overlay import ShareCodeExportOverlay
         ShareCodeExportOverlay(self.window(), code, mod_count)
         self._append_log(f"[export-code] built code for {mod_count} mod(s).")
 
@@ -6804,7 +6804,7 @@ class MainWindow(QMainWindow):
             self._open_manifest_import(
                 manifest, f"{src_name}_code", bundle_zip="", allow_append=True)
 
-        from gui_qt.share_code_overlay import ShareCodeImportOverlay
+        from gui_qt.overlays.share_code_overlay import ShareCodeImportOverlay
         ShareCodeImportOverlay(self.window(), _got)
 
     def _open_profile_settings_tab(self):
@@ -7089,7 +7089,7 @@ class MainWindow(QMainWindow):
             except ValueError:
                 hint = str(p.parent)
             items.append((f"{p.name}  —  {hint}", p))
-        from gui_qt.staging_exe_picker_overlay import StagingExePickerOverlay
+        from gui_qt.overlays.staging_exe_picker_overlay import StagingExePickerOverlay
         StagingExePickerOverlay.show_over(
             self.centralWidget() or self, items,
             on_done=self._on_staging_exes_picked)
@@ -7117,7 +7117,7 @@ class MainWindow(QMainWindow):
             except ValueError:
                 hint = str(p.parent)
             items.append((p.name if hint == "." else f"{p.name}  —  {hint}", p))
-        from gui_qt.staging_exe_picker_overlay import StagingExePickerOverlay
+        from gui_qt.overlays.staging_exe_picker_overlay import StagingExePickerOverlay
         StagingExePickerOverlay.show_over(
             self.centralWidget() or self, items,
             on_done=self._on_staging_exes_picked,
@@ -7288,7 +7288,7 @@ class MainWindow(QMainWindow):
         """Borderless overlay with the game-launch settings (Tk: game-exe
         branch of the Configure dialog)."""
         from Utils.exe_launch import exe_launch
-        from gui_qt.launcher_settings_overlay import LauncherSettingsOverlay
+        from gui_qt.overlays.launcher_settings_overlay import LauncherSettingsOverlay
         exe_key = exe_launch.game_exe_key(game)
 
         def _done(mode, deploy):
@@ -7367,7 +7367,7 @@ class MainWindow(QMainWindow):
 
     def _show_warn_popup(self, title: str, message: str, card_h):
         """ui_hooks.warn → OK-only message card (arrives via _warn_popup)."""
-        from gui_qt.confirm_overlay import ConfirmOverlay
+        from gui_qt.overlays.confirm_overlay import ConfirmOverlay
         ConfirmOverlay.show_message(
             self, title, message,
             card_h=card_h if isinstance(card_h, int) else None)
@@ -7381,7 +7381,7 @@ class MainWindow(QMainWindow):
     def _prompt_mewgenics_deploy(self, game):
         """Ask whether to generate a Steam launch command or repack the gpak,
         then act on the choice (Tk parity: gui/mewgenics_dialogs.py)."""
-        from gui_qt.mewgenics_deploy_overlay import (
+        from gui_qt.overlays.mewgenics_deploy_overlay import (
             MewgenicsDeployChoiceOverlay, MewgenicsLaunchCommandOverlay,
         )
         profile = self._gs.profile
@@ -8263,7 +8263,7 @@ class MainWindow(QMainWindow):
         """Open the borderless favourites picker for the given wizard *tools*.
         Saving replaces the global favourites set; the Wizard menu rebuilds its
         Favourites submenu on next open."""
-        from gui_qt.favourite_wizards_overlay import FavouriteWizardsOverlay
+        from gui_qt.overlays.favourite_wizards_overlay import FavouriteWizardsOverlay
         from Utils.ui_config import load_favourite_wizards, save_favourite_wizards
         # Only offer tools that are actually openable (ported to Qt).
         from wizards_qt import get_spec
@@ -8495,7 +8495,7 @@ class MainWindow(QMainWindow):
         The progress popup is hidden while the user decides (no work running)."""
         if self._progress_popup is not None:
             self._progress_popup.clear()
-        from gui_qt.set_prefix_overlay import SetPrefixOverlay
+        from gui_qt.overlays.set_prefix_overlay import SetPrefixOverlay
 
         def _done(result):
             payload["holder"]["result"] = result
@@ -8527,7 +8527,7 @@ class MainWindow(QMainWindow):
         """UI thread: show the Mod-Already-Exists overlay; unblock the worker."""
         if self._progress_popup is not None:
             self._progress_popup.clear()
-        from gui_qt.mod_exists_overlay import ModExistsOverlay
+        from gui_qt.overlays.mod_exists_overlay import ModExistsOverlay
 
         def _done(result):
             payload["holder"]["result"] = result or "cancel"
@@ -8565,7 +8565,7 @@ class MainWindow(QMainWindow):
         The progress popup is cleared while the user decides (no work running)."""
         if self._progress_popup is not None:
             self._progress_popup.clear()
-        from gui_qt.confirm_overlay import ConfirmOverlay
+        from gui_qt.overlays.confirm_overlay import ConfirmOverlay
 
         def _done(ok):
             payload["holder"]["result"] = bool(ok)
@@ -9150,7 +9150,7 @@ class MainWindow(QMainWindow):
             return
         if not (staging / old_name).is_dir() or not (staging / new_name).is_dir():
             return
-        from gui_qt.remove_previous_overlay import RemovePreviousOverlay
+        from gui_qt.overlays.remove_previous_overlay import RemovePreviousOverlay
 
         def _done(result):
             if result == "remove":
@@ -9215,7 +9215,7 @@ class MainWindow(QMainWindow):
             renamed = self._rename_mod_on_disk(name, new.strip())
             on_done(renamed or name)
 
-        from gui_qt.text_input_overlay import TextInputOverlay
+        from gui_qt.overlays.text_input_overlay import TextInputOverlay
         TextInputOverlay.show_over(
             self, "Rename mod", "New name for the installed mod:", _named,
             initial=name, ok_label=self.tr("Rename"))
@@ -9240,7 +9240,7 @@ class MainWindow(QMainWindow):
         if new_folder.exists():
             # Collision → let the user Replace the existing mod, pick another
             # name, or cancel (same overlay the installer uses).
-            from gui_qt.mod_exists_overlay import ModExistsOverlay
+            from gui_qt.overlays.mod_exists_overlay import ModExistsOverlay
 
             def _resolved(result):
                 if not result or result == "cancel":

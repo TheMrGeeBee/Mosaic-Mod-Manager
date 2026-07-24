@@ -391,7 +391,7 @@ class ProfileSettingsView(QWidget):
     def _on_remove(self, profile: str):
         if self._is_original_default(profile) or self._is_profile_locked(profile):
             return
-        from gui_qt.confirm_overlay import ConfirmOverlay
+        from gui_qt.overlays.confirm_overlay import ConfirmOverlay
 
         def after_first(ok: bool):
             if not ok:

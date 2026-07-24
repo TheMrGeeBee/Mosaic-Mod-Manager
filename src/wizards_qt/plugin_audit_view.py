@@ -221,7 +221,7 @@ class PluginAuditView(WizardViewBase):
         if not selected:
             return
         # Confirm via the shared borderless overlay.
-        from gui_qt.confirm_overlay import ConfirmOverlay
+        from gui_qt.overlays.confirm_overlay import ConfirmOverlay
         preview = "\n".join(f"  • {n}" for n in selected[:5])
         if len(selected) > 5:
             preview += "\n  • …"
@@ -246,7 +246,7 @@ class PluginAuditView(WizardViewBase):
         if not targets:
             self._results_summary.setText(self.tr("No orphaned INIs to clean."))
             return
-        from gui_qt.confirm_overlay import ConfirmOverlay
+        from gui_qt.overlays.confirm_overlay import ConfirmOverlay
         ConfirmOverlay.show_over(
             self, self.tr("Clean Orphaned INIs"),
             (self.tr("Delete SkyGen-generated INI files for {0} plugin(s) "

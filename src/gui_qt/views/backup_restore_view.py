@@ -25,8 +25,8 @@ from PySide6.QtWidgets import (
 )
 
 from gui_qt.theme.theme_qt import active_palette, _c, danger_close_button, button_qss
-from gui_qt.text_input_overlay import TextInputOverlay
-from gui_qt.confirm_overlay import ConfirmOverlay
+from gui_qt.overlays.text_input_overlay import TextInputOverlay
+from gui_qt.overlays.confirm_overlay import ConfirmOverlay
 from Utils.profile.profile_backup import (
     create_backup, list_backups, restore_backup, backup_stats, delete_backup,
     is_backup_kept, set_backup_kept, get_backup_label, set_backup_label,

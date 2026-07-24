@@ -23,7 +23,7 @@ from PySide6.QtWidgets import (
 
 from gui_qt.overlay_base import OverlayBase
 from gui_qt.theme.theme_qt import active_palette, _c
-from gui_qt.confirm_overlay import ConfirmOverlay
+from gui_qt.overlays.confirm_overlay import ConfirmOverlay
 from Utils.config_paths import get_download_cache_dir
 
 # Sentinel key (in the checkbox / size-label dicts) for the orphaned-temp row —

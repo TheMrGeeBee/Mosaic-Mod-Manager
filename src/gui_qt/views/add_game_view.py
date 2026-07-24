@@ -200,7 +200,7 @@ class AddGameView(QWidget):
         # Reflow when the scroll area itself resizes (covers detach into a
         # narrower/wider window, not just the outer view's resizeEvent).
         self._scroll.installEventFilter(self)
-        from gui_qt.loading_overlay import LoadingOverlay
+        from gui_qt.overlays.loading_overlay import LoadingOverlay
         self._loading_overlay = LoadingOverlay(self._scroll)
         outer.addWidget(self._scroll, 1)
 

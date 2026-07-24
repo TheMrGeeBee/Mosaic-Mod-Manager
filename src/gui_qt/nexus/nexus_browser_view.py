@@ -297,7 +297,7 @@ class NexusBrowserView(QWidget):
         self._grid.setAlignment(Qt.AlignTop)
         self._scroll.setWidget(self._grid_host)
         self._scroll.installEventFilter(self)
-        from gui_qt.loading_overlay import LoadingOverlay
+        from gui_qt.overlays.loading_overlay import LoadingOverlay
         self._loading_overlay = LoadingOverlay(self._scroll)
         self._body_split.addWidget(self._scroll)
 
@@ -507,7 +507,7 @@ class NexusBrowserView(QWidget):
         to mods uploaded since the picked date. The Nexus filter is one-ended
         ('createdAt >= cutoff'), so a single 'since' date is converted to a
         day-count and reuses the preset path."""
-        from gui_qt.date_picker_overlay import DatePickerOverlay
+        from gui_qt.overlays.date_picker_overlay import DatePickerOverlay
         today = QDate.currentDate()
         initial = self._custom_time_date or today.addMonths(-3)
         DatePickerOverlay.show_over(

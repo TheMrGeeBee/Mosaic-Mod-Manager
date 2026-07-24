@@ -546,7 +546,7 @@ class ConfigureGameView(QWidget):
                         "Restore the game first."))
             self._game_status.setStyleSheet(f"color:{self._c('TEXT_ERR')};")
             return
-        from gui_qt.confirm_overlay import ConfirmOverlay
+        from gui_qt.overlays.confirm_overlay import ConfirmOverlay
         ConfirmOverlay.show_over(
             self, self.tr("Use Shared Settings?"),
             self.tr("Remove this profile's own paths and options so it follows "
@@ -1175,7 +1175,7 @@ class ConfigureGameView(QWidget):
             self._finalize_save()
             return
         from Utils.wine_proton.prefix_manager import fmt_size
-        from gui_qt.confirm_overlay import ConfirmOverlay
+        from gui_qt.overlays.confirm_overlay import ConfirmOverlay
         body = (f"The staging location for {self._game.name} has changed.\n\n"
                 f"Move {fmt_size(size)} of mods, profiles and overwrite "
                 f"files from\n{old_root}\nto\n{new_root}?\n\n"
@@ -1327,7 +1327,7 @@ class ConfigureGameView(QWidget):
     # ---- destructive actions ----------------------------------------------
     def _confirm(self, title, text, on_yes):
         """Borderless in-app confirm; runs *on_yes* only on confirmation."""
-        from gui_qt.confirm_overlay import ConfirmOverlay
+        from gui_qt.overlays.confirm_overlay import ConfirmOverlay
         ConfirmOverlay.show_over(self, title, text,
                                  lambda ok: on_yes() if ok else None,
                                  confirm_label=self.tr("Yes"))

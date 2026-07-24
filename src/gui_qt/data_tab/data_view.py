@@ -136,7 +136,7 @@ class DataView(QWidget):
         self._tree.viewport().installEventFilter(self)
         v.addWidget(self._tree, 1)
 
-        from gui_qt.loading_overlay import LoadingOverlay
+        from gui_qt.overlays.loading_overlay import LoadingOverlay
         self._loading_overlay = LoadingOverlay(self._tree)
 
     def eventFilter(self, obj, event):

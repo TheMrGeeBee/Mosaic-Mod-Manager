@@ -17,9 +17,9 @@ from PySide6.QtWidgets import QMenu
 from PySide6.QtGui import QAction
 from PySide6.QtCore import QCoreApplication, QT_TRANSLATE_NOOP
 
-from gui_qt.confirm_overlay import ConfirmOverlay
+from gui_qt.overlays.confirm_overlay import ConfirmOverlay
 from gui_qt.modlist.modlist_model import COL_NAME
-from gui_qt.text_input_overlay import TextInputOverlay
+from gui_qt.overlays.text_input_overlay import TextInputOverlay
 
 # Display-only shortcut hints shown right-aligned in the context menu. These MUST
 # match the real window-level QShortcut bindings in gui_qt/shortcuts.py — they are
@@ -998,7 +998,7 @@ def _open_note_editor(view, names):
         if cb is not None:
             cb(list(names))
 
-    from gui_qt.note_editor_overlay import NoteEditorOverlay
+    from gui_qt.overlays.note_editor_overlay import NoteEditorOverlay
     NoteEditorOverlay.show_over(view, title, initial, _save, _remove,
                                 allow_remove=any(notes.get(nm) for nm in names))
 
@@ -1162,7 +1162,7 @@ def _show_overwrite_log(view, boundary_name=None):
     title = (view.tr("Files swept into Root Folder (newest restore first)")
              if is_root
              else view.tr("Files swept into Overwrite (newest restore first)"))
-    from gui_qt.overwrite_log_overlay import OverwriteLogOverlay, parse_overwrite_log
+    from gui_qt.overlays.overwrite_log_overlay import OverwriteLogOverlay, parse_overwrite_log
     OverwriteLogOverlay.show_over(view, parse_overwrite_log(text), title=title)
 
 

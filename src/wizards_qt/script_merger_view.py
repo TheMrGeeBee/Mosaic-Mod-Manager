@@ -233,7 +233,7 @@ class ScriptMergerView(WizardViewBase):
         ]
         if len(missing) > 6:
             lines.append("  • …")
-        from gui_qt.confirm_overlay import ConfirmOverlay
+        from gui_qt.overlays.confirm_overlay import ConfirmOverlay
         ConfirmOverlay.show_over(
             self, self.tr("Existing Merges Use Missing Mods"),
             self.tr(

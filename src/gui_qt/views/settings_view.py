@@ -667,7 +667,7 @@ class SettingsView(QWidget):
 
     def _on_enroll_flatpak_remote(self):
         """Confirm, then add the remote + reinstall-from-remote (relaunches)."""
-        from gui_qt.confirm_overlay import ConfirmOverlay
+        from gui_qt.overlays.confirm_overlay import ConfirmOverlay
         from Utils.version_check import enroll_flatpak_remote
         from Utils.ui_config import load_allow_prerelease
 
@@ -800,7 +800,7 @@ class SettingsView(QWidget):
     # ---- Manage Caches ----------------------------------------------------
     def _on_manage_caches(self):
         """Open the borderless per-game cache browser overlay (Tk parity)."""
-        from gui_qt.cache_manager_overlay import CacheManagerOverlay
+        from gui_qt.overlays.cache_manager_overlay import CacheManagerOverlay
         active = getattr(getattr(self._window, "_gs", None), "game_name", "") or ""
         CacheManagerOverlay.show_over(
             self._window, active_game_name=active)

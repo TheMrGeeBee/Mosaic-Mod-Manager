@@ -32,8 +32,8 @@ from PySide6.QtWidgets import (
 
 from gui_qt.theme.theme_qt import active_palette, _c
 from gui_qt.theme.theme_preview import ThemePreviewPanel
-from gui_qt.color_picker_overlay import ColorPickerOverlay
-from gui_qt.confirm_overlay import ConfirmOverlay
+from gui_qt.overlays.color_picker_overlay import ColorPickerOverlay
+from gui_qt.overlays.confirm_overlay import ConfirmOverlay
 from gui_qt.wheel_guard import no_wheel
 from gui_qt.theme import theme_editor_groups as teg
 from Utils.themes import load_palettes, load_display_names, get_ctk_appearance
@@ -497,7 +497,7 @@ class ThemeEditorView(QWidget):
                           then_restart=then_restart)
             return
         # Save As (or a first save on a built-in): ask for a name.
-        from gui_qt.text_input_overlay import TextInputOverlay
+        from gui_qt.overlays.text_input_overlay import TextInputOverlay
         suggestion = self._names.get(self._start_combo.currentData(), "My Theme")
         TextInputOverlay.show_over(
             self, self.tr("Save Theme"), self.tr("Theme name:"),

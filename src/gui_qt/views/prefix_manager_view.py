@@ -255,7 +255,7 @@ class PrefixManagerView(QWidget):
         n = len(entries)
         size = sum(self._sizes.get(e.key, 0) for e in entries)
         size_txt = f" (~{fmt_size(size)})" if size else ""
-        from gui_qt.confirm_overlay import ConfirmOverlay
+        from gui_qt.overlays.confirm_overlay import ConfirmOverlay
 
         def _done(ok: bool, ents=entries):
             if ok:

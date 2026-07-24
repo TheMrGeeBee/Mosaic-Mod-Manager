@@ -260,7 +260,7 @@ class SeparatorSettingsView(QWidget):
                 self._color = chosen.name()  # "#rrggbb"
                 self._sync_colour_ui()
 
-        from gui_qt.color_picker_overlay import ColorPickerOverlay
+        from gui_qt.overlays.color_picker_overlay import ColorPickerOverlay
         ColorPickerOverlay.show_over(self, "Separator colour", initial,
                                      _picked)
 
