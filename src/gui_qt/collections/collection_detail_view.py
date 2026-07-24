@@ -10,7 +10,7 @@ from PySide6.QtWidgets import (
     QHeaderView, QAbstractItemView,
 )
 
-from gui_qt.theme_qt import active_palette, _c
+from gui_qt.theme.theme_qt import active_palette, _c
 from gui_qt.safe_emit import safe_emit
 from gui_qt.worker import run_in_worker
 from Utils.collections.collection_manifest import fmt_size

@@ -9,7 +9,7 @@ from PySide6.QtCore import Qt, QRect
 from PySide6.QtGui import QFont
 from PySide6.QtWidgets import QStyledItemDelegate
 
-from gui_qt.theme_qt import active_palette, _c, qc
+from gui_qt.theme.theme_qt import active_palette, _c, qc
 from gui_qt.icons import icon
 from gui_qt.data_model import COL_NAME, COL_MOD
 

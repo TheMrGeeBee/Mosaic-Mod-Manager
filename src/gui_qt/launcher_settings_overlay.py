@@ -16,7 +16,7 @@ from PySide6.QtWidgets import (
 )
 
 from gui_qt.overlay_base import OverlayBase
-from gui_qt.theme_qt import active_palette, _c
+from gui_qt.theme.theme_qt import active_palette, _c
 from gui_qt.wheel_guard import no_wheel
 
 _MODES = ["Auto", "Steam", "Heroic", "Lutris", "None"]

@@ -19,7 +19,7 @@ from PySide6.QtWidgets import (
     QFrame, QLineEdit, QPushButton, QMenu, QStackedWidget, QSizePolicy,
 )
 
-from gui_qt.theme_qt import apply_theme, active_palette, _c, contrast_text
+from gui_qt.theme.theme_qt import apply_theme, active_palette, _c, contrast_text
 from gui_qt.icons import icon, hamburger_icon
 from gui_qt.modlist.modlist_model import ModListModel, COL_SIZE
 from gui_qt.modlist.modlist_view import ModListView
@@ -995,7 +995,7 @@ class MainWindow(QMainWindow):
         theme touches the whole window, so unlike Settings it takes over the
         entire UI rather than a single panel. Re-opening focuses the existing
         tab."""
-        from gui_qt.theme_editor_view import ThemeEditorView
+        from gui_qt.theme.theme_editor_view import ThemeEditorView
         if self._tabs.has_key("theme_editor"):
             self._tabs.focus_key("theme_editor")
             return

@@ -18,7 +18,7 @@ from PySide6.QtWidgets import (
     QScrollArea, QFrame,
 )
 
-from gui_qt.theme_qt import active_palette, _c, danger_close_button, button_qss, err_text
+from gui_qt.theme.theme_qt import active_palette, _c, danger_close_button, button_qss, err_text
 from gui_qt.safe_emit import safe_emit
 from Utils.wine_proton.prefix_manager import (
     PrefixEntry, enumerate_prefixes, fmt_size, get_dir_size,

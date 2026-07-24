@@ -16,7 +16,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QLabel, QPushButton
 
-from gui_qt.theme_qt import active_palette, _c
+from gui_qt.theme.theme_qt import active_palette, _c
 from gui_qt.nexus.nexus_mod_card import _TwoLineLabel, _fmt_count, cap_summary, wrap_tooltip
 
 CARD_W = 240          # portrait card (Tk collection tile was ~220 wide)
@@ -118,7 +118,7 @@ class CollectionCard(QWidget):
         bl.addWidget(view)
 
         if on_remove is not None:
-            from gui_qt.theme_qt import _lighten
+            from gui_qt.theme.theme_qt import _lighten
             danger = _c(p, "BTN_DANGER")
             remove = QPushButton(self.tr("Remove"))
             remove.setCursor(Qt.PointingHandCursor)

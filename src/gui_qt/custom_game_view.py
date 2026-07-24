@@ -26,7 +26,7 @@ from PySide6.QtWidgets import (
     QPlainTextEdit,
 )
 
-from gui_qt.theme_qt import active_palette, _c
+from gui_qt.theme.theme_qt import active_palette, _c
 from gui_qt.icons import icon, icon_rotated
 from gui_qt.safe_emit import safe_emit
 from Games.Custom.custom_game import (

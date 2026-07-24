@@ -31,7 +31,7 @@ from PySide6.QtWidgets import (
     QCheckBox,
 )
 
-from gui_qt.theme_qt import active_palette, _c
+from gui_qt.theme.theme_qt import active_palette, _c
 
 _REQ_TONE = "#3c8a3c"    # "Required" badge (green, matches Tk BG_MOD_REQ)
 _OPT_TONE = "#b07c28"    # "Optional" badge (amber, matches Tk BG_MOD_OPT)

@@ -18,7 +18,7 @@ from PySide6.QtWidgets import (
     QFrame, QSizePolicy, QPushButton,
 )
 
-from gui_qt.theme_qt import active_palette, _c, danger_close_button, button_qss
+from gui_qt.theme.theme_qt import active_palette, _c, danger_close_button, button_qss
 from gui_qt.modlist.modlist_delegate import _contrasting_text_color
 
 

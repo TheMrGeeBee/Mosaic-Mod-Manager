@@ -27,7 +27,7 @@ from PySide6.QtWidgets import (
     QListWidget, QComboBox, QFrame, QScrollArea,
 )
 
-from gui_qt.theme_qt import active_palette, _c, danger_close_button, button_qss
+from gui_qt.theme.theme_qt import active_palette, _c, danger_close_button, button_qss
 from gui_qt.wheel_guard import no_wheel
 from Utils.userlist import (
     DEFAULT_GROUP, parse_userlist, write_userlist, remove_group,

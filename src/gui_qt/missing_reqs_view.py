@@ -23,7 +23,7 @@ from PySide6.QtWidgets import (
     QScrollArea, QFrame,
 )
 
-from gui_qt.theme_qt import active_palette, _c, danger_close_button, button_qss
+from gui_qt.theme.theme_qt import active_palette, _c, danger_close_button, button_qss
 from gui_qt.safe_emit import safe_emit
 
 

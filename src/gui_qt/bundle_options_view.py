@@ -26,7 +26,7 @@ from PySide6.QtWidgets import (
     QCheckBox, QButtonGroup, QScrollArea, QSizePolicy, QSplitter,
 )
 
-from gui_qt.theme_qt import active_palette, _c, danger_close_button
+from gui_qt.theme.theme_qt import active_palette, _c, danger_close_button
 from gui_qt.icons import icon_rotated
 from gui_qt.image_preview import _load_qimage
 from PySide6.QtGui import QPixmap

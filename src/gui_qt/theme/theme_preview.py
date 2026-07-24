@@ -25,7 +25,7 @@ from PySide6.QtWidgets import (
     QTabBar, QTreeWidget, QTreeWidgetItem, QListWidget, QProgressBar,
 )
 
-from gui_qt.theme_qt import (
+from gui_qt.theme.theme_qt import (
     build_qss, build_qpalette, button_qss, contrast_text, qc, qc_contrast, _c,
 )
 from gui_qt.wheel_guard import no_wheel

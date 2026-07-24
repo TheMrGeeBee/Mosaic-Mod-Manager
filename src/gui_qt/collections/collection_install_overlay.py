@@ -31,7 +31,7 @@ from PySide6.QtWidgets import (
     QProgressBar, QSizePolicy, QSpinBox,
 )
 
-from gui_qt.theme_qt import active_palette, _c
+from gui_qt.theme.theme_qt import active_palette, _c
 
 # Status tones (match the Tk overlay: queued = amber, active = normal text).
 _QUEUED_TONE = "#e5a640"

@@ -17,7 +17,7 @@ from PySide6.QtWidgets import (
     QLineEdit, QPushButton, QRadioButton, QScrollArea, QVBoxLayout, QWidget,
 )
 
-from gui_qt.theme_qt import active_palette, _c
+from gui_qt.theme.theme_qt import active_palette, _c
 from wizards_qt._view_base import GREEN, RED, WizardViewBase
 import Utils.modding_tools.sdt_config as cfg
 

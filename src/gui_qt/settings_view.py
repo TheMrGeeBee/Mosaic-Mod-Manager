@@ -25,7 +25,7 @@ from PySide6.QtWidgets import (
     QLabel, QCheckBox, QComboBox, QSlider, QLineEdit, QPushButton, QGroupBox,
 )
 
-from gui_qt.theme_qt import active_palette, _c
+from gui_qt.theme.theme_qt import active_palette, _c
 from gui_qt.wheel_guard import no_wheel
 from Utils import ui_config as uc
 

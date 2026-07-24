@@ -33,7 +33,7 @@ from PySide6.QtWidgets import (
     QScrollArea, QFrame, QTextEdit,
 )
 
-from gui_qt.theme_qt import active_palette, _c
+from gui_qt.theme.theme_qt import active_palette, _c
 from Utils.installers.bain_installer import BainSubPackage
 
 

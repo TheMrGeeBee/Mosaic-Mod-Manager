@@ -24,7 +24,7 @@ from PySide6.QtWidgets import (
     QLineEdit, QComboBox, QFrame,
 )
 
-from gui_qt.theme_qt import active_palette, _c
+from gui_qt.theme.theme_qt import active_palette, _c
 from Utils.userlist import (
     DEFAULT_GROUP, parse_userlist, write_userlist,
     set_plugin_rules, set_plugin_group,

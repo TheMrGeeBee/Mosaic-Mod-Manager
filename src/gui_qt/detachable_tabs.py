@@ -729,7 +729,7 @@ class DetachableTabWidget(QTabWidget):
                 ind.setText(QCoreApplication.translate(
                     "DetachableTabWidget", "Drop to redock"))
                 ind.setAlignment(Qt.AlignCenter)
-                from gui_qt.theme_qt import active_palette, _c
+                from gui_qt.theme.theme_qt import active_palette, _c
                 acc = _c(active_palette(), "ACCENT")
                 ind.setStyleSheet(
                     f"background: rgba(61,174,233,60); color: #fff;"

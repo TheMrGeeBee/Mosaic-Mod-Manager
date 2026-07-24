@@ -27,7 +27,7 @@ from PySide6.QtWidgets import (
     QScrollArea, QFrame, QToolButton, QMenu, QCheckBox,
 )
 
-from gui_qt.theme_qt import active_palette, _c
+from gui_qt.theme.theme_qt import active_palette, _c
 from gui_qt.safe_emit import safe_emit
 from gui_qt.nexus.nexus_mod_card import ThumbnailLoader
 from gui_qt.collections.collection_card import CollectionCard, CARD_W, IMG_W, IMG_H

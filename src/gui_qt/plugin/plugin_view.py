@@ -20,7 +20,7 @@ from PySide6.QtWidgets import (
 
 from gui_qt import column_state
 
-from gui_qt.theme_qt import active_palette, _c, qc, qc_contrast
+from gui_qt.theme.theme_qt import active_palette, _c, qc, qc_contrast
 from gui_qt.icons import icon
 from gui_qt.modlist.modlist_header import TkStyleHeader
 from gui_qt.plugin.plugin_model import (

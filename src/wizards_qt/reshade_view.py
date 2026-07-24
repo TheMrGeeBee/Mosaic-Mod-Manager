@@ -27,7 +27,7 @@ from PySide6.QtWidgets import (
     QLineEdit, QProgressBar, QGridLayout,
 )
 
-from gui_qt.theme_qt import active_palette, _c, button_qss, ok_text, err_text
+from gui_qt.theme.theme_qt import active_palette, _c, button_qss, ok_text, err_text
 from gui_qt.safe_emit import safe_emit
 from Utils.modding_tools.reshade_tools import (
     API_CHOICES, OPTIONAL_SHADER_PACKS, OBSOLETE_PRESET_EFFECTS,

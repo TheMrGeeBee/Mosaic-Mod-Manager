@@ -29,7 +29,7 @@ from PySide6.QtWidgets import (
 )
 
 from gui_qt.tri_state_checkbox import TriStateCheckBox, STATE_OFF
-from gui_qt.theme_qt import active_palette, _c
+from gui_qt.theme.theme_qt import active_palette, _c
 
 PANEL_WIDTH = 320
 

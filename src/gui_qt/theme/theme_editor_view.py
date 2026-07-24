@@ -30,12 +30,12 @@ from PySide6.QtWidgets import (
     QLabel, QComboBox, QPushButton, QCheckBox, QGroupBox, QSplitter,
 )
 
-from gui_qt.theme_qt import active_palette, _c
-from gui_qt.theme_preview import ThemePreviewPanel
+from gui_qt.theme.theme_qt import active_palette, _c
+from gui_qt.theme.theme_preview import ThemePreviewPanel
 from gui_qt.color_picker_overlay import ColorPickerOverlay
 from gui_qt.confirm_overlay import ConfirmOverlay
 from gui_qt.wheel_guard import no_wheel
-from gui_qt import theme_editor_groups as teg
+from gui_qt.theme import theme_editor_groups as teg
 from Utils.themes import load_palettes, load_display_names, get_ctk_appearance
 from Utils import custom_themes as ct
 from Utils import ui_config as uc

@@ -28,7 +28,7 @@ from PySide6.QtWidgets import (
     QStyledItemDelegate,
 )
 
-from gui_qt.theme_qt import active_palette, _c
+from gui_qt.theme.theme_qt import active_palette, _c
 from gui_qt.icons import icon
 
 # Archive extensions that get a content-preview tab instead of an image preview.
@@ -260,7 +260,7 @@ class BsaPreview(QWidget):
         collapse_btn.clicked.connect(lambda: self._tree.collapseAll())
         tbl.addWidget(collapse_btn, 0)
 
-        from gui_qt.theme_qt import danger_close_button
+        from gui_qt.theme.theme_qt import danger_close_button
         close_btn = danger_close_button()
         close_btn.clicked.connect(self.close_requested.emit)
         tbl.addWidget(close_btn, 0)

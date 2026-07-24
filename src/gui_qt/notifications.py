@@ -19,7 +19,7 @@ from PySide6.QtWidgets import (
     QGraphicsOpacityEffect,
 )
 
-from gui_qt.theme_qt import active_palette, _c
+from gui_qt.theme.theme_qt import active_palette, _c
 
 
 def _pal():

@@ -23,7 +23,7 @@ from PySide6.QtWidgets import (
     QStackedWidget, QFrame, QComboBox,
 )
 
-from gui_qt.theme_qt import active_palette, _c, button_qss
+from gui_qt.theme.theme_qt import active_palette, _c, button_qss
 from gui_qt.safe_emit import safe_emit
 from gui_qt.wheel_guard import no_wheel
 from Utils.config_paths import get_default_staging_root, get_config_dir

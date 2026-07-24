@@ -18,7 +18,7 @@ from __future__ import annotations
 from PySide6.QtCore import Qt, QTimer, QPoint
 from PySide6.QtWidgets import QLabel
 
-from gui_qt.theme_qt import active_palette, _c
+from gui_qt.theme.theme_qt import active_palette, _c
 
 
 class _HoverPopup(QLabel):

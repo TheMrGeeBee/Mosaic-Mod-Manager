@@ -18,7 +18,7 @@ from PySide6.QtWidgets import (
     QPushButton, QTextEdit,
 )
 
-from gui_qt.theme_qt import active_palette, _c, qc
+from gui_qt.theme.theme_qt import active_palette, _c, qc
 
 
 class _LineNumberArea(QWidget):

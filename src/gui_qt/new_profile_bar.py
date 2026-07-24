@@ -16,7 +16,7 @@ from PySide6.QtWidgets import (
     QWidget, QHBoxLayout, QLabel, QLineEdit, QCheckBox, QPushButton,
 )
 
-from gui_qt.theme_qt import active_palette, _c
+from gui_qt.theme.theme_qt import active_palette, _c
 
 
 class NewProfileBar(QWidget):

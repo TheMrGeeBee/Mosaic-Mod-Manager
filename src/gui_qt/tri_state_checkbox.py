@@ -46,7 +46,7 @@ class TriStateCheckBox(QAbstractButton):
         # Resolve neutral colours from the active palette so the label + empty
         # box read in both light and dark modes (the module defaults are dark).
         try:
-            from gui_qt.theme_qt import active_palette, _c, contrast_text
+            from gui_qt.theme.theme_qt import active_palette, _c, contrast_text
             pal = active_palette()
             self._include = include_color or _c(pal, "CHECK_FILL")
             self._box_bg = _c(pal, "BG_ROW")

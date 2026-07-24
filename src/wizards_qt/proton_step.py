@@ -24,7 +24,7 @@ from PySide6.QtWidgets import (
     QCheckBox, QComboBox, QLineEdit,
 )
 
-from gui_qt.theme_qt import active_palette, _c, button_qss, ok_text, err_text
+from gui_qt.theme.theme_qt import active_palette, _c, button_qss, ok_text, err_text
 from gui_qt.safe_emit import safe_emit
 from Utils.exe_launch.exe_launch import (
     PREFIX_MODE_GAME, PREFIX_MODE_ISOLATED, PREFIX_MODE_SHARED,

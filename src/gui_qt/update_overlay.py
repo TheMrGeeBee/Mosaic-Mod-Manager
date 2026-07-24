@@ -19,7 +19,7 @@ from PySide6.QtWidgets import (
     QFrame, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QCheckBox,
 )
 
-from gui_qt.theme_qt import active_palette, _c
+from gui_qt.theme.theme_qt import active_palette, _c
 from Utils.version_check import _APP_UPDATE_RELEASES_URL, _AUR_PACKAGE_URL
 
 

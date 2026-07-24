@@ -21,7 +21,7 @@ from PySide6.QtWidgets import (
 )
 
 from gui_qt.safe_emit import safe_emit
-from gui_qt.theme_qt import active_palette, _c
+from gui_qt.theme.theme_qt import active_palette, _c
 from wizards_qt._view_base import GREEN, RED, WizardViewBase
 from Utils.modding_tools.ttw_tools import (
     GITHUB_REPO_URL, MODPUB_URL, OUTPUT_NAME,

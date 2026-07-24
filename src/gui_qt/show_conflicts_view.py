@@ -17,7 +17,7 @@ from PySide6.QtWidgets import (
     QSplitter, QTreeWidget, QTreeWidgetItem,
 )
 
-from gui_qt.theme_qt import active_palette, _c, danger_close_button
+from gui_qt.theme.theme_qt import active_palette, _c, danger_close_button
 from gui_qt.worker import run_in_worker
 from Utils.mods.conflicts_view import BSA_ROW_RE
 

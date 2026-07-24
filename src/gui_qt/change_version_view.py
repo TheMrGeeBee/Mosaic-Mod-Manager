@@ -19,7 +19,7 @@ from PySide6.QtWidgets import (
     QCheckBox, QTableWidget, QTableWidgetItem, QHeaderView, QAbstractItemView,
 )
 
-from gui_qt.theme_qt import active_palette, _c, danger_close_button, button_qss, qc
+from gui_qt.theme.theme_qt import active_palette, _c, danger_close_button, button_qss, qc
 from gui_qt.safe_emit import safe_emit
 from Utils.mods.mod_files_versions import resolve_latest_name_match, fmt_size, sort_key
 

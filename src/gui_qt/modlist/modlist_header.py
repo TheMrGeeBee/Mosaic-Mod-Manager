@@ -87,7 +87,7 @@ class TkStyleHeader(QHeaderView):
             return
         active, ascending = spec
         if self._tri_active is None:
-            from gui_qt.theme_qt import active_palette, _c
+            from gui_qt.theme.theme_qt import active_palette, _c
             p = active_palette()
             self._tri_active = QColor(_c(p, "ACCENT"))
             self._tri_idle = QColor(_c(p, "TEXT_DIM"))

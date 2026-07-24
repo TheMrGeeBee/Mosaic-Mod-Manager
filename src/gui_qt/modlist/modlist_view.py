@@ -267,7 +267,7 @@ class ModListView(QTreeView):
         """A small eye button pinned to the LEFT of the Mod Name column header,
         centred over the row checkbox column below; opens a checkable menu to
         show/hide each toggleable column (Name always stays)."""
-        from gui_qt.theme_qt import active_palette, _c
+        from gui_qt.theme.theme_qt import active_palette, _c
         from gui_qt.icons import icon
         from PySide6.QtCore import QSize
         btn = QToolButton(header)
@@ -1286,7 +1286,7 @@ class ModListView(QTreeView):
             if prev is None:
                 return
             y = self.visualRect(m.index(prev, 0)).bottom()
-        from gui_qt.theme_qt import active_palette, _c
+        from gui_qt.theme.theme_qt import active_palette, _c
         p = QPainter(self.viewport())
         pen = QPen(QColor(_c(active_palette(), "HIGHLIGHT_DRAG")))
         pen.setWidth(2)

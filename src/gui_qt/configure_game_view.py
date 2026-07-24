@@ -24,7 +24,7 @@ from PySide6.QtWidgets import (
     QPushButton, QScrollArea, QFrame, QRadioButton, QCheckBox, QButtonGroup,
 )
 
-from gui_qt.theme_qt import active_palette, _c
+from gui_qt.theme.theme_qt import active_palette, _c
 from gui_qt.add_game_view import _game_logo
 from gui_qt.safe_emit import safe_emit
 from gui_qt.worker import run_in_worker, NO_EMIT

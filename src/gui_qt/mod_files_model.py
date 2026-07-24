@@ -151,7 +151,7 @@ class ModFilesModel(QAbstractItemModel):
                 return self._disable_state(node)
 
         if role == Qt.ForegroundRole and col == COL_NAME:
-            from gui_qt.theme_qt import active_palette, qc
+            from gui_qt.theme.theme_qt import active_palette, qc
             pal = active_palette()
             if node.synthetic or self._is_greyed(node):
                 return qc(pal, "FILE_DIM")

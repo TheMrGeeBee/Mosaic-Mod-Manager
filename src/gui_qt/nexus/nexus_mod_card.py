@@ -24,7 +24,7 @@ from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QFrame,
 )
 
-from gui_qt.theme_qt import active_palette, _c, contrast_text
+from gui_qt.theme.theme_qt import active_palette, _c, contrast_text
 
 CARD_W = 300
 CARD_H = 392

@@ -26,7 +26,7 @@ from PySide6.QtWidgets import (
     QScrollArea, QPushButton, QFrame, QCheckBox,
 )
 
-from gui_qt.theme_qt import active_palette, _c
+from gui_qt.theme.theme_qt import active_palette, _c
 
 _ICONS_DIR = Path(__file__).resolve().parent.parent / "icons" / "games"
 

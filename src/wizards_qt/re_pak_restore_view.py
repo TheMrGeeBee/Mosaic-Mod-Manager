@@ -23,7 +23,7 @@ from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QPlainTextEdit,
 )
 
-from gui_qt.theme_qt import active_palette, _c, button_qss, err_text
+from gui_qt.theme.theme_qt import active_palette, _c, button_qss, err_text
 from gui_qt.safe_emit import safe_emit
 from Utils.archives.re_pak_patcher import (
     ROOT_MANIFEST_NAME,

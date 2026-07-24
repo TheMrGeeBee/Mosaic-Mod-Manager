@@ -9,7 +9,7 @@ from PySide6.QtCore import Qt, QRect, QEvent, QSize
 from PySide6.QtGui import QPen, QBrush, QFont
 from PySide6.QtWidgets import QStyledItemDelegate
 
-from gui_qt.theme_qt import active_palette, qc, qc_contrast
+from gui_qt.theme.theme_qt import active_palette, qc, qc_contrast
 from gui_qt.downloads.downloads_model import (
     COL_CHECK, COL_NAME, COL_SIZE, COL_INSTALL, EntryRole, InstalledRole,
 )

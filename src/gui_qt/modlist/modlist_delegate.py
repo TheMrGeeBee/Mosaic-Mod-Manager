@@ -14,7 +14,7 @@ from PySide6.QtCore import Qt, QRect, QSize, QEvent, QT_TRANSLATE_NOOP
 from PySide6.QtGui import QColor, QFont, QPen, QBrush
 from PySide6.QtWidgets import QStyledItemDelegate, QStyle, QToolTip
 
-from gui_qt.theme_qt import active_palette, _c, qc, qc_contrast
+from gui_qt.theme.theme_qt import active_palette, _c, qc, qc_contrast
 from gui_qt.icons import icon
 from gui_qt.modlist.modlist_model import (
     EntryRole, ConflictRole, BsaConflictRole, FlagsRole, HighlightRole,

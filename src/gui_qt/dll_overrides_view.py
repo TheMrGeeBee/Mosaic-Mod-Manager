@@ -21,7 +21,7 @@ from PySide6.QtWidgets import (
     QComboBox, QFrame, QScrollArea,
 )
 
-from gui_qt.theme_qt import active_palette, _c, danger_close_button, contrast_text
+from gui_qt.theme.theme_qt import active_palette, _c, danger_close_button, contrast_text
 from gui_qt.wheel_guard import no_wheel
 from Utils.wine_proton.wine_dll_config import (
     load_wine_dll_overrides, save_wine_dll_overrides,

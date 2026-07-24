@@ -20,7 +20,7 @@ from PySide6.QtWidgets import (
 )
 
 from gui_qt.overlay_base import OverlayBase
-from gui_qt.theme_qt import active_palette, _c, qc, qc_contrast
+from gui_qt.theme.theme_qt import active_palette, _c, qc, qc_contrast
 
 CHECK_BOX = 17        # same as the modlist checkbox
 

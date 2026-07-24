@@ -19,7 +19,7 @@ from PySide6.QtCore import Qt, QRectF
 from PySide6.QtGui import QColor, QCursor, QGuiApplication, QPainter, QPixmap
 from PySide6.QtWidgets import QWidget
 
-from gui_qt.theme_qt import active_palette, _c
+from gui_qt.theme.theme_qt import active_palette, _c
 
 
 _LOGO = Path(__file__).resolve().parent.parent / "icons" / "Logo.png"

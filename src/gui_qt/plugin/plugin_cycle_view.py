@@ -22,7 +22,7 @@ from PySide6.QtWidgets import (
     QFrame, QScrollArea,
 )
 
-from gui_qt.theme_qt import active_palette, _c, danger_close_button
+from gui_qt.theme.theme_qt import active_palette, _c, danger_close_button
 
 _PAL = active_palette()
 STATUS_BROKEN_BG = _c(_PAL, "PLUGIN_CYCLE_ERR_BG")

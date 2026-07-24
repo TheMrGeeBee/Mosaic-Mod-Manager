@@ -28,7 +28,7 @@ from PySide6.QtWidgets import (
     QSplitter,
 )
 
-from gui_qt.theme_qt import active_palette, _c
+from gui_qt.theme.theme_qt import active_palette, _c
 from gui_qt.safe_emit import safe_emit
 from gui_qt.worker import run_in_worker
 from gui_qt.selector_button import SelectorButton

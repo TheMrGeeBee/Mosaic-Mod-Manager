@@ -22,7 +22,7 @@ from PySide6.QtWidgets import (
     QFrame, QRadioButton, QCheckBox, QButtonGroup, QSplitter, QSizePolicy,
 )
 
-from gui_qt.theme_qt import active_palette, _c
+from gui_qt.theme.theme_qt import active_palette, _c
 from Utils.installers.fomod_installer import (
     get_visible_steps, get_default_selections, update_flags,
     validate_selections, resolve_plugin_type, plugin_dep_unmet, plugin_dep_met,

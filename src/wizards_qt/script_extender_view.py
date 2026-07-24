@@ -28,7 +28,7 @@ from PySide6.QtWidgets import (
     QRadioButton, QButtonGroup, QProgressBar, QFrame,
 )
 
-from gui_qt.theme_qt import active_palette, _c, button_qss, ok_text, err_text
+from gui_qt.theme.theme_qt import active_palette, _c, button_qss, ok_text, err_text
 from gui_qt.safe_emit import safe_emit
 from Utils.wizard_support.wizard_archives import (
     fetch_latest_github_asset, find_archive, get_downloads_dir,
