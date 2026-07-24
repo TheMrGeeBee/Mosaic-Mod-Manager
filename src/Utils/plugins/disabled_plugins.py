@@ -34,7 +34,7 @@ def mods_with_disabled_plugins(profile_dir: "Path | None", game=None) -> set[str
     exts = _plugin_exts(game)
     out: set[str] = set()
     try:
-        from Utils.profile_state import read_excluded_mod_files
+        from Utils.profile.profile_state import read_excluded_mod_files
         for mod, keys in (read_excluded_mod_files(profile_dir, None) or {}).items():
             for key in keys:
                 base = str(key).rsplit("/", 1)[-1].lower()
@@ -58,7 +58,7 @@ def disabled_plugin_files(profile_dir: "Path | None", game=None) -> set[str]:
     exts = _plugin_exts(game)
     out: set[str] = set()
     try:
-        from Utils.profile_state import read_excluded_mod_files
+        from Utils.profile.profile_state import read_excluded_mod_files
         for _mod, keys in (read_excluded_mod_files(profile_dir, None) or {}).items():
             for key in keys:
                 base = str(key).rsplit("/", 1)[-1].lower()

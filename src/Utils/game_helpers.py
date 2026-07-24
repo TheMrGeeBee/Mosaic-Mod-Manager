@@ -11,7 +11,7 @@ from Games.base_game import BaseGame
 from Utils.config_paths import get_config_dir, get_profiles_dir, get_last_game_path, get_loot_game_dir
 from Utils.game_loader import discover_games
 from Utils.plugins.plugin_loader import discover_plugins
-from Utils.profile_state import (
+from Utils.profile.profile_state import (
     merge_profile_settings,
     profile_uses_specific_mods,  # re-exported: backend now imports from Utils
     read_profile_settings,

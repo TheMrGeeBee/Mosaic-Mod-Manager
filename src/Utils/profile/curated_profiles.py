@@ -36,7 +36,7 @@ def download_curated_profile(repo_path: str, log_fn=None) -> Path:
     manifest with mods. Returns the downloaded file's path; raises on download
     or validation failure."""
     from Utils.ca_bundle import download_file
-    from Utils.profile_export import read_manifest
+    from Utils.profile.profile_export import read_manifest
 
     log = log_fn or (lambda _m: None)
     url = RAW_BASE + urllib.parse.quote(repo_path.lstrip("/"))

@@ -6,7 +6,7 @@ Per-mod configuration table: Source (Nexus / Direct+URL / Bundle / Ignore), pref
 Version (lazily fetched from Nexus), an Optional flag, and — for mods with FOMOD/BAIN
 installer choices — a Fomod-export toggle. Save / Load persist the flags as timestamped
 JSON in ``<profile>/workshop/`` (kept for cross-compat with the Tk app); Export writes
-the zip. All packaging logic lives in the neutral ``Utils.profile_export``.
+the zip. All packaging logic lives in the neutral ``Utils.profile.profile_export``.
 """
 
 from __future__ import annotations
@@ -26,7 +26,7 @@ from PySide6.QtWidgets import (
 )
 
 from gui_qt.theme_qt import active_palette, _c, contrast_text
-from Utils import profile_export
+from Utils.profile import profile_export
 
 
 _SOURCE_LABELS = {

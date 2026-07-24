@@ -784,7 +784,7 @@ def write_modsettings(
     _log(f"Scanning .pak files for mod metadata (patch {patch_version}) ...")
     no_metadata: list[str] = []
     try:
-        from Utils.profile_state import read_excluded_mod_files
+        from Utils.profile.profile_state import read_excluded_mod_files
         excluded = {m: set(v) for m, v in
                     read_excluded_mod_files(modlist_path.parent, None).items()}
     except Exception:

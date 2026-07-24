@@ -617,7 +617,7 @@ def read_excluded_mod_files(path: Path) -> dict[str, list[str]]:
     Format: {mod_name: [rel_key_lower, ...]}
     """
     if path.name == "excluded_mod_files.json":
-        from Utils.profile_state import read_excluded_mod_files as _read_ps
+        from Utils.profile.profile_state import read_excluded_mod_files as _read_ps
 
         return _read_ps(path.parent, None)
     if not path.is_file():
@@ -634,7 +634,7 @@ def read_excluded_mod_files(path: Path) -> dict[str, list[str]]:
 def write_excluded_mod_files(path: Path, data: dict[str, list[str]]) -> None:
     """Write excluded mod files. If *path* is …/excluded_mod_files.json, delegates to profile_state."""
     if path.name == "excluded_mod_files.json":
-        from Utils.profile_state import write_excluded_mod_files as _write_ps
+        from Utils.profile.profile_state import write_excluded_mod_files as _write_ps
 
         _write_ps(path.parent, data)
         return

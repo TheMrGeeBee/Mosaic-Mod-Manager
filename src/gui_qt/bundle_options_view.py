@@ -13,7 +13,7 @@ option whose files are entirely shadowed by another selected option is marked
 "(overridden)" in red. Checking an option auto-turns-off any other selected option
 with an identical file set ("your click wins"). Hovering an option shows its
 screenshot in the inline preview pane. All the underlying logic is GUI-free in
-Utils.re_bundle.
+Utils.profile.re_bundle.
 """
 
 from __future__ import annotations
@@ -31,7 +31,7 @@ from gui_qt.icons import icon_rotated
 from gui_qt.image_preview import _load_qimage
 from PySide6.QtGui import QPixmap
 
-from Utils.re_bundle import (
+from Utils.profile.re_bundle import (
     option_deployable_rels, option_image, option_description,
 )
 

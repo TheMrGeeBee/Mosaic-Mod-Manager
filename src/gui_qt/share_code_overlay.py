@@ -160,7 +160,7 @@ class ShareCodeImportOverlay(_CodeOverlayBase):
             self._preview.setText("")
             return
         try:
-            from Utils.profile_export import decode_manifest
+            from Utils.profile.profile_export import decode_manifest
             manifest = decode_manifest(text)
         except Exception:
             self._preview.setText(self.tr("Not a valid share code."))

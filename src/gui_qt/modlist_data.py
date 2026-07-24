@@ -103,7 +103,7 @@ def read_meta_for_entries(entries: list[ModEntry], staging_dir: Path,
     notes: dict[str, str] = {}
     if profile_dir is not None:
         try:
-            from Utils.profile_state import read_mod_notes
+            from Utils.profile.profile_state import read_mod_notes
             notes = read_mod_notes(profile_dir)
         except Exception:
             notes = {}
@@ -183,7 +183,7 @@ def read_meta_for_entries(entries: list[ModEntry], staging_dir: Path,
             bits |= FLAG_XEDIT
         # RE/Fluffy bundle mod ([Bundle] section in meta.ini).
         try:
-            from Utils.re_bundle import read_bundle_spec
+            from Utils.profile.re_bundle import read_bundle_spec
             if read_bundle_spec(meta_path) is not None:
                 bits |= FLAG_BUNDLE
         except Exception:

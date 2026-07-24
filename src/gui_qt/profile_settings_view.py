@@ -6,7 +6,7 @@ Each row: a lock toggle (disabled for the default profile), the profile name (wi
 ``(default)`` / ``★`` markers), and Rename / Open / Remove buttons. Rename opens an
 inline bar under the row; Remove restores the game first if the profile is deployed,
 asks a second time if the profile has its own mods, then deletes the folder. All the
-persistence reuses the neutral ``Utils.profile_state`` helpers — no backend rewrite.
+persistence reuses the neutral ``Utils.profile.profile_state`` helpers — no backend rewrite.
 """
 
 from __future__ import annotations
@@ -25,7 +25,7 @@ from PySide6.QtWidgets import (
 from gui_qt.theme_qt import active_palette, _c, danger_close_button, contrast_text
 from gui_qt.icons import icon
 from gui_qt.safe_emit import safe_emit
-from Utils.profile_state import (
+from Utils.profile.profile_state import (
     read_profile_settings, merge_profile_settings, profile_uses_specific_mods,
 )
 from Utils.xdg import xdg_open

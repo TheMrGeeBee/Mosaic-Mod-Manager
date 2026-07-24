@@ -29,7 +29,7 @@ A *row* is a plain dict describing one mod's export configuration::
         "size_bytes":    int,   # original archive size from meta.ini (0 if unknown)
         "root_folder":   bool,  # deploys to game root (meta.ini rootFolder)
         "enabled":       bool,  # modlist enabled state of the source entry
-        "locked":        bool,  # reorder-locked (Utils.profile_state mod_locks)
+        "locked":        bool,  # reorder-locked (Utils.profile.profile_state mod_locks)
         "source":        str,   # "nexus" | "direct" | "bundle" | "ignore"
         "direct_url":    str,
     }
@@ -65,7 +65,7 @@ def load_rows(entries, game) -> list[dict]:
     mod_locks: dict = {}
     if profile_dir:
         try:
-            from Utils.profile_state import read_mod_locks
+            from Utils.profile.profile_state import read_mod_locks
             mod_locks = read_mod_locks(Path(profile_dir))
         except Exception:
             pass
@@ -660,7 +660,7 @@ def _separator_blocks(entries, kept_names: set, profile_dir) -> list[dict]:
     locks = {}
     if profile_dir:
         try:
-            from Utils.profile_state import read_separator_colors, read_separator_locks
+            from Utils.profile.profile_state import read_separator_colors, read_separator_locks
             colors = read_separator_colors(Path(profile_dir))
             locks = read_separator_locks(Path(profile_dir))
         except Exception:

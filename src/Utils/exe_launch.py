@@ -103,7 +103,7 @@ def load_custom_exes(game) -> list[Path]:
     if pdir is None:
         # No active profile (edge case): read the legacy shared list read-only.
         return _read_legacy_exes(game)
-    from Utils.profile_state import read_custom_exes, read_profile_state
+    from Utils.profile.profile_state import read_custom_exes, read_profile_state
     raw = read_custom_exes(pdir)
     if not raw and "custom_exes" not in read_profile_state(pdir):
         migrated = _read_legacy_exes(game)
@@ -117,7 +117,7 @@ def save_custom_exes(game, paths: list[Path]) -> None:
     pdir = _active_profile_dir(game)
     if pdir is None:
         return
-    from Utils.profile_state import write_custom_exes
+    from Utils.profile.profile_state import write_custom_exes
     write_custom_exes(pdir, [str(x) for x in paths])
 
 
@@ -428,7 +428,7 @@ def exe_args_file(game) -> Path:
     try:
         active_dir = getattr(game, "_active_profile_dir", None)
         if active_dir is not None:
-            from Utils.profile_state import profile_uses_specific_mods
+            from Utils.profile.profile_state import profile_uses_specific_mods
             if profile_uses_specific_mods(Path(active_dir)):
                 return get_profile_exe_args_path(Path(active_dir))
     except Exception:

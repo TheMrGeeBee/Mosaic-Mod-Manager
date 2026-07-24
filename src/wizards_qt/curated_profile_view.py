@@ -185,7 +185,7 @@ class CuratedProfileView(WizardViewBase):
         repo_path = self._repo_path
 
         def worker():
-            from Utils.curated_profiles import download_curated_profile
+            from Utils.profile.curated_profiles import download_curated_profile
             _wlog = lambda m: self._log(f"Curated Profile Wizard: {m}")
             try:
                 path = download_curated_profile(repo_path, log_fn=_wlog)
@@ -242,7 +242,7 @@ class CuratedProfileView(WizardViewBase):
             return
         self._bundle_path = Path(path)
         try:
-            from Utils.profile_export import read_manifest
+            from Utils.profile.profile_export import read_manifest
             self._manifest = read_manifest(self._bundle_path)
         except Exception as exc:
             self._set_status(self._fetch_status,

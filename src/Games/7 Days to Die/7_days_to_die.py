@@ -46,7 +46,7 @@ from Games.base_game import BaseGame
 from Utils.deploy.deploy import LinkMode
 from Utils.mods.modlist import read_modlist
 from Utils.config_paths import get_profiles_dir
-from Utils.profile_state import read_excluded_mod_files
+from Utils.profile.profile_state import read_excluded_mod_files
 
 _PROFILES_DIR = get_profiles_dir()
 
@@ -279,7 +279,7 @@ class SevenDaysToDie(BaseGame):
         # disk tree — so the keep-filter offset must have these prefixes peeled
         # off to line up with the stored keys, or per-mod "Disable" exclusions
         # silently miss and disabled folders deploy anyway.
-        from Utils.profile_state import read_mod_strip_prefixes
+        from Utils.profile.profile_state import read_mod_strip_prefixes
         strip_map = {
             m: {p.lower() for p in prefs}
             for m, prefs in read_mod_strip_prefixes(profile_dir).items()

@@ -527,7 +527,7 @@ class ConfigureGameView(QWidget):
 
     def _profile_has_overrides(self) -> bool:
         try:
-            from Utils.profile_state import read_profile_settings
+            from Utils.profile.profile_state import read_profile_settings
             pset = read_profile_settings(self._profile_dir)
         except Exception:
             return False
@@ -557,7 +557,7 @@ class ConfigureGameView(QWidget):
             danger=True)
 
     def _clear_overrides(self):
-        from Utils.profile_state import merge_profile_settings
+        from Utils.profile.profile_state import merge_profile_settings
         try:
             merge_profile_settings(
                 self._profile_dir, {k: None for k in self._overridable_keys()})
@@ -1131,7 +1131,7 @@ class ConfigureGameView(QWidget):
             new_profile_root = g.get_profile_root()
         except Exception:
             new_profile_root = None
-        from Utils.staging_migrate import staging_move_needed
+        from Utils.profile.staging_migrate import staging_move_needed
         if staging_move_needed(old_profile_root, new_profile_root):
             self._start_staging_scan(old_profile_root, new_profile_root)
             return
@@ -1141,7 +1141,7 @@ class ConfigureGameView(QWidget):
     def _finalize_save(self):
         # Ensure the profile structure exists (mods/profiles/overwrite + default).
         try:
-            from Utils.profile_structure import create_profile_structure
+            from Utils.profile.profile_structure import create_profile_structure
             create_profile_structure(self._game)
         except Exception as exc:
             print(f"[gui_qt] profile structure create failed: {exc}", flush=True)
@@ -1163,7 +1163,7 @@ class ConfigureGameView(QWidget):
         sig = self._sig
 
         def scan():
-            from Utils.staging_migrate import collect_staging_files
+            from Utils.profile.staging_migrate import collect_staging_files
             files, size = collect_staging_files(old_root)
             return old_root, new_root, files, size
 
@@ -1203,7 +1203,7 @@ class ConfigureGameView(QWidget):
 
         def worker():
             from Utils.app_log import app_log
-            from Utils.staging_migrate import migrate_staging_files
+            from Utils.profile.staging_migrate import migrate_staging_files
             moved, skipped, failed = migrate_staging_files(
                 old_root, new_root, files, progress_cb=_prog, log_fn=app_log)
             app_log(f"{game_name}: moved {moved} staging file(s) to {new_root}"

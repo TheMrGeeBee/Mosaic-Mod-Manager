@@ -942,7 +942,7 @@ def _profile_notes(view):
     if pdir is None:
         return None, {}
     try:
-        from Utils.profile_state import read_mod_notes
+        from Utils.profile.profile_state import read_mod_notes
         return pdir, read_mod_notes(pdir)
     except Exception:
         return pdir, {}
@@ -959,7 +959,7 @@ def _open_note_editor(view, names):
     pdir, notes = _profile_notes(view)
     if pdir is None or not names:
         return
-    from Utils.profile_state import write_mod_notes
+    from Utils.profile.profile_state import write_mod_notes
     single = len(names) == 1
     title = names[0] if single else f"{len(names)} mods"
     initial = notes.get(names[0], "") if single else ""
@@ -1008,7 +1008,7 @@ def _remove_notes(view, names):
     pdir, notes = _profile_notes(view)
     if pdir is None or not names:
         return
-    from Utils.profile_state import write_mod_notes
+    from Utils.profile.profile_state import write_mod_notes
     cur = dict(notes)
     removed = False
     for nm in names:
@@ -1290,7 +1290,7 @@ def _open_sep_settings(view, model, row):
     profile_dir = getattr(view, "profile_dir", None)
     if profile_dir is not None:
         try:
-            from Utils.profile_state import read_separator_deploy_paths
+            from Utils.profile.profile_state import read_separator_deploy_paths
             current_deploy = read_separator_deploy_paths(profile_dir).get(
                 e.name, {})
         except Exception:

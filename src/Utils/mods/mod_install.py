@@ -1213,7 +1213,7 @@ def prepare_archive(archive_path: str, game, profile_dir: Path, *,
     if (fomod_result is None and not prepared.bain_subpkgs
             and getattr(game, "mod_supports_bundles", False)):
         try:
-            from Utils.re_bundle import detect_re_bundle, detect_multi_mod
+            from Utils.profile.re_bundle import detect_re_bundle, detect_multi_mod
             bundle_root = unwrap_single_folder(str(extract_dir))
             layout = detect_re_bundle(bundle_root)
             if layout is not None:
@@ -1371,7 +1371,7 @@ def finish_install(prepared: "PreparedInstall", fomod_selections, *,
             # selection live in meta.ini's [Bundle] section; the Bundle Options
             # tab re-materialises on change. Downstream (scan/filemap/deploy/
             # update) sees a normal mod.
-            from Utils.re_bundle import (layout_to_spec, merge_bundle_spec,
+            from Utils.profile.re_bundle import (layout_to_spec, merge_bundle_spec,
                                          write_bundle_spec,
                                          materialize_selection, BUNDLE_LIB_DIR)
             layout = p.bundle_layout
@@ -1842,7 +1842,7 @@ def install_collection_archive(
             # finish_install — option folders stashed in <mod>/.mm_bundle/,
             # selection materialised onto the mod root, spec in meta.ini's
             # [Bundle] section (preserved by _write_install_meta below).
-            from Utils.re_bundle import (layout_to_spec, merge_bundle_spec,
+            from Utils.profile.re_bundle import (layout_to_spec, merge_bundle_spec,
                                          write_bundle_spec,
                                          materialize_selection, BUNDLE_LIB_DIR)
             layout = prepared.bundle_layout
@@ -2286,7 +2286,7 @@ def _install_fomod(fomod_base: Path, config, dest_root: Path,
 def _read_old_bundle_spec(dest_root: Path):
     """The [Bundle] spec of an existing install about to be replaced (or None)."""
     try:
-        from Utils.re_bundle import read_bundle_spec
+        from Utils.profile.re_bundle import read_bundle_spec
         return read_bundle_spec(dest_root / "meta.ini")
     except Exception:
         return None

@@ -23,8 +23,8 @@ from Utils.deploy.deploy import (
 )
 from Utils.deploy.deploy_shared import _FILEMAP_SNAPSHOT_NAME
 from Utils.filemap import build_filemap
-from Utils.profile_backup import create_backup
-from Utils.profile_state import read_excluded_mod_files
+from Utils.profile.profile_backup import create_backup
+from Utils.profile.profile_state import read_excluded_mod_files
 from Utils.ui_config import load_normalize_folder_case
 from Utils.wine_dll_config import deploy_game_wine_dll_overrides
 

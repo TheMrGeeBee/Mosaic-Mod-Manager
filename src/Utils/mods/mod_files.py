@@ -21,7 +21,7 @@ from __future__ import annotations
 import threading
 from pathlib import Path
 
-from Utils.profile_state import (
+from Utils.profile.profile_state import (
     read_excluded_mod_files, write_excluded_mod_files,
     read_mod_strip_prefixes, write_mod_strip_prefixes,
 )

@@ -3382,7 +3382,7 @@ class MainWindow(QMainWindow):
         Already-installed mods skip by file_id (Tk parity)."""
         game = info["game"]; slug = info["slug"]
         from Utils.game_helpers import find_profile_with_collection_slug
-        from Utils.profile_state import write_collection_install_paused
+        from Utils.profile.profile_state import write_collection_install_paused
         try:
             pname = find_profile_with_collection_slug(game.name, slug)
         except Exception:
@@ -3435,7 +3435,7 @@ class MainWindow(QMainWindow):
         import json as _json
         from Utils.mods.modlist import read_modlist
         from Utils.collections.collection_diff import diff_collection
-        from Utils.profile_state import read_collection_revision
+        from Utils.profile.profile_state import read_collection_revision
         old_manifest = {}
         try:
             mf = profile_dir / "collection.json"
@@ -3617,7 +3617,7 @@ class MainWindow(QMainWindow):
         skipped_mods = list(info.get("skipped_mods") or [])
 
         from Utils.game_helpers import _create_profile, _profiles_for_game
-        from Utils.profile_state import write_collection_optional_skipped
+        from Utils.profile.profile_state import write_collection_optional_skipped
         import re as _re
 
         # overwrite_existing is None for new/continue (fresh modlist write); a bool
@@ -3747,7 +3747,7 @@ class MainWindow(QMainWindow):
         """Record the collection URL + revision + skipped-optionals on a profile
         that claims this collection (new / continue modes)."""
         from Utils.game_helpers import save_collection_url_to_profile
-        from Utils.profile_state import (
+        from Utils.profile.profile_state import (
             write_collection_revision, write_collection_optional_skipped)
         try:
             url = f"https://www.nexusmods.com/games/{domain}/collections/{slug}"
@@ -4165,7 +4165,7 @@ class MainWindow(QMainWindow):
                 finally:
                     game.set_active_profile_dir(prev)
                     game.load_paths()
-                from Utils import profile_export
+                from Utils.profile import profile_export
                 staged = profile_export.install_local_bundle(
                     bundle_zip, profile_dir, mods_dir, overwrite_dir,
                     log_fn=lambda m: self._op_log.emit(str(m)))
@@ -5379,7 +5379,7 @@ class MainWindow(QMainWindow):
         if staging is None:
             self._notify(self.tr("No mod staging folder for this profile."), "warning")
             return
-        from Utils.re_bundle import read_bundle_spec, BUNDLE_LIB_DIR
+        from Utils.profile.re_bundle import read_bundle_spec, BUNDLE_LIB_DIR
         meta_path = staging / mod_name / "meta.ini"
         spec = read_bundle_spec(meta_path)
         if spec is None:
@@ -5411,7 +5411,7 @@ class MainWindow(QMainWindow):
         if staging is None:
             return
         try:
-            from Utils.re_bundle import write_bundle_spec, materialize_selection
+            from Utils.profile.re_bundle import write_bundle_spec, materialize_selection
             write_bundle_spec(meta_path, new_spec)
             materialize_selection(staging / mod_name, new_spec)
         except Exception as exc:
@@ -5459,7 +5459,7 @@ class MainWindow(QMainWindow):
         self._modlist_model.set_sep_deploy_info(sep_name, deploy)
         if profile_dir is not None:
             try:
-                from Utils.profile_state import (
+                from Utils.profile.profile_state import (
                     read_separator_colors, write_separator_colors,
                     read_separator_deploy_paths, write_separator_deploy_paths)
                 colors = read_separator_colors(profile_dir)
@@ -5501,7 +5501,7 @@ class MainWindow(QMainWindow):
             self._modlist_model.set_sep_deploy_info(new_name, d)
         if profile_dir is not None:
             try:
-                from Utils.profile_state import (
+                from Utils.profile.profile_state import (
                     read_separator_colors, write_separator_colors,
                     read_separator_deploy_paths, write_separator_deploy_paths)
                 colors = read_separator_colors(profile_dir)
@@ -5532,7 +5532,7 @@ class MainWindow(QMainWindow):
             self._modlist_model._collapsed.discard(disp)
         if profile_dir is not None:
             try:
-                from Utils.profile_state import (
+                from Utils.profile.profile_state import (
                     read_separator_colors, write_separator_colors,
                     read_separator_deploy_paths, write_separator_deploy_paths,
                     read_separator_locks, write_separator_locks,
@@ -5613,7 +5613,7 @@ class MainWindow(QMainWindow):
                          "warning")
             return
 
-        from Utils.profile_state import (
+        from Utils.profile.profile_state import (
             read_ignored_missing_requirements, write_ignored_missing_requirements)
         pdir = self._gs.profile_dir()
 
@@ -5702,7 +5702,7 @@ class MainWindow(QMainWindow):
             pdir = self._gs.profile_dir()
             if pdir is not None:
                 try:
-                    from Utils.profile_state import read_ignored_missing_requirements
+                    from Utils.profile.profile_state import read_ignored_missing_requirements
                     self._ignored_missing_reqs = frozenset(
                         read_ignored_missing_requirements(pdir))
                 except Exception:
@@ -6159,7 +6159,7 @@ class MainWindow(QMainWindow):
         lock) — into *target_profile*. Synchronous: separators are small
         JSON/text writes, no worker thread or collision overlay needed;
         colliding names are skipped (dedup by name)."""
-        from Utils import separator_copy
+        from Utils.profile import separator_copy
         from Utils.mods.modlist import _SEPARATOR_SUFFIX
         game = self._gs.game
         src_profile_dir = self._gs.profile_dir()
@@ -6647,7 +6647,7 @@ class MainWindow(QMainWindow):
             self._notify(self.tr("Log in first: Nexus ▸ Login to Nexus ▸ Login via SSO."),
                          "warning")
             return
-        from Utils import profile_export
+        from Utils.profile import profile_export
         try:
             manifest = profile_export.read_manifest(path)
         except Exception as exc:
@@ -6728,7 +6728,7 @@ class MainWindow(QMainWindow):
 
     def _export_code_worker(self, game):
         try:
-            from Utils import profile_export
+            from Utils.profile import profile_export
             from Utils.mods.modlist import read_modlist
             pd = getattr(game, "_active_profile_dir", None)
             modlist_path = (Path(pd) / "modlist.txt") if pd else None
@@ -6786,7 +6786,7 @@ class MainWindow(QMainWindow):
         def _got(text):
             if not text:
                 return
-            from Utils import profile_export
+            from Utils.profile import profile_export
             try:
                 manifest = profile_export.decode_manifest(text)
             except Exception as exc:
@@ -6996,7 +6996,7 @@ class MainWindow(QMainWindow):
         current = game.name
         pdir = self._gs.profile_dir()
         if pdir is not None:
-            from Utils.profile_state import read_selected_exe
+            from Utils.profile.profile_state import read_selected_exe
             saved = read_selected_exe(pdir)
             if saved in self._play_exe_paths:
                 current = saved
@@ -7042,7 +7042,7 @@ class MainWindow(QMainWindow):
         game = self._gs.game
         pdir = self._gs.profile_dir()
         if pdir is not None:
-            from Utils.profile_state import write_selected_exe
+            from Utils.profile.profile_state import write_selected_exe
             is_game = game is not None and label == game.name
             write_selected_exe(pdir, None if is_game else label)
         self._update_play_btn_label(label)
@@ -7324,7 +7324,7 @@ class MainWindow(QMainWindow):
                 # Drop a stale per-profile selection pointing at the removed exe.
                 pdir = self._gs.profile_dir()
                 if pdir is not None:
-                    from Utils.profile_state import (read_selected_exe,
+                    from Utils.profile.profile_state import (read_selected_exe,
                                                      write_selected_exe)
                     if read_selected_exe(pdir) == exe_path.name:
                         write_selected_exe(pdir, None)
@@ -10359,7 +10359,7 @@ class MainWindow(QMainWindow):
             return set()
         out: set[str] = set()
         try:
-            from Utils.profile_state import (
+            from Utils.profile.profile_state import (
                 read_excluded_mod_files, read_mod_strip_prefixes)
             for mod, keys in (read_excluded_mod_files(pdir, None) or {}).items():
                 if keys:
@@ -10603,7 +10603,7 @@ class MainWindow(QMainWindow):
             pdir = self._gs.profile_dir()
             if pdir is not None:
                 try:
-                    from Utils.profile_state import read_ignored_missing_requirements
+                    from Utils.profile.profile_state import read_ignored_missing_requirements
                     self._ignored_missing_reqs = frozenset(
                         read_ignored_missing_requirements(pdir))
                 except Exception:
@@ -11022,7 +11022,7 @@ class MainWindow(QMainWindow):
         if pdir is None:
             return {}
         try:
-            from Utils.profile_state import read_mod_notes
+            from Utils.profile.profile_state import read_mod_notes
             return read_mod_notes(pdir)
         except Exception:
             return {}

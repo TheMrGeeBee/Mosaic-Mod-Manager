@@ -1284,7 +1284,7 @@ class BaseGame(ABC):
         if self._is_default_profile():
             return
         try:
-            from Utils.profile_state import read_profile_settings
+            from Utils.profile.profile_state import read_profile_settings
             pset = read_profile_settings(self._active_profile_dir)
         except Exception:
             return
@@ -1319,7 +1319,7 @@ class BaseGame(ABC):
         """
         if self._active_profile_dir is not None:
             try:
-                from Utils.profile_state import profile_uses_specific_mods
+                from Utils.profile.profile_state import profile_uses_specific_mods
                 if profile_uses_specific_mods(self._active_profile_dir):
                     return self._active_profile_dir / "mods"
             except Exception:
@@ -1361,7 +1361,7 @@ class BaseGame(ABC):
         """
         if self._active_profile_dir is not None:
             try:
-                from Utils.profile_state import profile_uses_specific_mods
+                from Utils.profile.profile_state import profile_uses_specific_mods
                 if profile_uses_specific_mods(self._active_profile_dir):
                     return self._active_profile_dir / "Root_Folder"
             except Exception:
@@ -1598,7 +1598,7 @@ class BaseGame(ABC):
         data = self._read_global_settings()
         if not self._is_default_profile() and self.profile_overridable_settings:
             try:
-                from Utils.profile_state import read_profile_settings
+                from Utils.profile.profile_state import read_profile_settings
                 pset = read_profile_settings(self._active_profile_dir)
             except Exception:
                 pset = {}
@@ -1628,7 +1628,7 @@ class BaseGame(ABC):
                 override_updates[key] = data[key]
         if override_updates:
             try:
-                from Utils.profile_state import merge_profile_settings
+                from Utils.profile.profile_state import merge_profile_settings
                 merge_profile_settings(self._active_profile_dir, override_updates)
             except Exception:
                 pass
@@ -1818,7 +1818,7 @@ class BaseGame(ABC):
         # Non-default profile. Build the current effective value for each field
         # (global overlaid with the existing override) and pin only the fields
         # that the incoming value actually changes.
-        from Utils.profile_state import merge_profile_settings, read_profile_settings
+        from Utils.profile.profile_state import merge_profile_settings, read_profile_settings
         glb = self._read_global_paths()
         existing = read_profile_settings(self._active_profile_dir)
         extras = self._save_paths_extra()

@@ -586,7 +586,7 @@ class Witcher3(BaseGame):
         profile_specific = False
         if self._active_profile_dir is not None:
             try:
-                from Utils.profile_state import profile_uses_specific_mods
+                from Utils.profile.profile_state import profile_uses_specific_mods
                 profile_specific = profile_uses_specific_mods(self._active_profile_dir)
             except Exception:
                 pass

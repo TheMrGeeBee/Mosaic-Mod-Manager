@@ -574,7 +574,7 @@ def build_default_exe_args(
     try:
         active_dir = getattr(game, "_active_profile_dir", None)
         if active_dir is not None:
-            from Utils.profile_state import profile_uses_specific_mods
+            from Utils.profile.profile_state import profile_uses_specific_mods
             if profile_uses_specific_mods(active_dir):
                 target_file = get_profile_exe_args_path(Path(active_dir))
                 effective_staging_path = game.get_effective_mod_staging_path()

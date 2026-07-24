@@ -16,7 +16,7 @@ def resolve_target_staging(game, target_profile_dir: Path) -> Path:
     """The staging folder a mod should be copied INTO for *target_profile_dir*:
     the profile's own ``mods/`` when it uses profile-specific mods, else the
     game's shared staging folder."""
-    from Utils.profile_state import profile_uses_specific_mods
+    from Utils.profile.profile_state import profile_uses_specific_mods
     if profile_uses_specific_mods(target_profile_dir):
         return target_profile_dir / "mods"
     return game.get_mod_staging_path()

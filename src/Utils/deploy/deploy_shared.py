@@ -101,13 +101,13 @@ def _timer(label: str):
 
 def load_per_mod_strip_prefixes(profile_dir: Path) -> dict[str, list[str]]:
     """Load per-mod strip prefixes from profile_state.json (falls back to legacy file)."""
-    from Utils.profile_state import read_mod_strip_prefixes
+    from Utils.profile.profile_state import read_mod_strip_prefixes
     return read_mod_strip_prefixes(profile_dir)
 
 
 def load_separator_deploy_paths(profile_dir: Path) -> dict[str, dict]:
     """Load separator deploy paths from profile_state.json (falls back to legacy file)."""
-    from Utils.profile_state import read_separator_deploy_paths
+    from Utils.profile.profile_state import read_separator_deploy_paths
     return read_separator_deploy_paths(profile_dir)
 
 

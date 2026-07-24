@@ -586,7 +586,7 @@ def auto_disable_packed_files(
     """
     if not packed_rel_keys or profile_dir is None or not is_packable_mod(mod_name):
         return 0
-    from Utils.profile_state import read_excluded_mod_files, write_excluded_mod_files
+    from Utils.profile.profile_state import read_excluded_mod_files, write_excluded_mod_files
 
     all_excluded = read_excluded_mod_files(profile_dir, None)
     merged = set(all_excluded.get(mod_name, ())) | set(packed_rel_keys)
@@ -606,7 +606,7 @@ def clear_excluded_for_unpack(
     """
     if not unpacked_rel_keys or profile_dir is None or not is_packable_mod(mod_name):
         return 0
-    from Utils.profile_state import read_excluded_mod_files, write_excluded_mod_files
+    from Utils.profile.profile_state import read_excluded_mod_files, write_excluded_mod_files
 
     all_excluded = read_excluded_mod_files(profile_dir, None)
     current = set(all_excluded.get(mod_name, ()))
@@ -627,7 +627,7 @@ def read_excluded_for_mod(profile_dir: Path | None, mod_name: str) -> set[str]:
     """Currently-excluded rel_keys for *mod_name* (empty if none / no profile)."""
     if profile_dir is None:
         return set()
-    from Utils.profile_state import read_excluded_mod_files
+    from Utils.profile.profile_state import read_excluded_mod_files
 
     return set(read_excluded_mod_files(profile_dir, None).get(mod_name, ()))
 

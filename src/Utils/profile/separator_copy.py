@@ -51,7 +51,7 @@ def register_separators_in_modlist(target_modlist_path: Path,
 
 def _write_separator_extras(target_profile_dir: Path, separators: "list[dict]",
                             added_names: "list[str]") -> None:
-    from Utils.profile_state import (
+    from Utils.profile.profile_state import (
         read_separator_colors, write_separator_colors,
         read_separator_locks, write_separator_locks)
     by_name = {s["name"]: s for s in separators}

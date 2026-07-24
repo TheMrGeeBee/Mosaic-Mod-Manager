@@ -465,7 +465,7 @@ class CollectionDetailView(QWidget):
             return None
         try:
             from Utils.game_helpers import find_profile_with_collection_slug
-            from Utils.profile_state import read_collection_revision
+            from Utils.profile.profile_state import read_collection_revision
             pname = find_profile_with_collection_slug(self._game.name, slug)
             if not pname:
                 return None
@@ -508,7 +508,7 @@ class CollectionDetailView(QWidget):
         if slug and slug in _PAUSED_COLLECTIONS:
             return True
         try:
-            from Utils.profile_state import read_collection_install_paused
+            from Utils.profile.profile_state import read_collection_install_paused
             return bool(read_collection_install_paused(pdir))
         except Exception:
             return False
@@ -688,7 +688,7 @@ class CollectionDetailView(QWidget):
         if pdir is None or not pdir.is_dir():
             return set()
         try:
-            from Utils.profile_state import read_collection_optional_skipped
+            from Utils.profile.profile_state import read_collection_optional_skipped
             return read_collection_optional_skipped(pdir)
         except Exception:
             return set()

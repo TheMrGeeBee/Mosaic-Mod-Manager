@@ -1544,7 +1544,7 @@ def run_collection_install(
         return
     if _col_pause.is_set():
         try:
-            from Utils.profile_state import write_collection_install_paused
+            from Utils.profile.profile_state import write_collection_install_paused
             write_collection_install_paused(profile_dir, True)
         except Exception:
             pass
@@ -1731,7 +1731,7 @@ def _write_new_profile_modlist(profile_dir, modlist_path, install_order, log):
             final_entries.extend(_preserved)
         write_modlist(modlist_path, final_entries)
         if _bundle_map or _preserved:
-            from Utils.profile_state import read_separator_locks, write_separator_locks
+            from Utils.profile.profile_state import read_separator_locks, write_separator_locks
             _locks = read_separator_locks(profile_dir)
             for bname in _bundle_map:
                 _locks[f"{bname}_separator"] = True
@@ -1792,7 +1792,7 @@ def _apply_schema_locked_mods(modlist_path, collection_schema,
     mods won't reorder). Resolution mirrors ``_apply_schema_disabled_mods``
     (install_order key, falling back to a name match). Unlike enabled/
     disabled, the lock isn't a modlist.txt prefix — it's written into the
-    target profile's ``mod_locks`` (Utils.profile_state), same as a manual
+    target profile's ``mod_locks`` (Utils.profile.profile_state), same as a manual
     Lock mod would."""
     schema_mods: list[dict] = collection_schema.get("mods", [])
     key_to_folder: dict[int, str] = {key: folder for key, folder in install_order}
@@ -1820,7 +1820,7 @@ def _apply_schema_locked_mods(modlist_path, collection_schema,
     if not locked_names:
         return
     try:
-        from Utils.profile_state import read_mod_locks, write_mod_locks
+        from Utils.profile.profile_state import read_mod_locks, write_mod_locks
         locks = read_mod_locks(profile_dir)
         for name in locked_names:
             locks[name] = True
@@ -1877,7 +1877,7 @@ def _apply_manifest_separators(profile_dir, modlist_path, collection_schema, log
         return
     write_modlist(modlist_path, entries)
     try:
-        from Utils.profile_state import (
+        from Utils.profile.profile_state import (
             read_separator_colors, write_separator_colors,
             read_separator_locks, write_separator_locks)
         if colors:

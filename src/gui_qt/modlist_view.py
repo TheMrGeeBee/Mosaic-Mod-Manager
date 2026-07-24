@@ -411,7 +411,7 @@ class ModListView(QTreeView):
         collapsed, locks, colors, deploy_paths = set(), {}, {}, {}
         if self.profile_dir is not None:
             try:
-                from Utils.profile_state import (
+                from Utils.profile.profile_state import (
                     read_collapsed_seps, read_separator_locks,
                     read_separator_colors, read_separator_deploy_paths)
                 collapsed = read_collapsed_seps(self.profile_dir)
@@ -449,7 +449,7 @@ class ModListView(QTreeView):
         locks = {}
         if self.profile_dir is not None:
             try:
-                from Utils.profile_state import read_mod_locks
+                from Utils.profile.profile_state import read_mod_locks
                 locks = read_mod_locks(self.profile_dir)
             except Exception:
                 pass
@@ -628,7 +628,7 @@ class ModListView(QTreeView):
         if self.profile_dir is None:
             return
         try:
-            from Utils.profile_state import (
+            from Utils.profile.profile_state import (
                 write_collapsed_seps, write_separator_locks)
             m = self.model()
             write_collapsed_seps(self.profile_dir, m._collapsed)
@@ -640,7 +640,7 @@ class ModListView(QTreeView):
         if self.profile_dir is None:
             return
         try:
-            from Utils.profile_state import write_mod_locks
+            from Utils.profile.profile_state import write_mod_locks
             write_mod_locks(self.profile_dir, self.model()._mod_locks)
         except Exception as exc:
             print(f"[gui_qt] mod lock state save failed: {exc}", flush=True)

@@ -5,7 +5,7 @@ Version). Qt port of the Tk gui/dialogs.py SepSettingsPanel, merged with the
 SepColorPanel colour picker: the separator colour is edited here instead of via a
 separate "Change separator color" menu item.
 
-Persistence is neutral (Utils.profile_state read/write helpers), keyed by the
+Persistence is neutral (Utils.profile.profile_state read/write helpers), keyed by the
 separator's internal `..._separator` name — the same shape the Tk app writes, so
 existing data round-trips and the deploy pipeline (Utils.deploy.deploy_shared) picks the
 paths up unchanged.
