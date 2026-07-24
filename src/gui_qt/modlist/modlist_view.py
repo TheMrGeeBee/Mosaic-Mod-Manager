@@ -17,14 +17,14 @@ from PySide6.QtWidgets import (
     QStyleOptionViewItem, QToolTip,
 )
 
-from gui_qt.modlist_model import (
+from gui_qt.modlist.modlist_model import (
     ModListModel, COLUMNS, COL_NAME, COL_CATEGORY, COL_PRIORITY, COL_FLAGS,
     COL_CONFLICTS, COL_INSTALLED, COL_VERSION, COL_AUTHOR, COL_SIZE,
     COL_LOCKED, HighlightRole,
 )
-from gui_qt.modlist_delegate import ModRowDelegate, SEP_H
+from gui_qt.modlist.modlist_delegate import ModRowDelegate, SEP_H
 from gui_qt import column_state
-from gui_qt.modlist_header import TkStyleHeader
+from gui_qt.modlist.modlist_header import TkStyleHeader
 
 
 class _StayOpenMenu(QMenu):
@@ -302,7 +302,7 @@ class ModListView(QTreeView):
         btn = getattr(self, "_col_menu_btn", None)
         if btn is None:
             return
-        from gui_qt.modlist_delegate import CHECK_BOX
+        from gui_qt.modlist.modlist_delegate import CHECK_BOX
         h = self.header()
         # Centre the button on the row checkbox column below it: the delegate
         # draws each checkbox at (col_left + 10, …) with width CHECK_BOX.
@@ -345,7 +345,7 @@ class ModListView(QTreeView):
             self._add_quick_filter_action(menu, key, label)
         # The remaining "By status" filters live in a submenu so the top level
         # stays short. Same include-mode semantics as the quick filters above.
-        from gui_qt.modlist_filter import STATUS_FILTERS
+        from gui_qt.modlist.modlist_filter import STATUS_FILTERS
         _QUICK = {"filter_show_enabled", "filter_show_disabled",
                   "filter_hide_separators"}
         more = _StayOpenMenu(self.tr("More status filters"), menu)
@@ -533,7 +533,7 @@ class ModListView(QTreeView):
         if not index.isValid():
             return
         e = self.model().entry(index.row())
-        from gui_qt.modlist_model import _PINNED_NAMES
+        from gui_qt.modlist.modlist_model import _PINNED_NAMES
         # A real (user) separator toggles collapse; the synthetic pinned
         # Overwrite / Root_Folder separators open their folder like a mod.
         if e.is_separator and e.name not in _PINNED_NAMES:
@@ -560,7 +560,7 @@ class ModListView(QTreeView):
         separators / when unresolvable. Mirrors Tk _resolve_entry_folder:
         normal mods live under staging; the synthetic Overwrite / Root_Folder
         separators resolve to the game's effective paths."""
-        from gui_qt.modlist_model import OVERWRITE_NAME, ROOT_FOLDER_NAME
+        from gui_qt.modlist.modlist_model import OVERWRITE_NAME, ROOT_FOLDER_NAME
         m = self.model()
         if not (0 <= row < m.rowCount()):
             return None
@@ -661,7 +661,7 @@ class ModListView(QTreeView):
         if not top_idx.isValid():
             return None
         top = top_idx.row()
-        from gui_qt.modlist_model import _PINNED_NAMES
+        from gui_qt.modlist.modlist_model import _PINNED_NAMES
 
         def _real_sep(r: int) -> bool:
             e = m.entry(r)
@@ -817,7 +817,7 @@ class ModListView(QTreeView):
         mods in its block (Tk parity)."""
         m = self.model()
         names: set[str] = set()
-        from gui_qt.modlist_model import _PINNED_NAMES
+        from gui_qt.modlist.modlist_model import _PINNED_NAMES
         for idx in self.selectionModel().selectedRows():
             e = m.entry(idx.row())
             if e.is_separator:
@@ -899,7 +899,7 @@ class ModListView(QTreeView):
         just itself)."""
         m = self.model()
         e = m.entry(row)
-        from gui_qt.modlist_model import _PINNED_NAMES
+        from gui_qt.modlist.modlist_model import _PINNED_NAMES
         if e.name in _PINNED_NAMES:
             return None
         if not e.is_separator and (e.locked or m.is_mod_locked(e.name)):
@@ -937,7 +937,7 @@ class ModListView(QTreeView):
             if idx.isValid():
                 e = self.model().entry(idx.row())
                 if not e.is_separator:
-                    from gui_qt.modlist_menu import (
+                    from gui_qt.modlist.modlist_menu import (
                         _modio_url, _open_on_modio, _open_on_nexus)
                     if _modio_url(self, e.name):
                         _open_on_modio(self, e.name)
@@ -954,7 +954,7 @@ class ModListView(QTreeView):
             # _press_row/_press_pos above so a press-and-drag still reorders it.
             if idx.isValid():
                 e = self.model().entry(idx.row())
-                from gui_qt.modlist_model import _PINNED_NAMES
+                from gui_qt.modlist.modlist_model import _PINNED_NAMES
                 if e.is_separator and e.name not in _PINNED_NAMES:
                     event.accept()
                     return
@@ -1071,7 +1071,7 @@ class ModListView(QTreeView):
         m = self.model()
         row = idx.row()
         e = m.entry(row) if 0 <= row < m.rowCount() else None
-        from gui_qt.modlist_model import _PINNED_NAMES
+        from gui_qt.modlist.modlist_model import _PINNED_NAMES
         if e is None or not e.is_separator or e.name in _PINNED_NAMES:
             return False
         delegate = self.itemDelegate()
@@ -1133,7 +1133,7 @@ class ModListView(QTreeView):
         if not (0 <= row < m.rowCount()):
             return False
         e = m.entry(row)
-        from gui_qt.modlist_model import _PINNED_NAMES
+        from gui_qt.modlist.modlist_model import _PINNED_NAMES
         if not e.is_separator or e.name in _PINNED_NAMES:
             return False
         delegate = self.itemDelegate()
@@ -1272,7 +1272,7 @@ class ModListView(QTreeView):
         # autoscroll the boundary rect can be measured mid-layout, so the same
         # slot paints at two heights on consecutive frames. Anchor those to the
         # previous movable row's bottom instead — one stable y for the gap.
-        from gui_qt.modlist_model import _PINNED_NAMES
+        from gui_qt.modlist.modlist_model import _PINNED_NAMES
         on_boundary = (0 <= self._drop_slot < n
                        and m.entry(self._drop_slot).name in _PINNED_NAMES)
         # Anchor the line to visible rows only: visualRect() of a hidden row
@@ -1296,7 +1296,7 @@ class ModListView(QTreeView):
 
     # ---- context menu -----------------------------------------------------
     def _on_context_menu(self, pos):
-        from gui_qt.modlist_menu import show_context_menu
+        from gui_qt.modlist.modlist_menu import show_context_menu
         # Over the sticky band, target the pinned separator, not the row under it.
         info = self._sticky_sep_info() if not self._drag_active else None
         if info is not None and info[1].contains(pos):

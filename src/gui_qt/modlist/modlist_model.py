@@ -19,7 +19,7 @@ from PySide6.QtCore import (
 from Utils.app_log import safe_print as print  # noqa: A004
 from Utils.mods.modlist import ModEntry, read_modlist
 from Utils.filemap import OVERWRITE_NAME, ROOT_FOLDER_NAME
-from gui_qt.modlist_sort import (
+from gui_qt.modlist.modlist_sort import (
     DIVIDER_NAME, build_display, uninvert_display, make_divider, is_reverse,
 )
 
@@ -66,7 +66,7 @@ _COLUMN_TR_MARKERS = [
 EntryRole = Qt.UserRole + 1        # the ModEntry
 ConflictRole = Qt.UserRole + 2     # int: 0 none, 1 wins, -1 loses, 2 mixed (loose)
 PriorityRole = Qt.UserRole + 3     # int display priority
-FlagsRole = Qt.UserRole + 4        # int bitmask (gui_qt.modlist_data.FLAG_*)
+FlagsRole = Qt.UserRole + 4        # int bitmask (gui_qt.modlist.modlist_data.FLAG_*)
 BsaConflictRole = Qt.UserRole + 5  # int: BSA/BA2 archive conflict code
 HighlightRole = Qt.UserRole + 6    # int: 0 none, 1 higher(green), -1 lower(red),
                                    #      2 anchor(orange, plugin-selected mod),
@@ -561,7 +561,7 @@ class ModListModel(QAbstractTableModel):
 
     def _effective_flags(self, name: str) -> int:
         """Meta flag bits + the Mod-Files / filemap-derived overlays."""
-        from gui_qt.modlist_data import (
+        from gui_qt.modlist.modlist_data import (
             FLAG_MODIFIED_MF, FLAG_PRERTX, FLAG_ROOT_RULE, FLAG_RERUN_FOMOD)
         bits = self._flags.get(name, 0)
         if name in self._modified_mf:
@@ -1023,7 +1023,7 @@ class ModListModel(QAbstractTableModel):
 
     def add_separator(self, row: int, name: str, above: bool) -> None:
         from Utils.mods.modlist import _SEPARATOR_SUFFIX
-        from gui_qt.modlist_sort import insert_separator_display
+        from gui_qt.modlist.modlist_sort import insert_separator_display
         sep = ModEntry(name + _SEPARATOR_SUFFIX, True, False, True)
         ref = self._entries[row]
         if self.reverse_mode_active:
@@ -1259,7 +1259,7 @@ class ModListModel(QAbstractTableModel):
         (join-group #165 guard, top clamp, divider slot, full-block exemption),
         then re-derive the natural order via uninvert (Tk
         _uninvert_entries_order) and save."""
-        from gui_qt.modlist_sort import resolve_reverse_drop
+        from gui_qt.modlist.modlist_sort import resolve_reverse_drop
         if not src_rows or not self.reverse_mode_active:
             return False
         src_rows = sorted(src_rows)

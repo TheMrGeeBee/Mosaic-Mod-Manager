@@ -22,7 +22,7 @@ from gui_qt import column_state
 
 from gui_qt.theme_qt import active_palette, _c, qc, qc_contrast
 from gui_qt.icons import icon
-from gui_qt.modlist_header import TkStyleHeader
+from gui_qt.modlist.modlist_header import TkStyleHeader
 from gui_qt.plugin_model import (
     PluginModel, RowRole, PFlagsRole, PHighlightRole,
     COL_NAME, COL_FLAGS, COL_LOCK, COL_PRIORITY, COL_GAME_INDEX, COLUMNS,
@@ -499,7 +499,7 @@ class PluginView(QTreeView):
         btn.raise_()
 
     def _show_column_menu(self):
-        from gui_qt.modlist_view import _StayOpenMenu
+        from gui_qt.modlist.modlist_view import _StayOpenMenu
         menu = _StayOpenMenu(self)
         for col, name in enumerate(COLUMNS):
             if col in (COL_NAME, COL_LOCK):
@@ -512,7 +512,7 @@ class PluginView(QTreeView):
         # A "Filters" submenu giving quick access to the plugin "By status"
         # filters from the Filters panel. Same include-mode (state 1) semantics;
         # the window wires on_quick_filter so the panel stays in sync.
-        from gui_qt.modlist_filter import PLUGIN_STATUS_FILTERS
+        from gui_qt.modlist.modlist_filter import PLUGIN_STATUS_FILTERS
         menu.addSeparator()
         get = getattr(self, "quick_filter_state", None)
         filters = _StayOpenMenu(self.tr("Filters"), menu)

@@ -96,7 +96,7 @@ def sort_key_fn(key: str, ctx: dict):
         return _installed_key
 
     if key == "flags":
-        from gui_qt.modlist_data import (
+        from gui_qt.modlist.modlist_data import (
             FLAG_MISSING_REQS, FLAG_UPDATE, FLAG_MODIO_UPDATE, FLAG_ROOT,
             FLAG_ROOT_RULE, FLAG_MODIFIED_MF, FLAG_PRERTX,
             FLAG_COLLECTION_BUNDLED, FLAG_COLLECTION_PATCHED, FLAG_ENDORSED,

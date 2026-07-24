@@ -106,7 +106,7 @@ class TextFilesView(QWidget):
         self._tree.expanded.connect(lambda *_: self._tree.viewport().update())
         self._tree.collapsed.connect(lambda *_: self._tree.viewport().update())
 
-        from gui_qt.modlist_header import TkStyleHeader
+        from gui_qt.modlist.modlist_header import TkStyleHeader
         col_mins = {COL_NAME: 160, COL_SOURCE: 120}
         col_defaults = {COL_SOURCE: 200}
         hdr = TkStyleHeader(self._tree, col_mins, col_defaults)

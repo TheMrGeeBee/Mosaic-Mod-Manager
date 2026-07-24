@@ -77,7 +77,7 @@ def load_state(section: str = _SECTION, columns: list[str] | None = None):
     # real column names so widths survive that round-trip instead of silently
     # resetting. Unknown keys fall back to their raw (case-preserved) name.
     if columns is None:
-        from gui_qt.modlist_model import COLUMNS as columns
+        from gui_qt.modlist.modlist_model import COLUMNS as columns
     _canon = {c.lower(): c for c in columns}
     for key, val in sec.items():
         if key.startswith("w_"):

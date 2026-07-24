@@ -18,7 +18,7 @@ from PySide6.QtGui import QAction
 from PySide6.QtCore import QCoreApplication, QT_TRANSLATE_NOOP
 
 from gui_qt.confirm_overlay import ConfirmOverlay
-from gui_qt.modlist_model import COL_NAME
+from gui_qt.modlist.modlist_model import COL_NAME
 from gui_qt.text_input_overlay import TextInputOverlay
 
 # Display-only shortcut hints shown right-aligned in the context menu. These MUST
@@ -454,7 +454,7 @@ def _fill_scroll_submenu(root_menu, sub, items, scroll_cap):
 
 
 def _boundary_names():
-    from gui_qt.modlist_model import _BOUNDARY_NAMES
+    from gui_qt.modlist.modlist_model import _BOUNDARY_NAMES
     return _BOUNDARY_NAMES
 
 
@@ -519,7 +519,7 @@ def _has_update_flag(view, name: str) -> bool:
         model = view.model()
     except Exception:
         return False
-    from gui_qt.modlist_data import FLAG_UPDATE
+    from gui_qt.modlist.modlist_data import FLAG_UPDATE
     bits = model._flags.get(name, 0) if hasattr(model, "_flags") else 0
     return bool(bits & FLAG_UPDATE)
 
@@ -537,7 +537,7 @@ def _has_missing_reqs(view, name: str) -> bool:
         model = view.model()
     except Exception:
         return False
-    from gui_qt.modlist_data import FLAG_MISSING_REQS
+    from gui_qt.modlist.modlist_data import FLAG_MISSING_REQS
     bits = model._flags.get(name, 0) if hasattr(model, "_flags") else 0
     if bits & FLAG_MISSING_REQS:
         return True
@@ -583,7 +583,7 @@ def _view_requirements(view, name):
 
 def _has_conflict(model, row) -> bool:
     """True if the row has a loose OR BSA conflict (so Show Conflicts is useful)."""
-    from gui_qt.modlist_model import COL_CONFLICTS, ConflictRole, BsaConflictRole
+    from gui_qt.modlist.modlist_model import COL_CONFLICTS, ConflictRole, BsaConflictRole
     idx = model.index(row, COL_CONFLICTS)
     loose = model.data(idx, ConflictRole) or 0
     bsa = model.data(idx, BsaConflictRole) or 0
@@ -660,7 +660,7 @@ def _open_on_modio(view, name: str):
 # ---- Move to separator -----------------------------------------------------
 def _separator_choices(model):
     """(display, internal_name) for every non-boundary separator, in list order."""
-    from gui_qt.modlist_model import _BOUNDARY_NAMES
+    from gui_qt.modlist.modlist_model import _BOUNDARY_NAMES
     out = []
     for r in range(model.rowCount()):
         e = model.entry(r)
@@ -685,7 +685,7 @@ def _move_to_separator(view, model, mod_rows, sep_name):
     """Reposition the selected mods directly below *sep_name* (lowest-priority end
     of its group in the reverse-priority display, matching Tk). Rebuilds the body
     without the moved mods, then inserts them right after the separator."""
-    from gui_qt.modlist_model import _PINNED_NAMES
+    from gui_qt.modlist.modlist_model import _PINNED_NAMES
     rows = sorted(r for r in mod_rows
                   if not model.entry(r).is_separator
                   and model.entry(r).name not in _PINNED_NAMES
@@ -817,7 +817,7 @@ def _has_bundle_spec(view, name: str) -> bool:
         model = view.model()
     except Exception:
         return False
-    from gui_qt.modlist_data import FLAG_BUNDLE
+    from gui_qt.modlist.modlist_data import FLAG_BUNDLE
     bits = model._flags.get(name, 0) if hasattr(model, "_flags") else 0
     return bool(bits & FLAG_BUNDLE)
 
@@ -1043,7 +1043,7 @@ def _sort_selected_alphabetically(view, model, mod_rows):
     """Sort the SELECTED mods A→Z, writing them back into the same row slots the
     selection occupied (other rows + separators stay put). Port of Tk
     _sort_selected_alphabetically."""
-    from gui_qt.modlist_model import _PINNED_NAMES
+    from gui_qt.modlist.modlist_model import _PINNED_NAMES
     sel = [model.entry(r) for r in mod_rows]
     sel = [e for e in sel
            if not e.is_separator and e.name not in _PINNED_NAMES

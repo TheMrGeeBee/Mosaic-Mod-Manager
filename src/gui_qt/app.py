@@ -21,8 +21,8 @@ from PySide6.QtWidgets import (
 
 from gui_qt.theme_qt import apply_theme, active_palette, _c, contrast_text
 from gui_qt.icons import icon, hamburger_icon
-from gui_qt.modlist_model import ModListModel, COL_SIZE
-from gui_qt.modlist_view import ModListView
+from gui_qt.modlist.modlist_model import ModListModel, COL_SIZE
+from gui_qt.modlist.modlist_view import ModListView
 from gui_qt.selector_button import SelectorButton, SplitPressHighlighter
 from gui_qt.flow_layout import FlowLayout
 from gui_qt.game_state import GameState
@@ -956,7 +956,7 @@ class MainWindow(QMainWindow):
             mv.show_mod(None)
             return
         e = self._modlist_model.entry(rows[0].row())
-        from gui_qt.modlist_model import _BOUNDARY_NAMES
+        from gui_qt.modlist.modlist_model import _BOUNDARY_NAMES
         # The synthetic Overwrite / Root Folder rows have a real on-disk folder,
         # so they show their files in the Mod Files tab like a mod. Only true
         # (user) separators show nothing.
@@ -4621,7 +4621,7 @@ class MainWindow(QMainWindow):
         if not names:
             return
 
-        from gui_qt.modlist_menu import _installation_archive, _read_mod_meta
+        from gui_qt.modlist.modlist_menu import _installation_archive, _read_mod_meta
         preferred: dict[str, str] = {}   # archive path → forced folder name
         paths: list[str] = []
         redownload: list[tuple] = []     # (mod_name, domain, mod_id, file_id, filename)
@@ -5581,7 +5581,7 @@ class MainWindow(QMainWindow):
             return
         names = [target] if isinstance(target, str) else list(target or ())
         from Nexus.nexus_meta import read_meta
-        from gui_qt.modlist_data import _parse_missing_req_pairs
+        from gui_qt.modlist.modlist_data import _parse_missing_req_pairs
         # meta.ini keeps the FULL seeded requirement list on purpose (so a
         # requirement reappears if its mod is later removed) — filter out the
         # ones already installed here, exactly like the ⚠ flag pass does.
@@ -5650,7 +5650,7 @@ class MainWindow(QMainWindow):
         if staging is None:
             return
         from Nexus.nexus_meta import read_meta, write_meta
-        from gui_qt.modlist_data import _parse_missing_req_pairs
+        from gui_qt.modlist.modlist_data import _parse_missing_req_pairs
         rid = int(req_id or 0)
         if rid <= 0:
             return
@@ -6186,7 +6186,7 @@ class MainWindow(QMainWindow):
             target_modlist, target_profile_dir, payload)
         skipped = len(payload) - len(added)
         if move and added:
-            from gui_qt.modlist_menu import _remove_separator_rows
+            from gui_qt.modlist.modlist_menu import _remove_separator_rows
             rows = [r for r in sep_rows
                     if (e := model.entry(r)) is not None
                     and e.is_separator and e.name in added]
@@ -6448,7 +6448,7 @@ class MainWindow(QMainWindow):
         (Tk parity, gui/modlist_panel ~3960): update→Change Version,
         modio-update→open mod.io page, missing→Missing Requirements,
         note→note editor, bundle→Bundle Options."""
-        from gui_qt.modlist_data import (
+        from gui_qt.modlist.modlist_data import (
             FLAG_UPDATE, FLAG_MISSING_REQS, FLAG_NOTE, FLAG_MODIO_UPDATE,
             FLAG_BUNDLE, FLAG_RERUN_FOMOD)
         e = self._modlist_model.entry(row)
@@ -6462,12 +6462,12 @@ class MainWindow(QMainWindow):
             # flag self-corrects once the now-relevant option is selected.
             self._reinstall_mods([e.name])
         elif flag == FLAG_MODIO_UPDATE:
-            from gui_qt.modlist_menu import _open_on_modio
+            from gui_qt.modlist.modlist_menu import _open_on_modio
             _open_on_modio(self._modlist_view, e.name)
         elif flag == FLAG_MISSING_REQS:
             self._open_missing_reqs_tab(e.name)
         elif flag == FLAG_NOTE:
-            from gui_qt.modlist_menu import _open_note_editor
+            from gui_qt.modlist.modlist_menu import _open_note_editor
             _open_note_editor(self._modlist_view, [e.name])
         elif flag == FLAG_BUNDLE:
             self._open_bundle_tab(e.name)
@@ -9548,7 +9548,7 @@ class MainWindow(QMainWindow):
 
     def _build_plugin_filter_panel(self):
         from gui_qt.filter_panel import FilterSidePanel
-        from gui_qt.modlist_filter import PLUGIN_STATUS_FILTERS
+        from gui_qt.modlist.modlist_filter import PLUGIN_STATUS_FILTERS
         items = [(key, label, True) for key, label in PLUGIN_STATUS_FILTERS]
         spec = [{"title": "By status", "type": "checks", "items": items}]
         panel = FilterSidePanel(spec, title=self.tr("Filters"))
@@ -9605,7 +9605,7 @@ class MainWindow(QMainWindow):
         plugin search via the view's search/filter union)."""
         if not hasattr(self, "_plugin_view"):
             return
-        from gui_qt.modlist_filter import plugin_filter_hidden_rows
+        from gui_qt.modlist.modlist_filter import plugin_filter_hidden_rows
         state = getattr(self, "_plugin_filter_state", None) or {}
         disabled_mf = self._disabled_plugin_files()
         hide = plugin_filter_hidden_rows(self._plugin_model._rows, state,
@@ -10017,7 +10017,7 @@ class MainWindow(QMainWindow):
 
     def _build_modlist_filter_panel(self):
         from gui_qt.filter_panel import FilterSidePanel
-        from gui_qt.modlist_filter import STATUS_FILTERS
+        from gui_qt.modlist.modlist_filter import STATUS_FILTERS
 
         # Filters whose backing data the Qt side doesn't build yet — shown but
         # disabled (greyed) so the panel is complete and they light up later.
@@ -10174,7 +10174,7 @@ class MainWindow(QMainWindow):
         return "!" in (getattr(self, "_modlist_search_text", "") or "")
 
     def _apply_modlist_search(self):
-        from gui_qt.modlist_filter import search_hidden_rows
+        from gui_qt.modlist.modlist_filter import search_hidden_rows
         text = getattr(self, "_modlist_search_text", "")
         entries = self._modlist_model._entries
         active = bool((text or "").strip())
@@ -10196,7 +10196,7 @@ class MainWindow(QMainWindow):
         t.start()
 
     def _apply_plugin_search(self):
-        from gui_qt.modlist_filter import plugin_search_hidden_rows
+        from gui_qt.modlist.modlist_filter import plugin_search_hidden_rows
         text = getattr(self, "_plugin_search_text", "")
         rows = self._plugin_model._rows
         owner = (self._conflict_data.plugin_owner
@@ -10230,7 +10230,7 @@ class MainWindow(QMainWindow):
             self._update_filters_btn_active()
 
     def _apply_modlist_filters(self):
-        from gui_qt.modlist_filter import compute_hidden_rows
+        from gui_qt.modlist.modlist_filter import compute_hidden_rows
         state = getattr(self, "_modlist_filter_state", {}) or {}
         # Flatten the column sort across separator groups while separators are
         # hidden (must run before reading _entries — it may re-derive the sort).
@@ -10272,7 +10272,7 @@ class MainWindow(QMainWindow):
         def worker():
             payload = None
             if staging_parent is not None:
-                from gui_qt.modlist_filter import (
+                from gui_qt.modlist.modlist_filter import (
                     build_index_data, build_mods_with_bsa, build_mods_with_plugins,
                 )
                 try:
@@ -10300,7 +10300,7 @@ class MainWindow(QMainWindow):
         panel = getattr(self, "_modlist_filter_panel", None)
         if panel is None:
             return
-        from gui_qt.modlist_filter import FilterData
+        from gui_qt.modlist.modlist_filter import FilterData
         cd = getattr(self, "_conflict_data", None)
 
         data = FilterData()
@@ -10565,7 +10565,7 @@ class MainWindow(QMainWindow):
         False for a game/profile switch, where the old overlays are stale and
         must be cleared immediately."""
         from Utils.mods.modlist import read_modlist
-        from gui_qt.modlist_data import read_meta_for_entries
+        from gui_qt.modlist.modlist_data import read_meta_for_entries
         from Utils.perftrace import span
 
         self._reassert_profile_paths()
@@ -10882,7 +10882,7 @@ class MainWindow(QMainWindow):
         from gui_qt.worker import run_in_worker, NO_EMIT
 
         def scan():
-            from gui_qt.modlist_data import compute_sizes
+            from gui_qt.modlist.modlist_data import compute_sizes
             sizes, size_bytes = compute_sizes(entries, staging)
             return gen, sizes, size_bytes
 
@@ -10950,7 +10950,7 @@ class MainWindow(QMainWindow):
         existing state (endorsing one mod shouldn't re-read 500 meta files).
         The filemap-derived overlays (pre-RTX / root-rule) refresh via the
         conflict-ready path instead."""
-        from gui_qt.modlist_data import read_meta_for_entries
+        from gui_qt.modlist.modlist_data import read_meta_for_entries
         staging = self._gs.staging_dir()
         if staging is None:
             return
@@ -11033,7 +11033,7 @@ class MainWindow(QMainWindow):
         lbl = getattr(self, "_plugin_count", None)
         if lbl is None:
             return
-        from gui_qt.modlist_data import compute_plugin_stats
+        from gui_qt.modlist.modlist_data import compute_plugin_stats
         s = compute_plugin_stats(self._plugin_model._rows)
         lbl.setText(self.tr("P:{0} / Non-ESL:{1}").format(
             s['total'], s['non_esl']))

@@ -160,7 +160,7 @@ class GameState:
         if g is None or not self.profile:
             return ConflictData()
         from Utils.deploy.deploy_pipeline import _build_filemap_for_game
-        from gui_qt.modlist_data import display_codes_from_conflict_map
+        from gui_qt.modlist.modlist_data import display_codes_from_conflict_map
         from Utils.perftrace import span
         log = log_fn or (lambda _m: None)
         with span("_build_filemap_for_game"):

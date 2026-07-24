@@ -98,7 +98,7 @@ class DownloadsView(QWidget):
         # Checkbox toggles (delegate → model) bubble up so the footer counts.
         self._model.dataChanged.connect(self._on_model_changed)
 
-        from gui_qt.modlist_header import TkStyleHeader
+        from gui_qt.modlist.modlist_header import TkStyleHeader
         col_mins = {COL_CHECK: 34, COL_NAME: 160, COL_SIZE: 70, COL_INSTALL: 100}
         col_defaults = {COL_CHECK: 34, COL_SIZE: 90, COL_INSTALL: 100}
         hdr = TkStyleHeader(self._tree, col_mins, col_defaults)

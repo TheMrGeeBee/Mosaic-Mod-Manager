@@ -19,7 +19,7 @@ from PySide6.QtWidgets import (
 )
 
 from gui_qt.theme_qt import active_palette, _c, danger_close_button, button_qss
-from gui_qt.modlist_delegate import _contrasting_text_color
+from gui_qt.modlist.modlist_delegate import _contrasting_text_color
 
 
 class _ElidedLabel(QLabel):

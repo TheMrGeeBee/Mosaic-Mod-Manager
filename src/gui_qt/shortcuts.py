@@ -161,7 +161,7 @@ def _rename_selected(win):
     rows = _selected_rows(view)
     if not rows:
         return
-    from gui_qt.modlist_menu import _rename
+    from gui_qt.modlist.modlist_menu import _rename
     _rename(view, view.model(), rows[0])
 
 
@@ -183,7 +183,7 @@ def _restore(win):
 def _toggleable_rows(view) -> list[int]:
     """Selected rows that can be enable/disable-toggled or removed: non-
     separator, non-pinned, non-locked mods."""
-    from gui_qt.modlist_model import _PINNED_NAMES
+    from gui_qt.modlist.modlist_model import _PINNED_NAMES
     m = view.model()
     out = []
     for r in _selected_rows(view):
@@ -324,7 +324,7 @@ def _select_all(win):
     if view is None:
         return
     m = view.model()
-    from gui_qt.modlist_model import _PINNED_NAMES
+    from gui_qt.modlist.modlist_model import _PINNED_NAMES
     visible = set(view._visible_rows())
     if not visible:
         return

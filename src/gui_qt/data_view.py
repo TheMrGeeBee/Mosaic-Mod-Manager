@@ -121,7 +121,7 @@ class DataView(QWidget):
         from gui_qt.data_delegate import DataDelegate
         self._tree.setItemDelegate(DataDelegate(self._tree))
 
-        from gui_qt.modlist_header import TkStyleHeader
+        from gui_qt.modlist.modlist_header import TkStyleHeader
         col_mins = {COL_NAME: 140, COL_MOD: 120}
         col_defaults = {COL_MOD: 200}
         hdr = TkStyleHeader(self._tree, col_mins, col_defaults)

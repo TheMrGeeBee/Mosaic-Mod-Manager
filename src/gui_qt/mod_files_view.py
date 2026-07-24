@@ -92,7 +92,7 @@ class ModFilesView(QWidget):
 
         # Tk-style column resize (boundary drag, constant total) — same as the
         # modlist/plugins panels.
-        from gui_qt.modlist_header import TkStyleHeader
+        from gui_qt.modlist.modlist_header import TkStyleHeader
         col_mins = {COL_NAME: 120, COL_TOPLEVEL: 60, COL_DISABLE: 55}
         col_defaults = {COL_TOPLEVEL: 70, COL_DISABLE: 60}
         hdr = TkStyleHeader(self._tree, col_mins, col_defaults)

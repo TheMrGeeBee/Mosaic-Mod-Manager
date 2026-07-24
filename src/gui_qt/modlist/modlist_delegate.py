@@ -16,11 +16,11 @@ from PySide6.QtWidgets import QStyledItemDelegate, QStyle, QToolTip
 
 from gui_qt.theme_qt import active_palette, _c, qc, qc_contrast
 from gui_qt.icons import icon
-from gui_qt.modlist_model import (
+from gui_qt.modlist.modlist_model import (
     EntryRole, ConflictRole, BsaConflictRole, FlagsRole, HighlightRole,
     COL_NAME, COL_FLAGS, COL_CONFLICTS, COL_PRIORITY, COL_LOCKED,
 )
-from gui_qt.modlist_data import (
+from gui_qt.modlist.modlist_data import (
     FLAG_UPDATE, FLAG_ENDORSED, FLAG_ROOT, FLAG_MODIFIED_MF, FLAG_MISSING_REQS,
     FLAG_COLLECTION_BUNDLED, FLAG_COLLECTION_PATCHED, FLAG_NOTE, FLAG_XEDIT,
     FLAG_BUNDLE, FLAG_MODIO_UPDATE, FLAG_PRERTX, FLAG_ROOT_RULE,
@@ -207,8 +207,8 @@ class ModRowDelegate(QStyledItemDelegate):
         # so the band reads as one strip across the row. A collapsed separator
         # whose child mod is a conflict partner is tinted green/red/orange.
         if e.is_separator:
-            from gui_qt.modlist_model import OVERWRITE_NAME, ROOT_FOLDER_NAME
-            from gui_qt.modlist_sort import DIVIDER_NAME
+            from gui_qt.modlist.modlist_model import OVERWRITE_NAME, ROOT_FOLDER_NAME
+            from gui_qt.modlist.modlist_sort import DIVIDER_NAME
             if e.name == DIVIDER_NAME:
                 # Reverse-priority float divider: a thin dashed centred line on
                 # a plain row background, no controls (Tk BOUNDARY_NAME row).
@@ -349,7 +349,7 @@ class ModRowDelegate(QStyledItemDelegate):
         text_color = text_color or self.c_sep_text
         # Boundary separators (Overwrite / Root Folder) are pinned + not
         # collapsible/lockable: just a centred name + strikethrough, no controls.
-        from gui_qt.modlist_model import (_BOUNDARY_NAMES, ROOT_FOLDER_NAME,
+        from gui_qt.modlist.modlist_model import (_BOUNDARY_NAMES, ROOT_FOLDER_NAME,
                                           OVERWRITE_NAME)
         if e.name in _BOUNDARY_NAMES:
             p.setFont(self.f_bold)
