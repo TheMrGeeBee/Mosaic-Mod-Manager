@@ -13,7 +13,7 @@ from PySide6.QtWidgets import (
 from gui_qt.theme_qt import active_palette, _c
 from gui_qt.safe_emit import safe_emit
 from gui_qt.worker import run_in_worker
-from Utils.collection_manifest import fmt_size
+from Utils.collections.collection_manifest import fmt_size
 
 
 class _SizeItem(QTableWidgetItem):
@@ -724,7 +724,7 @@ class CollectionDetailView(QWidget):
             offsite = []
             manifest = {}
             try:
-                from Utils.collection_manifest import (
+                from Utils.collections.collection_manifest import (
                     load_collection_manifest, extract_offsite_mods)
                 manifest = load_collection_manifest(
                     self._api, game_name, slug, rev, dl_path, log_fn=self._log)

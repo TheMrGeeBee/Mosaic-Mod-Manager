@@ -402,7 +402,7 @@ class CollectionsBrowserView(QWidget):
             except Exception:
                 pdir = None
         if pdir:
-            from Utils.installed_collections import list_appended_collections
+            from Utils.collections.installed_collections import list_appended_collections
             records = list_appended_collections(pdir, log_fn=self._log)
         if not records:
             self._appended_host.hide()

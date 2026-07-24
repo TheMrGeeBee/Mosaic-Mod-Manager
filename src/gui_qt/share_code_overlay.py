@@ -178,7 +178,7 @@ class ShareCodeImportOverlay(_CodeOverlayBase):
         counts = f"{len(mods)} {noun}"
         total = int(info.get("totalSize") or 0)
         if total:
-            from Utils.collection_manifest import fmt_size
+            from Utils.collections.collection_manifest import fmt_size
             counts += self.tr(", ~{0} to download").format(fmt_size(total))
         parts.append(counts)
         exported = (info.get("exported") or "")[:10]

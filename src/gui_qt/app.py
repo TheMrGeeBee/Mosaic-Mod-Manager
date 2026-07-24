@@ -3077,7 +3077,7 @@ class MainWindow(QMainWindow):
         installed_collections/ record. Confirm → daemon worker (deploy mutex)
         → _appended_col_removed → reload."""
         import threading
-        from Utils.installed_collections import resolve_owned_mod_names
+        from Utils.collections.installed_collections import resolve_owned_mod_names
         game = self._gs.game
         pdir = self._gs.profile_dir()
         if game is None or pdir is None:
@@ -3123,7 +3123,7 @@ class MainWindow(QMainWindow):
 
             def _worker():
                 from gui_qt.safe_emit import safe_emit
-                from Utils.installed_collections import remove_appended_collection
+                from Utils.collections.installed_collections import remove_appended_collection
                 done_ok = True
                 try:
                     remove_appended_collection(
@@ -3175,7 +3175,7 @@ class MainWindow(QMainWindow):
             self._notify(self.tr("The active profile isn't a collection profile."),
                          "warning")
             return
-        from Utils.collection_manifest import parse_collection_url
+        from Utils.collections.collection_manifest import parse_collection_url
         from Nexus.nexus_api import NexusCollection
         slug, url_domain, rev = parse_collection_url(url)
         if not slug:
@@ -3434,7 +3434,7 @@ class MainWindow(QMainWindow):
         # Compute the diff (old cached manifest vs the new mod list).
         import json as _json
         from Utils.modlist import read_modlist
-        from Utils.collection_diff import diff_collection
+        from Utils.collections.collection_diff import diff_collection
         from Utils.profile_state import read_collection_revision
         old_manifest = {}
         try:
@@ -3673,7 +3673,7 @@ class MainWindow(QMainWindow):
         self._col_profile_name = profile_dir.name
 
         # Card display fields for the appended-collections record
-        # (installed_collections/<slug>.json — see Utils.installed_collections).
+        # (installed_collections/<slug>.json — see Utils.collections.installed_collections).
         append_card_info = None
         if overwrite_existing is not None:
             import dataclasses
@@ -3693,7 +3693,7 @@ class MainWindow(QMainWindow):
         # Overlay + control. Manual (non-premium) installs get the per-mod
         # download-prompt card; premium gets the download/extract progress
         # overlay. Both expose the same slot surface to the _on_col_* handlers.
-        from Utils.collection_install import CollectionInstallControl
+        from Utils.collections.collection_install import CollectionInstallControl
         control = CollectionInstallControl()
         self._col_install_control = control
         manual_mode = bool(info.get("manual"))
@@ -3716,7 +3716,7 @@ class MainWindow(QMainWindow):
         callbacks = self._build_collection_callbacks()
 
         def _worker():
-            from Utils.collection_install import run_collection_install
+            from Utils.collections.collection_install import run_collection_install
             from Nexus.nexus_download import NexusDownloader
             from Utils.config_paths import get_download_cache_dir_for_game
             downloader = NexusDownloader(
@@ -3769,7 +3769,7 @@ class MainWindow(QMainWindow):
         Signal.emit — NO callback touches a widget (all UI mutation happens in the
         connected UI-thread slots). Matches the thread-safety rule that cost a
         segfault before."""
-        from Utils.collection_install import CollectionInstallCallbacks
+        from Utils.collections.collection_install import CollectionInstallCallbacks
         return CollectionInstallCallbacks(
             on_status=lambda m: self._col_status.emit(m),
             on_progress=lambda v: self._col_progress.emit(v),
@@ -4056,7 +4056,7 @@ class MainWindow(QMainWindow):
             delete_profile = bool(getattr(self, "_col_created_profile", False))
 
             def _cleanup_worker():
-                from Utils.collection_install import cleanup_cancelled_install
+                from Utils.collections.collection_install import cleanup_cancelled_install
                 from Utils.ui_config import load_clear_archive_after_install
                 try:
                     cleanup_cancelled_install(
@@ -4277,8 +4277,8 @@ class MainWindow(QMainWindow):
         def worker():
             res = {"error": "unknown"}
             try:
-                from Utils.collection_manifest import load_collection_manifest
-                from Utils.collection_reset import reset_collection_load_order
+                from Utils.collections.collection_manifest import load_collection_manifest
+                from Utils.collections.collection_reset import reset_collection_load_order
                 # Prefer the profile's already-saved collection.json (offline).
                 manifest = {}
                 saved = pdir / "collection.json"

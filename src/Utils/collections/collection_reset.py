@@ -508,7 +508,7 @@ def reset_collection_load_order(profile_dir: Path, manifest: dict,
         # keeps the reset from dropping unlisted plugins or writing the raw
         # (unsorted) manifest order — see project_qt_collection_loot_sort.
         try:
-            from Utils.collection_install import (
+            from Utils.collections.collection_install import (
                 _write_collection_plugins, _loot_available)
             if getattr(game, "loot_sort_enabled", False) and _loot_available():
                 try:

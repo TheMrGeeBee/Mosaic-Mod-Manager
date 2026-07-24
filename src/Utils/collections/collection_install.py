@@ -33,7 +33,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable
 
-from Utils.collection_reset import (
+from Utils.collections.collection_reset import (
     _resolve_collection_priorities, _apply_collection_groups)
 from Utils.config_paths import get_download_cache_dir_for_game, list_all_cache_dirs
 from Utils.download_locations import (
@@ -317,7 +317,7 @@ def run_collection_install(
             # Cache-first (reads/keeps <slug>_rev<rev>.7z in the download cache)
             # — the detail view usually cached it already, so a flaky CDN at
             # install time doesn't cost us the manifest.
-            from Utils.collection_manifest import load_collection_manifest
+            from Utils.collections.collection_manifest import load_collection_manifest
             collection_schema = load_collection_manifest(
                 api, getattr(game, "name", "") or "", _slug, revision_number,
                 download_link_path, log_fn=log)
@@ -345,7 +345,7 @@ def run_collection_install(
     if _is_append_run:
         # Append: record under installed_collections/ — do NOT clobber the
         # profile's primary collection.json (the update path diffs against it).
-        from Utils.installed_collections import record_appended_collection
+        from Utils.collections.installed_collections import record_appended_collection
         record_appended_collection(
             profile_dir, slug=_slug, revision=revision_number,
             card=append_card_info or {}, manifest=collection_schema or {},
@@ -2333,7 +2333,7 @@ def _install_bundled_from_extracted(archive_root, modlist_path, staging_path,
 def _apply_collection_binary_patches(archive_root, collection_schema, staging_path,
                                      install_results, collection_slug,
                                      revision_number, log):
-    from Utils.collection_patches import apply_collection_patches
+    from Utils.collections.collection_patches import apply_collection_patches
     staging_lower = ({p.name.lower(): p.name for p in staging_path.iterdir() if p.is_dir()}
                      if staging_path.exists() else {})
 
@@ -2363,7 +2363,7 @@ def _apply_collection_binary_patches(archive_root, collection_schema, staging_pa
 
 
 def _apply_collection_ini_tweaks(archive_root, profile_dir, game, log):
-    from Utils.collection_ini_tweaks import GAME_INI_TARGETS, apply_collection_ini_tweaks
+    from Utils.collections.collection_ini_tweaks import GAME_INI_TARGETS, apply_collection_ini_tweaks
     if not (archive_root / "INI Tweaks").is_dir():
         return
     try:
