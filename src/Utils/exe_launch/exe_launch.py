@@ -1140,7 +1140,7 @@ def prepare_tool_prefix(exe_path: Path, proton_name: str, game,
         return None
     proton_script, prefix_dir, env = result
     if getattr(game, "synthesis_registry_name", None):
-        from Utils.bethesda_registry import maybe_register_for_game
+        from Utils.wine_proton.bethesda_registry import maybe_register_for_game
         maybe_register_for_game(
             prefix_dir=prefix_dir,
             proton_script=proton_script,
@@ -1984,7 +1984,7 @@ def launch_exe_via_proton(exe_path: Path, game, log_fn=_noop_log) -> None:
         # isolated prefix see the game path (registry), the deployed
         # plugins.txt and the game's My Games INIs. All no-ops otherwise.
         if getattr(game, "synthesis_registry_name", None):
-            from Utils.bethesda_registry import maybe_register_for_game
+            from Utils.wine_proton.bethesda_registry import maybe_register_for_game
             maybe_register_for_game(
                 prefix_dir=compat_data,
                 proton_script=proton_script,

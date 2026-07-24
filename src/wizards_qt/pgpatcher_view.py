@@ -349,7 +349,7 @@ class PGPatcherView(WizardViewBase):
         mo2_dummy_dir, mo2_game_type = self._mo2_dummy_dir, self._mo2_game_type
 
         def worker():
-            from Utils.bethesda_registry import maybe_register_for_game
+            from Utils.wine_proton.bethesda_registry import maybe_register_for_game
             from Utils.exe_launch.exe_launch import (
                 link_plugins_txt, resolve_tool_prefix, run_tool_logged,
                 shutdown_prefix_wineserver,

@@ -119,7 +119,7 @@ class BethiniView(WizardViewBase):
                 # running in the game's own prefix.
                 if prefix_mode != PREFIX_MODE_GAME:
                     try:
-                        from Utils.bethesda_registry import maybe_register_for_game
+                        from Utils.wine_proton.bethesda_registry import maybe_register_for_game
                         maybe_register_for_game(
                             prefix_dir=compat_data,
                             proton_script=proton_script,

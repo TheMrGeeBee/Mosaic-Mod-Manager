@@ -390,7 +390,7 @@ def prepare_xedit_prefix(
     _log = log_fn or _noop
     pfx = compat_data / "pfx"
 
-    from Utils.bethesda_registry import maybe_register_for_game
+    from Utils.wine_proton.bethesda_registry import maybe_register_for_game
     maybe_register_for_game(
         prefix_dir=compat_data,
         proton_script=proton_script,

@@ -19,7 +19,7 @@ from PySide6.QtWidgets import (
 
 from gui_qt.theme_qt import active_palette, _c
 from wizards_qt._view_base import GREEN, RED, WizardViewBase
-import Utils.sdt_config as cfg
+import Utils.modding_tools.sdt_config as cfg
 
 if TYPE_CHECKING:
     from Games.base_game import BaseGame

@@ -72,7 +72,7 @@ class BsaWriteError(Exception):
 
 
 # Re-export for callers importing Utils.archives.bsa_writer.is_packable.
-from Utils.archive_rules import is_packable  # noqa: F401
+from Utils.archives.archive_rules import is_packable  # noqa: F401
 
 # Per-extension "do not compress" list — kept here because it drives
 # ``write_bsa``'s compression-bit decision and is independent of the
@@ -452,7 +452,7 @@ def _collect_files(
     drops textures, ``"only"`` keeps only textures (see
     ``archive_rules.texture_extensions_for_game``).
     """
-    from Utils.archive_rules import texture_extensions_for_game
+    from Utils.archives.archive_rules import texture_extensions_for_game
     texture_exts = (
         texture_extensions_for_game(game_id) if texture_mode != "all"
         else frozenset()

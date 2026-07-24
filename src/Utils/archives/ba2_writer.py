@@ -330,7 +330,7 @@ def _collect_files(
         the caller can persist the auto-disable / auto-delete list.
 
     Files passing ``is_packable(rel_key, game_id)`` are returned — the
-    per-game allowlist lives in Utils.archive_rules.
+    per-game allowlist lives in Utils.archives.archive_rules.
     """
     files: list[tuple[str, str, str, Path]] = []
     packed_rel_keys: list[str] = []

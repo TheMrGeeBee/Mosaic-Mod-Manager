@@ -55,7 +55,7 @@ from Utils.archives.re_pak_patcher import (
     restore_pak_file,
     update_root_manifest,
 )
-from Utils.tex_convert import convert_tex_v10_to_v34, tex_needs_conversion
+from Utils.modding_tools.tex_convert import convert_tex_v10_to_v34, tex_needs_conversion
 
 _PROFILES_DIR = get_profiles_dir()
 

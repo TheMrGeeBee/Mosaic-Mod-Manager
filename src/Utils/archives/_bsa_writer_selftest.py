@@ -137,7 +137,7 @@ def _tes4_ref(name: bytes, ext: bytes) -> int:
 # ---------------------------------------------------------------------------
 
 def test_filter() -> None:
-    """Verify the per-game allowlist (Utils.archive_rules) — not just the
+    """Verify the per-game allowlist (Utils.archives.archive_rules) — not just the
     always-excluded globals.  Skyrim SE is the canonical reference."""
     sse = "skyrim_se"
 
@@ -510,7 +510,7 @@ def test_split_textures() -> None:
         )
 
         # Sanity: textures sibling really only contains DDS / texture-rule files.
-        from Utils.archive_rules import texture_extensions_for_game
+        from Utils.archives.archive_rules import texture_extensions_for_game
         tex_exts = texture_extensions_for_game("skyrim_se")
         for rk in tex_set:
             ext = "." + rk.rsplit(".", 1)[-1] if "." in rk else ""

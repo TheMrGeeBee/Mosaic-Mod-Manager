@@ -202,7 +202,7 @@ class CreationKitView(WizardViewBase):
         proton_name, prefix_mode = self._proton_name, self._prefix_mode
 
         def worker():
-            from Utils.bethesda_registry import maybe_register_for_game
+            from Utils.wine_proton.bethesda_registry import maybe_register_for_game
             from Utils.deploy.deploy import apply_wine_dll_overrides
             from Utils.exe_launch.exe_launch import (
                 link_mygames, link_plugins_txt, resolve_tool_prefix,

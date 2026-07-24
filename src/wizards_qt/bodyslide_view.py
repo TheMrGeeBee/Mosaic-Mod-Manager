@@ -208,7 +208,7 @@ class BodySlideView(WizardViewBase):
                 # The x64 builds autofill the Data folder from the Bethesda
                 # Softworks registry key — seed it (idempotent).
                 try:
-                    from Utils.bethesda_registry import maybe_register_for_game
+                    from Utils.wine_proton.bethesda_registry import maybe_register_for_game
                     maybe_register_for_game(
                         prefix_dir=compat_data, proton_script=proton_script,
                         env=env, game=game, log_fn=_wlog)
