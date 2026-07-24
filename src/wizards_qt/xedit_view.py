@@ -40,7 +40,7 @@ from PySide6.QtWidgets import (
 
 from gui_qt.theme_qt import active_palette, _c, button_qss, ok_text, err_text
 from gui_qt.safe_emit import safe_emit
-from Utils.xedit_tools import tool_exe_path
+from Utils.modding_tools.xedit_tools import tool_exe_path
 
 if TYPE_CHECKING:
     from Games.base_game import BaseGame
@@ -384,7 +384,7 @@ class XEditView(QWidget):
 
         def worker():
             from Utils.wizard_archives import extract_archive
-            from Utils.xedit_tools import applications_dir, flatten_subdirs
+            from Utils.modding_tools.xedit_tools import applications_dir, flatten_subdirs
             try:
                 if archive is None or not archive.is_file():
                     raise RuntimeError(self.tr("Archive not found."))
@@ -515,7 +515,7 @@ class XEditView(QWidget):
     def _build_dirty_plugins_panel(self):
         """QAC only: list the LOOT-flagged dirty plugins above the run status
         so the user can see what needs cleaning without closing the wizard."""
-        from Utils.xedit_tools import collect_dirty_plugins
+        from Utils.modding_tools.xedit_tools import collect_dirty_plugins
         dirty = collect_dirty_plugins(self._game)
         if not dirty or self._dirty_box_added:
             return
@@ -574,7 +574,7 @@ class XEditView(QWidget):
                 run_tool_logged, shutdown_prefix_wineserver,
             )
             from Utils.wine_proton.wine_paths import to_wine_path
-            from Utils.xedit_tools import (
+            from Utils.modding_tools.xedit_tools import (
                 finalize_xedit_saves, prepare_xedit_prefix, restore_after_xedit,
             )
             _wlog = lambda m: self._log(f"{name} Wizard: {m}")
@@ -612,7 +612,7 @@ class XEditView(QWidget):
                     extra_args.extend(user_args)
 
                 # Registry seed + plugins.txt / My Games links + viewsettings
-                # seed + WinXP compat flag (see Utils.xedit_tools).
+                # seed + WinXP compat flag (see Utils.modding_tools.xedit_tools).
                 #
                 # The viewsettings filename xEdit reads is keyed to the GAME
                 # mode, not the launcher exe.  The Nexus builds are per-game so

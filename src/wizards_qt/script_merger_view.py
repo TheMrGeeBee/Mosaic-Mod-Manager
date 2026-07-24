@@ -17,7 +17,7 @@ from PySide6.QtCore import Signal
 
 from gui_qt.safe_emit import safe_emit
 from wizards_qt._view_base import GREEN, RED, WizardViewBase
-from Utils.xedit_tools import tool_exe_path
+from Utils.modding_tools.xedit_tools import tool_exe_path
 
 if TYPE_CHECKING:
     from Games.base_game import BaseGame
@@ -210,7 +210,7 @@ class ScriptMergerView(WizardViewBase):
         _wlog = lambda m: self._log(f"Script Merger Wizard: {m}")
         missing: list[tuple[str, list[str]]] = []
         try:
-            from Utils.script_merger_inventory import (
+            from Utils.modding_tools.script_merger_inventory import (
                 missing_merge_sources, restore_inventory,
             )
             restore_inventory(self._game, log_fn=_wlog)
@@ -218,7 +218,7 @@ class ScriptMergerView(WizardViewBase):
             # Capture, from the restored inventory, which merges have
             # undeployed sources — the Done-snapshot keeps these if the
             # merger drops them, instead of pruning them as user deletions.
-            from Utils.script_merger_inventory import collateral_keys
+            from Utils.modding_tools.script_merger_inventory import collateral_keys
             self._collateral_keys = collateral_keys(self._game)
         except Exception as exc:
             _wlog(f"merge inventory check warning: {exc}")
@@ -252,7 +252,7 @@ class ScriptMergerView(WizardViewBase):
     def _purge_and_launch(self):
         _wlog = lambda m: self._log(f"Script Merger Wizard: {m}")
         try:
-            from Utils.script_merger_inventory import purge_merges
+            from Utils.modding_tools.script_merger_inventory import purge_merges
             purge_merges(self._game, log_fn=_wlog)
         except Exception as exc:
             _wlog(f"merge purge warning: {exc}")
@@ -376,7 +376,7 @@ class ScriptMergerView(WizardViewBase):
                 # Pair the rescued merged files with the merger's inventory —
                 # without it the merger forgets these merges exist.
                 try:
-                    from Utils.script_merger_inventory import snapshot_inventory
+                    from Utils.modding_tools.script_merger_inventory import snapshot_inventory
                     snapshot_inventory(
                         game, keep_keys=keep_keys,
                         log_fn=lambda m: log(f"Script Merger Wizard: {m}"))

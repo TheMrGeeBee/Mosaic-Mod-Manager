@@ -2,7 +2,7 @@
 
 Download the latest Synthesis release → pick a Proton version → bootstrap its
 own Wine/.NET prefix → launch Synthesis.exe.  All non-GUI logic lives in
-``Utils.synthesis_setup``.  Port of the Tk ``bethesda_synthesis`` plugin.
+``Utils.modding_tools.synthesis_setup``.  Port of the Tk ``bethesda_synthesis`` plugin.
 """
 
 from __future__ import annotations
@@ -87,7 +87,7 @@ class SynthesisView(WizardViewBase):
         self._dl_bar.setValue(pct)
 
     def _do_download(self):
-        from Utils.synthesis_setup import download_and_extract_synthesis
+        from Utils.modding_tools.synthesis_setup import download_and_extract_synthesis
         try:
             def hook(block_num, block_size, total_size):
                 if total_size > 0:
@@ -132,7 +132,7 @@ class SynthesisView(WizardViewBase):
 
     def _goto_proton(self):
         self._stack.setCurrentIndex(_PG_PROTON)
-        from Utils.synthesis_setup import list_proton, load_saved_proton
+        from Utils.modding_tools.synthesis_setup import list_proton, load_saved_proton
         # clear any previous radios
         while self._proton_layout.count():
             item = self._proton_layout.takeAt(0)
@@ -165,7 +165,7 @@ class SynthesisView(WizardViewBase):
         idx = self._proton_group.checkedId()
         if idx < 0 or idx >= len(self._proton_candidates):
             return
-        from Utils.synthesis_setup import save_proton
+        from Utils.modding_tools.synthesis_setup import save_proton
         self._selected_proton = self._proton_candidates[idx]
         save_proton(self._game, self._selected_proton.parent.name)
         self._goto_setup()
@@ -201,7 +201,7 @@ class SynthesisView(WizardViewBase):
                          name="synthesis-setup").start()
 
     def _do_setup(self):
-        from Utils.synthesis_setup import (
+        from Utils.modding_tools.synthesis_setup import (
             setup_synthesis_prefix, synthesis_dir, synthesis_prefix_parent,
         )
         game_path = self._game.get_game_path()
@@ -260,7 +260,7 @@ class SynthesisView(WizardViewBase):
                          name="synthesis-launch").start()
 
     def _do_launch(self):
-        from Utils.synthesis_setup import (
+        from Utils.modding_tools.synthesis_setup import (
             launch_synthesis, remove_symlinks, symlink_mygames, symlink_plugins,
         )
         profile = self._current_profile()

@@ -42,7 +42,7 @@ SNAPSHOT_NAME = ".mm_merge_inventory.xml"
 
 def app_inventory_path(game: "BaseGame") -> Path:
     """MergeInventory.xml next to WitcherScriptMerger.exe."""
-    from Utils.xedit_tools import applications_dir
+    from Utils.modding_tools.xedit_tools import applications_dir
     return applications_dir(game, MERGER_DIR) / INVENTORY_NAME
 
 

@@ -35,7 +35,7 @@ from PySide6.QtWidgets import (
 
 from gui_qt.theme_qt import active_palette, _c, button_qss, ok_text, err_text
 from gui_qt.safe_emit import safe_emit
-from Utils.xedit_tools import tool_exe_path
+from Utils.modding_tools.xedit_tools import tool_exe_path
 
 if TYPE_CHECKING:
     from Games.base_game import BaseGame
@@ -231,7 +231,7 @@ class DynDOLODView(QWidget):
             from Utils.wizard_archives import (
                 extract_archive, fetch_latest_github_asset,
             )
-            from Utils.xedit_tools import applications_dir, flatten_subdirs
+            from Utils.modding_tools.xedit_tools import applications_dir, flatten_subdirs
             try:
                 safe_emit(self._dl_status_sig,
                     self.tr("Fetching latest release from GitHub…"), "")
@@ -353,7 +353,7 @@ class DynDOLODView(QWidget):
 
         def worker():
             from Utils.wizard_archives import extract_archive
-            from Utils.xedit_tools import applications_dir, flatten_subdirs
+            from Utils.modding_tools.xedit_tools import applications_dir, flatten_subdirs
             try:
                 if archive is None or not archive.is_file():
                     raise RuntimeError(self.tr("Archive not found."))
@@ -511,7 +511,7 @@ class DynDOLODView(QWidget):
                 resolve_tool_prefix, run_tool_logged, shutdown_prefix_wineserver,
             )
             from Utils.wine_proton.wine_paths import to_wine_path
-            from Utils.xedit_tools import prepare_xedit_prefix
+            from Utils.modding_tools.xedit_tools import prepare_xedit_prefix
             _wlog = lambda m: self._log(f"{name} Wizard: {m}")
             try:
                 result = resolve_tool_prefix(

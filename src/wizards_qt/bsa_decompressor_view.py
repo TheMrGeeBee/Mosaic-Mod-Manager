@@ -27,7 +27,7 @@ from Utils.archives.bsa_decompressor_tools import (
     NEXUS_URL, OUTPUT_NAME, decompressor_mod_dir, find_decompressor_archive,
     find_extracted_mpi, packages_dir,
 )
-from Utils.ttw_tools import find_ttw_installer
+from Utils.modding_tools.ttw_tools import find_ttw_installer
 
 if TYPE_CHECKING:
     from Games.base_game import BaseGame
@@ -71,7 +71,7 @@ class BSADecompressorView(WizardViewBase):
 
         profile = getattr(self._ctx, "profile_name", None) or "default"
         self._profile = profile
-        from Utils.ttw_tools import sync_active_profile
+        from Utils.modding_tools.ttw_tools import sync_active_profile
         sync_active_profile(game, profile)
 
         self._dl_status_sig.connect(self._guard(
@@ -139,7 +139,7 @@ class BSADecompressorView(WizardViewBase):
         game = self._game
 
         def worker():
-            from Utils.ttw_tools import download_installer
+            from Utils.modding_tools.ttw_tools import download_installer
             _wlog = lambda m: self._log(f"BSA Decompressor Wizard: {m}")
             try:
                 self._exe = download_installer(
@@ -489,7 +489,7 @@ class BSADecompressorView(WizardViewBase):
     def _do_run(self):
         import subprocess
         from Utils.archives.bsa_decompressor_tools import register_output
-        from Utils.ttw_tools import (
+        from Utils.modding_tools.ttw_tools import (
             fnv_required_esms, missing_vanilla_esms, restore_to_vanilla,
         )
         game = self._game

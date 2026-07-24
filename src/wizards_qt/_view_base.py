@@ -459,7 +459,7 @@ class WizardViewBase(QWidget):
         def worker():
             import shutil
             from Utils.wizard_archives import extract_archive
-            from Utils.xedit_tools import applications_dir, flatten_subdirs
+            from Utils.modding_tools.xedit_tools import applications_dir, flatten_subdirs
             try:
                 if archive is None or not archive.is_file():
                     raise RuntimeError(self.tr("Archive not found."))
@@ -542,7 +542,7 @@ class WizardViewBase(QWidget):
             from Utils.wizard_archives import (
                 extract_archive, fetch_latest_github_asset,
             )
-            from Utils.xedit_tools import applications_dir, flatten_subdirs
+            from Utils.modding_tools.xedit_tools import applications_dir, flatten_subdirs
             try:
                 safe_emit(status_sig,
                           self.tr("Fetching latest release from GitHub…"), "")

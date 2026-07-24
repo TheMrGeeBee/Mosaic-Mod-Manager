@@ -22,7 +22,7 @@ checksum-checks FalloutNV.exe and may refuse a patched exe, so the exe is
 patched only after the masters are done. For the same reason, entering the
 ESM step first restores FalloutNV_backup.exe if the user had already patched
 the exe before running this wizard (the final step re-patches it). The patch
-applies automatically via Utils.fnv4gb_tools (already-patched / unrecognised
+applies automatically via Utils.modding_tools.fnv4gb_tools (already-patched / unrecognised
 exes just report and continue — a failure never blocks finishing the wizard).
 """
 
@@ -339,7 +339,7 @@ class CuratedProfileView(WizardViewBase):
         _wlog = lambda m: self._log(f"Curated Profile Wizard: {m}")
 
         def worker():
-            from Utils.fnv4gb_tools import (
+            from Utils.modding_tools.fnv4gb_tools import (
                 BACKUP_NAME, EXE_NAME, inspect_exe, restore_backup,
             )
             try:
@@ -458,7 +458,7 @@ class CuratedProfileView(WizardViewBase):
         # Runs LAST on purpose: the ESM Fixes installer checksum-checks an
         # unpatched FalloutNV.exe. Failure never blocks finishing the wizard.
         def worker():
-            from Utils.fnv4gb_tools import (
+            from Utils.modding_tools.fnv4gb_tools import (
                 BACKUP_NAME, EXE_NAME, apply_4gb_patch, inspect_exe,
             )
             try:

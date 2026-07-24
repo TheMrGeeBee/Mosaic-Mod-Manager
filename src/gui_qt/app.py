@@ -8544,7 +8544,7 @@ class MainWindow(QMainWindow):
         No conflict → returns True immediately without prompting (Tk parity:
         gui.dialogs.confirm_cet_symlink)."""
         import threading
-        from Utils.cet_check import cet_symlink_conflict
+        from Utils.modding_tools.cet_check import cet_symlink_conflict
 
         def _cb() -> bool:
             try:

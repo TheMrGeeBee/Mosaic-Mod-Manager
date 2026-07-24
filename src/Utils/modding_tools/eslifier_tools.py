@@ -30,7 +30,7 @@ def _noop(_msg: str) -> None:
 
 
 def find_eslifier_exe(game: "BaseGame") -> Path | None:
-    from Utils.xedit_tools import tool_exe_path
+    from Utils.modding_tools.xedit_tools import tool_exe_path
     return tool_exe_path(game, EXE_NAME, APP_DIR)
 
 

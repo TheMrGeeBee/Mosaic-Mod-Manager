@@ -9,7 +9,7 @@ plugins-panel-scoped tab:
   4. Install d3dcompiler_47 into the Proton prefix (skippable).
   5. Install: destination (game / Root_Folder / managed mod) + Wine override.
 
-All download/shader/preset/install logic is in the neutral Utils.reshade_tools;
+All download/shader/preset/install logic is in the neutral Utils.modding_tools.reshade_tools;
 this file is just the Qt UI + threading. Blocking work runs on daemon threads
 and marshals back via Signals (never touch widgets off-thread).
 """
@@ -29,7 +29,7 @@ from PySide6.QtWidgets import (
 
 from gui_qt.theme_qt import active_palette, _c, button_qss, ok_text, err_text
 from gui_qt.safe_emit import safe_emit
-from Utils.reshade_tools import (
+from Utils.modding_tools.reshade_tools import (
     API_CHOICES, OPTIONAL_SHADER_PACKS, OBSOLETE_PRESET_EFFECTS,
     download_and_extract_reshade_dll, download_and_extract_shaders,
     parse_preset_effect_files, prune_shaders_to_preset, install_reshade_files,

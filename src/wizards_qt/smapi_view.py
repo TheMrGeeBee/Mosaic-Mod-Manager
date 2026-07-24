@@ -2,7 +2,7 @@
 
 Downloads the latest SMAPI installer zip from GitHub, then extracts it and runs
 "install on Linux.sh" in a terminal (all non-GUI logic in
-``Utils.smapi_installer``).  Port of the Tk ``sdv_smapi`` plugin.
+``Utils.modding_tools.smapi_installer``).  Port of the Tk ``sdv_smapi`` plugin.
 """
 
 from __future__ import annotations
@@ -94,7 +94,7 @@ class SmapiView(WizardViewBase):
         self._dl_bar.setValue(pct)
 
     def _do_fetch_and_download(self):
-        from Utils.smapi_installer import (
+        from Utils.modding_tools.smapi_installer import (
             download_smapi, fetch_latest_smapi_asset,
         )
         from Utils.wizard_archives import get_downloads_dir
@@ -160,7 +160,7 @@ class SmapiView(WizardViewBase):
                          name="smapi-install").start()
 
     def _do_install(self):
-        from Utils.smapi_installer import run_smapi_installer
+        from Utils.modding_tools.smapi_installer import run_smapi_installer
         try:
             safe_emit(self._install_status_sig,
                       self.tr("Launching the SMAPI installer in a terminal.\n\n"

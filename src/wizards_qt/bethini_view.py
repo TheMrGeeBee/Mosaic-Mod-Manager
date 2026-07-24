@@ -14,7 +14,7 @@ from typing import TYPE_CHECKING
 
 from gui_qt.safe_emit import safe_emit
 from wizards_qt._view_base import GREEN, RED, WizardViewBase
-from Utils.xedit_tools import tool_exe_path
+from Utils.modding_tools.xedit_tools import tool_exe_path
 
 if TYPE_CHECKING:
     from Games.base_game import BaseGame

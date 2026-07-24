@@ -23,7 +23,7 @@ from PySide6.QtWidgets import (
 from gui_qt.safe_emit import safe_emit
 from gui_qt.theme_qt import active_palette, _c
 from wizards_qt._view_base import GREEN, RED, WizardViewBase
-import Utils.skygen_core as core
+import Utils.modding_tools.skygen_core as core
 
 if TYPE_CHECKING:
     from Games.base_game import BaseGame

@@ -19,7 +19,7 @@ from PySide6.QtWidgets import QCheckBox, QHBoxLayout, QPushButton, QWidget
 
 from gui_qt.safe_emit import safe_emit
 from wizards_qt._view_base import GREEN, RED, WizardViewBase
-from Utils.xedit_tools import tool_exe_path
+from Utils.modding_tools.xedit_tools import tool_exe_path
 
 if TYPE_CHECKING:
     from Games.base_game import BaseGame
@@ -319,7 +319,7 @@ class PGPatcherView(WizardViewBase):
         if not self._use_mo2_parity:
             self._mo2_dummy_dir = None
             return
-        from Utils.xedit_tools import applications_dir
+        from Utils.modding_tools.xedit_tools import applications_dir
         from Utils.mo2_dummy import build_mo2_dummy_instance
 
         profile = getattr(self._ctx, "profile_name", None) or "default"

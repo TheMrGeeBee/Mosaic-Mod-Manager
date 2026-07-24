@@ -13,7 +13,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING, Callable
 
-from Utils.ttw_tools import (
+from Utils.modding_tools.ttw_tools import (
     extract_mpi_from_archive, find_extracted_mpi as _find_extracted_mpi,
     find_mpi_archive, packages_dir,
 )

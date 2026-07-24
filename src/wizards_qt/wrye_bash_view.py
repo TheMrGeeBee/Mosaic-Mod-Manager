@@ -18,7 +18,7 @@ from PySide6.QtCore import Signal
 
 from gui_qt.safe_emit import safe_emit
 from wizards_qt._view_base import GREEN, RED, WizardViewBase
-from Utils.xedit_tools import tool_exe_path
+from Utils.modding_tools.xedit_tools import tool_exe_path
 
 if TYPE_CHECKING:
     from Games.base_game import BaseGame
@@ -110,7 +110,7 @@ class WryeBashView(WizardViewBase):
             from Utils.exe_launch import (
                 resolve_tool_prefix, run_tool_logged, shutdown_prefix_wineserver,
             )
-            from Utils.xedit_tools import prepare_xedit_prefix
+            from Utils.modding_tools.xedit_tools import prepare_xedit_prefix
             _wlog = lambda m: self._log(f"Wrye Bash Wizard: {m}")
             try:
                 result = resolve_tool_prefix(

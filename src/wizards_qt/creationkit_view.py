@@ -20,7 +20,7 @@ from PySide6.QtWidgets import QHBoxLayout, QPushButton, QWidget
 
 from gui_qt.safe_emit import safe_emit
 from wizards_qt._view_base import GREEN, RED, WizardViewBase
-from Utils.creationkit_tools import (
+from Utils.modding_tools.creationkit_tools import (
     EXE_NAME, ckpe_mod_installed, creationkit_exe_path,
 )
 
@@ -165,7 +165,7 @@ class CreationKitView(WizardViewBase):
         game = self._game
 
         def worker():
-            from Utils.creationkit_tools import install_ckpe_mod
+            from Utils.modding_tools.creationkit_tools import install_ckpe_mod
             _wlog = lambda m: self._log(f"Creation Kit Wizard: {m}")
             try:
                 tag = install_ckpe_mod(
