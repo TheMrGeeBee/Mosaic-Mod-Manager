@@ -1553,7 +1553,7 @@ class MainWindow(QMainWindow):
                 b.setText(self.tr("{0} ({1})").format(label, n) if n else label)
 
     def _on_downloads_locations(self):
-        from gui_qt.download_locations_overlay import DownloadLocationsOverlay
+        from gui_qt.downloads.download_locations_overlay import DownloadLocationsOverlay
         DownloadLocationsOverlay.show_over(
             self,
             lambda saved: self._downloads_view.refresh() if saved else None)
@@ -1594,7 +1594,7 @@ class MainWindow(QMainWindow):
         if not paths:
             return
         game_name = getattr(self._gs, "game_name", None)
-        from gui_qt.move_downloads_overlay import MoveDownloadsOverlay
+        from gui_qt.downloads.move_downloads_overlay import MoveDownloadsOverlay
         MoveDownloadsOverlay.show_over(
             self, len(paths), game_name,
             lambda dest: self._move_downloads_to(paths, dest))
@@ -12381,7 +12381,7 @@ class MainWindow(QMainWindow):
         self._data_view.on_select_mod = self._on_data_select_mod
         self._plugin_stack.addWidget(self._data_view)
         # Page 4: the real Downloads view.
-        from gui_qt.downloads_view import DownloadsView
+        from gui_qt.downloads.downloads_view import DownloadsView
         self._downloads_view = DownloadsView()
         self._downloads_view.on_install = \
             lambda paths: self._install_paths(paths, clear_archives=False)

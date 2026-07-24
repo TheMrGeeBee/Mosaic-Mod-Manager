@@ -15,7 +15,7 @@ from PySide6.QtWidgets import (
 )
 
 import Utils.downloads.downloads_core as dc
-from gui_qt.downloads_model import (
+from gui_qt.downloads.downloads_model import (
     DownloadsModel, COL_CHECK, COL_NAME, COL_SIZE, COL_INSTALL,
 )
 
@@ -90,7 +90,7 @@ class DownloadsView(QWidget):
         self._tree.setAlternatingRowColors(False)
         self._tree.setSelectionMode(QAbstractItemView.NoSelection)
         self._tree.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        from gui_qt.downloads_delegate import DownloadsDelegate
+        from gui_qt.downloads.downloads_delegate import DownloadsDelegate
         self._delegate = DownloadsDelegate(self._tree)
         self._delegate.on_install = self._on_row_install
         self._delegate.on_toggle_section = self._on_toggle_section
