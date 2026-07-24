@@ -970,7 +970,7 @@ class MainWindow(QMainWindow):
         preview / text editor): it shows in the modlist region (in the shared top
         tab bar) while the plugins panel and the rest of the UI stay live.
         Re-clicking the gear focuses the existing tab."""
-        from gui_qt.settings_view import SettingsView
+        from gui_qt.views.settings_view import SettingsView
         if self._tabs.has_key("settings"):
             self._tabs.focus_key("settings")
             return
@@ -981,7 +981,7 @@ class MainWindow(QMainWindow):
     def _open_install_name_patterns_tab(self):
         """Open the custom install-name rules editor scoped over the MODLIST
         panel (like Settings). Re-opening focuses the existing tab."""
-        from gui_qt.install_name_patterns_view import InstallNamePatternsView
+        from gui_qt.views.install_name_patterns_view import InstallNamePatternsView
         if self._tabs.has_key("install_name_patterns"):
             self._tabs.focus_key("install_name_patterns")
             return
@@ -2174,7 +2174,7 @@ class MainWindow(QMainWindow):
         if self._tabs.has_key("custom_game"):
             self._tabs.focus_key("custom_game")
             return
-        from gui_qt.custom_game_view import CustomGameView
+        from gui_qt.views.custom_game_view import CustomGameView
 
         def _done(saved_defn, deleted):
             self._tabs.close_tab("custom_game")
@@ -2212,7 +2212,7 @@ class MainWindow(QMainWindow):
         if self._tabs.has_key("custom_game"):
             self._tabs.focus_key("custom_game")
             return
-        from gui_qt.custom_game_view import CustomGameView
+        from gui_qt.views.custom_game_view import CustomGameView
 
         prev_name = self._gs.game_name
 
@@ -2677,7 +2677,7 @@ class MainWindow(QMainWindow):
 
     def _open_add_game_tab(self):
         """Open the Add Game card-grid picker as a (detachable) tab."""
-        from gui_qt.add_game_view import AddGameView
+        from gui_qt.views.add_game_view import AddGameView
         from Utils.exe_launch.game_helpers import _load_games, _GAMES
         _load_games()   # refresh registry (populates _GAMES with ALL games)
         page = AddGameView(dict(_GAMES),
@@ -2755,7 +2755,7 @@ class MainWindow(QMainWindow):
         if self._tabs.has_key("onboarding"):
             self._tabs.focus_key("onboarding")
             return
-        from gui_qt.onboarding_view import OnboardingView
+        from gui_qt.views.onboarding_view import OnboardingView
         view = OnboardingView(
             on_login=self._nexus_login_sso,
             on_add_game=self._open_add_game_tab,
@@ -3864,7 +3864,7 @@ class MainWindow(QMainWindow):
         """UI thread: open the FOMOD wizard as a tab; unblock the worker on
         finish/cancel/close. Only ONE deferred wizard is ever open (the deferred
         loop is sequential) so there's no nesting."""
-        from gui_qt.fomod_wizard_view import FomodWizardView
+        from gui_qt.views.fomod_wizard_view import FomodWizardView
         holder, ev = payload["holder"], payload["event"]
         done = {"v": False}
         # Hide the install overlay while the wizard is up — it covers the tab
@@ -3927,7 +3927,7 @@ class MainWindow(QMainWindow):
         return _cb
 
     def _on_col_bain_ui(self, payload):
-        from gui_qt.bain_picker_view import BainPickerView
+        from gui_qt.views.bain_picker_view import BainPickerView
         holder, ev = payload["holder"], payload["event"]
         done = {"v": False}
         # Hide the install overlay while the BAIN picker is up (see FOMOD above).
@@ -5270,7 +5270,7 @@ class MainWindow(QMainWindow):
             self._tabs.focus_key("restore_backup")
             return
         profile_dir = game.get_profile_root() / "profiles" / pname
-        from gui_qt.backup_restore_view import BackupRestoreView
+        from gui_qt.views.backup_restore_view import BackupRestoreView
         view = BackupRestoreView(
             profile_dir, pname,
             on_restored=self._on_backup_restored,
@@ -5332,7 +5332,7 @@ class MainWindow(QMainWindow):
         # Reuse one overlay: rebuild it for the new mod if already open.
         if self._tabs.has_key("change_version"):
             self._tabs.close_tab("change_version")
-        from gui_qt.change_version_view import ChangeVersionView
+        from gui_qt.views.change_version_view import ChangeVersionView
         view = ChangeVersionView(
             api, game, mod_name, meta,
             install_fn=self._install_paths,
@@ -5390,7 +5390,7 @@ class MainWindow(QMainWindow):
         # Reuse one tab: rebuild it for the new mod if already open.
         if self._tabs.has_key("bundle_options"):
             self._tabs.close_tab("bundle_options")
-        from gui_qt.bundle_options_view import BundleOptionsView
+        from gui_qt.views.bundle_options_view import BundleOptionsView
         view = BundleOptionsView(
             mod_name, spec, lib_dir,
             on_save=lambda s, m=mod_name, mp=meta_path:
@@ -5437,7 +5437,7 @@ class MainWindow(QMainWindow):
         """Open the Separator Settings picker (colour + deploy override) as a tab
         over the plugins panel. Triggered by the right-click 'Separator settings…'
         item. *sep_name* is the internal `..._separator` name (the storage key)."""
-        from gui_qt.separator_settings_view import SeparatorSettingsView
+        from gui_qt.views.separator_settings_view import SeparatorSettingsView
         if self._tabs.has_key("sep_settings"):
             self._tabs.close_tab("sep_settings")
         view = SeparatorSettingsView(
@@ -5626,7 +5626,7 @@ class MainWindow(QMainWindow):
 
         if self._tabs.has_key("missing_reqs"):
             self._tabs.close_tab("missing_reqs")
-        from gui_qt.missing_reqs_view import MissingReqsView
+        from gui_qt.views.missing_reqs_view import MissingReqsView
         view = MissingReqsView(
             api, game, specs, ignored, _save_ignored,
             on_close=self._close_missing_reqs_tab, log_fn=self._append_log,
@@ -5745,7 +5745,7 @@ class MainWindow(QMainWindow):
             if view is not None:
                 view.show_mods(seed)
             return
-        from gui_qt.requirements_view import RequirementsView
+        from gui_qt.views.requirements_view import RequirementsView
         view = RequirementsView(
             staging_fn=self._gs.staging_dir,
             on_close=self._close_view_requirements_tab,
@@ -5868,7 +5868,7 @@ class MainWindow(QMainWindow):
         # Reuse one tab: rebuild it for the new mod if already open.
         if self._tabs.has_key("show_conflicts"):
             self._tabs.close_tab("show_conflicts")
-        from gui_qt.show_conflicts_view import ShowConflictsView
+        from gui_qt.views.show_conflicts_view import ShowConflictsView
         view = ShowConflictsView(
             mod_name, ctx,
             on_close=lambda: self._tabs.close_tab("show_conflicts"),
@@ -6498,7 +6498,7 @@ class MainWindow(QMainWindow):
         instance). In that case Save closes the tab (the add flow is done); when
         reconfiguring an already-configured game, Save keeps the tab open so the
         user can keep tweaking (only Remove/Cancel close it)."""
-        from gui_qt.configure_game_view import ConfigureGameView
+        from gui_qt.views.configure_game_view import ConfigureGameView
 
         def _done(saved: bool, removed: bool):
             # Reconfigure saves keep the tab open; adding a game (or removing an
@@ -6601,7 +6601,7 @@ class MainWindow(QMainWindow):
             self._tabs.focus_key("export_profile")
             return
         api = self._ensure_nexus_api()   # optional — version/size fetch needs it
-        from gui_qt.export_profile_view import ExportProfileView
+        from gui_qt.views.export_profile_view import ExportProfileView
         view = ExportProfileView(self, game, api, log_fn=self._append_log)
         self._export_profile_view = view
         self._tabs.open_scoped_tab(
@@ -6826,7 +6826,7 @@ class MainWindow(QMainWindow):
     def _make_profile_settings_view(self):
         """Build a ProfileSettingsView wired to the app's selector/reload
         callbacks. Used both by the scoped tab and the dropdown's Remove action."""
-        from gui_qt.profile_settings_view import ProfileSettingsView
+        from gui_qt.views.profile_settings_view import ProfileSettingsView
         return ProfileSettingsView(
             self,
             game_name=self._gs.game_name,
@@ -7015,7 +7015,7 @@ class MainWindow(QMainWindow):
         icons: dict = {}
         game_logo = None
         try:
-            from gui_qt.add_game_view import _game_logo
+            from gui_qt.views.add_game_view import _game_logo
             pm = _game_logo(getattr(game, "game_id", "") or game.name, px)
             if pm is not None and not pm.isNull():
                 from PySide6.QtGui import QIcon
@@ -7316,7 +7316,7 @@ class MainWindow(QMainWindow):
         if self._tabs.has_key("exe_settings"):
             self._tabs.close_tab("exe_settings")
             self._exe_settings_view = None
-        from gui_qt.exe_settings_view import ExeSettingsView
+        from gui_qt.views.exe_settings_view import ExeSettingsView
 
         def _close(removed: bool):
             self._close_exe_settings_tab()
@@ -8086,7 +8086,7 @@ class MainWindow(QMainWindow):
         if self._tabs.has_key("dll_overrides"):
             self._tabs.focus_key("dll_overrides")
             return
-        from gui_qt.dll_overrides_view import DllOverridesView
+        from gui_qt.views.dll_overrides_view import DllOverridesView
         view = DllOverridesView(self, game, log_fn=self._append_log)
         self._dll_overrides_view = view
         self._tabs.open_scoped_tab(
@@ -8288,7 +8288,7 @@ class MainWindow(QMainWindow):
         if self._tabs.has_key("prefix_manager"):
             self._tabs.focus_key("prefix_manager")
             return
-        from gui_qt.prefix_manager_view import PrefixManagerView
+        from gui_qt.views.prefix_manager_view import PrefixManagerView
         game = self._gs.game
         view = PrefixManagerView(
             active_game_name=(game.name if game is not None else ""),
@@ -8836,7 +8836,7 @@ class MainWindow(QMainWindow):
 
         if prepared.is_fomod():
             tab_key = f"fomod_wizard_{seq}"
-            from gui_qt.fomod_wizard_view import FomodWizardView
+            from gui_qt.views.fomod_wizard_view import FomodWizardView
 
             def _finish(selections):
                 if done["v"]:
@@ -8897,7 +8897,7 @@ class MainWindow(QMainWindow):
                                 key=tab_key)
         else:   # BAIN
             tab_key = f"bain_picker_{seq}"
-            from gui_qt.bain_picker_view import BainPickerView
+            from gui_qt.views.bain_picker_view import BainPickerView
 
             def _bfinish(result):
                 if done["v"]:

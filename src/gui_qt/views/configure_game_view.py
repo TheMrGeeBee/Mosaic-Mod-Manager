@@ -25,7 +25,7 @@ from PySide6.QtWidgets import (
 )
 
 from gui_qt.theme.theme_qt import active_palette, _c
-from gui_qt.add_game_view import _game_logo
+from gui_qt.views.add_game_view import _game_logo
 from gui_qt.safe_emit import safe_emit
 from gui_qt.worker import run_in_worker, NO_EMIT
 # Crash-proof diagnostic prints (Flatpak stdout can raise BrokenPipeError and

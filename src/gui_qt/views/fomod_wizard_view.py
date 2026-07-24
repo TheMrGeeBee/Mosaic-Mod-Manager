@@ -470,7 +470,7 @@ class FomodWizardView(QWidget):
         tabs = getattr(win, "_tabs", None)
         if tabs is None:
             return
-        from gui_qt.image_view import ImageView
+        from gui_qt.views.image_view import ImageView
         view = ImageView(self._cur_image_path)
         tabs.open_tab(view, self.tr("Image"), key=f"img:{self._cur_image_path}")
 
