@@ -95,12 +95,8 @@ class BaldursGate3(BaseGame):
     profile_overridable_paths_extras = ("patch_version",)
 
     def __init__(self):
-        self._game_path: Path | None = None
-        self._prefix_path: Path | None = None
-        self._deploy_mode: LinkMode = LinkMode.HARDLINK
-        self._staging_path: Path | None = None
         self._patch_version: int = 8
-        self.load_paths()
+        super().__init__()
 
     # -----------------------------------------------------------------------
     # Identity
@@ -205,9 +201,6 @@ class BaldursGate3(BaseGame):
     # -----------------------------------------------------------------------
     # Paths
     # -----------------------------------------------------------------------
-
-    def get_game_path(self) -> Path | None:
-        return self._game_path
 
     def _larian_root(self) -> Path | None:
         """Return the Larian data root, preferring Proton prefix, then native Linux."""

@@ -85,11 +85,7 @@ class SevenDaysToDie(BaseGame):
     deploy_mode_supports_copy = True
 
     def __init__(self) -> None:
-        self._game_path: Path | None = None
-        self._prefix_path: Path | None = None
-        self._deploy_mode: LinkMode = LinkMode.HARDLINK
-        self._staging_path: Path | None = None
-        self.load_paths()
+        super().__init__()
 
     # -----------------------------------------------------------------------
     # Identity
@@ -158,9 +154,6 @@ class SevenDaysToDie(BaseGame):
     # -----------------------------------------------------------------------
     # Paths
     # -----------------------------------------------------------------------
-
-    def get_game_path(self) -> Path | None:
-        return self._game_path
 
     def get_mod_data_path(self) -> Path | None:
         if self._game_path is None:

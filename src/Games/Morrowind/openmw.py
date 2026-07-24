@@ -68,12 +68,8 @@ class OpenMW(BaseGame):
         return True
 
     def __init__(self):
-        self._game_path: Path | None = None
-        self._prefix_path: Path | None = None
         self._openmw_cfg_path: Path | None = None  # None → auto-detect
-        self._deploy_mode: LinkMode = LinkMode.HARDLINK
-        self._staging_path: Path | None = None
-        self.load_paths()
+        super().__init__()
 
     # -----------------------------------------------------------------------
     # Identity
@@ -222,9 +218,6 @@ class OpenMW(BaseGame):
     # -----------------------------------------------------------------------
     # Paths
     # -----------------------------------------------------------------------
-
-    def get_game_path(self) -> Path | None:
-        return self._game_path
 
     def get_mod_data_path(self) -> Path | None:
         if self._game_path is None:

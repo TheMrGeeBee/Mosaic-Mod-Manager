@@ -409,11 +409,8 @@ class StandardCustomGame(BaseGame):
 
     def __init__(self, defn: dict) -> None:
         self._defn = defn
-        self._game_path: Path | None = None
-        self._prefix_path: Path | None = None
-        self._deploy_mode: LinkMode = LinkMode.HARDLINK
-        self._staging_path: Path | None = None
-        self.load_paths()
+        # BaseGame.__init__ calls load_paths() — run after setting _defn
+        super().__init__()
 
     # ------------------------------------------------------------------
     # Identity
@@ -542,9 +539,6 @@ class StandardCustomGame(BaseGame):
     # ------------------------------------------------------------------
     # Paths
     # ------------------------------------------------------------------
-
-    def get_game_path(self) -> Path | None:
-        return self._game_path
 
     def get_mod_data_path(self) -> Path | None:
         if self._game_path is None:

@@ -61,10 +61,6 @@ class Fallout_3(BaseGame):
         return True
 
     def __init__(self):
-        self._game_path: Path | None = None
-        self._prefix_path: Path | None = None
-        self._deploy_mode: LinkMode = LinkMode.HARDLINK
-        self._staging_path: Path | None = None
         self._script_extender_swap: bool = True
         self._profile_ini_files: bool = False
         self._profile_saves: bool = False
@@ -72,7 +68,7 @@ class Fallout_3(BaseGame):
         # class default (_PLUGINS_TXT_FILENAME); the user can override it in
         # the Configure Game panel (plugins.txt vs Plugins.txt).
         self._plugins_txt_filename_override: str | None = None
-        self.load_paths()
+        super().__init__()
 
     # -----------------------------------------------------------------------
     # Identity
@@ -425,9 +421,6 @@ class Fallout_3(BaseGame):
     # -----------------------------------------------------------------------
     # Paths
     # -----------------------------------------------------------------------
-
-    def get_game_path(self) -> Path | None:
-        return self._game_path
 
     def get_mod_data_path(self) -> Path | None:
         """Mods go into the Data/ subfolder of the game root directory."""

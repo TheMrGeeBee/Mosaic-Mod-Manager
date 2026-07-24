@@ -134,6 +134,21 @@ class BaseGame(ABC):
     )
     profile_overridable_paths_extras: tuple[str, ...] = ()
 
+    def __init__(self) -> None:
+        """Common path-state init, shared by every game handler.
+
+        Subclasses that need extra instance state set it BEFORE calling
+        ``super().__init__()`` — this sets the four fields below and then
+        calls :meth:`load_paths`, which for some handlers (e.g. CustomGame's
+        ``_defn``-derived ``game_id``) already depends on that extra state
+        being present.
+        """
+        self._game_path: Path | None = None
+        self._prefix_path: Path | None = None
+        self._deploy_mode: LinkMode = LinkMode.HARDLINK
+        self._staging_path: Path | None = None
+        self.load_paths()
+
     # -----------------------------------------------------------------------
     # Identity
     # -----------------------------------------------------------------------
@@ -1183,12 +1198,16 @@ class BaseGame(ABC):
     # Paths
     # -----------------------------------------------------------------------
 
-    @abstractmethod
     def get_game_path(self) -> Path | None:
         """
         Return the root install directory of the game, or None if not set.
         e.g. /home/deck/.steam/steamapps/common/Skyrim Special Edition
+
+        Default returns the value loaded/saved via load_paths()/save_paths().
+        Override for games whose actual root is a computed subfolder of the
+        detected install dir (e.g. UE5 games with a nested project folder).
         """
+        return self._game_path
 
     @abstractmethod
     def get_mod_data_path(self) -> Path | None:

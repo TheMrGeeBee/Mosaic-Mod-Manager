@@ -23,12 +23,8 @@ _PROFILES_DIR = get_profiles_dir()
 class Subnautica(BaseGame):
 
     def __init__(self):
-        self._game_path: Path | None = None
-        self._prefix_path: Path | None = None
-        self._deploy_mode: LinkMode = LinkMode.HARDLINK
-        self._staging_path: Path | None = None
         self._saved_heroic_app_name: str | None = None
-        self.load_paths()
+        super().__init__()
 
     # -----------------------------------------------------------------------
     # Identity
@@ -117,9 +113,6 @@ class Subnautica(BaseGame):
     # -----------------------------------------------------------------------
     # Paths
     # -----------------------------------------------------------------------
-
-    def get_game_path(self) -> Path | None:
-        return self._game_path
 
     def get_mod_data_path(self) -> Path | None:
         """Mods go into BepInEx/Plugins/ inside the game directory."""

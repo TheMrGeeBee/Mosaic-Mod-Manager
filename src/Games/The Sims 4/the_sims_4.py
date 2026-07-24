@@ -28,12 +28,8 @@ _MODS_SUBPATH = Path(
 
 class TheSims4(BaseGame):
 
-    def __init__(self):
-        self._game_path: Path | None = None
-        self._prefix_path: Path | None = None
-        self._deploy_mode: LinkMode = LinkMode.HARDLINK
-        self._staging_path: Path | None = None
-        self.load_paths()
+    def __init__(self) -> None:
+        super().__init__()
 
     # -----------------------------------------------------------------------
     # Identity
@@ -86,9 +82,6 @@ class TheSims4(BaseGame):
     # -----------------------------------------------------------------------
     # Paths
     # -----------------------------------------------------------------------
-
-    def get_game_path(self) -> Path | None:
-        return self._game_path
 
     def get_mod_data_path(self) -> Path | None:
         """Mods deploy into the Proton prefix Documents Mods folder."""
