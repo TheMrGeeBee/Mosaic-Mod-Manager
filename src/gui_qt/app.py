@@ -9671,7 +9671,7 @@ class MainWindow(QMainWindow):
 
     def _build_data_filter_panel(self):
         from gui_qt.filter_panel import FilterSidePanel
-        from gui_qt.data_view import DataView
+        from gui_qt.data_tab.data_view import DataView
         panel = FilterSidePanel(DataView.filter_spec(), title=self.tr("Filters"))
         panel.changed.connect(self._on_data_filter_changed)
         panel.close_requested.connect(self._toggle_data_filters)
@@ -12376,7 +12376,7 @@ class MainWindow(QMainWindow):
         self._text_files_view.on_open_file = self._open_text_editor_tab
         self._plugin_stack.addWidget(self._text_files_view)
         # Page 3: the real Data view.
-        from gui_qt.data_view import DataView
+        from gui_qt.data_tab.data_view import DataView
         self._data_view = DataView()
         self._data_view.on_select_mod = self._on_data_select_mod
         self._plugin_stack.addWidget(self._data_view)

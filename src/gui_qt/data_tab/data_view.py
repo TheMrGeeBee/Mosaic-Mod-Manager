@@ -19,7 +19,7 @@ from PySide6.QtWidgets import (
 
 import Utils.data_tab as dtlogic
 import Utils.mods.mod_files as mflogic
-from gui_qt.data_model import DataModel, _DataNode, COL_NAME, COL_MOD
+from gui_qt.data_tab.data_model import DataModel, _DataNode, COL_NAME, COL_MOD
 from gui_qt.safe_emit import safe_emit
 
 
@@ -118,7 +118,7 @@ class DataView(QWidget):
         self._tree.clicked.connect(self._on_clicked)
         self._tree.selectionModel().selectionChanged.connect(
             lambda *_: self._on_selection_changed())
-        from gui_qt.data_delegate import DataDelegate
+        from gui_qt.data_tab.data_delegate import DataDelegate
         self._tree.setItemDelegate(DataDelegate(self._tree))
 
         from gui_qt.modlist.modlist_header import TkStyleHeader

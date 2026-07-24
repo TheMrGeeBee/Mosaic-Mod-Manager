@@ -11,7 +11,7 @@ from PySide6.QtWidgets import QStyledItemDelegate
 
 from gui_qt.theme.theme_qt import active_palette, _c, qc
 from gui_qt.icons import icon
-from gui_qt.data_model import COL_NAME, COL_MOD
+from gui_qt.data_tab.data_model import COL_NAME, COL_MOD
 
 ARROW_SZ = 20         # same as the modlist separator arrow
 INDENT = 18           # per-depth indent (matches Mod Files)
