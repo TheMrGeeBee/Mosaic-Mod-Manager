@@ -9710,7 +9710,7 @@ class MainWindow(QMainWindow):
 
     def _build_mod_files_filter_panel(self):
         from gui_qt.filter_panel import FilterSidePanel
-        from gui_qt.mod_files_view import ModFilesView
+        from gui_qt.mod_files.mod_files_view import ModFilesView
         panel = FilterSidePanel(ModFilesView.filter_spec(), title=self.tr("Filters"))
         panel.changed.connect(self._on_mod_files_filter_changed)
         panel.close_requested.connect(self._toggle_mod_files_filters)
@@ -12363,7 +12363,7 @@ class MainWindow(QMainWindow):
         self._framework_banner = FrameworkBanner()
         self._plugin_stack.addWidget(self._plugin_view)
         # Page 1: the real Mod Files view.
-        from gui_qt.mod_files_view import ModFilesView
+        from gui_qt.mod_files.mod_files_view import ModFilesView
         self._mod_files_view = ModFilesView()
         self._mod_files_view.changed.connect(self._on_mod_files_changed)
         self._mod_files_view.on_open_image = self._open_image_preview_tab

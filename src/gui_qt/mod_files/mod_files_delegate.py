@@ -11,7 +11,7 @@ from PySide6.QtWidgets import QStyledItemDelegate
 
 from gui_qt.theme.theme_qt import active_palette, _c, qc, qc_contrast
 from gui_qt.icons import icon
-from gui_qt.mod_files_model import COL_NAME, COL_TOPLEVEL, COL_DISABLE
+from gui_qt.mod_files.mod_files_model import COL_NAME, COL_TOPLEVEL, COL_DISABLE
 
 CHECK_BOX = 17        # same as the modlist checkbox
 ARROW_SZ = 20         # same as the modlist separator arrow

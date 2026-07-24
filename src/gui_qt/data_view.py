@@ -1,7 +1,7 @@
 """Qt Data tab — the merged deployment tree (Path + Winning Mod), conflict
 highlighting, file-type/only-conflicts filter, search, and image preview.
 
-Mirrors gui_qt.mod_files_view's structure/visuals (lean: header label + QTreeView,
+Mirrors gui_qt.mod_files.mod_files_view's structure/visuals (lean: header label + QTreeView,
 no embedded footer — the footer + filter panel are owned by the app) but reads the
 deployed filemap via Utils.data_tab instead of a per-mod scan. Built lazily: the
 tree is only (re)built when the Data sub-tab is visible (mark_dirty defers it).

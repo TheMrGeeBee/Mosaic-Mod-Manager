@@ -17,7 +17,7 @@ from PySide6.QtWidgets import (
 )
 
 import Utils.mods.mod_files as mflogic
-from gui_qt.mod_files_model import (
+from gui_qt.mod_files.mod_files_model import (
     ModFilesModel, _Node, COL_NAME, COL_TOPLEVEL, COL_DISABLE,
 )
 
@@ -87,7 +87,7 @@ class ModFilesView(QWidget):
         self._tree.setContextMenuPolicy(Qt.CustomContextMenu)
         self._tree.customContextMenuRequested.connect(self._on_context_menu)
         self._tree.clicked.connect(self._on_clicked)
-        from gui_qt.mod_files_delegate import ModFilesDelegate
+        from gui_qt.mod_files.mod_files_delegate import ModFilesDelegate
         self._tree.setItemDelegate(ModFilesDelegate(self._tree))
 
         # Tk-style column resize (boundary drag, constant total) — same as the

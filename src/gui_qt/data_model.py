@@ -7,7 +7,7 @@ game folder). Two columns — no checkboxes:
   1  Winning Mod  — the mod that owns this file in the deployed filemap
 
 Conflict files (owned by >1 enabled mod) are tinted; the selected mod's files get
-a highlight background. Mirrors gui_qt.mod_files_model but without the checkbox
+a highlight background. Mirrors gui_qt.mod_files.mod_files_model but without the checkbox
 columns. Display-only — all data-building lives in Utils.data_tab.
 """
 
