@@ -40,7 +40,7 @@ from Utils.archives.bsa_writer import (  # noqa: E402
     write_bsa,
     write_stub_plugin,
 )
-from Utils.plugin_parser import (  # noqa: E402
+from Utils.plugins.plugin_parser import (  # noqa: E402
     is_esl_flagged, read_masters, read_plugin_header_flags,
 )
 

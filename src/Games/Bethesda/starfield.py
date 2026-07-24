@@ -190,8 +190,8 @@ class Starfield(Fallout_3):
         profile's plugins.txt is left untouched so blueprints stay visible
         in the load-order UI.
         """
-        from Utils.plugin_parser import is_blueprint_flagged
-        from Utils.plugins import read_plugins
+        from Utils.plugins.plugin_parser import is_blueprint_flagged
+        from Utils.plugins.plugins import read_plugins
 
         _log = log_fn
         target = self._plugins_txt_target()
@@ -219,7 +219,7 @@ class Starfield(Fallout_3):
                 continue
             kept.append(e)
 
-        from Utils.plugins import deploy_plugins_copy
+        from Utils.plugins.plugins import deploy_plugins_copy
         lines = [(f"*{e.name}" if e.enabled else e.name) for e in kept]
         content = "\n".join(lines) + ("\n" if lines else "")
         deploy_plugins_copy(target.parent, target.name, content, _log)
@@ -229,7 +229,7 @@ class Starfield(Fallout_3):
 
     def _remove_plugins_txt_symlink(self, log_fn) -> None:
         """Remove the deployed Plugins.txt copy from the prefix on restore."""
-        from Utils.plugins import remove_plugins_copy
+        from Utils.plugins.plugins import remove_plugins_copy
         _log = log_fn
         target = self._plugins_txt_target()
         if target is None:

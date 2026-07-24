@@ -43,7 +43,7 @@ from Utils.extract_budget import ExtractionMemoryBudget, get_uncompressed_size
 from Utils.mod_install import (
     install_collection_archive, FOMOD_DEFERRED, BAIN_DEFERRED)
 from Utils.modlist import read_modlist, write_modlist, ModEntry
-from Utils.plugins import write_plugins, write_loadorder, PluginEntry
+from Utils.plugins.plugins import write_plugins, write_loadorder, PluginEntry
 from Utils.ui_config import (
     load_collection_settings, load_clear_archive_after_install,
     load_keep_fomod_archives)

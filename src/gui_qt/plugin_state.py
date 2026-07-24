@@ -1,8 +1,8 @@
 """Plugin list loading for the Qt Plugins tab.
 
 Produces the ordered, flagged plugin list for the active game/profile by reusing
-the backend: Utils.plugins (read_plugins / read_loadorder / write_plugins) and
-Utils.plugin_parser (ESL / master header flags). Vanilla plugins are pinned to
+the backend: Utils.plugins.plugins (read_plugins / read_loadorder / write_plugins) and
+Utils.plugins.plugin_parser (ESL / master header flags). Vanilla plugins are pinned to
 the top, then mods follow saved loadorder.txt order.
 
 v1 scope: list + order + enable-toggle + ESL/master flags. The deeper Tk logic
@@ -23,7 +23,7 @@ from Utils.app_log import app_log
 # kill worker threads). See Utils.app_log.safe_print.
 from Utils.app_log import safe_print as print  # noqa: A004
 from Utils.perftrace import span
-from Utils.plugins import (
+from Utils.plugins.plugins import (
     read_plugins, read_loadorder, write_plugins, write_loadorder, PluginEntry,
 )
 
@@ -707,7 +707,7 @@ def _to_row(e: PluginEntry, vanilla: dict, resolved: dict[str, Path],
     path = resolved.get(low) or ((data_dir / e.name) if data_dir else None)
     if path and path.is_file():
         try:
-            from Utils.plugin_parser import is_esl_flagged, is_master_flagged
+            from Utils.plugins.plugin_parser import is_esl_flagged, is_master_flagged
             if is_esl_flagged(path) or low.endswith(".esl"):
                 flags |= PF_ESL
             if is_master_flagged(path) or low.endswith(".esm"):
@@ -740,7 +740,7 @@ def _apply_master_checks(rows: list[PluginRow], resolved: dict[str, Path],
     if not paths:
         return
     try:
-        from Utils.plugin_parser import (
+        from Utils.plugins.plugin_parser import (
             check_missing_masters, check_late_masters,
             check_version_mismatched_masters)
         missing = check_missing_masters(names, paths)
@@ -1054,7 +1054,7 @@ def compute_esl_eligibility(names: list[str], resolved: dict[str, Path],
         return out
     game_type_attr = getattr(game, "loot_game_type", "") or ""
     try:
-        from Utils.plugin_parser import check_esl_eligible
+        from Utils.plugins.plugin_parser import check_esl_eligible
     except Exception:
         return out
     for name in names:

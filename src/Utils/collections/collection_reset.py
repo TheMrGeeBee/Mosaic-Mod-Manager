@@ -520,7 +520,7 @@ def reset_collection_load_order(profile_dir: Path, manifest: dict,
                 game, profile_dir, profile_dir / "plugins.txt", manifest,
                 overwrite_existing=None, _is_append_run=False,
                 log=log, _set_status=lambda _m: None)
-            from Utils.plugins import invalidate_plugins_cache
+            from Utils.plugins.plugins import invalidate_plugins_cache
             invalidate_plugins_cache(profile_dir / "plugins.txt")
             invalidate_plugins_cache(profile_dir / "loadorder.txt")
         except Exception as exc:
@@ -536,7 +536,7 @@ def reset_collection_load_order(profile_dir: Path, manifest: dict,
                 lines.append(("*" if enabled else "") + name)
                 loadorder_lines.append(name)
             plugins_path = profile_dir / "plugins.txt"
-            from Utils.plugins import _plugins_txt_encoding
+            from Utils.plugins.plugins import _plugins_txt_encoding
             text = "\n".join(lines) + "\n"
             plugins_path.write_text(text, encoding=_plugins_txt_encoding(text))
             log(f"Reset load order: wrote plugins.txt with {len(lines)} plugins")
@@ -553,7 +553,7 @@ def reset_collection_load_order(profile_dir: Path, manifest: dict,
             loadorder_path.write_text("\n".join(final_loadorder) + "\n", encoding="utf-8")
             log(f"Reset load order: wrote loadorder.txt with "
                 f"{len(final_loadorder)} plugins ({len(vanilla_prefix)} vanilla)")
-            from Utils.plugins import invalidate_plugins_cache
+            from Utils.plugins.plugins import invalidate_plugins_cache
             invalidate_plugins_cache(plugins_path)
             invalidate_plugins_cache(loadorder_path)
         except Exception as exc:

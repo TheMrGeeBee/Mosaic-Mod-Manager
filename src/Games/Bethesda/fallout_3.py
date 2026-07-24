@@ -656,7 +656,7 @@ class Fallout_3(BaseGame):
         self.save_paths()
 
     # GOG builds of Bethesda games can't read a *symlinked* plugins.txt, so we
-    # deploy a real copy (see Utils.plugins.deploy_plugins_copy). Casing follows
+    # deploy a real copy (see Utils.plugins.plugins.deploy_plugins_copy). Casing follows
     # plugins_txt_filename (the game default — lowercase for most, Plugins.txt
     # for Oblivion/Oblivion Remastered/Starfield — or the user's override).
     def _plugins_txt_targets(self, prefix_root: "Path | None" = None) -> list[Path]:
@@ -695,7 +695,7 @@ class Fallout_3(BaseGame):
         A copy (not a symlink) is required for GOG builds. The prefix is
         case-insensitive, so a single file resolves under either casing.
         """
-        from Utils.plugins import deploy_plugins_copy
+        from Utils.plugins.plugins import deploy_plugins_copy
         _log = log_fn
         targets = self._plugins_txt_targets(prefix_root)
         if not targets:
@@ -722,7 +722,7 @@ class Fallout_3(BaseGame):
 
     def _remove_plugins_txt_symlink(self, log_fn) -> None:
         """Remove the deployed plugins.txt copy (or legacy symlink) on restore."""
-        from Utils.plugins import remove_plugins_copy
+        from Utils.plugins.plugins import remove_plugins_copy
         _log = log_fn
         for target in self._plugins_txt_targets():
             remove_plugins_copy(target.parent, target.name, _log)
@@ -752,7 +752,7 @@ class Fallout_3(BaseGame):
         _log = log_fn or (lambda _: None)
         if self._game_path is None or not self._orders_plugins_by_mtime():
             return
-        from Utils.plugins import read_loadorder, read_plugins
+        from Utils.plugins.plugins import read_loadorder, read_plugins
         profile_dir = self.get_profile_root() / "profiles" / profile
         ordered = read_loadorder(profile_dir / "loadorder.txt")
         if not ordered:
@@ -764,7 +764,7 @@ class Fallout_3(BaseGame):
             ]
         if not ordered:
             return
-        from Utils.plugin_mtimes import stamp_plugin_load_order
+        from Utils.plugins.plugin_mtimes import stamp_plugin_load_order
         stamped = stamp_plugin_load_order(
             ordered,
             self._game_path / "Data",

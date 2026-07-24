@@ -4,7 +4,7 @@ Shared plugin-scan surface used by both the SkyGen and Plugin Audit wizards.
 Both wizards resolve the active profile, read its load order, find plugin
 files across the staging tree and build the cross-mod BOS/SkyPatcher patch
 index.  The concrete implementations live in Utils.skygen_core (the richer
-parser) and are re-exported here as the shared surface; Utils.plugin_audit_core
+parser) and are re-exported here as the shared surface; Utils.plugins.plugin_audit_core
 keeps its own copies of the header/new-record scanners it needs on top.
 """
 

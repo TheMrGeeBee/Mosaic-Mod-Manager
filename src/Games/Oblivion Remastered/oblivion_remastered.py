@@ -268,12 +268,12 @@ class OblivionRemastered(UE5Game):
         if not source.is_file():
             _log(f"  WARN: plugins.txt not found at {source} — skipping deploy.")
             return
-        from Utils.plugins import deploy_plugins_copy
+        from Utils.plugins.plugins import deploy_plugins_copy
         content = source.read_text(encoding="utf-8")
         deploy_plugins_copy(target.parent, target.name, content, _log)
 
     def _remove_plugins_txt_symlink(self, log_fn) -> None:
-        from Utils.plugins import remove_plugins_copy
+        from Utils.plugins.plugins import remove_plugins_copy
         target = self._plugins_txt_target()
         if target is not None:
             remove_plugins_copy(target.parent, target.name, log_fn)

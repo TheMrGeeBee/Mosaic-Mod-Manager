@@ -4,7 +4,7 @@ GUI-neutral core of the Plugin Audit wizard.
 Moved out of wizards/plugin_audit.py (which imports customtkinter) so the Qt
 wizard view can share it: the plugin-header/new-record scanners, the
 load-order/profile/priority/patch-index helpers (shared with SkyGen via
-Utils.plugin_scan_common), the AuditEntry model, and standalone
+Utils.plugins.plugin_scan_common), the AuditEntry model, and standalone
 scan/disable/cleanup functions ported from the Tk wizard's methods.
 """
 
@@ -604,7 +604,7 @@ def disable_plugins(game: "BaseGame", selected: "list[str]") -> "tuple[int, str]
     if not plugins_path.is_file():
         return 0, "plugins.txt not found — cannot disable."
 
-    from Utils.plugins import _plugins_txt_encoding, _read_text_game_compat
+    from Utils.plugins.plugins import _plugins_txt_encoding, _read_text_game_compat
     lines = _read_text_game_compat(plugins_path).splitlines()
     selected_lower = {n.lower() for n in selected}
     new_lines: list[str] = []
@@ -620,7 +620,7 @@ def disable_plugins(game: "BaseGame", selected: "list[str]") -> "tuple[int, str]
         new_lines.append(line)
     text = "\n".join(new_lines) + "\n"
     plugins_path.write_text(text, encoding=_plugins_txt_encoding(text))
-    from Utils.plugins import invalidate_plugins_cache
+    from Utils.plugins.plugins import invalidate_plugins_cache
     invalidate_plugins_cache(plugins_path)
     return disabled, f"Disabled {disabled} plugin(s)."
 

@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from Utils.plugins import (
+from Utils.plugins.plugins import (
     read_plugins, write_plugins, read_loadorder, write_loadorder, PluginEntry,
 )
 

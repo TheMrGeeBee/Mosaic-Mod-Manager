@@ -225,7 +225,7 @@ def sync_plugins(on_changed: Optional[Callable[[], None]] = None) -> None:
                     pass
             if changed:
                 try:
-                    from Utils.plugin_loader import discover_plugins
+                    from Utils.plugins.plugin_loader import discover_plugins
                     discover_plugins(force=True)
                 except Exception:
                     pass

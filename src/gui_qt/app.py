@@ -1073,7 +1073,7 @@ class MainWindow(QMainWindow):
             exts = frozenset(
                 getattr(g, "archive_extensions", frozenset()) or frozenset())
             if getattr(g, "archive_plugin_ordering", True):
-                from Utils.plugins import read_loadorder
+                from Utils.plugins.plugins import read_loadorder
                 pdir = self._gs.profile_dir()
                 plugin_order = (read_loadorder(pdir / "loadorder.txt")
                                 if pdir is not None else None)
@@ -1213,7 +1213,7 @@ class MainWindow(QMainWindow):
         paths = getattr(self, "_plugin_paths", None)
         if not paths:
             return set()
-        from Utils.plugin_parser import read_masters
+        from Utils.plugins.plugin_parser import read_masters
         masters: set = set()
         for idx in rows:
             r = self._plugin_model.row(idx.row())
@@ -7174,7 +7174,7 @@ class MainWindow(QMainWindow):
             # wizard handles the install/deploy/prefix setup a raw launch skips.
             # Only divert when a Qt view exists for the wizard; otherwise fall
             # through and launch the exe normally.
-            from Utils.plugin_loader import wizard_tool_for_exe
+            from Utils.plugins.plugin_loader import wizard_tool_for_exe
             tool = wizard_tool_for_exe(game, exe_path.name)
             if tool is not None:
                 from wizards_qt import get_spec
@@ -8197,7 +8197,7 @@ class MainWindow(QMainWindow):
             menu.addAction(self.tr("No game selected")).setEnabled(False)
             self._add_prefix_manager_action(menu)
             return
-        from Utils.plugin_loader import get_all_wizard_tools
+        from Utils.plugins.plugin_loader import get_all_wizard_tools
         from Utils.wizard_catalog import group_by_category
         from wizards_qt import EXCLUDED, get_spec
         try:
@@ -9448,7 +9448,7 @@ class MainWindow(QMainWindow):
         """Mods were toggled (checkbox / Enable-Disable all / context menu) —
         mirror the change into plugins.txt + loadorder.txt (Tk parity:
         _sync_plugins_for_toggle) and refresh the Plugins tab."""
-        from Utils.plugin_sync import sync_plugins_for_mods
+        from Utils.plugins.plugin_sync import sync_plugins_for_mods
         try:
             wrote = sync_plugins_for_mods(
                 self._gs.game, self._gs.profile_dir(), self._gs.staging_dir(),
@@ -9619,7 +9619,7 @@ class MainWindow(QMainWindow):
         if pdir is None:
             return set()
         try:
-            from Utils.disabled_plugins import disabled_plugin_files
+            from Utils.plugins.disabled_plugins import disabled_plugin_files
             return disabled_plugin_files(pdir, self._gs.game)
         except Exception:
             return set()
@@ -10484,7 +10484,7 @@ class MainWindow(QMainWindow):
         out: set[str] = set()
         # Mod Files "Disable" checkbox on a plugin file.
         try:
-            from Utils.disabled_plugins import mods_with_disabled_plugins
+            from Utils.plugins.disabled_plugins import mods_with_disabled_plugins
             out |= mods_with_disabled_plugins(pdir, self._gs.game)
         except Exception:
             pass

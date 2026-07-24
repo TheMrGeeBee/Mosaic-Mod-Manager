@@ -198,7 +198,7 @@ def _build_esl_items(view, model, esl_rows, multi, act, stub):
     game_type_attr = getattr(game, "loot_game_type", "") or ""
     paths = _plugin_paths(view)
 
-    from Utils.plugin_parser import is_esl_flagged, check_esl_eligible
+    from Utils.plugins.plugin_parser import is_esl_flagged, check_esl_eligible
 
     def esl_state(i):
         p = paths.get(model.row(i).name.lower())
@@ -254,7 +254,7 @@ def _set_enabled(view, indices, enabled: bool):
 def _toggle_esl(view, indices, enable: bool):
     """Port of Tk _toggle_esl_flag: skip .esl / unknown-path / ineligible rows,
     write the header flag, then refresh so the flag column repaints."""
-    from Utils.plugin_parser import set_esl_flag, check_esl_eligible
+    from Utils.plugins.plugin_parser import set_esl_flag, check_esl_eligible
     model = view.model()
     game = getattr(view, "game", None)
     game_type_attr = getattr(game, "loot_game_type", "") or ""

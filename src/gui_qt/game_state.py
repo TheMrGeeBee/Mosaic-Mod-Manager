@@ -358,7 +358,7 @@ class GameState:
             return empty
         try:
             from Utils.archives.bsa_filemap import build_bsa_conflicts, rebuild_bsa_index
-            from Utils.plugins import read_loadorder
+            from Utils.plugins.plugins import read_loadorder
         except Exception:
             return empty
         out_dir = staging.parent

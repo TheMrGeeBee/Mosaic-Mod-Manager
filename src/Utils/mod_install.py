@@ -1502,7 +1502,7 @@ def _collection_plugin_context(game, profile_dir: "Path | None"
     loose_files: set[str] = set()
     if profile_dir is not None:
         try:
-            from Utils.plugins import read_plugins, read_loadorder
+            from Utils.plugins.plugins import read_plugins, read_loadorder
             # Respect the game's plugins.txt convention: star-prefix games mark
             # enabled plugins with a leading "*" (bare = disabled); no-star games
             # list only enabled plugins (all listed = active). Using the default
@@ -2679,7 +2679,7 @@ def _add_plugins(game, profile_dir: Path, dest_root: Path, log_fn: LogFn) -> Non
     if not exts:
         return
     try:
-        from Utils.plugins import append_plugin
+        from Utils.plugins.plugins import append_plugin
         star = getattr(game, "plugins_use_star_prefix", True)
         plugins_path = profile_dir / "plugins.txt"
         # Besides the mod root, scan the top level of the game's data subfolder
