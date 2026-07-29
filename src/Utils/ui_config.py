@@ -1,5 +1,5 @@
 """
-UI scaling configuration stored in ~/.config/AmethystModManager/amethyst.ini.
+UI scaling configuration stored in ~/.config/MosaicModManager/mosaic.ini.
 
 Users can set ui_scale (e.g. 1.0, 1.25, 1.5, 2.0) for HiDPI displays.
 Set scale=auto to use automatic scaling based on screen size.
@@ -15,7 +15,7 @@ from Utils.config_paths import get_config_dir
 
 _INI_SECTION = "ui"
 
-# Bumped when amethyst.ini's schema changes incompatibly. On startup,
+# Bumped when mosaic.ini's schema changes incompatibly. On startup,
 # ensure_ini_version() wipes a file whose [meta] version differs (or is absent)
 # so the Qt build starts from a clean ini — this clears Tk-era ini files when
 # users move over.
@@ -50,13 +50,30 @@ _language: str = _DEFAULT_LANGUAGE
 
 
 def get_ui_config_path() -> Path:
-    """Return the path to the amethyst.ini config file."""
-    return get_config_dir() / "amethyst.ini"
+    """Return the path to the mosaic.ini config file.
+
+    One-time migration: rename a pre-rename amethyst.ini in place (within the
+    already-migrated config dir — see config_paths.get_config_dir) to
+    mosaic.ini the first time it's found, so existing settings carry over.
+    A failed rename just falls through and the caller starts fresh; the
+    legacy file is left in place until a rename actually succeeds, so it's
+    retried on the next call.
+    """
+    config_dir = get_config_dir()
+    ini_path = config_dir / "mosaic.ini"
+    if not ini_path.exists():
+        legacy_path = config_dir / "amethyst.ini"
+        if legacy_path.is_file():
+            try:
+                legacy_path.rename(ini_path)
+            except OSError:
+                pass
+    return ini_path
 
 
 def _new_parser() -> "configparser.ConfigParser":
     """A ConfigParser tolerant of a duplicated option/section (last value wins
-    instead of raising). amethyst.ini is shared with column_state.py, which uses
+    instead of raising). mosaic.ini is shared with column_state.py, which uses
     a case-preserving optionxform; a legacy key that differs only in case (e.g.
     ``w_Mod Name`` vs ``w_mod name`` in [qt_columns]) would otherwise make EVERY
     read here raise DuplicateOptionError and break all saves. strict=False lets
@@ -466,7 +483,7 @@ def load_ui_scale() -> float:
 
 
 def _write_ini(path: Path, scale_str: str) -> None:
-    """Write the [ui] scale to amethyst.ini."""
+    """Write the [ui] scale to mosaic.ini."""
     path.parent.mkdir(parents=True, exist_ok=True)
     parser = _new_parser()
     if path.is_file():
@@ -555,7 +572,7 @@ def load_font_family() -> str:
 
 
 def save_font_family(family: str) -> None:
-    """Persist font_family to amethyst.ini [ui] section."""
+    """Persist font_family to mosaic.ini [ui] section."""
     global _font_family
     _font_family = family.strip() or _DEFAULT_FONT_FAMILY
     path = get_ui_config_path()
@@ -576,7 +593,7 @@ def get_font_family() -> str:
 
 
 def load_language() -> str:
-    """Load the UI language code from amethyst.ini [ui] language.
+    """Load the UI language code from mosaic.ini [ui] language.
 
     Returns "" (follow system locale) when unset. The value is cached so
     get_language() can be called cheaply after this runs once at startup.
@@ -596,7 +613,7 @@ def load_language() -> str:
 
 
 def save_language(code: str) -> None:
-    """Persist the UI language code to amethyst.ini [ui] language.
+    """Persist the UI language code to mosaic.ini [ui] language.
 
     Pass "" to follow the system locale. Takes effect on next launch.
     """
@@ -648,7 +665,7 @@ def get_tab_pin(key: str) -> "str | None":
 
 def save_tab_pin(key: str, mode: str) -> None:
     """Persist the preferred presentation *mode* for the view *key* to
-    amethyst.ini [tab_pins]. No-op for an empty key or unknown mode."""
+    mosaic.ini [tab_pins]. No-op for an empty key or unknown mode."""
     if not key or mode not in _VALID_TAB_MODES:
         return
     path = get_ui_config_path()
@@ -756,7 +773,7 @@ def load_download_speed_limit() -> float:
 
 
 def save_download_speed_limit(mbps: float) -> None:
-    """Persist the download speed limit (MB/s, 0 = unlimited) to amethyst.ini."""
+    """Persist the download speed limit (MB/s, 0 = unlimited) to mosaic.ini."""
     path = get_ui_config_path()
     path.parent.mkdir(parents=True, exist_ok=True)
     parser = _new_parser()
@@ -775,7 +792,7 @@ def save_collection_settings(max_concurrent: int,
                               clear_archive_after_install: bool = False,
                               max_extract_workers: int = _DEFAULT_MAX_EXTRACT_WORKERS,
                               download_order: str | None = None) -> None:
-    """Persist collection settings to amethyst.ini.
+    """Persist collection settings to mosaic.ini.
 
     *download_order* is accepted for backward-compatibility (the Tk settings
     dialog still passes it) but the Qt download scheduler ignores it — downloads
@@ -918,7 +935,7 @@ _WINDOW_SECTION = "window"
 
 
 def load_column_widths() -> dict[int, int]:
-    """Load saved column width overrides from amethyst.ini. Returns {col_index: width}."""
+    """Load saved column width overrides from mosaic.ini. Returns {col_index: width}."""
     path = get_ui_config_path()
     if not path.is_file():
         return {}
@@ -939,7 +956,7 @@ def load_column_widths() -> dict[int, int]:
 
 
 def save_column_widths(widths: dict[int, int]) -> None:
-    """Persist column width overrides to amethyst.ini."""
+    """Persist column width overrides to mosaic.ini."""
     path = get_ui_config_path()
     path.parent.mkdir(parents=True, exist_ok=True)
     parser = _new_parser()
@@ -967,7 +984,7 @@ _DEFAULT_COL_ORDER = [2, 3, 4, 5, 6, 7, 8]  # category, flags, conflicts, instal
 
 
 def load_column_order() -> list[int]:
-    """Load saved column display order from amethyst.ini. Returns list of data col indices [2..6]."""
+    """Load saved column display order from mosaic.ini. Returns list of data col indices [2..6]."""
     path = get_ui_config_path()
     if not path.is_file():
         return list(_DEFAULT_COL_ORDER)
@@ -995,7 +1012,7 @@ def load_column_order() -> list[int]:
 
 
 def save_column_order(order: list[int]) -> None:
-    """Persist column display order to amethyst.ini."""
+    """Persist column display order to mosaic.ini."""
     path = get_ui_config_path()
     path.parent.mkdir(parents=True, exist_ok=True)
     parser = _new_parser()
@@ -1009,7 +1026,7 @@ def save_column_order(order: list[int]) -> None:
 
 
 def load_column_hidden() -> set[int]:
-    """Load hidden column indices from amethyst.ini. Returns set of data col indices.
+    """Load hidden column indices from mosaic.ini. Returns set of data col indices.
 
     Columns added after a user's first run are folded into their saved hidden set
     once (tracked via the `introduced` key) so new optional columns like Size
@@ -1051,7 +1068,7 @@ def _save_columns_hidden_and_introduced(path: Path, hidden: set[int], introduced
 
 
 def save_column_hidden(hidden: set[int]) -> None:
-    """Persist hidden column indices to amethyst.ini."""
+    """Persist hidden column indices to mosaic.ini."""
     path = get_ui_config_path()
     path.parent.mkdir(parents=True, exist_ok=True)
     parser = _new_parser()
@@ -1065,7 +1082,7 @@ def save_column_hidden(hidden: set[int]) -> None:
 
 
 def load_sort_state() -> tuple[str | None, bool]:
-    """Load saved sort column and direction from amethyst.ini.
+    """Load saved sort column and direction from mosaic.ini.
     Returns (sort_column, ascending) where sort_column is None if no sort is active."""
     path = get_ui_config_path()
     if not path.is_file():
@@ -1083,7 +1100,7 @@ def load_sort_state() -> tuple[str | None, bool]:
 
 
 def save_sort_state(sort_column: str | None, ascending: bool) -> None:
-    """Persist sort column and direction to amethyst.ini."""
+    """Persist sort column and direction to mosaic.ini."""
     path = get_ui_config_path()
     path.parent.mkdir(parents=True, exist_ok=True)
     parser = _new_parser()
@@ -1098,7 +1115,7 @@ def save_sort_state(sort_column: str | None, ascending: bool) -> None:
 
 
 def load_window_geometry() -> str | None:
-    """Load saved window geometry string (WxH+X+Y) from amethyst.ini."""
+    """Load saved window geometry string (WxH+X+Y) from mosaic.ini."""
     path = get_ui_config_path()
     if not path.is_file():
         return None
@@ -1111,7 +1128,7 @@ def load_window_geometry() -> str | None:
 
 
 def save_window_geometry(geometry: str) -> None:
-    """Persist window geometry string to amethyst.ini."""
+    """Persist window geometry string to mosaic.ini."""
     path = get_ui_config_path()
     path.parent.mkdir(parents=True, exist_ok=True)
     parser = _new_parser()
@@ -1125,7 +1142,7 @@ def save_window_geometry(geometry: str) -> None:
 
 
 def load_qt_window_state() -> dict:
-    """Return the saved Qt main-window state from amethyst.ini [window]:
+    """Return the saved Qt main-window state from mosaic.ini [window]:
 
     * ``geometry`` — base64 str of QMainWindow.saveGeometry() (position, size
       and maximized flag), or None if never saved.
@@ -1154,7 +1171,7 @@ def load_qt_window_state() -> dict:
 
 def save_qt_window_state(geometry_b64: str, body_split: "list[int] | None") -> None:
     """Persist the Qt main-window geometry (base64 of saveGeometry()) and the
-    modlist ║ plugins splitter sizes to amethyst.ini [window] in one write."""
+    modlist ║ plugins splitter sizes to mosaic.ini [window] in one write."""
     path = get_ui_config_path()
     path.parent.mkdir(parents=True, exist_ok=True)
     parser = _new_parser()
@@ -1176,7 +1193,7 @@ _DEV_SECTION = "dev"
 
 
 def load_dev_mode() -> bool:
-    """Return True if [dev] devmode = true is set in amethyst.ini."""
+    """Return True if [dev] devmode = true is set in mosaic.ini."""
     path = get_ui_config_path()
     if not path.is_file():
         return False
@@ -1189,7 +1206,7 @@ def load_dev_mode() -> bool:
 
 
 def load_force_manual_install() -> bool:
-    """Return True if [dev] force_manual_install = true is set in amethyst.ini.
+    """Return True if [dev] force_manual_install = true is set in mosaic.ini.
 
     When True, collection installs use the non-premium manual-download flow
     regardless of the user's actual Nexus premium status.
@@ -1230,7 +1247,7 @@ def load_suppress_i386_warning() -> bool:
 
 
 def save_suppress_i386_warning(value: bool) -> None:
-    """Persist the suppress_i386_warning setting to amethyst.ini."""
+    """Persist the suppress_i386_warning setting to mosaic.ini."""
     path = get_ui_config_path()
     path.parent.mkdir(parents=True, exist_ok=True)
     parser = _new_parser()
@@ -1263,7 +1280,7 @@ def load_normalize_folder_case() -> bool:
 
 
 def save_normalize_folder_case(value: bool) -> None:
-    """Persist the normalize_folder_case setting to amethyst.ini."""
+    """Persist the normalize_folder_case setting to mosaic.ini."""
     path = get_ui_config_path()
     path.parent.mkdir(parents=True, exist_ok=True)
     parser = _new_parser()
@@ -1296,7 +1313,7 @@ def load_allow_prerelease() -> bool:
 
 
 def save_allow_prerelease(value: bool) -> None:
-    """Persist the allow_prerelease setting to amethyst.ini under [updates]."""
+    """Persist the allow_prerelease setting to mosaic.ini under [updates]."""
     path = get_ui_config_path()
     path.parent.mkdir(parents=True, exist_ok=True)
     parser = _new_parser()
@@ -1392,7 +1409,7 @@ def load_clear_archive_after_install() -> bool:
 
 
 def save_clear_archive_after_install(value: bool) -> None:
-    """Persist the clear_archive_after_install setting to amethyst.ini."""
+    """Persist the clear_archive_after_install setting to mosaic.ini."""
     path = get_ui_config_path()
     path.parent.mkdir(parents=True, exist_ok=True)
     parser = _new_parser()
@@ -1421,7 +1438,7 @@ def load_install_mods_disabled() -> bool:
 
 
 def save_install_mods_disabled(value: bool) -> None:
-    """Persist the install_mods_disabled setting to amethyst.ini."""
+    """Persist the install_mods_disabled setting to mosaic.ini."""
     path = get_ui_config_path()
     path.parent.mkdir(parents=True, exist_ok=True)
     parser = _new_parser()
@@ -1452,7 +1469,7 @@ def load_keep_fomod_archives() -> bool:
 
 
 def save_keep_fomod_archives(value: bool) -> None:
-    """Persist the keep_fomod_archives setting to amethyst.ini."""
+    """Persist the keep_fomod_archives setting to mosaic.ini."""
     path = get_ui_config_path()
     path.parent.mkdir(parents=True, exist_ok=True)
     parser = _new_parser()
@@ -1479,7 +1496,7 @@ def load_show_summary_tooltips() -> bool:
 
 
 def save_show_summary_tooltips(value: bool) -> None:
-    """Persist the show_summary_tooltips setting to amethyst.ini."""
+    """Persist the show_summary_tooltips setting to mosaic.ini."""
     path = get_ui_config_path()
     path.parent.mkdir(parents=True, exist_ok=True)
     parser = _new_parser()
@@ -1510,7 +1527,7 @@ def load_hide_bsa_conflicts() -> bool:
 
 
 def save_hide_bsa_conflicts(value: bool) -> None:
-    """Persist the hide_bsa_conflicts setting to amethyst.ini."""
+    """Persist the hide_bsa_conflicts setting to mosaic.ini."""
     path = get_ui_config_path()
     path.parent.mkdir(parents=True, exist_ok=True)
     parser = _new_parser()
@@ -1540,7 +1557,7 @@ def load_rename_mod_after_install() -> bool:
 
 
 def save_rename_mod_after_install(value: bool) -> None:
-    """Persist the rename_mod_after_install setting to amethyst.ini."""
+    """Persist the rename_mod_after_install setting to mosaic.ini."""
     path = get_ui_config_path()
     path.parent.mkdir(parents=True, exist_ok=True)
     parser = _new_parser()
@@ -1571,7 +1588,7 @@ def load_restore_on_close() -> bool:
 
 
 def save_restore_on_close(value: bool) -> None:
-    """Persist the restore_on_close setting to amethyst.ini."""
+    """Persist the restore_on_close setting to mosaic.ini."""
     path = get_ui_config_path()
     path.parent.mkdir(parents=True, exist_ok=True)
     parser = _new_parser()
@@ -1585,7 +1602,7 @@ def save_restore_on_close(value: bool) -> None:
 
 
 def save_nexus_show_adult(value: bool) -> None:
-    """Persist the show_adult setting to amethyst.ini."""
+    """Persist the show_adult setting to mosaic.ini."""
     path = get_ui_config_path()
     path.parent.mkdir(parents=True, exist_ok=True)
     parser = _new_parser()
@@ -1613,7 +1630,7 @@ def load_nexus_page_size(default: int = 30) -> int:
 
 
 def save_nexus_page_size(value: int) -> None:
-    """Persist the Nexus browser 'shown per page' setting to amethyst.ini."""
+    """Persist the Nexus browser 'shown per page' setting to mosaic.ini."""
     path = get_ui_config_path()
     path.parent.mkdir(parents=True, exist_ok=True)
     parser = _new_parser()
@@ -1646,7 +1663,7 @@ def load_heroic_config_path() -> str:
 
 
 def save_heroic_config_path(value: str) -> None:
-    """Persist the Heroic config directory path to amethyst.ini. Pass '' to clear."""
+    """Persist the Heroic config directory path to mosaic.ini. Pass '' to clear."""
     path = get_ui_config_path()
     path.parent.mkdir(parents=True, exist_ok=True)
     parser = _new_parser()
@@ -1673,7 +1690,7 @@ def load_lutris_data_path() -> str:
 
 
 def save_lutris_data_path(value: str) -> None:
-    """Persist the Lutris data directory path to amethyst.ini. Pass '' to clear."""
+    """Persist the Lutris data directory path to mosaic.ini. Pass '' to clear."""
     path = get_ui_config_path()
     path.parent.mkdir(parents=True, exist_ok=True)
     parser = _new_parser()
@@ -1700,7 +1717,7 @@ def load_lutris_appimage_path() -> str:
 
 
 def save_lutris_appimage_path(value: str) -> None:
-    """Persist the Lutris AppImage path to amethyst.ini. Pass '' to clear."""
+    """Persist the Lutris AppImage path to mosaic.ini. Pass '' to clear."""
     path = get_ui_config_path()
     path.parent.mkdir(parents=True, exist_ok=True)
     parser = _new_parser()
@@ -1727,7 +1744,7 @@ def load_steam_libraries_vdf_path() -> str:
 
 
 def save_steam_libraries_vdf_path(value: str) -> None:
-    """Persist the Steam libraryfolders.vdf path to amethyst.ini. Pass '' to clear."""
+    """Persist the Steam libraryfolders.vdf path to mosaic.ini. Pass '' to clear."""
     path = get_ui_config_path()
     path.parent.mkdir(parents=True, exist_ok=True)
     parser = _new_parser()
@@ -1758,7 +1775,7 @@ def load_default_staging_path() -> str:
 
 
 def save_default_staging_path(value: str) -> None:
-    """Persist the default mod staging folder to amethyst.ini. Pass '' to clear."""
+    """Persist the default mod staging folder to mosaic.ini. Pass '' to clear."""
     path = get_ui_config_path()
     path.parent.mkdir(parents=True, exist_ok=True)
     parser = _new_parser()
@@ -1790,7 +1807,7 @@ def load_download_cache_path() -> str:
 
 
 def save_download_cache_path(value: str) -> None:
-    """Persist the download cache root to amethyst.ini. Pass '' to clear."""
+    """Persist the download cache root to mosaic.ini. Pass '' to clear."""
     path = get_ui_config_path()
     path.parent.mkdir(parents=True, exist_ok=True)
     parser = _new_parser()
@@ -1807,7 +1824,7 @@ def load_onboarding_complete() -> bool:
     """Return True once first-run onboarding has been finished/dismissed.
 
     False when the file / section / key is missing (covers 'missing or 0'), so
-    a fresh amethyst.ini shows the onboarding on launch exactly once.
+    a fresh mosaic.ini shows the onboarding on launch exactly once.
     """
     path = get_ui_config_path()
     if not path.is_file():
@@ -1821,7 +1838,7 @@ def load_onboarding_complete() -> bool:
 
 
 def save_onboarding_complete(value: bool) -> None:
-    """Persist the onboarding completion flag to amethyst.ini."""
+    """Persist the onboarding completion flag to mosaic.ini."""
     path = get_ui_config_path()
     path.parent.mkdir(parents=True, exist_ok=True)
     parser = _new_parser()
@@ -1984,7 +2001,7 @@ def _merge_new_defaults(rules: list[dict], defaults: list[dict],
 
 
 def save_install_name_patterns(rules: list[dict]) -> None:
-    """Persist the install-name rules to amethyst.ini as a JSON list.
+    """Persist the install-name rules to mosaic.ini as a JSON list.
 
     Rules with an empty ``search`` are dropped. Order is preserved (rules are
     applied top-to-bottom at install time). Carries the optional ``id``/``label``
@@ -2053,7 +2070,7 @@ THEME_DEFAULTS: dict[str, str] = {
 # theme file (src/gui/themes/<mode>.py); ui_config loads them lazily so the
 # Utils package doesn't import the gui package at import time.
 #
-# User overrides in [theme] of amethyst.ini always win — except when a
+# User overrides in [theme] of mosaic.ini always win — except when a
 # saved value exactly matches the dark default for a key that the current
 # theme overrides; that's treated as legacy/uncustomised so existing ini
 # files don't strand users with dark separators on a light or cyberpunk UI.
@@ -2142,7 +2159,7 @@ def load_theme_colors() -> dict[str, str]:
 
 
 def save_theme_color(key: str, value: str) -> None:
-    """Persist a single theme colour under [theme] in amethyst.ini.
+    """Persist a single theme colour under [theme] in mosaic.ini.
 
     Silently ignores unknown keys or invalid hex values to prevent corruption.
     """
@@ -2220,7 +2237,7 @@ def save_appearance_mode(mode: str) -> None:
 # ---------------------------------------------------------------------------
 
 def load_last_session() -> "tuple[str | None, str | None]":
-    """Return (last_game, last_profile) from amethyst.ini, each None if unset."""
+    """Return (last_game, last_profile) from mosaic.ini, each None if unset."""
     path = get_ui_config_path()
     if not path.is_file():
         return (None, None)
@@ -2235,7 +2252,7 @@ def load_last_session() -> "tuple[str | None, str | None]":
 
 
 def save_last_session(game: "str | None", profile: "str | None") -> None:
-    """Persist the last-used game + profile to amethyst.ini ([session])."""
+    """Persist the last-used game + profile to mosaic.ini ([session])."""
     path = get_ui_config_path()
     path.parent.mkdir(parents=True, exist_ok=True)
     try:
@@ -2253,15 +2270,15 @@ def save_last_session(game: "str | None", profile: "str | None") -> None:
 
 
 # ---------------------------------------------------------------------------
-# amethyst.ini schema version gate (migration wipe)
+# mosaic.ini schema version gate (migration wipe)
 # ---------------------------------------------------------------------------
 
 def ensure_ini_version() -> None:
-    """Ensure amethyst.ini matches the current schema version.
+    """Ensure mosaic.ini matches the current schema version.
 
     If the file exists but its ``[meta] version`` is missing or != _APP_INI_VERSION
     (an old Tk-era ini), DELETE it so the Qt build starts fresh. Then make sure a
-    file exists stamping the current version. amethyst.ini only — other config
+    file exists stamping the current version. mosaic.ini only — other config
     (last_game.json, games/, profiles, caches) is left untouched.
 
     Call this ONCE at the very start of startup, before anything reads the ini.

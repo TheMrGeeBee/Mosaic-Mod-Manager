@@ -7784,7 +7784,7 @@ class MainWindow(QMainWindow):
 
     def _save_window_state(self):
         """Persist the window geometry (pos/size/maximized) and the modlist ║
-        plugins splitter position to amethyst.ini [window]."""
+        plugins splitter position to mosaic.ini [window]."""
         try:
             from Utils.ui_config import save_qt_window_state
             geo = bytes(self.saveGeometry().toBase64()).decode("ascii")
@@ -13311,7 +13311,7 @@ def run() -> int:
         if nxm_url:
             nxm_log("No running instance — continuing into full app launch")
 
-    # Migrate/clean amethyst.ini BEFORE anything reads it (theme loader, GameState).
+    # Migrate/clean mosaic.ini BEFORE anything reads it (theme loader, GameState).
     # Wipes a pre-Qt ini (missing [meta] version=2) so everyone starts fresh.
     from Utils.ui_config import ensure_ini_version, load_language, load_ui_scale
     ensure_ini_version()
@@ -13350,7 +13350,7 @@ def run() -> int:
     _apply_app_identity(app)
     # Install UI translators before any widget is built (Qt only translates
     # tr() calls made after the translator is installed). Language comes from
-    # amethyst.ini, which ensure_ini_version() has just finished migrating.
+    # mosaic.ini, which ensure_ini_version() has just finished migrating.
     from gui_qt.i18n import install_translators
     install_translators(app, load_language())
     apply_theme(app)

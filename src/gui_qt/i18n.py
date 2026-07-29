@@ -21,7 +21,7 @@ Translation files are loaded from TWO locations, config-folder-wins:
 When a language exists in both, the config-folder copy wins, so fixes shipped
 via Resources take effect without a full app release.
 
-At startup :func:`install_translators` picks the language from ``amethyst.ini``
+At startup :func:`install_translators` picks the language from ``mosaic.ini``
 (``[ui] language``; empty = follow the system locale), loads our ``.qm`` plus
 Qt's own bundled ``qtbase_<code>.qm`` (so standard dialog buttons — OK/Cancel/
 etc. — are localised too), and installs both on the app.

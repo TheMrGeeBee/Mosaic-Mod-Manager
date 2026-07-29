@@ -9,27 +9,46 @@ import subprocess
 
 from Utils.gh_cache import fetch_text as _gh_fetch_text
 
-_APP_UPDATE_RELEASES_API_URL = "https://api.github.com/repos/ChrisDKN/Amethyst-Mod-Manager/releases/latest"
-_APP_UPDATE_RELEASES_LIST_API_URL = "https://api.github.com/repos/ChrisDKN/Amethyst-Mod-Manager/releases?per_page=20"
-_APP_UPDATE_RELEASES_URL = "https://github.com/ChrisDKN/Amethyst-Mod-Manager/releases"
-_APP_UPDATE_INSTALLER_URL = "https://raw.githubusercontent.com/ChrisDKN/Amethyst-Mod-Manager/main/src/appimage/Amethyst-MM-installer.sh"
+_APP_UPDATE_RELEASES_API_URL = "https://api.github.com/repos/TheMrGeeBee/Mosaic-Mod-Manager/releases/latest"
+_APP_UPDATE_RELEASES_LIST_API_URL = "https://api.github.com/repos/TheMrGeeBee/Mosaic-Mod-Manager/releases?per_page=20"
+_APP_UPDATE_RELEASES_URL = "https://github.com/TheMrGeeBee/Mosaic-Mod-Manager/releases"
+_APP_UPDATE_INSTALLER_URL = "https://raw.githubusercontent.com/TheMrGeeBee/Mosaic-Mod-Manager/main/src/appimage/Mosaic-MM-installer.sh"
 _APP_UPDATE_FLATPAK_BUNDLE_URL = (
-    "https://github.com/ChrisDKN/Amethyst-Mod-Manager/releases/download/"
-    "v{tag}/AmethystModManager.flatpak"
+    "https://github.com/TheMrGeeBee/Mosaic-Mod-Manager/releases/download/"
+    "v{tag}/MosaicModManager.flatpak"
 )
-_APP_ID = "io.github.Amethyst.ModManager"
+_APP_ID = "io.github.TheMrGeeBee.MosaicModManager"
+
+# Hosted Flatpak remote (GitHub Pages) + AUR package — infrastructure this
+# fork doesn't have of its own yet (these URLs point at where they'd live
+# once published, matching the release.yml PAGES_URL fix and a plausible
+# future AUR package name, but nothing is actually hosted there today).
+# _HOSTED_INFRA_AVAILABLE gates every public function that depends on them
+# (see below) so they're disabled rather than silently pointing at 404s —
+# flip it to True once the remote/package are actually published.
+_HOSTED_INFRA_AVAILABLE = False
 
 # Hosted Flatpak remote (GitHub Pages). Adding this remote lets the OS handle
 # updates natively (`flatpak update`, GNOME Software, Discover) with delta
 # downloads. `stable` and `beta` are the two OSTree branches published to it.
 _FLATPAK_REMOTE_NAME = "modmanager-origin"
-_FLATPAK_REMOTE_REPO_URL = "https://chrisdkn.github.io/Amethyst-Mod-Manager/repo/"
+_FLATPAK_REMOTE_REPO_URL = "https://themrgeebee.github.io/Mosaic-Mod-Manager/repo/"
 _FLATPAK_REMOTE_FILE_URL = (
-    "https://chrisdkn.github.io/Amethyst-Mod-Manager/amethyst.flatpakrepo"
+    "https://themrgeebee.github.io/Mosaic-Mod-Manager/mosaic.flatpakrepo"
 )
 
-_AUR_API_URL = "https://aur.archlinux.org/rpc/v5/info/amethyst-mod-manager"
-_AUR_PACKAGE_URL = "https://aur.archlinux.org/packages/amethyst-mod-manager"
+_AUR_API_URL = "https://aur.archlinux.org/rpc/v5/info/mosaic-mod-manager"
+_AUR_PACKAGE_URL = "https://aur.archlinux.org/packages/mosaic-mod-manager"
+
+
+def hosted_infra_available() -> bool:
+    """True once the hosted Flatpak remote / AUR package actually exist.
+
+    UI code should gate any hosted-remote-only affordance (e.g. the Settings
+    "Enable automatic updates" button) on this, not just try the call and
+    handle failure — a permanently-failing button is worse than no button.
+    """
+    return _HOSTED_INFRA_AVAILABLE
 
 
 def is_appimage() -> bool:
@@ -38,14 +57,14 @@ def is_appimage() -> bool:
 
 
 def is_flatpak() -> bool:
-    """Return True if we are running as the Amethyst flatpak.
+    """Return True if we are running as the Mosaic flatpak.
 
     NB: match FLATPAK_ID against OUR id, not "/.flatpak-info exists" —
     running from source inside another flatpak (e.g. a flatpak VS Code
     terminal) sandboxes us under that host app, so the file test would
     wrongly steer from-source sessions to the flatpak update path.
     """
-    return os.environ.get("FLATPAK_ID") == "io.github.Amethyst.ModManager"
+    return os.environ.get("FLATPAK_ID") == _APP_ID
 
 
 def _parse_version(s: str) -> tuple:
@@ -123,7 +142,8 @@ def _fetch_latest_version(
 
 
 def _fetch_aur_version(*, force: bool = False) -> str | None:
-    """Fetch the current AUR package version; return None on error.
+    """Fetch the current AUR package version; return None on error (or when
+    disabled — see _HOSTED_INFRA_AVAILABLE, no AUR package exists yet).
 
     The AUR version string includes a pkgrel suffix (e.g. '0.7.9-1').
     We strip everything from the first '-' onwards so callers get a plain
@@ -131,6 +151,8 @@ def _fetch_aur_version(*, force: bool = False) -> str | None:
 
     Uses ETag caching + a 1-hour throttle (AUR supports conditional GETs too).
     """
+    if not _HOSTED_INFRA_AVAILABLE:
+        return None
     import json
     try:
         raw = _gh_fetch_text(
@@ -203,25 +225,25 @@ def run_installer(allow_prerelease: bool = False):
     its own mount point.  That mount is gone once the app exits, so curl would
     fail with a certificate error.  We scrub those variables (and any other
     AppImage-injected ones) from the child environment before launching.
-    Output is logged to $XDG_CONFIG_HOME/amethyst-update.log for debugging.
+    Output is logged to $XDG_CONFIG_HOME/mosaic-update.log for debugging.
     sleep 2 gives the app time to fully exit before the installer overwrites
     the running AppImage.
     """
     config_dir = os.path.join(
         os.environ.get("XDG_CONFIG_HOME", os.path.expanduser("~/.config")),
-        "AmethystModManager",
+        "MosaicModManager",
     )
     os.makedirs(config_dir, exist_ok=True)
-    log_path = os.path.join(config_dir, "amethyst-update.log")
+    log_path = os.path.join(config_dir, "mosaic-update.log")
     installer_args = " --prerelease" if allow_prerelease else ""
     cmd = (
         f"sleep 2 && "
-        f"SCRIPT=$(mktemp /tmp/amethyst-installer-XXXXXX.sh) && "
+        f"SCRIPT=$(mktemp /tmp/mosaic-installer-XXXXXX.sh) && "
         f"curl -sSL {_APP_UPDATE_INSTALLER_URL} -o \"$SCRIPT\" && "
         f"chmod +x \"$SCRIPT\" && "
         f"bash \"$SCRIPT\"{installer_args} && "
         f"rm -f \"$SCRIPT\" && "
-        f"nohup \"$HOME/Applications/AmethystModManager-x86_64.AppImage\" &>/dev/null &"
+        f"nohup \"$HOME/Applications/MosaicModManager-x86_64.AppImage\" &>/dev/null &"
     )
 
     # Build a clean environment: start from the current env then strip every
@@ -267,11 +289,11 @@ def run_flatpak_installer(latest_tag: str) -> bool:
     ``--talk-name=org.freedesktop.Flatpak``, which is what makes this reachable).
 
     Flow, run detached so it survives our own shutdown:
-      1. curl the release's ``AmethystModManager.flatpak`` bundle to a temp file.
+      1. curl the release's ``MosaicModManager.flatpak`` bundle to a temp file.
       2. ``flatpak install --user --bundle --reinstall -y`` it on the host.
       3. relaunch ``flatpak run <app-id>`` and clean up the temp bundle.
 
-    Output is logged to $XDG_CONFIG_HOME/amethyst-update.log (same as AppImage;
+    Output is logged to $XDG_CONFIG_HOME/mosaic-update.log (same as AppImage;
     under flatpak XDG_CONFIG_HOME is redirected into ~/.var/app/<id>/config).
     A ``sleep 2`` lets us exit first. Returns True if the child launched.
 
@@ -285,10 +307,10 @@ def run_flatpak_installer(latest_tag: str) -> bool:
 
     config_dir = os.path.join(
         os.environ.get("XDG_CONFIG_HOME", os.path.expanduser("~/.config")),
-        "AmethystModManager",
+        "MosaicModManager",
     )
     os.makedirs(config_dir, exist_ok=True)
-    log_path = os.path.join(config_dir, "amethyst-update.log")
+    log_path = os.path.join(config_dir, "mosaic-update.log")
 
     tag = latest_tag.lstrip("v")
     bundle_url = _APP_UPDATE_FLATPAK_BUNDLE_URL.format(tag=tag)
@@ -301,7 +323,7 @@ def run_flatpak_installer(latest_tag: str) -> bool:
         os.makedirs(dl_dir, exist_ok=True)
     except Exception:
         dl_dir = os.path.expanduser("~")
-    bundle_path = os.path.join(dl_dir, "AmethystModManager.update.flatpak")
+    bundle_path = os.path.join(dl_dir, "MosaicModManager.update.flatpak")
 
     # curl runs in-sandbox (network is granted); install/run go to the host.
     # --directory=/ avoids the portal failing on the app's sandbox-only cwd.
@@ -348,7 +370,7 @@ def _host_flatpak(*args: str, timeout: int = 60):
         return None
     try:
         # --directory=/ is REQUIRED: the portal spawns the host command in the
-        # caller's cwd, and the app runs from /app/share/amethyst-mod-manager —
+        # caller's cwd, and the app runs from /app/share/mosaic-mod-manager —
         # a sandbox-only path. Without it every call fails with "Portal call
         # failed: Failed to change to directory" (same fix as proton_tools).
         return subprocess.run(
@@ -395,8 +417,11 @@ def flatpak_installed_from_remote() -> bool:
     the enroll/one-liner remote AND the auto-created "<app>-origin" a
     --repo-url bundle install creates (now the SAME name). Bundle installs WITHOUT
     --repo-url (or any non-remote install) have no matching origin → False.
-    Conservatively returns False when the host can't be queried.
+    Conservatively returns False when the host can't be queried (or when
+    disabled — see _HOSTED_INFRA_AVAILABLE, no remote is hosted yet).
     """
+    if not _HOSTED_INFRA_AVAILABLE:
+        return False
     cp = _host_flatpak("info", "--show-origin", _APP_ID)
     if cp is None or cp.returncode != 0:
         return False
@@ -409,6 +434,8 @@ def flatpak_installed_from_remote() -> bool:
 
 def flatpak_remote_present() -> bool:
     """True if a remote pointing at our hosted repo is configured (any name)."""
+    if not _HOSTED_INFRA_AVAILABLE:
+        return False
     return _remote_name_for_our_url() is not None
 
 
@@ -431,8 +458,11 @@ def polish_flatpak_origin() -> None:
     "<version> → <branch>" (it falls back to the branch name when the target
     has no appstream version). Flip the flag and set a proper title so update
     entries read "2.0.4-beta.4 → 2.0.4-beta.5" instead. No-op when the remote
-    is absent, already enumerable, or the host can't be reached.
+    is absent, already enumerable, disabled (see _HOSTED_INFRA_AVAILABLE), or
+    the host can't be reached.
     """
+    if not _HOSTED_INFRA_AVAILABLE:
+        return
     name = _remote_name_for_our_url()
     if not name:
         return
@@ -445,7 +475,7 @@ def polish_flatpak_origin() -> None:
         if parts and parts[0].strip() == name:
             if "no-enumerate" in (parts[1] if len(parts) > 1 else ""):
                 _host_flatpak("remote-modify", "--user", name, "--enumerate",
-                              "--title=Amethyst Mod Manager")
+                              "--title=Mosaic Mod Manager")
             break
 
 
@@ -455,8 +485,11 @@ def flatpak_remote_branch_available(branch: str) -> bool:
     The remote's branches are created lazily by CI (`beta` doesn't exist until
     the first beta tag is published), so an install/switch targeting a missing
     branch would fail silently in the detached child. Callers use this to
-    surface "channel not published yet" instead.
+    surface "channel not published yet" instead. Always False while disabled
+    (see _HOSTED_INFRA_AVAILABLE) — no remote is hosted yet.
     """
+    if not _HOSTED_INFRA_AVAILABLE:
+        return False
     cp = _host_flatpak("remote-info", "--user", _effective_remote_name(),
                        f"{_APP_ID}//{branch}")
     return cp is not None and cp.returncode == 0
@@ -518,10 +551,10 @@ def _launch_remote_reinstall(branch: str) -> str:
     """
     config_dir = os.path.join(
         os.environ.get("XDG_CONFIG_HOME", os.path.expanduser("~/.config")),
-        "AmethystModManager",
+        "MosaicModManager",
     )
     os.makedirs(config_dir, exist_ok=True)
-    log_path = os.path.join(config_dir, "amethyst-update.log")
+    log_path = os.path.join(config_dir, "mosaic-update.log")
 
     # --directory=/ avoids the portal failing on the app's sandbox-only cwd.
     host = "flatpak-spawn --host --directory=/"
@@ -561,9 +594,12 @@ def enroll_flatpak_remote(*, allow_prerelease: bool = False) -> str:
     Returns "launched" (child started — caller should close the app),
     "no-branch" (remote reachable but the requested channel isn't published
     yet, e.g. beta before the first beta release), or "unavailable" (host
-    flatpak unreachable). GPG verification stays on — the .flatpakrepo the
+    flatpak unreachable, or disabled — see _HOSTED_INFRA_AVAILABLE, no
+    remote is hosted yet). GPG verification stays on — the .flatpakrepo the
     remote-add consumes carries the signing key.
     """
+    if not _HOSTED_INFRA_AVAILABLE:
+        return "unavailable"
     import shutil
     if not shutil.which("flatpak-spawn"):
         return "unavailable"
@@ -585,8 +621,11 @@ def update_flatpak_from_remote(*, allow_prerelease: bool = False) -> str:
     Returns "launched" (reinstall started — caller should close the app),
     "no-branch" (the requested channel isn't published on the remote, so the
     detached install would fail silently — surface it instead), or
-    "unavailable" (host flatpak unreachable).
+    "unavailable" (host flatpak unreachable, or disabled — see
+    _HOSTED_INFRA_AVAILABLE, no remote is hosted yet).
     """
+    if not _HOSTED_INFRA_AVAILABLE:
+        return "unavailable"
     import shutil
     if not shutil.which("flatpak-spawn"):
         return "unavailable"

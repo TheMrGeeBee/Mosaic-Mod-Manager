@@ -61,7 +61,7 @@ class GameState:
     # -- discovery / load ---------------------------------------------------
     def load(self) -> None:
         """Discover games and select the last-used game + profile (from
-        amethyst.ini [session], falling back to last_game.json / first game and
+        mosaic.ini [session], falling back to last_game.json / first game and
         the first profile). Populates game_names / game_name / profile."""
         self.game_names = _load_games()
         sess_game, sess_profile = load_last_session()

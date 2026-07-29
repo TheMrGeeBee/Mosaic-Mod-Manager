@@ -322,7 +322,7 @@ def get_download_cache_dir() -> Path:
     """Return the download cache root directory, creating it if it doesn't exist.
 
     Honours the user-configured path from ``[paths] download_cache_path`` in
-    amethyst.ini.  When unset (or unwritable) falls back to
+    mosaic.ini.  When unset (or unwritable) falls back to
     ``~/.config/MosaicModManager/download_cache/``.
 
     The setting is read on every call so a path change in the Settings panel

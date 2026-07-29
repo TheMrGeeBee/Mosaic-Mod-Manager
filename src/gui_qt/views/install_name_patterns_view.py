@@ -10,7 +10,7 @@ parsers (see `Utils.mods.mod_name_utils._apply_custom_patterns`). This is the es
 hatch for when Nexus changes its download-name format again: rather than shipping
 a code change, a user adds a rule here.
 
-Each rule is `re.sub(search, replace, stem)`. Rules persist to amethyst.ini
+Each rule is `re.sub(search, replace, stem)`. Rules persist to mosaic.ini
 through `Utils.ui_config.load/save_install_name_patterns` on every change — no
 Save button, matching the rest of the Qt Settings tab. A live "Test" box shows
 the result of running the current rules against a sample filename so a user can

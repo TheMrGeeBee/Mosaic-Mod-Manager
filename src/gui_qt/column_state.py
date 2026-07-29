@@ -1,5 +1,5 @@
 """Modlist column-state persistence: widths/order/hidden/sort saved to a
-``[qt_columns]`` section of amethyst.ini, keyed by column NAME (not index) so it
+``[qt_columns]`` section of mosaic.ini, keyed by column NAME (not index) so it
 never collides with the Tk app's index-based ``[columns]`` section.
 """
 

@@ -15,7 +15,7 @@ CTK_APPEARANCE = "light"
 
 # Per-theme defaults for the user-customisable keys (Settings → Theme).
 # Only listed keys differ from the app-wide THEME_DEFAULTS. User picks in
-# amethyst.ini always win; these only apply when the key is unset or still
+# mosaic.ini always win; these only apply when the key is unset or still
 # matches the dark default (treated as legacy).
 THEME_DEFAULTS_OVERRIDE: dict[str, str] = {
     "separator_bg":       "#b8b8b8",

@@ -6,7 +6,7 @@ Opened from the top-bar gear button (app.py `_open_settings_tab`) via
 modlist content is swapped out for this widget while the rest of the UI (plugins
 panel, headers, footers) stays live; closing the tab restores the modlist.
 
-Save-on-change: every control writes straight to amethyst.ini through the
+Save-on-change: every control writes straight to mosaic.ini through the
 toolkit-free `Utils.ui_config` load_*/save_* helpers the moment it changes — there
 is no Save/Cancel button. A few settings (Language, Theme, UI Scale) only take
 effect on restart and say so inline.
@@ -256,7 +256,7 @@ class SettingsView(QWidget):
     def _build_user_interface(self):
         # Language, Theme and UI Scale are all applied once at startup (Qt reads
         # QT_SCALE_FACTOR / the palette / the translator only at launch), so each
-        # change persists to amethyst.ini and offers a self-restart. They are
+        # change persists to mosaic.ini and offers a self-restart. They are
         # grouped together with a single shared restart note beneath them; the
         # Hide BSA conflicts toggle (which applies live) sits below that.
         g = self._section(self.tr("User Interface"))
@@ -634,7 +634,7 @@ class SettingsView(QWidget):
         self._checkbox(
             g, self.tr("Notify about new versions on startup"),
             uc.load_update_notifications, uc.save_update_notifications,
-            help=self.tr("Show a notification when a new version of Amethyst "
+            help=self.tr("Show a notification when a new version of Mosaic "
                  "is available. Turning this off only mutes the notification "
                  "— you can still update via your package manager or by "
                  "toggling the pre-release setting."))
@@ -650,8 +650,10 @@ class SettingsView(QWidget):
         is hidden. No-op outside the flatpak or when already remote-tracked.
         """
         from Utils.version_check import (
-            is_flatpak, flatpak_installed_from_remote,
+            is_flatpak, flatpak_installed_from_remote, hosted_infra_available,
         )
+        if not hosted_infra_available():
+            return  # no hosted remote published yet — nothing to offer
         if not is_flatpak() or flatpak_installed_from_remote():
             return
         row = self._next_row(g)
@@ -660,7 +662,7 @@ class SettingsView(QWidget):
         btn.clicked.connect(self._on_enroll_flatpak_remote)
         g.addWidget(btn, row, 0, 1, 2, Qt.AlignLeft)
         self._add_help(g, self.tr(
-            "Switch this Flatpak to the Amethyst update remote so future "
+            "Switch this Flatpak to the Mosaic update remote so future "
             "updates arrive automatically through your package manager "
             "(GNOME Software / Discover) with smaller downloads. This "
             "reinstalls the app once from the remote and relaunches it."))
@@ -695,13 +697,13 @@ class SettingsView(QWidget):
                     self.tr("Could not reach Flatpak"),
                     self.tr("The host Flatpak service couldn't be reached. "
                             "You can add the remote manually:\n\n"
-                            "flatpak remote-add --user amethyst "
-                            "https://chrisdkn.github.io/Amethyst-Mod-Manager/"
-                            "amethyst.flatpakrepo"))
+                            "flatpak remote-add --user mosaic "
+                            "https://themrgeebee.github.io/Mosaic-Mod-Manager/"
+                            "mosaic.flatpakrepo"))
         ConfirmOverlay.show_over(
             self._window,
             self.tr("Enable automatic updates?"),
-            self.tr("Amethyst will add its update remote and reinstall itself "
+            self.tr("Mosaic will add its update remote and reinstall itself "
                     "from it once, then relaunch. Future updates then arrive "
                     "automatically through your package manager."),
             _go,

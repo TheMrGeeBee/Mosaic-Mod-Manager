@@ -10,7 +10,7 @@ Throttling works by sleeping between socket reads: requests' ``iter_content``
 only pulls from the socket when the loop asks for the next chunk, so pausing
 the consumer applies TCP backpressure and genuinely slows the sender.
 
-The limit is persisted in amethyst.ini (see ``Utils.ui_config``) and loaded
+The limit is persisted in mosaic.ini (see ``Utils.ui_config``) and loaded
 lazily on first use; the UI applies changes live via :func:`set_limit_mbps`
 (0 = unlimited).
 """
