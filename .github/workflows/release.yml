@@ -332,6 +332,13 @@ jobs:
             B64=$(base64 -w0 site/mosaic.gpg)
             GPGLINE="GPGKey=${B64}"
           fi
+          # Both files below reference ${PAGES_URL}/icon.png — pull it out of
+          # the just-built OSTree commit (same trick the merge step above uses
+          # to read version.py) rather than adding a whole extra checkout of
+          # the source tree just for one file.
+          REF="app/${APP_ID}/x86_64/${{ steps.mode.outputs.ostree }}"
+          SRC=$(ostree --repo=newrepo rev-parse "$REF")
+          ostree --repo=newrepo cat "$SRC" /files/share/mosaic-mod-manager/icons/Logo.png > site/icon.png
           cat > site/mosaic.flatpakrepo <<EOF
           [Flatpak Repo]
           Title=Mosaic Mod Manager
