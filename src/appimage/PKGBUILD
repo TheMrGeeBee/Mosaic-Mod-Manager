@@ -1,4 +1,4 @@
-# PKGBUILD for the Amethyst Mod Manager AppImage build.
+# PKGBUILD for the Mosaic Mod Manager AppImage build.
 #
 # Not for AUR distribution — this exists so quick-sharun gets a real /usr
 # install to deploy from. It expects:
@@ -17,12 +17,12 @@
 #
 # pkgver is read from src/version.py at makepkg time.
 
-pkgname=amethyst-mod-manager
+pkgname=mosaic-mod-manager
 pkgver=$(sed -n 's/^__version__ = "\(.*\)"$/\1/p' "${SRC_TREE:?SRC_TREE not set}/src/version.py" | tr -- '-' '_')
 pkgrel=1
 pkgdesc='Linux-native mod manager for a variety of games'
 arch=('x86_64')
-url='https://github.com/ChrisDKN/Amethyst-Mod-Manager'
+url='https://github.com/TheMrGeeBee/Mosaic-Mod-Manager'
 license=('GPL-3.0-only')
 # qt6-wayland is explicit: pyside6 doesn't hard-depend on it, and quick-sharun
 # only deploys the wayland-*/ Qt plugin dirs when they exist on disk.
@@ -125,7 +125,7 @@ package() {
 # cli.py add _vendor to sys.path themselves (app_bootstrap) when \$APPDIR
 # is set.
 APP_SHARE=/usr/share/$pkgname
-export MOD_MANAGER_PROFILES_DIR="\${XDG_CONFIG_HOME:-\$HOME/.config}/AmethystModManager/Profiles"
+export MOD_MANAGER_PROFILES_DIR="\${XDG_CONFIG_HOME:-\$HOME/.config}/MosaicModManager/Profiles"
 mkdir -p "\$MOD_MANAGER_PROFILES_DIR"
 # Force XWayland (xcb): under native Wayland Qt has no global coordinate system
 # (window pos reports (0,0), mapToGlobal is wrong) so QToolTip mis-anchors,

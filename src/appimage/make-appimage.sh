@@ -1,5 +1,5 @@
 #!/bin/bash
-# Build the Amethyst Mod Manager AppImage.
+# Build the Mosaic Mod Manager AppImage.
 #
 # CI-only build path: build a real Arch package via makepkg, install it to
 # the host's /usr, then run quick-sharun. quick-sharun's `/usr → "$APPDIR"`
@@ -22,7 +22,7 @@ ARCH=$(uname -m)
 VERSION=$(sed -n 's/^__version__ = "\(.*\)"$/\1/p' "${PROJECT_DIR}/version.py")
 [ -n "$VERSION" ] || { echo "ERROR: cannot read __version__" >&2; exit 1; }
 
-WORK_DIR="${TMPDIR:-/tmp}/amethyst-mm-build"
+WORK_DIR="${TMPDIR:-/tmp}/mosaic-mm-build"
 OUTPATH="${WORK_DIR}/dist"
 APPDIR="${WORK_DIR}/AppDir"
 FINAL_OUTPATH="${SCRIPT_DIR}/dist"
@@ -99,7 +99,7 @@ elif [ ! -f /usr/include/dlfcn.h ]; then
 fi
 
 # ── Build + install the package ──────────────────────────────────────
-echo "=== Building amethyst-mod-manager package via makepkg ==="
+echo "=== Building mosaic-mod-manager package via makepkg ==="
 PKG_BUILD_DIR="${WORK_DIR}/pkgbuild"
 mkdir -p "$PKG_BUILD_DIR"
 cp "${SCRIPT_DIR}/PKGBUILD" "$PKG_BUILD_DIR/PKGBUILD"
@@ -133,7 +133,7 @@ else
     ( cd "$PKG_BUILD_DIR" && SRC_TREE="$SRC_TREE" ${_libloot_arg:+env $_libloot_arg} makepkg --noconfirm --nodeps )
 fi
 
-PKG_FILE=$(find "$PKG_BUILD_DIR" -maxdepth 1 -name 'amethyst-mod-manager-*.pkg.tar.*' -type f | head -1)
+PKG_FILE=$(find "$PKG_BUILD_DIR" -maxdepth 1 -name 'mosaic-mod-manager-*.pkg.tar.*' -type f | head -1)
 [ -n "$PKG_FILE" ] || { echo "ERROR: makepkg produced no package" >&2; exit 1; }
 
 echo "=== Installing $PKG_FILE ==="
@@ -228,7 +228,7 @@ echo "=== Running quick-sharun ==="
 # reason — see the resolution block above.
 quick-sharun \
     /usr/bin/mod-manager               \
-    /usr/share/amethyst-mod-manager    \
+    /usr/share/mosaic-mod-manager      \
     /usr/bin/7zzs                      \
     /usr/bin/zenity                    \
     /usr/lib/libssl.so*                \
@@ -247,7 +247,7 @@ sed -i -e 's|/usr/share|"$APPDIR"/share|g' "$APPDIR/bin/mod-manager"
 # Strip __pycache__ from our app tree. The PKGBUILD's package() cleans these,
 # but Arch's python ALPM hook re-generates .pyc files on `pacman -U`; quick-
 # sharun's DEBLOAT_SYS_PYTHON only touches $APPDIR/shared/lib/python*. ~4M.
-find "$APPDIR/share/amethyst-mod-manager" -type d -name '__pycache__' \
+find "$APPDIR/share/mosaic-mod-manager" -type d -name '__pycache__' \
     -exec rm -rf {} + 2>/dev/null || true
 
 # ── Hicolor icon for AppImageLauncher / appimaged integration ────────
@@ -267,8 +267,8 @@ echo "=== Building AppImage ==="
 # UPINFO: embedded update info + .zsync generation. Set explicitly so the
 # zsync glob matches OUTNAME; without this appimagetool guesses the same
 # thing from GITHUB_REPOSITORY, but the docs say not to rely on the guess.
-_gh_repo="${GITHUB_REPOSITORY:-ChrisDKN/Amethyst-Mod-Manager}"
-export OUTNAME="AmethystModManager-${VERSION}-${ARCH}.AppImage"
+_gh_repo="${GITHUB_REPOSITORY:-TheMrGeeBee/Mosaic-Mod-Manager}"
+export OUTNAME="MosaicModManager-${VERSION}-${ARCH}.AppImage"
 export UPINFO="gh-releases-zsync|${_gh_repo%/*}|${_gh_repo#*/}|latest|*${ARCH}.AppImage.zsync"
 quick-sharun --make-appimage
 

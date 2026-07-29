@@ -1,5 +1,5 @@
 #!/bin/bash
-# Amethyst Mod Manager installer
+# Mosaic Mod Manager installer
 # Downloads latest AppImage, icon, and creates a .desktop entry
 #
 # Portable across Linux distros: uses XDG paths (~/.local/share) and
@@ -14,7 +14,7 @@ for arg in "$@"; do
     esac
 done
 
-REPO="ChrisDKN/Amethyst-Mod-Manager"
+REPO="TheMrGeeBee/Mosaic-Mod-Manager"
 BASE_URL="https://raw.githubusercontent.com/${REPO}/main"
 ICON_URL="${BASE_URL}/src/icons/title-bar.png"
 RELEASES_API_URL="https://api.github.com/repos/${REPO}/releases/latest"
@@ -28,11 +28,11 @@ ICONS_DIR="${XDG_DATA}/icons"
 APPLICATIONS_DESKTOP_DIR="${XDG_DATA}/applications"
 
 # Local name is fixed so .desktop entry and updates overwrite the same file
-APPIMAGE_NAME="AmethystModManager-x86_64.AppImage"
+APPIMAGE_NAME="MosaicModManager-x86_64.AppImage"
 ICON_NAME="title-bar.png"
-DESKTOP_NAME="amethyst-mod-manager.desktop"
+DESKTOP_NAME="mosaic-mod-manager.desktop"
 
-echo "Amethyst Mod Manager installer"
+echo "Mosaic Mod Manager installer"
 echo "=============================="
 
 # Discover latest AppImage from GitHub Releases
@@ -123,7 +123,7 @@ cat > "$DESKTOP_FILE" << EOF
 [Desktop Entry]
 Version=${LATEST_VERSION}
 Type=Application
-Name=Amethyst Mod Manager
+Name=Mosaic Mod Manager
 Comment=Linux Mod Manager
 Exec=${APPLICATIONS_DIR}/${APPIMAGE_NAME}
 Icon=${ICONS_DIR}/${ICON_NAME}
@@ -133,4 +133,4 @@ EOF
 
 echo "Desktop entry created at $DESKTOP_FILE."
 echo ""
-echo "Installation complete. You can launch Amethyst Mod Manager from your application menu."
+echo "Installation complete. You can launch Mosaic Mod Manager from your application menu."

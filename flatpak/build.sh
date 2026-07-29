@@ -1,5 +1,5 @@
 #!/bin/bash
-# Build Amethyst Mod Manager as a Flatpak
+# Build Mosaic Mod Manager as a Flatpak
 #
 # Prerequisites:
 #   - Flatpak installed. flatpak-builder is provided by the org.flatpak.Builder
@@ -42,11 +42,11 @@ resolve_flatpak_builder() {
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
-MANIFEST="${SCRIPT_DIR}/io.github.Amethyst.ModManager.yml"
+MANIFEST="${SCRIPT_DIR}/io.github.TheMrGeeBee.MosaicModManager.yml"
 BUILD_DIR="${SCRIPT_DIR}/build"
 REPO_DIR="${SCRIPT_DIR}/repo"
-BUNDLE_FILE="${PROJECT_DIR}/AmethystModManager.flatpak"
-APP_ID="io.github.Amethyst.ModManager"
+BUNDLE_FILE="${PROJECT_DIR}/MosaicModManager.flatpak"
+APP_ID="io.github.TheMrGeeBee.MosaicModManager"
 
 INSTALL_FLAG="--install"
 [ "${1:-}" = "--export" ] && INSTALL_FLAG=""
@@ -55,7 +55,7 @@ BUNDLE_MODE=false
 
 cd "$PROJECT_DIR"
 
-echo "=== Building Amethyst Mod Manager Flatpak ==="
+echo "=== Building Mosaic Mod Manager Flatpak ==="
 echo "  Manifest: $MANIFEST"
 echo "  Project:  $PROJECT_DIR"
 echo ""
