@@ -1,0 +1,11 @@
+[Flatpak Ref]
+Name=io.github.TheMrGeeBee.MosaicModManager
+Branch=stable
+Title=Mosaic Mod Manager (stable)
+Url=https://themrgeebee.github.io/Mosaic-Mod-Manager/repo/
+SuggestRemoteName=modmanager-origin
+Homepage=https://github.com/TheMrGeeBee/Mosaic-Mod-Manager
+Icon=https://themrgeebee.github.io/Mosaic-Mod-Manager/icon.png
+IsRuntime=false
+RuntimeRepo=https://dl.flathub.org/repo/flathub.flatpakrepo
+
