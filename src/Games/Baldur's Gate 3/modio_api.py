@@ -2,7 +2,8 @@
 modio_api.py  (Baldur's Gate 3)
 
 Minimal read-only client for the public mod.io REST API.  Used by BG3
-update-checking, which only needs the per-mod file list and profile URL.
+update-checking, which only needs the per-mod file list and profile URL, and
+by Quick Update, which also needs a specific file's download URL.
 Requests route through ``resolve_ca_bundle()`` with a small session cache.
 """
 
@@ -10,6 +11,8 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass
+from pathlib import Path
+from typing import Callable, Optional
 
 import requests
 
@@ -38,9 +41,15 @@ class ModioFile:
     filename: str = ""
     md5: str = ""
     changelog: str = ""
+    # The file's pre-signed direct-download URL (mod.io's "download" object) —
+    # only present on a single-file fetch (get_file), not the bulk files list,
+    # and expires at download_expires (unix timestamp).
+    binary_url: str = ""
+    download_expires: int = 0
 
     @classmethod
     def from_json(cls, d: dict) -> "ModioFile":
+        dl = d.get("download") or {}
         return cls(
             file_id=int(d.get("id") or 0),
             version=str(d.get("version") or ""),
@@ -50,6 +59,8 @@ class ModioFile:
             filename=str(d.get("filename") or ""),
             md5=str((d.get("filehash") or {}).get("md5") or "").lower(),
             changelog=str(d.get("changelog") or ""),
+            binary_url=str(dl.get("binary_url") or ""),
+            download_expires=int(dl.get("date_expires") or 0),
         )
 
 
@@ -301,6 +312,64 @@ class ModioAPI:
         except (requests.RequestException, ValueError) as e:
             app_log(f"mod.io: mod detail lookup failed for {mod_id}: {e}")
             return None
+
+    def get_file(self, mod_id: int, file_id: int) -> "ModioFile | None":
+        """Return full detail for one released file, including its pre-signed
+        ``binary_url`` (the bulk files list omits the download object).
+
+        Returns None on failure.
+        """
+        if mod_id <= 0 or file_id <= 0:
+            return None
+        url = f"{_API_ROOT}/games/{_GAME}/mods/{mod_id}/files/{file_id}"
+        try:
+            resp = self._get(url, {"api_key": self._api_key})
+            if resp.status_code != 200:
+                return None
+            return ModioFile.from_json(resp.json())
+        except (requests.RequestException, ValueError) as e:
+            app_log(f"mod.io: file lookup failed for {mod_id}/{file_id}: {e}")
+            return None
+
+    def download_file(self, file: "ModioFile", dest_dir: Path,
+                      progress_cb: "Optional[Callable[[int, int], None]]" = None) -> Path:
+        """Stream *file*'s ``binary_url`` to *dest_dir* / ``file.filename``.
+
+        The URL is pre-signed (no api_key needed on the GET itself). Writes to
+        a ``.part`` temp file first so a failed/interrupted download never
+        leaves a truncated file at the final name. Returns the written path;
+        raises :class:`ModioAPIError` on failure.
+        """
+        if not file.binary_url:
+            raise ModioAPIError("file has no download URL")
+        filename = file.filename or f"modio_file_{file.file_id}.zip"
+        dest_dir.mkdir(parents=True, exist_ok=True)
+        dest_path = dest_dir / filename
+        tmp_path = dest_path.with_name(dest_path.name + ".part")
+        try:
+            with self._session.get(file.binary_url, stream=True,
+                                   timeout=self._timeout) as resp:
+                if resp.status_code != 200:
+                    raise ModioAPIError(
+                        f"download failed for '{filename}': HTTP {resp.status_code}")
+                total = int(resp.headers.get("content-length") or file.filesize or 0)
+                written = 0
+                with open(tmp_path, "wb") as f:
+                    for chunk in resp.iter_content(chunk_size=1 << 16):
+                        if not chunk:
+                            continue
+                        f.write(chunk)
+                        written += len(chunk)
+                        if progress_cb is not None:
+                            progress_cb(written, total)
+        except requests.RequestException as e:
+            tmp_path.unlink(missing_ok=True)
+            raise ModioAPIError(f"network error downloading '{filename}': {e}") from e
+        except BaseException:
+            tmp_path.unlink(missing_ok=True)
+            raise
+        tmp_path.replace(dest_path)
+        return dest_path
 
     def test_key(self) -> bool:
         """Lightweight key validation: a cheap games query that needs auth.

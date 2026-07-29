@@ -287,6 +287,10 @@ class MainWindow(QMainWindow):
     _qu_resolved = Signal(object, object)         # (queue list, skipped list)
     _qu_downloaded = Signal(object, object)       # (dl_items list, failed list)
     _qu_dl_progress = Signal("qlonglong", "qlonglong")  # aggregate (cur_bytes, total_bytes; 64-bit: >2GB)
+    # mod.io Quick Update — mirrors _qu_* above (Nexus), simpler (no premium gate).
+    _qmu_resolved = Signal(object, object)        # (queue list, skipped list)
+    _qmu_downloaded = Signal(object, object)      # (dl_items list, failed list)
+    _qmu_dl_progress = Signal("qlonglong", "qlonglong")  # aggregate (cur_bytes, total_bytes; 64-bit: >2GB)
     _reinstall_downloaded = Signal(object, object)  # (dl_items list, failed list)
     _reinstall_dl_progress = Signal("qlonglong", "qlonglong")  # aggregate bytes (64-bit)
     # Non-premium reinstall: file metadata resolved → arm the manual flow.
@@ -550,6 +554,11 @@ class MainWindow(QMainWindow):
         self._qu_resolved.connect(self._on_qu_resolved)
         self._qu_downloaded.connect(self._on_qu_downloaded)
         self._qu_dl_progress.connect(self._on_qu_dl_progress)
+        # mod.io Quick Update — same shape, no premium gate.
+        self._quick_updating_modio = False
+        self._qmu_resolved.connect(self._on_qmu_resolved)
+        self._qmu_downloaded.connect(self._on_qmu_downloaded)
+        self._qmu_dl_progress.connect(self._on_qmu_dl_progress)
         self._reinstall_downloaded.connect(self._on_reinstall_downloaded)
         self._reinstall_dl_progress.connect(self._on_reinstall_dl_progress)
         self._reinstall_manual_ready.connect(self._on_reinstall_manual_ready)
@@ -5253,6 +5262,285 @@ class MainWindow(QMainWindow):
             + " and ".join(parts) + ". See the log; use Change Version manually.",
             "warning")
 
+    # ---- Quick Update (mod.io) ---------------------------------------------
+    # Mirrors the Nexus Quick Update flow above, but simpler: mod.io has no
+    # premium gate and no "name match vs Change Version" fork to replicate —
+    # every mod carrying FLAG_MODIO_UPDATE already has a confirmed newer file
+    # (modio_update_checker wrote modioLatestFileId), so every resolved target
+    # just gets its latest file installed directly.
+
+    def _quick_update_modio_mods(self, mod_names):
+        """Auto-install the latest file for each mod.io-update-flagged mod.
+        Two phases, both off the UI thread: resolve each mod's download URL
+        (parallel) → download them (parallel) → install the whole batch via
+        _install_paths with the folder name forced (silent Replace-All)."""
+        if getattr(self, "_quick_updating_modio", False):
+            self._notify(self.tr("A mod.io Quick Update is already running."), "info")
+            return
+        if getattr(self, "_install_running", False):
+            self._notify(self.tr("An install is already in progress."), "warning")
+            return
+        game = self._gs.game
+        if game is None or not game.is_configured():
+            self._notify(self.tr("No configured game selected."), "warning")
+            return
+        api_key = _load_bg3_modio("modio_key").load_modio_key()
+        if not api_key:
+            self._notify(
+                self.tr("No mod.io API key configured — Settings ▸ mod.io API Key."),
+                "warning")
+            return
+        staging = self._gs.staging_dir()
+        if staging is None:
+            self._notify(self.tr("No mod staging folder for this profile."), "warning")
+            return
+        targets = list(mod_names or [])
+        if not targets:
+            self._notify(
+                self.tr("No mods with a pending mod.io update to quick-update."), "info")
+            return
+
+        self._quick_updating_modio = True
+        self._qmu_api_key = api_key
+        self._notify(
+            self.tr("Quick Update (mod.io) — checking {0} mod(s)…").format(len(targets)),
+            "info")
+        self._append_log(f"[modio] Quick Update — checking {len(targets)} mod(s)…")
+
+        import threading
+
+        def _resolve_worker():
+            import concurrent.futures as _cf
+            modio_api = _load_bg3_modio("modio_api")
+            modio_qu = _load_bg3_modio("modio_quick_update")
+            try:
+                api = modio_api.ModioAPI(api_key)
+            except Exception as e:
+                self._op_log.emit(f"[modio] cannot init API — {e}")
+                self._qmu_resolved.emit(
+                    [], [(nm, "mod.io API init failed") for nm in targets])
+                return
+            queue = []
+            skipped = []   # (mod_name, reason)
+
+            def _one(nm):
+                return modio_qu.resolve_modio_quick_update_target(api, staging, nm)
+
+            with _cf.ThreadPoolExecutor(max_workers=4) as pool:
+                for nm, (status, payload) in zip(targets, pool.map(_one, targets)):
+                    if status == "queued":
+                        queue.append(payload)
+                    else:
+                        skipped.append((nm, payload))
+                        self._op_log.emit(f"[modio] {nm} — {payload}, skipped.")
+            self._qmu_resolved.emit(queue, skipped)
+
+        threading.Thread(target=_resolve_worker, daemon=True,
+                         name="quick-update-modio-resolve").start()
+
+    def _on_qmu_resolved(self, queue, skipped):
+        """UI thread: resolve finished. Nothing to update → summarise. Otherwise
+        download every resolved file in parallel (no premium gate — mod.io
+        files are public, unlike Nexus direct downloads)."""
+        if not queue:
+            self._qmu_finish(0, [], skipped)
+            return
+        self._append_log(f"[modio] Quick Update — downloading {len(queue)} mod(s)…")
+        self._notify(
+            self.tr("Quick Update (mod.io) — downloading {0} mod(s)…").format(len(queue)),
+            "info")
+
+        from Utils.ui_config import load_collection_settings
+        try:
+            dl_workers = max(1, int(load_collection_settings().get("max_concurrent", 8)))
+        except Exception:
+            dl_workers = 8
+
+        import threading
+
+        self._qmu_dl_phase = self.tr("Downloading {0} mod(s)…").format(len(queue))
+        progress = {}                     # mod_name → [cur_bytes, total_bytes]
+        for mod_name, _meta, file in queue:
+            progress[mod_name] = [0, int(getattr(file, "filesize", 0) or 0)]
+        progress_lock = threading.Lock()
+        last_emit = [0.0]
+
+        def _post_aggregate(force=False):
+            import time as _time
+            with progress_lock:
+                now = _time.monotonic()
+                if not force and now - last_emit[0] < 0.1:
+                    return
+                last_emit[0] = now
+                cur = sum(c for c, _t in progress.values())
+                tot = sum(t for _c, t in progress.values())
+            self._qmu_dl_progress.emit(cur, tot)
+
+        _post_aggregate(force=True)       # show the card before downloads start
+
+        def _download_all():
+            import concurrent.futures as _cf
+            modio_api = _load_bg3_modio("modio_api")
+            from Utils.config_paths import get_download_cache_dir_for_game
+            dest = get_download_cache_dir_for_game(getattr(self._gs.game, "name", "") or "")
+            try:
+                api = modio_api.ModioAPI(getattr(self, "_qmu_api_key", ""))
+            except Exception as e:
+                self._qmu_downloaded.emit(
+                    [], [(nm, f"mod.io API init failed ({e})") for nm, _m, _f in queue])
+                return
+            dl_items = []          # (mod_name, archive_path, meta, file)
+            failed = []            # (mod_name, reason)
+            lock = threading.Lock()
+
+            def _one(item):
+                mod_name, meta, file = item
+                try:
+                    def _on_progress(cur, tot, _m=mod_name):
+                        with progress_lock:
+                            slot = progress[_m]
+                            slot[0] = int(cur)
+                            if tot:
+                                slot[1] = int(tot)
+                        _post_aggregate()
+
+                    path = api.download_file(file, dest, progress_cb=_on_progress)
+                    # Snap this mod's slice to done (its total may have been an
+                    # estimate) so the shared bar never sits below the truth.
+                    with progress_lock:
+                        slot = progress[mod_name]
+                        slot[1] = slot[1] or slot[0]
+                        slot[0] = slot[1]
+                    _post_aggregate(force=True)
+                    with lock:
+                        dl_items.append((mod_name, str(path), meta, file))
+                except Exception as exc:
+                    with lock:
+                        failed.append((mod_name, f"download error ({exc})"))
+
+            with _cf.ThreadPoolExecutor(max_workers=dl_workers) as pool:
+                list(pool.map(_one, queue))
+            self._qmu_skipped = skipped   # carried to _qmu_finish via the installer
+            self._qmu_downloaded.emit(dl_items, failed)
+
+        threading.Thread(target=_download_all, daemon=True,
+                         name="quick-update-modio-dl").start()
+
+    def _on_qmu_dl_progress(self, cur: int, tot: int):
+        """UI thread: drive the shared Quick Update (mod.io) download card
+        (aggregate bytes across every parallel download in the batch)."""
+        self._ensure_feedback()
+        if self._progress_popup is None:
+            return
+        self._progress_popup.set_progress(
+            cur, tot, getattr(self, "_qmu_dl_phase", None),
+            title=self.tr("Quick Update (mod.io)"), bytes_mode=True, key="qmu-dl")
+
+    def _on_qmu_downloaded(self, dl_items, failed):
+        """UI thread: every download finished. Install the batch via
+        _install_paths with the folder name forced per archive (silent
+        Replace-All). No prebuilt meta is passed through _install_paths itself
+        — the shared install pipeline's own mod.io identification
+        (_try_resolve_modio in Utils.mods.mod_install) always runs and writes
+        SOME mod.io meta first, using its md5/uncompressed-size heuristics to
+        re-derive the file from the archive. Those heuristics can mismatch
+        (two releases sharing an uncompressed pak size, an md5 miss) and land
+        on the wrong historical file — so once install finishes we overwrite
+        meta.ini ourselves with the file we *know* we fetched (_stamp_modio_meta),
+        via a second _reload_modlist so the corrected flags actually show."""
+        if self._progress_popup is not None:
+            self._progress_popup.clear(key="qmu-dl")
+        skipped = getattr(self, "_qmu_skipped", [])
+        if not dl_items:
+            self._qmu_finish(0, failed, skipped)
+            return
+        paths = [p for _n, p, _m, _f in dl_items]
+        preferred = {p: n for n, p, _m, _f in dl_items}
+        by_name = {n: (m, f) for n, _p, m, f in dl_items}
+        expected = len(dl_items)
+
+        def _done(ok, total, names):
+            more_failed = list(failed)
+            if ok < expected:
+                more_failed.append(
+                    (f"{expected - ok} mod(s)", "install failed — see log"))
+            staging = self._gs.staging_dir()
+            stamped = False
+            if staging is not None:
+                for nm in (names or []):
+                    entry = by_name.get(nm)
+                    if entry is None:
+                        continue
+                    meta, file = entry
+                    self._stamp_modio_meta(staging / nm / "meta.ini", meta, file)
+                    stamped = True
+            if stamped:
+                # The generic install-done handler already reloaded the modlist
+                # using the heuristic-guessed meta.ini we just overwrote —
+                # reload again so the Flags column reflects the corrected data.
+                self._reload_modlist()
+            self._qmu_finish(ok, more_failed, skipped)
+
+        self._install_paths(paths, preferred_names=preferred, on_all_done=_done)
+
+    def _stamp_modio_meta(self, meta_path, meta, file):
+        """Overwrite meta.ini's mod.io keys with the file we KNOW we just
+        fetched for a Quick Update, instead of trusting the install
+        pipeline's own resolve_modio_meta re-identification (md5/uncompressed
+        -size heuristics against the archive), which can mismatch when
+        another release happens to share the same uncompressed pak size.
+        Non-destructive merge (write_modio_meta), so nothing else in
+        meta.ini is touched. Never raises — a failure here just leaves the
+        heuristic's guess in place, same as before this existed."""
+        try:
+            modio_meta = _load_bg3_modio("modio_meta")
+            from datetime import datetime, timezone
+            new_meta = modio_meta.ModioMeta(
+                mod_id=meta.mod_id,
+                file_id=file.file_id,
+                version=file.version,
+                name=meta.name,
+                profile_url=meta.profile_url,
+                uploader=meta.uploader,
+                tags=meta.tags,
+                latest_file_id=file.file_id,
+                latest_version=file.version,
+                installed=datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S"),
+            )
+            modio_meta.write_modio_meta(meta_path, new_meta)
+        except Exception as e:
+            self._append_log(
+                f"[modio] could not stamp confirmed file id for "
+                f"'{meta_path.parent.name}': {e}")
+
+    def _qmu_finish(self, updated, failed, skipped):
+        """Log the batch summary + toast (mod.io Quick Update). Re-checks flags
+        happen via _install_paths' _reload_modlist; the resolve-only path
+        (nothing installed) reloads here."""
+        self._quick_updating_modio = False
+        self._qmu_skipped = []
+        if updated == 0:
+            self._reload_modlist()
+        self._append_log(
+            f"[modio] Quick Update — {updated} updated, "
+            f"{len(skipped)} skipped, {len(failed)} failed.")
+        for name, reason in skipped:
+            self._append_log(f"[modio] Quick Update — {name}: {reason}")
+        for name, reason in failed:
+            self._append_log(f"[modio] Quick Update — {name}: {reason}")
+        if updated:
+            self._notify(
+                self.tr("Quick Update (mod.io): updated {0} mod(s)").format(updated),
+                "success")
+        problems = len(skipped) + len(failed)
+        if not problems:
+            if not updated:
+                self._notify(self.tr("Quick Update (mod.io): nothing to update."), "info")
+            return
+        self._notify(
+            f"Quick Update (mod.io): {problems} mod(s) couldn't be updated — "
+            "see the log.", "warning")
+
     # ---- Restore backup (plugins-panel-scoped overlay) --------------------
 
     def _open_restore_backup_tab(self):
@@ -6446,7 +6734,7 @@ class MainWindow(QMainWindow):
     def _on_modlist_flag_clicked(self, row: int, flag: int):
         """A flag icon in the modlist Flags column was clicked → its action
         (Tk parity, gui/modlist_panel ~3960): update→Change Version,
-        modio-update→open mod.io page, missing→Missing Requirements,
+        modio-update→Quick Update (mod.io), missing→Missing Requirements,
         note→note editor, bundle→Bundle Options."""
         from gui_qt.modlist.modlist_data import (
             FLAG_UPDATE, FLAG_MISSING_REQS, FLAG_NOTE, FLAG_MODIO_UPDATE,
@@ -6462,8 +6750,12 @@ class MainWindow(QMainWindow):
             # flag self-corrects once the now-relevant option is selected.
             self._reinstall_mods([e.name])
         elif flag == FLAG_MODIO_UPDATE:
-            from gui_qt.modlist.modlist_menu import _open_on_modio
-            _open_on_modio(self._modlist_view, e.name)
+            # Unlike Nexus's FLAG_UPDATE (which opens a manual Change Version
+            # picker), mod.io has no version-choice UI to defer to — the flag
+            # means exactly one thing (a newer file is confirmed available),
+            # so clicking it goes straight to Quick Update. The mod.io page is
+            # still reachable manually via the "Open on mod.io" context-menu item.
+            self._quick_update_modio_mods([e.name])
         elif flag == FLAG_MISSING_REQS:
             self._open_missing_reqs_tab(e.name)
         elif flag == FLAG_NOTE:
@@ -10648,6 +10940,8 @@ class MainWindow(QMainWindow):
         self._modlist_view.on_view_requirements = self._open_view_requirements_tab
         # Quick Update: right-click on update-flagged mods (premium direct DL).
         self._modlist_view.on_quick_update = self._quick_update_mods
+        # Quick Update (mod.io): right-click on mod.io-update-flagged mods.
+        self._modlist_view.on_quick_update_modio = self._quick_update_modio_mods
         # Reinstall: right-click item(s) whose install archive is still on disk.
         self._modlist_view.on_reinstall = self._reinstall_mods
         # Show Conflicts: right-click item.

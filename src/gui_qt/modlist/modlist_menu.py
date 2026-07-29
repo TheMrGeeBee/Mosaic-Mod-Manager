@@ -244,6 +244,7 @@ def _build_mod_menu(view, model, row, entry, sel_mods, multi, act, stub, divider
         _nexus_multi = [nm for nm in _names if _has_nexus_page(view, nm)]
         _reqs_multi = [nm for nm in _names if _has_missing_reqs(view, nm)]
         _qu = [nm for nm in _names if _has_update_flag(view, nm)]
+        _qu_modio = [nm for nm in _names if _has_modio_update_flag(view, nm)]
         # Reinstall: archive on disk OR redownloadable from Nexus (mod/file id).
         _reinstall_multi = [nm for nm in _names
                             if _installation_archive(view, nm) is not None
@@ -279,6 +280,9 @@ def _build_mod_menu(view, model, row, entry, sel_mods, multi, act, stub, divider
         if _qu:
             act(_mtf("Quick Update ({0})", len(_qu)),
                 lambda ns=_qu: _quick_update(view, ns))
+        if _qu_modio:
+            act(_mtf("Quick Update (mod.io) ({0})", len(_qu_modio)),
+                lambda ns=_qu_modio: _quick_update_modio(view, ns))
         if _reinstall_multi:
             act(_mtf("Reinstall ({0})", len(_reinstall_multi)),
                 lambda ns=_reinstall_multi: _reinstall(view, ns))
@@ -380,6 +384,8 @@ def _build_mod_menu(view, model, row, entry, sel_mods, multi, act, stub, divider
         act(_mt("Open on mod.io"), lambda: _open_on_modio(view, name))
     if _has_update_flag(view, name):
         act(_mt("Quick Update"), lambda: _quick_update(view, [name]))
+    if _has_modio_update_flag(view, name):
+        act(_mt("Quick Update (mod.io)"), lambda: _quick_update_modio(view, [name]))
     divider()
     # Group 4: organise / layout
     act(_mt("Add separator above"), lambda: _add_separator(view, model, row, True))
@@ -524,6 +530,19 @@ def _has_update_flag(view, name: str) -> bool:
     return bool(bits & FLAG_UPDATE)
 
 
+def _has_modio_update_flag(view, name: str) -> bool:
+    """True if *name* currently carries the mod.io update flag
+    (FLAG_MODIO_UPDATE), i.e. mod.io Check Updates found a newer file. Read
+    straight off the model's flag bitmask so it matches what the row paints."""
+    try:
+        model = view.model()
+    except Exception:
+        return False
+    from gui_qt.modlist.modlist_data import FLAG_MODIO_UPDATE
+    bits = model._flags.get(name, 0) if hasattr(model, "_flags") else 0
+    return bool(bits & FLAG_MODIO_UPDATE)
+
+
 def _has_missing_reqs(view, name: str) -> bool:
     """True if *name* carries the missing-requirements flag (FLAG_MISSING_REQS).
     Read off the model's flag bitmask (same source the row paints), so the menu
@@ -552,6 +571,16 @@ def _quick_update(view, names):
     it isn't wired (e.g. headless)."""
     cb = getattr(view, "on_quick_update", None)
     targets = [n for n in names if _has_update_flag(view, n)]
+    if cb is not None and targets:
+        cb(targets)
+
+
+def _quick_update_modio(view, names):
+    """Auto-install the latest file for each mod.io-update-flagged mod in
+    *names* (the window installs the callback in _reload_modlist). No-op if
+    it isn't wired (e.g. headless)."""
+    cb = getattr(view, "on_quick_update_modio", None)
+    targets = [n for n in names if _has_modio_update_flag(view, n)]
     if cb is not None and targets:
         cb(targets)
 
@@ -1471,6 +1500,8 @@ _TR_MARKERS = (
     QT_TRANSLATE_NOOP("ModListMenu", "Open on mod.io"),
     QT_TRANSLATE_NOOP("ModListMenu", "Quick Update"),
     QT_TRANSLATE_NOOP("ModListMenu", "Quick Update ({0})"),
+    QT_TRANSLATE_NOOP("ModListMenu", "Quick Update (mod.io)"),
+    QT_TRANSLATE_NOOP("ModListMenu", "Quick Update (mod.io) ({0})"),
     QT_TRANSLATE_NOOP("ModListMenu", "Reinstall ({0})"),
     QT_TRANSLATE_NOOP("ModListMenu", "Reinstall (Redownload)"),
     QT_TRANSLATE_NOOP("ModListMenu", "Reinstall Mod"),
