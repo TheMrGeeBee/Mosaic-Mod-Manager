@@ -64,6 +64,9 @@ ASSETS_DIR="${WORK_DIR}/assets"
 mkdir -p "$ASSETS_DIR"
 cp "${SCRIPT_DIR}/mod-manager.desktop" "$ASSETS_DIR/mod-manager.desktop"
 cp "${SCRIPT_DIR}/mod-manager.png"     "$ASSETS_DIR/mod-manager.png"
+for _sz in 16 32 64 128; do
+    cp "${SCRIPT_DIR}/mod-manager-${_sz}.png" "$ASSETS_DIR/mod-manager-${_sz}.png"
+done
 
 # ── Locate the libloot extension (built by the separate CI job or by
 # running src/LOOT/rebuild_libloot.sh locally).
@@ -258,6 +261,10 @@ find "$APPDIR/share/mosaic-mod-manager" -type d -name '__pycache__' \
 # so we install the icon into the AppDir explicitly here.
 install -Dm644 "${ASSETS_DIR}/mod-manager.png" \
     "$APPDIR/usr/share/icons/hicolor/256x256/apps/mod-manager.png"
+for _sz in 16 32 64 128; do
+    install -Dm644 "${ASSETS_DIR}/mod-manager-${_sz}.png" \
+        "$APPDIR/usr/share/icons/hicolor/${_sz}x${_sz}/apps/mod-manager.png"
+done
 
 # ── Build the AppImage ───────────────────────────────────────────────
 echo "=== Building AppImage ==="

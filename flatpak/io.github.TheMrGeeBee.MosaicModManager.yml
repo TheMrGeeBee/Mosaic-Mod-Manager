@@ -170,9 +170,11 @@ modules:
       # note is the uppercase app-id, which must match the flatpak id).
       - appstreamcli validate --no-net
         /app/share/metainfo/io.github.TheMrGeeBee.MosaicModManager.metainfo.xml
-      - install -d /app/share/icons/hicolor/64x64/apps /app/share/icons/hicolor/128x128/apps /app/share/icons/hicolor/256x256/apps
-      - install -m 644 src/appimage/mod-manager.png /app/share/icons/hicolor/64x64/apps/io.github.TheMrGeeBee.MosaicModManager.png
-      - install -m 644 src/appimage/mod-manager.png /app/share/icons/hicolor/128x128/apps/io.github.TheMrGeeBee.MosaicModManager.png
+      - install -d /app/share/icons/hicolor/16x16/apps /app/share/icons/hicolor/32x32/apps /app/share/icons/hicolor/64x64/apps /app/share/icons/hicolor/128x128/apps /app/share/icons/hicolor/256x256/apps
+      - install -m 644 src/appimage/mod-manager-16.png /app/share/icons/hicolor/16x16/apps/io.github.TheMrGeeBee.MosaicModManager.png
+      - install -m 644 src/appimage/mod-manager-32.png /app/share/icons/hicolor/32x32/apps/io.github.TheMrGeeBee.MosaicModManager.png
+      - install -m 644 src/appimage/mod-manager-64.png /app/share/icons/hicolor/64x64/apps/io.github.TheMrGeeBee.MosaicModManager.png
+      - install -m 644 src/appimage/mod-manager-128.png /app/share/icons/hicolor/128x128/apps/io.github.TheMrGeeBee.MosaicModManager.png
       - install -m 644 src/appimage/mod-manager.png /app/share/icons/hicolor/256x256/apps/io.github.TheMrGeeBee.MosaicModManager.png
     sources:
       - type: dir

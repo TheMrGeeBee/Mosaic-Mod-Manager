@@ -153,6 +153,11 @@ EOF
         "$pkgdir/usr/share/applications/mod-manager.desktop"
     install -Dm644 "$_src/appimage/mod-manager.png" \
         "$pkgdir/usr/share/icons/hicolor/256x256/apps/mod-manager.png"
+    local _sz
+    for _sz in 16 32 64 128; do
+        install -Dm644 "$_src/appimage/mod-manager-${_sz}.png" \
+            "$pkgdir/usr/share/icons/hicolor/${_sz}x${_sz}/apps/mod-manager.png"
+    done
 
     # Bundled binaries — these get bundled into the AppImage as if they were
     # any other system binary (quick-sharun's /usr → "$APPDIR" rewrite).
