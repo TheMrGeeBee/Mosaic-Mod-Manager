@@ -2,16 +2,19 @@
 
 The app uses Qt's own translation system rather than gettext: user-facing
 strings are wrapped in ``self.tr("...")`` (or ``QCoreApplication.translate``),
-extracted with ``pyside6-lupdate`` into ``translations/amethyst_<code>.ts``,
+extracted with ``pyside6-lupdate`` into ``translations/mosaic_<code>.ts``,
 translated (Qt Linguist or any XML editor), then compiled to ``.qm`` with
 ``pyside6-lrelease``. See ``tools/i18n_update.sh`` for the extract/compile step.
 
 Translation files are loaded from TWO locations, config-folder-wins:
 
-1. ``~/.config/AmethystModManager/languages/`` — the user config folder. This
-   is where translations synced from the Resources branch (see
-   ``Utils.gh_sync.sync_languages``) land, and where a user can drop their own
-   ``amethyst_<code>.qm`` to add or override a language WITHOUT an app update.
+1. ``~/.config/MosaicModManager/languages/`` — the user config folder. This
+   is where translations synced from the (still ChrisDKN-hosted, pre-rename)
+   Resources branch (see ``Utils.gh_sync.sync_languages``) land, and where a
+   user can drop their own ``mosaic_<code>.qm`` to add or override a language
+   WITHOUT an app update. Files synced from Resources still arrive named
+   ``amethyst_<code>.qm`` (that content hasn't moved/renamed) — both prefixes
+   are recognized everywhere in this module, mosaic_ taking priority.
 2. The built-in ``translations/`` source folder — ships English (the source
    language needs no file) and any languages bundled with the app.
 
@@ -49,7 +52,7 @@ def _config_languages_dir() -> "Path | None":
 
 
 def _qm_search_dirs() -> list[Path]:
-    """Directories to look for amethyst_<code>.qm in, HIGHEST priority first:
+    """Directories to look for mosaic_<code>.qm in, HIGHEST priority first:
     the config folder (synced/user) then the built-in source folder."""
     dirs: list[Path] = []
     cfg = _config_languages_dir()
@@ -58,8 +61,12 @@ def _qm_search_dirs() -> list[Path]:
     dirs.append(TRANSLATIONS_DIR)
     return dirs
 
-# Compiled-translation filenames look like "amethyst_<code>.qm".
-_QM_PREFIX = "amethyst_"
+# Compiled-translation filenames look like "mosaic_<code>.qm". The pre-rename
+# "amethyst_<code>.qm" prefix is still recognized everywhere below — that's
+# what Utils.gh_sync.sync_languages downloads from the (unrenamed) Resources
+# branch, and any translation a user already dropped in by hand.
+_QM_PREFIX = "mosaic_"
+_LEGACY_QM_PREFIX = "amethyst_"
 _QM_SUFFIX = ".qm"
 
 # Display names for codes QLocale can't name nicely (or where we want an
@@ -107,10 +114,11 @@ def available_languages() -> list[tuple[str, str]]:
 
     The list is derived from the .qm files present in the config languages/
     folder AND the built-in translations/ folder: every compiled
-    ``amethyst_<code>.qm`` becomes a selectable entry, so adding a translation
-    (sync from Resources, or drop the .qm in the config folder) makes it appear
-    with NO code change. "System default" ("" = follow the OS locale) and
-    "English" (the source language, always available) are prepended.
+    ``mosaic_<code>.qm`` (or pre-rename ``amethyst_<code>.qm``) becomes a
+    selectable entry, so adding a translation (sync from Resources, or drop
+    the .qm in the config folder) makes it appear with NO code change.
+    "System default" ("" = follow the OS locale) and "English" (the source
+    language, always available) are prepended.
     """
     out: list[tuple[str, str]] = [
         ("System default", ""),
@@ -121,11 +129,12 @@ def available_languages() -> list[tuple[str, str]]:
     for d in _qm_search_dirs():
         if not d.is_dir():
             continue
-        for qm in d.glob(f"{_QM_PREFIX}*{_QM_SUFFIX}"):
-            code = qm.stem[len(_QM_PREFIX):]
-            if code and code not in seen:
-                seen.add(code)
-                codes.append(code)
+        for prefix in (_QM_PREFIX, _LEGACY_QM_PREFIX):
+            for qm in d.glob(f"{prefix}*{_QM_SUFFIX}"):
+                code = qm.stem[len(prefix):]
+                if code and code not in seen:
+                    seen.add(code)
+                    codes.append(code)
     for code in sorted(codes, key=_display_name):
         out.append((_display_name(code), code))
     return out
@@ -162,13 +171,18 @@ def install_translators(app, code: str) -> list[QTranslator]:
 
     # English (or a resolved "en") is our source language — nothing to load.
     if lang and lang != "en":
-        # Try each search dir in priority order (config folder first) and use
-        # the first that has this language's .qm.
+        # Try each search dir in priority order (config folder first), mosaic_
+        # prefix before the legacy amethyst_ one, and use the first hit.
         app_tr = QTranslator(app)
+        loaded = False
         for d in _qm_search_dirs():
-            if app_tr.load(f"{_QM_PREFIX}{lang}", str(d)):
-                app.installTranslator(app_tr)
-                installed.append(app_tr)
+            for prefix in (_QM_PREFIX, _LEGACY_QM_PREFIX):
+                if app_tr.load(f"{prefix}{lang}", str(d)):
+                    app.installTranslator(app_tr)
+                    installed.append(app_tr)
+                    loaded = True
+                    break
+            if loaded:
                 break
 
         # Qt's own strings (dialog buttons, etc.). Shipped with PySide6.

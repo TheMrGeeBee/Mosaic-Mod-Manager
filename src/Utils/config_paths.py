@@ -403,10 +403,12 @@ def get_plugins_dir() -> Path:
 def get_languages_dir() -> Path:
     """Return the directory where downloaded / user-added UI translations live.
 
-    Compiled Qt translation files (``amethyst_<code>.qm``) are stored here. They
-    are synced from the Resources branch on startup (see Utils.gh_sync) and users
-    can drop their own ``.qm`` in to add a language without an app update. The
-    built-in source-tree English is always available regardless of this folder.
+    Compiled Qt translation files (``mosaic_<code>.qm``, or the pre-rename
+    ``amethyst_<code>.qm`` — both are recognized, see gui_qt.i18n) are stored
+    here. They are synced from the Resources branch on startup (see
+    Utils.gh_sync) and users can drop their own ``.qm`` in to add a language
+    without an app update. The built-in source-tree English is always
+    available regardless of this folder.
 
     Result: ~/.config/MosaicModManager/languages/
     """
