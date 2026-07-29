@@ -40,7 +40,7 @@ ProgressCallback = Callable[[str], None]
 # Remote list of mod IDs to treat as external tools (script extenders, xEdit, etc.).
 # Fetched on each requirement check; new IDs are merged into the local cache.
 REQUIREMENT_FILTER_URL = (
-    "https://raw.githubusercontent.com/ChrisDKN/Amethyst-Mod-Manager/main/src/Nexus/updatefilter.txt"
+    "https://raw.githubusercontent.com/TheMrGeeBee/Mosaic-Mod-Manager/main/src/Nexus/updatefilter.txt"
 )
 _FETCH_TIMEOUT = 10
 

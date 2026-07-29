@@ -237,7 +237,7 @@ class CreationKitView(WizardViewBase):
                     prefix_dir=compat_data, proton_script=proton_script,
                     env=env, game=game, log_fn=_wlog)
 
-                # Common runtime deps (idempotent via amethyst_deps.json).
+                # Common runtime deps (idempotent via mosaic_deps.json).
                 # steam_id is omitted for d3dcompiler so the protontricks
                 # fallback can't target the game prefix instead of this one.
                 if not is_dep_installed(pfx, D3D_DEP_KEY):

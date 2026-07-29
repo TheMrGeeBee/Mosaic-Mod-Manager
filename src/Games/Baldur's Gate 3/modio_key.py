@@ -3,7 +3,7 @@ modio_key.py  (Baldur's Gate 3)
 
 Secure storage for the user's read-only mod.io API key.  Mirrors the Nexus
 key (``Nexus/nexus_api.py``): system keyring under the shared
-``AmethystModManager`` service, with a machine-bound Fernet-encrypted
+``MosaicModManager`` service, with a machine-bound Fernet-encrypted
 ``modio_api_key.bin`` fallback when no keyring backend is available.
 """
 
@@ -18,7 +18,11 @@ from Utils.config_paths import get_config_dir
 
 # Reuse the same keyring service as the Nexus key so all secrets live under
 # one logical app entry; only the user/account differs.
-_KEYRING_SERVICE = "AmethystModManager"
+_KEYRING_SERVICE = "MosaicModManager"
+# Pre-rename service name — load_modio_key() migrates an entry stored there
+# once, the first time it's not found under _KEYRING_SERVICE (mirrors
+# Nexus.nexus_api's own _LEGACY_KEYRING_SERVICE migration).
+_LEGACY_KEYRING_SERVICE = "AmethystModManager"
 _KEYRING_USER = "modio_api_key"
 _API_KEY_FILE = "modio_api_key.bin"
 
@@ -37,7 +41,14 @@ def _keyring_ok() -> bool:
 
 
 def _derive_key() -> bytes:
-    """Derive a Fernet key from the machine ID (device-bound), matching Nexus."""
+    """Derive a Fernet key from the machine ID (device-bound), matching Nexus.
+
+    The PBKDF2 salt is intentionally left as the pre-rename literal
+    "AmethystModManager" — see Nexus.nexus_api._derive_key's comment for why:
+    it's an opaque KDF input with no user-visible identity, and changing it
+    would silently break decryption of any existing encrypted-file-fallback
+    key with no way to migrate it.
+    """
     import base64
     import hashlib
     machine_id = ""
@@ -90,13 +101,39 @@ def _clear_key_file() -> None:
         pass
 
 
+def _migrate_keyring_entry() -> str:
+    """Move the mod.io key from the pre-rename keyring service, if present.
+
+    Returns the migrated key (stripped), or "" if there was nothing to
+    migrate. Best-effort — a failed delete still leaves the value copied
+    under the new service name.
+    """
+    try:
+        value = keyring.get_password(_LEGACY_KEYRING_SERVICE, _KEYRING_USER)
+    except Exception:
+        return ""
+    if not value:
+        return ""
+    try:
+        keyring.set_password(_KEYRING_SERVICE, _KEYRING_USER, value)
+    except Exception:
+        return ""
+    try:
+        keyring.delete_password(_LEGACY_KEYRING_SERVICE, _KEYRING_USER)
+    except Exception:
+        pass
+    return value.strip()
+
+
 def load_modio_key() -> str:
     """Return the saved mod.io API key, or "" if none is stored."""
     if not _keyring_ok():
         return _load_key_file()
     try:
         key = keyring.get_password(_KEYRING_SERVICE, _KEYRING_USER)
-        return key.strip() if key else ""
+        if key:
+            return key.strip()
+        return _migrate_keyring_entry()
     except UnicodeDecodeError as e:
         app_log(f"mod.io API key in keyring is corrupted ({e}); clearing.")
         try:

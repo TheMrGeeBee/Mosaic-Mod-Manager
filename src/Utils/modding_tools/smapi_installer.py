@@ -246,7 +246,7 @@ def run_smapi_installer(archive: Path, log_fn: LogFn = _noop) -> None:
         # Extract under ~/.cache, not /tmp: inside a flatpak /tmp is a private
         # sandbox mount the host can't see, so flatpak-spawn --host bash
         # /tmp/... fails. ~/.cache is shared (--filesystem=home).
-        cache_root = Path.home() / ".cache" / "amethyst-smapi"
+        cache_root = Path.home() / ".cache" / "mosaic-smapi"
         cache_root.mkdir(parents=True, exist_ok=True)
         tmp_dir = Path(tempfile.mkdtemp(prefix="smapi_install_",
                                         dir=str(cache_root)))

@@ -3,7 +3,7 @@
 Deploy → manual Nexus download → locate (sm-fae archive) → extract to
 Applications/ScriptMerger/ → choose Proton version/prefix (shared wizard
 step) → install .NET 8 into the chosen prefix (dep-marked in
-amethyst_deps.json) → run WitcherScriptMerger.exe.  On Done the game is
+mosaic_deps.json) → run WitcherScriptMerger.exe.  On Done the game is
 restored so merged files are rescued into staging, then the modlist
 refreshes.
 """

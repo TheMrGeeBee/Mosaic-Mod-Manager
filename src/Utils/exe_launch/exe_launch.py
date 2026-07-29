@@ -7,7 +7,7 @@ so the Qt GUI can use it without importing tkinter. File formats and paths are
 identical to the Tk app so settings are shared between both:
 
 - <staging>.parent/Applications/custom_exes.json        — manual exe list
-- ~/.config/AmethystModManager/games/<game>/exe_launch_mode.json
+- ~/.config/MosaicModManager/games/<game>/exe_launch_mode.json
       exe_name → "auto"|"steam"|"heroic"|"none"
       "__deploy_before_launch" → bool (default True)
       "__proton_override_<exe>" → Proton dir name ('' = game default)

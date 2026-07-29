@@ -44,7 +44,7 @@ def _tinted_icon_url(name: str, color: str) -> str:
     if not src.is_file():
         return _icon_url(name)
     import tempfile
-    cache_dir = Path(tempfile.gettempdir()) / "amethyst_tinted_icons"
+    cache_dir = Path(tempfile.gettempdir()) / "mosaic_tinted_icons"
     safe_color = color.lstrip("#").lower() or "none"
     out = cache_dir / f"{Path(name).stem}_{safe_color}.png"
     if not out.is_file():

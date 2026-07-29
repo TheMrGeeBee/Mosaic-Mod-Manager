@@ -52,7 +52,7 @@ fi
 # "Segmentation fault" line survive after the terminal closes. Still shown live.
 # One log per run (previous kept as .old) — appending forever mixes tracebacks
 # from old builds into current triage.
-_errlog="${XDG_CONFIG_HOME:-$HOME/.config}/AmethystModManager/run-qt-stderr.log"
+_errlog="${XDG_CONFIG_HOME:-$HOME/.config}/MosaicModManager/run-qt-stderr.log"
 mkdir -p "$(dirname "$_errlog")"
 [ -f "$_errlog" ] && mv -f "$_errlog" "$_errlog.old"
 # Tell the app the launcher already tees stderr to a file, so the in-Python

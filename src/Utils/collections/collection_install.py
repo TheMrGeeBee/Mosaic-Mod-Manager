@@ -2116,7 +2116,7 @@ def _install_bundled_assets(game, api, profile_dir, staging_path, collection_sch
     installed = 0
     skipped = 0
     _scratch_root = get_download_cache_dir_for_game(getattr(game, "name", "") or "")
-    bundle_extract_dir = _tf.mkdtemp(prefix="amethyst_bundle_", dir=str(_scratch_root))
+    bundle_extract_dir = _tf.mkdtemp(prefix="mosaic_bundle_", dir=str(_scratch_root))
     try:
         _slug = (collection_slug or "").strip()
         _rev = int(revision_number) if revision_number is not None else "x"
@@ -2252,7 +2252,7 @@ def _ensure_collection_archive_extracted(game, api, collection_slug,
             log(f"Collection archive: not at {archive_path} and no link — skipping")
             return None
         log(f"Collection archive: not cached, downloading to {archive_path}")
-        _fetch_dir = Path(_tf.mkdtemp(prefix="amethyst_bundle_fetch_", dir=str(cache_dir)))
+        _fetch_dir = Path(_tf.mkdtemp(prefix="mosaic_bundle_fetch_", dir=str(cache_dir)))
         try:
             cj = api.get_collection_archive_full(
                 download_link_path, str(_fetch_dir), keep_archive_at=str(archive_path))
@@ -2261,7 +2261,7 @@ def _ensure_collection_archive_extracted(game, api, collection_slug,
                 return None
         finally:
             _shutil.rmtree(_fetch_dir, ignore_errors=True)
-    extract_dir = Path(_tf.mkdtemp(prefix="amethyst_archive_extract_", dir=str(cache_dir)))
+    extract_dir = Path(_tf.mkdtemp(prefix="mosaic_archive_extract_", dir=str(cache_dir)))
     try:
         import py7zr
         with py7zr.SevenZipFile(str(archive_path), mode="r") as arc:

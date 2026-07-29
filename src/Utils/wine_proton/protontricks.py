@@ -55,7 +55,13 @@ _D3DCOMPILER_47_64_SHA256 = "4432bbd1a390874f3f0a503d45cc48d346abc3a8c0213c289f4
 _D3DCOMPILER_47_32_URL = "https://github.com/mozilla/fxc2/raw/master/dll/d3dcompiler_47_32.dll"
 _D3DCOMPILER_47_32_SHA256 = "2ad0d4987fc4624566b190e747c9d95038443956ed816abfd1e2d389b5ec0851"
 
-_DEPS_FILE = "amethyst_deps.json"
+_DEPS_FILE = "mosaic_deps.json"
+# Pre-rename filename. read_installed_deps() falls back to this when the
+# current file doesn't exist yet, so an existing prefix's already-recorded
+# deps aren't forgotten (which would just cost a redundant reinstall
+# attempt, not data loss — but there's no reason to make users sit through
+# vcredist/.NET installers again over a rename).
+_LEGACY_DEPS_FILE = "amethyst_deps.json"
 
 D3D_DEP_KEY = "d3dcompiler_47"
 VCREDIST_DEP_KEY = "vcredist_x64"
@@ -70,10 +76,17 @@ def _deps_file(prefix_path: Path) -> Path:
     return prefix_path.parent / _DEPS_FILE
 
 
+def _legacy_deps_file(prefix_path: Path) -> Path:
+    return prefix_path.parent / _LEGACY_DEPS_FILE
+
+
 def read_installed_deps(prefix_path: Path) -> list[str]:
     """Return the list of components recorded as installed in *prefix_path*."""
+    f = _deps_file(prefix_path)
+    if not f.is_file():
+        f = _legacy_deps_file(prefix_path)
     try:
-        return json.loads(_deps_file(prefix_path).read_text(encoding="utf-8")).get("installed", [])
+        return json.loads(f.read_text(encoding="utf-8")).get("installed", [])
     except (OSError, ValueError):
         return []
 
@@ -387,7 +400,7 @@ def install_winetricks_verb(
     Uses the bundled winetricks with WINEPREFIX first (self-contained — no
     protontricks needed on the system), falling back to system protontricks
     against the game's Steam ID when winetricks fails or no prefix path is
-    configured. Success is recorded in the prefix's amethyst_deps.json so
+    configured. Success is recorded in the prefix's mosaic_deps.json so
     repeat calls skip instantly. *timeout* is per attempt — pass a large
     value for slow verbs like dotnet48.
     """
@@ -492,7 +505,7 @@ def install_d3dcompiler_47(
     SM5.x extended typed UAV loads (the winetricks verb installs an older DLL
     that fails to compile Community Shaders / ENB with error X3676). Falls back
     to protontricks/winetricks only if the direct install can't run. Records
-    success in the prefix's amethyst_deps.json so other wizards can skip it.
+    success in the prefix's mosaic_deps.json so other wizards can skip it.
     """
     _log = _safe_log(log_fn)
     prefix = Path(prefix_path) if prefix_path else None
@@ -610,7 +623,7 @@ def install_vcredist(
     it with ``/install /quiet /norestart`` through ``proton runinprefix`` — the
     exact mechanism the Proton Tools menu uses (runinprefix skips the steam.exe
     shim, so the silent install doesn't show the game as "Running" in Steam).
-    Records success in the prefix's amethyst_deps.json so other callers can
+    Records success in the prefix's mosaic_deps.json so other callers can
     skip a re-install.
     """
     _log = _safe_log(log_fn)

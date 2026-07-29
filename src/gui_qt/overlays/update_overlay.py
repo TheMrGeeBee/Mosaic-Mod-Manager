@@ -47,11 +47,11 @@ class UpdateOverlay(QFrame):
 
         if mode == "aur":
             msg = self.tr(
-                "A new version of Amethyst Mod Manager is available on the AUR.\n\n"
+                "A new version of Mosaic Mod Manager is available on the AUR.\n\n"
                 "Current: {0}\n"
                 "AUR:     {1}\n\n"
                 "Update via your AUR helper, e.g.\n"
-                "  yay -Syu amethyst-mod-manager").format(current, latest)
+                "  yay -Syu mosaic-mod-manager").format(current, latest)
         elif is_downgrade:
             offered_label = self.tr("Pre-release") if is_prerelease else self.tr("Stable")
             msg = self.tr(
@@ -62,7 +62,7 @@ class UpdateOverlay(QFrame):
                     offered_label.lower(), current, offered_label, latest)
         else:
             msg = self.tr(
-                "A new version of Amethyst Mod Manager is available.\n\n"
+                "A new version of Mosaic Mod Manager is available.\n\n"
                 "Current: {0}\n"
                 "Latest:  {1}").format(current, latest)
 

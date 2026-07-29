@@ -302,7 +302,7 @@ def install_faulthandler(log_dir=None) -> bool:
     to a file descriptor at crash time (no Python-level logging possible from a
     signal handler, so it must be a real file, not ``app_log``).
 
-    The dump is written to ``<log_dir>/amethyst-fault-<pid>.log`` when *log_dir*
+    The dump is written to ``<log_dir>/mosaic-fault-<pid>.log`` when *log_dir*
     is given (defaults to ``Utils.config_paths.get_logs_dir()``), so a crashed
     user can find and share it. If no writable file can be opened we fall back to
     dumping to the real stderr (still better than a silent crash).
@@ -324,7 +324,7 @@ def install_faulthandler(log_dir=None) -> bool:
         from pathlib import Path
         log_dir = Path(log_dir)
         log_dir.mkdir(parents=True, exist_ok=True)
-        path = log_dir / f"amethyst-fault-{os.getpid()}.log"
+        path = log_dir / f"mosaic-fault-{os.getpid()}.log"
         # Line-buffered so a partial dump still reaches disk before the crash
         # finishes tearing the process down.
         stream = open(path, "a", buffering=1, encoding="utf-8", errors="replace")

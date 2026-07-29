@@ -2,7 +2,7 @@
 plugin_loader.py
 Discovers and loads external wizard plugin scripts from the Plugins directory.
 
-Plugin files are plain Python scripts placed in ~/.config/AmethystModManager/Plugins/.
+Plugin files are plain Python scripts placed in ~/.config/MosaicModManager/Plugins/.
 Each must define a module-level ``PLUGIN_INFO`` dict and a dialog class that follows
 the standard wizard dialog signature::
 

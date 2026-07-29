@@ -72,7 +72,7 @@ HighlightRole = Qt.UserRole + 6    # int: 0 none, 1 higher(green), -1 lower(red)
                                    #      2 anchor(orange, plugin-selected mod),
                                    #      3 requires(purple), -3 required-by(blue)
 
-_MIME = "application/x-amethyst-modrows"
+_MIME = "application/x-mosaic-modrows"
 
 
 class ModListModel(QAbstractTableModel):

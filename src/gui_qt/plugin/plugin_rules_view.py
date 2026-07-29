@@ -32,7 +32,7 @@ from Utils.userlist import (
     parse_userlist, write_userlist, save_plugin_rules_merged,
 )
 
-_MIME = "application/x-amethyst-plugin-name"
+_MIME = "application/x-mosaic-plugin-name"
 
 
 class _DragPluginList(QListWidget):

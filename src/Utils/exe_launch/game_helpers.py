@@ -335,7 +335,7 @@ def _load_last_game() -> str | None:
 
 
 def _clear_game_config(game_name: str) -> None:
-    """Remove this game's config from ~/.config/AmethystModManager/games/<game_name>/.
+    """Remove this game's config from ~/.config/MosaicModManager/games/<game_name>/.
     Causes the game to show as unconfigured on next use."""
     game_config_dir = get_config_dir() / "games" / game_name
     try:

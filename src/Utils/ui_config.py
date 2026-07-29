@@ -1761,7 +1761,7 @@ def load_default_staging_path() -> str:
     """Return the user-configured default mod staging folder, or '' if unset.
 
     When set, adding a new game uses ``<this>/<game_name>`` as its mod staging
-    folder instead of the built-in default (~/.config/AmethystModManager/Profiles).
+    folder instead of the built-in default (~/.config/MosaicModManager/Profiles).
     """
     path = get_ui_config_path()
     if not path.is_file():
@@ -1793,7 +1793,7 @@ def load_download_cache_path() -> str:
 
     When set, archives downloaded for any game are stored under
     ``<this>/<game name>/`` instead of the built-in default
-    (~/.config/AmethystModManager/download_cache).
+    (~/.config/MosaicModManager/download_cache).
     """
     path = get_ui_config_path()
     if not path.is_file():

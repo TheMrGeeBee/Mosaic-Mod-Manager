@@ -123,7 +123,7 @@ def _jeepney_portal_call(
             _debug_log("FileChooser interface not available on this portal (no backend)")
             return None
 
-        token = f"amethyst_{uuid.uuid4().hex[:16]}"
+        token = f"mosaic_{uuid.uuid4().hex[:16]}"
         sender = conn.unique_name.lstrip(":").replace(".", "_")
         predicted_handle = f"/org/freedesktop/portal/desktop/request/{sender}/{token}"
 
@@ -298,7 +298,7 @@ def _run_portal_impl_gi(
             _debug_log("FileChooser interface not available on this portal (no backend)")
             return None
 
-        token = f"amethyst_{uuid.uuid4().hex[:16]}"
+        token = f"mosaic_{uuid.uuid4().hex[:16]}"
         options: dict = {"handle_token": GLib.Variant("s", token)}
         if directory:
             options["directory"] = GLib.Variant("b", True)

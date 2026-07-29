@@ -28,7 +28,7 @@ from typing import Callable
 from Utils.app_log import safe_log as _safe_log
 
 # Extension refs the sandbox needs for 32-bit support. Branches MUST match the
-# manifest's add-extensions block in flatpak/io.github.Amethyst.ModManager.yml.
+# manifest's add-extensions block in flatpak/io.github.TheMrGeeBee.MosaicModManager.yml.
 #
 # IMPORTANT: the two extensions are branched on DIFFERENT axes:
 #   * Compat.i386 tracks the freedesktop base (KDE 6.9 → 24.08). This ref

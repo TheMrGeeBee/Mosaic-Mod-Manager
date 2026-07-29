@@ -1,7 +1,7 @@
 """Toolkit-neutral read/write of the download-locations settings.
 
 Both the Tk app and the Qt app read/write the SAME file —
-``~/.config/AmethystModManager/download_locations.json`` — so the Downloads tab
+``~/.config/MosaicModManager/download_locations.json`` — so the Downloads tab
 in either toolkit stays backward-compatible. Moved out of the Tk-only
 ``gui/download_locations_overlay.py`` (which keeps the Tk overlay class and
 re-imports these). Pure stdlib + Utils.* — no GUI toolkit.

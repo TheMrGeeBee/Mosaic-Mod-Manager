@@ -64,7 +64,13 @@ _PROFILES_DIR = get_profiles_dir()
 _DEPLOYED_MANIFEST = "ue5_deployed.txt"
 
 # Vanilla files displaced by mod files are backed up here (inside the game root)
-_VANILLA_BACKUP_DIR = "Amethyst_vanilla_files"
+_VANILLA_BACKUP_DIR = "Mosaic_vanilla_files"
+# Pre-rename backup dir name. A restore checks this too (see the restore
+# function below) so vanilla files displaced by a deploy from before the
+# rename still get put back — this folder lives inside the GAME's own
+# install directory, so it can persist across the app rename indefinitely
+# until the next restore cleans it up.
+_LEGACY_VANILLA_BACKUP_DIR = "Amethyst_vanilla_files"
 
 # Custom-dir vanilla files displaced by mod files are backed up here (inside profile root).
 # Files are stored with their full absolute path mirrored so restore can reconstruct them.
@@ -1595,8 +1601,16 @@ class UE5Game(BaseGame):
             except Exception as exc:
                 _log(f"  WARN: could not clean UE4SS mods.txt: {exc}")
 
-        # Restore any vanilla files that were displaced during deploy
-        vanilla_backup_dir = (self._game_path or game_path) / _VANILLA_BACKUP_DIR
+        # Restore any vanilla files that were displaced during deploy. Prefer
+        # the current backup dir name, but fall back to the pre-rename one so
+        # a backup left behind by a deploy from before the app was renamed
+        # still gets restored (see _LEGACY_VANILLA_BACKUP_DIR).
+        _vanilla_root = self._game_path or game_path
+        vanilla_backup_dir = _vanilla_root / _VANILLA_BACKUP_DIR
+        if not vanilla_backup_dir.is_dir():
+            _legacy_vanilla_dir = _vanilla_root / _LEGACY_VANILLA_BACKUP_DIR
+            if _legacy_vanilla_dir.is_dir():
+                vanilla_backup_dir = _legacy_vanilla_dir
         restored_vanilla = 0
         if vanilla_backup_dir.is_dir():
             for backup_file in vanilla_backup_dir.rglob("*"):

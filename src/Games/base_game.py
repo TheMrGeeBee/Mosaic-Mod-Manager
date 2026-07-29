@@ -962,7 +962,7 @@ class BaseGame(ABC):
         Legacy: full URL to download the LOOT masterlist YAML for this game.
         Only used as a fallback when `loot_masterlist_repo` is not set.
         e.g. 'https://raw.githubusercontent.com/loot/skyrimse/v0.21/masterlist.yaml'
-        The masterlist is stored as ~/.config/AmethystModManager/LOOT/data/masterlist_<game_id>.yaml.
+        The masterlist is stored as ~/.config/MosaicModManager/LOOT/data/masterlist_<game_id>.yaml.
         Return an empty string if no masterlist URL is known.
         """
         return ""
@@ -1024,7 +1024,7 @@ class BaseGame(ABC):
         (the Mozilla fxc2 Win 8.1 DLL drop).
 
         These run silently in the background and are skipped per-dep when the
-        prefix's amethyst_deps.json already records them, or when no Proton
+        prefix's mosaic_deps.json already records them, or when no Proton
         prefix is available. Prefer this over ``winetricks_components`` — many
         users lack a working winetricks/cabextract setup, and the winetricks
         vcredist/d3dcompiler verbs are also less reliable for DLL mods.
@@ -1583,7 +1583,7 @@ class BaseGame(ABC):
     def _paths_file(self) -> Path:
         """Path to this game's paths.json in the user config directory.
 
-        Resolves to: ~/.config/AmethystModManager/games/<game_name>/paths.json
+        Resolves to: ~/.config/MosaicModManager/games/<game_name>/paths.json
 
         Stored outside the app bundle so it survives AppImage updates and
         works correctly when the AppImage filesystem is mounted read-only.
@@ -1597,7 +1597,7 @@ class BaseGame(ABC):
         Stores lightweight per-game UI preferences (e.g. auto_deploy) that are
         independent of the path configuration persisted in paths.json.
 
-        Resolves to: ~/.config/AmethystModManager/games/<game_name>/game_settings.json
+        Resolves to: ~/.config/MosaicModManager/games/<game_name>/game_settings.json
         """
         return get_game_config_dir(self.name) / "game_settings.json"
 

@@ -165,7 +165,7 @@ class ModioAPI:
         self._session.verify = resolve_ca_bundle() or True
         self._session.headers.update({
             "Accept": "application/json",
-            "User-Agent": "AmethystModManager",
+            "User-Agent": "MosaicModManager",
         })
 
     def _get(self, url: str, params: dict, *, retries: int = 3):

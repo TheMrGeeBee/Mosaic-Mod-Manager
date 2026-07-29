@@ -102,7 +102,7 @@ def spawn_watched(
     a user's session log.
     """
     # Use a CWD the host definitely has. Inside Flatpak the sandbox CWD
-    # (e.g. /app/share/amethyst-mod-manager) doesn't exist on the host, so
+    # (e.g. /app/share/mosaic-mod-manager) doesn't exist on the host, so
     # `flatpak-spawn --host` inherits it and the spawned host process fails
     # to start with "Failed to change to directory".
     cwd = os.path.expanduser("~") if os.path.isdir(os.path.expanduser("~")) else "/"

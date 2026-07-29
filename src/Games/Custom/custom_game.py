@@ -2,7 +2,7 @@
 custom_game.py
 Dynamic game handler loaded from a user-supplied JSON definition.
 
-JSON format (~/.config/AmethystModManager/custom_games/<game_id>.json):
+JSON format (~/.config/MosaicModManager/custom_games/<game_id>.json):
 {
   "name":              "My Game",
   "game_id":           "my_game",

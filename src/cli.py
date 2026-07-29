@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 cli.py
-Command-line interface for Amethyst Mod Manager.
+Command-line interface for Mosaic Mod Manager.
 
 Usage:
     python cli.py --deploy <game_id_or_name> <profile_name>
@@ -149,8 +149,8 @@ def main():
     _setup_path()
 
     parser = argparse.ArgumentParser(
-        prog="amethyst",
-        description="Amethyst Mod Manager — CLI",
+        prog="mosaic",
+        description="Mosaic Mod Manager — CLI",
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
 

@@ -26,7 +26,7 @@ def setup_environment() -> None:
     # so we can find Pillow / other deps. The launcher used to do this via
     # PYTHONPATH, which leaked into child shells.
     if os.environ.get("APPDIR"):
-        vendor = Path(os.environ["APPDIR"]) / "share" / "amethyst-mod-manager" / "_vendor"
+        vendor = Path(os.environ["APPDIR"]) / "share" / "mosaic-mod-manager" / "_vendor"
         if vendor.is_dir() and str(vendor) not in sys.path:
             sys.path.insert(0, str(vendor))
 

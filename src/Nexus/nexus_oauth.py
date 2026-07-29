@@ -52,7 +52,7 @@ from Utils.app_log import app_log
 from Utils.ca_bundle import resolve_ca_bundle
 from Utils.config_paths import get_config_dir
 from version import __version__
-from Nexus.nexus_api import _KEYRING_SERVICE
+from Nexus.nexus_api import _KEYRING_SERVICE, _migrate_keyring_entry
 
 # ---------------------------------------------------------------------------
 # Keyring availability check — fall back to file storage when DBus is slow
@@ -178,7 +178,13 @@ _CALLBACK_PORT = 7890
 _CALLBACK_PATH = "/callback"
 _REDIRECT_URI  = f"http://localhost:{_CALLBACK_PORT}{_CALLBACK_PATH}"
 
-# OAuth credentials issued by Nexus Mods.
+# OAuth credentials issued by Nexus Mods. NOT renamed to "mosaic" in the
+# 2026-07-29 rebrand: these are a real registered client_id/secret pair —
+# changing CLIENT_ID without Nexus also issuing a new CLIENT_SECRET for it
+# breaks login outright (401 invalid_client). Getting a "mosaic"-named pair
+# requires registering a new OAuth application with Nexus Mods directly;
+# until/unless that happens, this app authenticates to Nexus as "amethyst"
+# regardless of its own display name — cosmetic, not a bug.
 CLIENT_ID:     str = "amethyst"
 CLIENT_SECRET: str = "d6bc16f2c28a5c5bc19261d458b70117"
 
@@ -241,7 +247,17 @@ def load_oauth_tokens() -> Optional[OAuthTokens]:
         refresh = keyring.get_password(_KEYRING_SERVICE, _KEYRING_REFRESH_KEY)
         exp_str = keyring.get_password(_KEYRING_SERVICE, _KEYRING_EXPIRES_KEY)
         if not access or not refresh or not exp_str:
-            return None
+            # One-time migration from the pre-rename keyring service name —
+            # all three must be present under the OLD name to count (a
+            # partial old set plus a partial new set would produce a
+            # Frankenstein token triple), so only migrate when nothing at
+            # all was found under the new name.
+            if not access and not refresh and not exp_str:
+                access  = _migrate_keyring_entry(_KEYRING_ACCESS_KEY)
+                refresh = _migrate_keyring_entry(_KEYRING_REFRESH_KEY)
+                exp_str = _migrate_keyring_entry(_KEYRING_EXPIRES_KEY)
+            if not access or not refresh or not exp_str:
+                return None
         return OAuthTokens(
             access_token=access,
             refresh_token=refresh,
@@ -488,7 +504,7 @@ def _callback_page(title: str, message: str) -> str:
             f"style='display:block;margin:0 auto 28px;'>") if uri else ""
     return (
         "<!DOCTYPE html><html><head><meta charset='utf-8'>"
-        "<title>Amethyst Mod Manager</title></head>"
+        "<title>Mosaic Mod Manager</title></head>"
         "<body style='margin:0;min-height:100vh;display:flex;align-items:center;"
         "justify-content:center;background:#1b1b1f;color:#f0f0f2;"
         "font-family:sans-serif;text-align:center;'>"
@@ -541,7 +557,7 @@ class _CallbackServer:
                     parent._state = params.get("state")
                     body = _callback_page(
                         "Authorised!",
-                        "You can close this tab and return to Amethyst Mod Manager."
+                        "You can close this tab and return to Mosaic Mod Manager."
                     ).encode()
                 else:
                     parent._error = params.get("error", "unknown")

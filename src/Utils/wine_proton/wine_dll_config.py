@@ -2,7 +2,7 @@
 wine_dll_config.py
 Shared helpers for per-game Wine DLL override storage and deployment.
 
-Storage format (~/.config/AmethystModManager/games/<game>/wine_dll_overrides.json):
+Storage format (~/.config/MosaicModManager/games/<game>/wine_dll_overrides.json):
 {
   "overrides": {"winhttp": "native,builtin", ...}
 }

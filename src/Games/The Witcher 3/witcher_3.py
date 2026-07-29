@@ -26,7 +26,7 @@ game root (mod_install_as_is_if_no_match = True).
 
 Deploy writes a manifest (tw3_deployed.txt) so restore() knows exactly
 what to remove.  Vanilla files displaced by mods are backed up in
-Amethyst_vanilla_files/ and moved back on restore.
+Mosaic_vanilla_files/ and moved back on restore.
 """
 
 from __future__ import annotations
@@ -46,7 +46,9 @@ _PROFILES_DIR = get_profiles_dir()
 _DEPLOYED_MANIFEST = "tw3_deployed.txt"
 
 # Vanilla files displaced by mod files are backed up here (inside the game root)
-_VANILLA_BACKUP_DIR = "Amethyst_vanilla_files"
+_VANILLA_BACKUP_DIR = "Mosaic_vanilla_files"
+# Pre-rename backup dir name — restore falls back to this too, see below.
+_LEGACY_VANILLA_BACKUP_DIR = "Amethyst_vanilla_files"
 
 
 def _merge_tree_into(src: Path, dest: Path) -> int:
@@ -249,7 +251,7 @@ class Witcher3(BaseGame):
           bin/  → <game_root>/bin/<path>
           other → <game_root>/<path>
 
-        Vanilla files displaced by mods are backed up in Amethyst_vanilla_files/
+        Vanilla files displaced by mods are backed up in Mosaic_vanilla_files/
         so restore() can put them back.  Every placed file is recorded in
         tw3_deployed.txt (next to filemap.txt).
         """
@@ -643,8 +645,14 @@ class Witcher3(BaseGame):
                     except OSError as exc:
                         _log(f"  WARN: could not remove {rel}: {exc}")
 
-            # Restore vanilla files that were displaced during deploy
+            # Restore vanilla files that were displaced during deploy. Prefer
+            # the current backup dir name, falling back to the pre-rename one
+            # (see _LEGACY_VANILLA_BACKUP_DIR).
             vanilla_backup_dir = game_path / _VANILLA_BACKUP_DIR
+            if not vanilla_backup_dir.is_dir():
+                _legacy_vanilla_dir = game_path / _LEGACY_VANILLA_BACKUP_DIR
+                if _legacy_vanilla_dir.is_dir():
+                    vanilla_backup_dir = _legacy_vanilla_dir
             restored_vanilla = 0
             if vanilla_backup_dir.is_dir():
                 for backup_file in vanilla_backup_dir.rglob("*"):

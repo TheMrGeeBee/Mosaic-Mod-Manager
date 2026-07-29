@@ -3,7 +3,7 @@ sandbox_paths.py
 Detect user-supplied paths that the Flatpak sandbox cannot see.
 
 The manager's flatpak grants --filesystem=home, /run/media, /media, /mnt and
-the Steam/Heroic flatpak data dirs (see flatpak/io.github.Amethyst.ModManager.yml).
+the Steam/Heroic flatpak data dirs (see flatpak/io.github.TheMrGeeBee.MosaicModManager.yml).
 A game or staging path outside those trees (e.g. /data/SteamLibrary, /opt/...)
 simply doesn't exist from inside the sandbox — indistinguishable from a typo —
 so the UI should tell the user it's a sandbox grant problem, not a bad path.
@@ -54,14 +54,14 @@ def flatpak_blocked_path_hint(path) -> str | None:
             app = parts[2] if len(parts) > 2 else ""
             # The app's own ~/.var/app/<FLATPAK_ID> tree is always visible to
             # itself; a missing path there is genuinely missing, not blocked.
-            own_id = os.environ.get("FLATPAK_ID", "io.github.Amethyst.ModManager")
+            own_id = os.environ.get("FLATPAK_ID", "io.github.TheMrGeeBee.MosaicModManager")
             if app in _GRANTED_VAR_APPS or app == own_id:
                 return None
         else:
             for root in _GRANTED_ROOTS:
                 if p == Path(root) or str(p).startswith(root + "/"):
                     return None
-        app_id = os.environ.get("FLATPAK_ID", "io.github.Amethyst.ModManager")
+        app_id = os.environ.get("FLATPAK_ID", "io.github.TheMrGeeBee.MosaicModManager")
         # Grant the top-level tree, not the leaf, so sibling paths
         # (other games in the same library) come along.
         if rel is not None:

@@ -379,7 +379,7 @@ def _build_patch_index(mods_path: Path) -> Tuple[Set[str], Set[str]]:
 
 def _get_priority_for_plugin(plugin_name: str, mods_path: Path,
                               priorities: Dict[str, int]) -> int:
-    """Amethyst mod priority for the plugin's owner. -1 if not found."""
+    """Mosaic mod priority for the plugin's owner. -1 if not found."""
     if not mods_path or not mods_path.is_dir():
         return -1
     for mod_dir in mods_path.iterdir():
@@ -434,7 +434,7 @@ class AuditEntry:
     masters:        List[str]
     patch_scents:   Set[str]           # PRE_PATCHED_* flags
     mod_name:       str                # owning mod folder name
-    priority:       int                # Amethyst priority (higher = wins)
+    priority:       int                # Mosaic priority (higher = wins)
     dependents:     List[str] = field(default_factory=list)
     transitively_safe: bool = False
     has_new_records: bool = False      # plugin adds its own FormIDs

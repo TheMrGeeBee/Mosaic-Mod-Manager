@@ -275,7 +275,7 @@ ROOT_MANIFEST_NAME = ".mm_pak_restore.json"
 # Human-readable note written as the first key of the manifest so anyone who
 # finds the file in the game folder knows what it is and how to recover from it.
 ROOT_MANIFEST_COMMENT = (
-    "Contains a record of every PAK entry Amethyst Mod Manager has edited. "
+    "Contains a record of every PAK entry Mosaic Mod Manager has edited. "
     "In the event of corruption (e.g. the game won't load after removing mods) "
     "this can be used with the 'Repair PAK Files' wizard tool to restore the "
     "PAK files to vanilla. Do not delete this file while mods are deployed."

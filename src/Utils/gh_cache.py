@@ -15,7 +15,7 @@ This module provides two reductions:
    URL happened less than ``min_interval`` seconds ago we skip the request
    entirely and return the cached body.
 
-Cache lives under ``~/.config/AmethystModManager/gh_cache/``:
+Cache lives under ``~/.config/MosaicModManager/gh_cache/``:
     <sha1(url)>.meta.json  -> {"etag": "...", "fetched_at": 1713600000, "url": "..."}
     <sha1(url)>.body       -> the raw response bytes
 
@@ -40,7 +40,7 @@ from Utils.ca_bundle import resolve_ca_bundle
 from Utils.config_paths import get_config_dir
 
 
-_USER_AGENT = "Amethyst-Mod-Manager"
+_USER_AGENT = "Mosaic-Mod-Manager"
 
 _ssl_ctx = None
 

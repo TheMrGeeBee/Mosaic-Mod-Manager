@@ -20,7 +20,7 @@ Game support is driven by the game handler's properties:
                                     loot_masterlist_repo is not set.
   - game_id: str                  — used to derive the masterlist filename
                                     (masterlist_<game_id>.yaml in
-                                    ~/.config/AmethystModManager/LOOT/data/)
+                                    ~/.config/MosaicModManager/LOOT/data/)
 """
 
 from __future__ import annotations
@@ -875,7 +875,7 @@ def sort_plugins(
         game_type_attr: libloot GameType attribute name (e.g. 'SkyrimSE').
                         Obtained from game.loot_game_type.
         game_id: Game ID used to locate the masterlist file
-                 (~/.config/AmethystModManager/LOOT/data/masterlist_<game_id>.yaml).
+                 (~/.config/MosaicModManager/LOOT/data/masterlist_<game_id>.yaml).
                  Obtained from game.game_id.
 
     Returns:

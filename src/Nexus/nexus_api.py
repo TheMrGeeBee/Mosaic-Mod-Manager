@@ -44,6 +44,11 @@ from version import __version__
 API_BASE = "https://api.nexusmods.com/v1"
 GRAPHQL_BASE = "https://api.nexusmods.com/v2/graphql"
 V3_BASE = "https://api.nexusmods.com/v3"
+# Sent as the "Application-Name" header on every Nexus API request. Left as
+# "amethyst" (not renamed to "mosaic") to match the registered OAuth
+# CLIENT_ID in nexus_oauth.py — same reasoning: this identifies the app to
+# Nexus's own systems, and diverging it from the actual OAuth client name
+# would be confusing on Nexus's side for no functional benefit here.
 APP_NAME = "amethyst"
 APP_VERSION = __version__
 
@@ -289,9 +294,38 @@ class NexusCollectionMod:
 # API key persistence (system keyring, with file fallback)
 # ---------------------------------------------------------------------------
 
-_KEYRING_SERVICE = "AmethystModManager"
+_KEYRING_SERVICE = "MosaicModManager"
+# Pre-rename keyring service name. Entries stored there (Nexus API key,
+# OAuth tokens — nexus_oauth.py shares this same service) are migrated to
+# _KEYRING_SERVICE lazily, one username at a time, the first time each is
+# looked up and not found under the new name — see _migrate_keyring_entry.
+_LEGACY_KEYRING_SERVICE = "AmethystModManager"
 _KEYRING_USER = "nexus_api_key"
 _API_KEY_FILE = "nexus_api_key.bin"
+
+
+def _migrate_keyring_entry(username: str) -> "str | None":
+    """Move one keyring entry from _LEGACY_KEYRING_SERVICE to _KEYRING_SERVICE.
+
+    Returns the migrated value, or None if there was nothing to migrate.
+    Best-effort: a failed delete still leaves the value copied under the new
+    service name, so a retry next launch just no-ops instead of losing data.
+    """
+    try:
+        value = keyring.get_password(_LEGACY_KEYRING_SERVICE, username)
+    except Exception:
+        return None
+    if not value:
+        return None
+    try:
+        keyring.set_password(_KEYRING_SERVICE, username, value)
+    except Exception:
+        return None
+    try:
+        keyring.delete_password(_LEGACY_KEYRING_SERVICE, username)
+    except Exception:
+        pass
+    return value
 
 
 def _api_key_path() -> Path:
@@ -314,7 +348,16 @@ def _keyring_ok() -> bool:
 
 
 def _derive_key() -> bytes:
-    """Derive a Fernet key from the machine ID so keys are only usable on this device."""
+    """Derive a Fernet key from the machine ID so keys are only usable on this device.
+
+    The PBKDF2 salt below is intentionally left as the pre-rename literal
+    "AmethystModManager" — it's an opaque KDF input, never shown to the user,
+    and changing it would silently break decryption of any existing
+    encrypted-file-fallback key (nexus_api_key.bin) with no way to detect or
+    migrate it (unlike the keyring service name, there's no "try the old
+    value" fallback possible here — the derived key either matches or it
+    doesn't). Leave it alone.
+    """
     import base64, hashlib
     machine_id = ""
     for p in ("/etc/machine-id", "/var/lib/dbus/machine-id"):
@@ -400,6 +443,9 @@ def load_api_key() -> str:
         key = keyring.get_password(_KEYRING_SERVICE, _KEYRING_USER)
         if key:
             return key.strip()
+        migrated = _migrate_keyring_entry(_KEYRING_USER)
+        if migrated:
+            return migrated.strip()
         return _migrate_legacy_key()
     except UnicodeDecodeError as e:
         app_log(f"Nexus API key in keyring is invalid/corrupted ({e}). Clear and re-enter in Nexus settings.")
