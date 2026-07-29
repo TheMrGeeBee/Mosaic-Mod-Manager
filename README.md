@@ -2,14 +2,9 @@
 <p align="center">
     <img width="200" src="src/icons/Logo.png" alt="Logo">
 </p>
-<h1 align="center">Amethyst Mod Manager</h1>
+<h1 align="center">Mosaic Mod Manager</h1>
 
 <h3 align="center">A mod manager for Linux.</h3>
-<h5 align="center">
-  <a href="https://www.nexusmods.com/site/mods/1714">Nexus</a> |
-  <a href="https://github.com/ChrisDKN/Amethyst-Mod-Manager/wiki">Wiki</a> |
-  <a href="https://ko-fi.com/chrisdkn">Ko-Fi</a>
-</h4>
 
 <p align="center">
     <img width="800" src="src/icons/ui.png" alt="ui">
@@ -25,7 +20,7 @@
 - **Multi game support** - Bethesda, RE Engine (including pak invalidation), Bg3, CP2077 and a lot more. Designed to make adding game support easy
 - **Automated tool setup** - Run things like Pandora,pgpatcher,dyndolod with a few clicks
 - **Root folder building** - Most mods that need to go to root do so automatically, no setup needed. Anything else can be toggled to go to root with a couple clicks
-- **Smart game restore** - Amethyst uses hardlinks and symlinks but will restore the game to it's previous state while moving any runtime generated files back to staging
+- **Smart game restore** - Mosaic uses hardlinks and symlinks but will restore the game to it's previous state while moving any runtime generated files back to staging
 
 ---
 
@@ -37,7 +32,7 @@
 Run the following command in a terminal. It will appear in your applications menu under Games and Utilities.
 
 ```bash
-curl -sSL https://raw.githubusercontent.com/ChrisDKN/Amethyst-Mod-Manager/main/src/appimage/Amethyst-MM-installer.sh | bash
+curl -sSL https://raw.githubusercontent.com/TheMrGeeBee/Mosaic-Mod-Manager/main/src/appimage/Mosaic-MM-installer.sh | bash
 ```
 
 The application will notifiy when a new update goes live, Pressing the update button will rerun the script and update to any new version
@@ -47,7 +42,7 @@ The application will notifiy when a new update goes live, Pressing the update bu
 Run the following command
 
 ```bash
-flatpak install --user https://chrisdkn.github.io/Amethyst-Mod-Manager/amethyst.flatpakref
+flatpak install --user https://themrgeebee.github.io/Mosaic-Mod-Manager/mosaic.flatpakref
 ```
 
 Updates will be shown in your package manager
@@ -55,7 +50,7 @@ Updates will be shown in your package manager
 Manually swap to the beta branch
 
 ```bash
-flatpak install --user --reinstall modmanager-origin io.github.Amethyst.ModManager//beta
+flatpak install --user --reinstall modmanager-origin io.github.TheMrGeeBee.MosaicModManager//beta
 ```
 
 Installing from a bundle skips the 32-bit compat extensions that running Windows tools (Proton/wine) requires - The app installs them automatically on first launch, or you can add them yourself:
@@ -63,11 +58,6 @@ Installing from a bundle skips the 32-bit compat extensions that running Windows
 ```bash
 flatpak install --user flathub org.freedesktop.Platform.Compat.i386//24.08 org.freedesktop.Platform.GL32.default//24.08
 ```
-
-### AUR
-<a href='https://aur.archlinux.org/packages/amethyst-mod-manager'>
-	<img width='240' alt='Get on AUR' src='https://upload.wikimedia.org/wikipedia/commons/e/e8/Archlinux-logo-standard-version.png'/>
-</a>
 
 ---
 
@@ -111,15 +101,3 @@ flatpak install --user flathub org.freedesktop.Platform.Compat.i386//24.08 org.f
 <tr><td>Oblivion</td><td></td><td>X4 Foundations</td><td></td></tr>
 <tr><td>Oblivion Remastered</td><td></td><td></td><td></td></tr>
 </table>
-
----
-
-## Wiki
-
-See the wiki page for a detailed guide on how to the use the mod manager and its functions
-
-## Supporting the project
-
-Your feedback is enough and is greatly appreciated as this benefits everyone but if you'd like donate you can on Ko-fi 
-
-<a href='https://ko-fi.com/R6R51XJ80I' target='_blank'><img height='36' style='border:0px;height:36px;' src='https://storage.ko-fi.com/cdn/kofi6.png?v=6' border='0' alt='Buy Me a Coffee at ko-fi.com' /></a>
