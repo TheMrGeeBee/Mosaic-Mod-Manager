@@ -166,8 +166,13 @@ modules:
         sed -e "s/@VERSION@/${VER}/" -e "s/@DATE@/${DATE}/" \
           flatpak/io.github.TheMrGeeBee.MosaicModManager.metainfo.xml \
           > /app/share/metainfo/io.github.TheMrGeeBee.MosaicModManager.metainfo.xml
-      # Validate so a malformed metainfo fails the build (relaxed: the only
-      # note is the uppercase app-id, which must match the flatpak id).
+      # Validate so a malformed metainfo fails the build. The only remaining
+      # note is pedantic-severity (cid-contains-uppercase-letter) — the
+      # app-id must match the flatpak id, which is case-preserved to match
+      # the GitHub owner name (TheMrGeeBee), so that one is expected and
+      # non-blocking. <developer id="..."> is a *separate* field with no
+      # such exception — it failed validation (developer-id-invalid,
+      # warning severity) until lowercased.
       - appstreamcli validate --no-net
         /app/share/metainfo/io.github.TheMrGeeBee.MosaicModManager.metainfo.xml
       - install -d /app/share/icons/hicolor/16x16/apps /app/share/icons/hicolor/32x32/apps /app/share/icons/hicolor/64x64/apps /app/share/icons/hicolor/128x128/apps /app/share/icons/hicolor/256x256/apps
