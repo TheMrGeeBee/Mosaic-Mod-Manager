@@ -119,7 +119,7 @@ class ShareCodeImportOverlay(_CodeOverlayBase):
             "else's load order.")))
 
         self._area = self._text_area(read_only=False)
-        self._area.setPlaceholderText("AMMCODE1:…")  # i18n: skip — share-code format token
+        self._area.setPlaceholderText("MOSAICCODE1:…")  # i18n: skip — share-code format token
         self._v.addWidget(self._area, 1)
 
         # Live preview of the decoded code — profile / game / mod count / size /
@@ -132,7 +132,7 @@ class ShareCodeImportOverlay(_CodeOverlayBase):
         cb = QGuiApplication.clipboard()
         clip = cb.text() if cb is not None else ""
         bar = QHBoxLayout()
-        if clip and clip.strip().startswith("AMMCODE"):
+        if clip and clip.strip().startswith(("MOSAICCODE", "AMMCODE")):
             paste = QPushButton(self.tr("Paste from clipboard"))
             paste.setObjectName("FormButton")
             paste.setCursor(Qt.PointingHandCursor)
@@ -258,7 +258,7 @@ class CustomGameImportOverlay(_CodeOverlayBase):
             "game's setup. You still need to give it a unique name.")))
 
         self._area = self._text_area(read_only=False)
-        self._area.setPlaceholderText("AMMGAME1:…")  # i18n: skip — share-code format token
+        self._area.setPlaceholderText("MOSAICGAME1:…")  # i18n: skip — share-code format token
         self._v.addWidget(self._area, 1)
 
         self._preview = self._sub("")
@@ -268,7 +268,7 @@ class CustomGameImportOverlay(_CodeOverlayBase):
         cb = QGuiApplication.clipboard()
         clip = cb.text() if cb is not None else ""
         bar = QHBoxLayout()
-        if clip and clip.strip().startswith("AMMGAME"):
+        if clip and clip.strip().startswith(("MOSAICGAME", "AMMGAME")):
             paste = QPushButton(self.tr("Paste from clipboard"))
             paste.setObjectName("FormButton")
             paste.setCursor(Qt.PointingHandCursor)

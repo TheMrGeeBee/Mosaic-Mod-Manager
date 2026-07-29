@@ -109,7 +109,7 @@ class CollectionDetailView(QWidget):
         self._dl_path = ""                          # collection-archive download link
         # Local-manifest import: populate from a parsed manifest dict instead of the
         # API, and (optionally) restore bundled mods + profile files from a local
-        # .amethyst zip after install. Forces a NEW profile (no revision on Nexus).
+        # .mosaic zip after install. Forces a NEW profile (no revision on Nexus).
         self._local_manifest = local_manifest
         self._bundle_zip_path = str(bundle_zip) if bundle_zip else ""
         # Manifest fetched by _start_manifest_fetch, kept for the install worker
@@ -118,7 +118,7 @@ class CollectionDetailView(QWidget):
         # CDN fetch fails it silently loses every FOMOD/BAIN auto-selection.
         self._fetched_manifest: "dict | None" = None
         self._fetched_manifest_rev: "int | None" = None
-        # Imports normally force a NEW profile (a .amethyst bundle carries profile
+        # Imports normally force a NEW profile (a .mosaic bundle carries profile
         # state — plugins/saves — that can't be safely merged). A code import has
         # no bundle, so the caller may pass allow_append=True to permit appending
         # into an existing profile.

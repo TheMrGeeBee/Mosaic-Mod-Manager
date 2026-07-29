@@ -606,7 +606,7 @@ def run_collection_install(
                               "status": status, "detail": detail}
 
     # Bundle-source entries ship inside the collection archive and have no Nexus
-    # file ID — Step 2c installs + counts them (or, for local .amethyst imports,
+    # file ID — Step 2c installs + counts them (or, for local .mosaic imports,
     # the post-install bundle extraction does). Counting them "skipped" here
     # reported perfectly-installed bundled mods as skipped in the final summary.
     _schema_bundle_names = {

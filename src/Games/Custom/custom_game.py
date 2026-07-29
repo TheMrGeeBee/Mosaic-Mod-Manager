@@ -304,7 +304,10 @@ def delete_custom_game_definition(game_id: str) -> None:
 # preset in the define-custom-game editor.
 # ---------------------------------------------------------------------------
 
-CUSTOM_GAME_CODE_PREFIX = "AMMGAME1:"
+CUSTOM_GAME_CODE_PREFIX = "MOSAICGAME1:"
+# Pre-rename prefix — decode_custom_game_definition still strips this so
+# codes shared before the rename keep working.
+_LEGACY_CUSTOM_GAME_CODE_PREFIX = "AMMGAME1:"
 
 
 def encode_custom_game_definition(defn: dict) -> str:
@@ -325,19 +328,22 @@ def encode_custom_game_definition(defn: dict) -> str:
 
 def decode_custom_game_definition(code: str) -> dict:
     """Reverse :func:`encode_custom_game_definition`. Accepts a code with or
-    without the ``AMMGAME1:`` prefix and tolerates surrounding whitespace.
-    Raises ``ValueError`` on a malformed code."""
+    without the ``MOSAICGAME1:`` prefix (or the pre-rename ``AMMGAME1:``
+    prefix) and tolerates surrounding whitespace. Raises ``ValueError`` on a
+    malformed code."""
     if not code:
         raise ValueError("Empty code.")
     text = "".join(code.split())   # strip all whitespace / newlines
     if text.startswith(CUSTOM_GAME_CODE_PREFIX):
         text = text[len(CUSTOM_GAME_CODE_PREFIX):]
+    elif text.startswith(_LEGACY_CUSTOM_GAME_CODE_PREFIX):
+        text = text[len(_LEGACY_CUSTOM_GAME_CODE_PREFIX):]
     try:
         packed = base64.urlsafe_b64decode(text.encode("ascii"))
         raw = zlib.decompress(packed)
         defn = json.loads(raw.decode("utf-8"))
     except Exception as exc:
-        raise ValueError(f"Not a valid Amethyst game code: {exc}") from exc
+        raise ValueError(f"Not a valid game code: {exc}") from exc
     if not isinstance(defn, dict) or not defn.get("name") or not defn.get("exe_name"):
         raise ValueError("Code does not contain a valid game definition.")
     defn.pop("game_id", None)

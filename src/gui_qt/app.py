@@ -583,7 +583,7 @@ class MainWindow(QMainWindow):
         self._col_install_overlay = None
         self._col_install_control = None
         self._col_install_slug = ""
-        self._col_bundle_zip = ""      # local .amethyst pending bundle extraction
+        self._col_bundle_zip = ""      # local .mosaic pending bundle extraction
         self._col_offsite = []         # (name, url) manual mods — reminder on done
         self._col_created_profile = False  # this run created the target profile (GH#278)
         self._col_profile_name = ""
@@ -3267,7 +3267,7 @@ class MainWindow(QMainWindow):
         # Manifest rule: this collection must be installed as a NEW profile.
         recommend_new = bool(getattr(detail_view, "_recommend_new_profile", False))
         # Local-manifest import (Import profile): a parsed manifest to feed straight
-        # into the orchestrator + a local .amethyst whose bundled mods/profile files
+        # into the orchestrator + a local .mosaic whose bundled mods/profile files
         # are extracted after install. Both empty for a normal Nexus collection.
         local_manifest = getattr(detail_view, "_local_manifest", None)
         bundle_zip = getattr(detail_view, "_bundle_zip_path", "") or ""
@@ -3608,7 +3608,7 @@ class MainWindow(QMainWindow):
         self._col_install_slug = slug
         update_context = info.get("update_context")
         # Local-manifest import: feed the parsed manifest to the orchestrator (no
-        # Nexus fetch) and remember the .amethyst so its bundled mods + profile
+        # Nexus fetch) and remember the .mosaic so its bundled mods + profile
         # files are extracted once the Nexus mods finish installing.
         local_manifest = info.get("local_manifest")
         self._col_bundle_zip = info.get("bundle_zip") or ""
@@ -4126,7 +4126,7 @@ class MainWindow(QMainWindow):
         # done
         installed, skipped_n, total, profile_name = payload
         # Local-manifest import: extract bundled mods + profile files from the
-        # .amethyst over the freshly-installed profile, then reload. Handled on a
+        # .mosaic over the freshly-installed profile, then reload. Handled on a
         # worker (unzipping can be sizeable) → reload marshaled back via a Signal.
         bundle_zip = getattr(self, "_col_bundle_zip", "") or ""
         self._col_bundle_zip = ""
@@ -4145,7 +4145,7 @@ class MainWindow(QMainWindow):
     # ---- Import profile: local-bundle extraction -------------------------
     def _finish_import_bundle(self, bundle_zip, profile_name, ov,
                               installed, total, skipped_n):
-        """Extract a local .amethyst's bundled mods + profile files into the
+        """Extract a local .mosaic's bundled mods + profile files into the
         just-installed profile on a worker, then reload on the UI thread."""
         import threading
         game = self._gs.game
@@ -6878,7 +6878,7 @@ class MainWindow(QMainWindow):
 
     def _open_export_profile_tab(self):
         """Open the Export Profile panel scoped over the MODLIST panel (like Profile
-        Settings): per-mod source/version/optional config + Export to a .amethyst."""
+        Settings): per-mod source/version/optional config + Export to a .mosaic."""
         if self._gs.game_name is None:
             self._notify(self.tr("No game selected."), "warning")
             return
@@ -6898,7 +6898,7 @@ class MainWindow(QMainWindow):
             key="export_profile")
 
     def _import_profile(self):
-        """Import a .amethyst / manifest: parse it, then reuse the collection detail
+        """Import a .mosaic / manifest: parse it, then reuse the collection detail
         + install pipeline (via CollectionDetailView with a local manifest) to build
         a new profile from it. Requires a configured game matching the manifest."""
         game = self._gs.game
@@ -6918,8 +6918,8 @@ class MainWindow(QMainWindow):
         pick_file(
             "Import profile",
             lambda p: self._import_file_picked.emit(p),
-            filters=[("Amethyst Manifest (*.amethyst *.zip *.json)",
-                      ["*.amethyst", "*.zip", "*.json"]),
+            filters=[("Mosaic Manifest (*.mosaic *.amethyst *.zip *.json)",
+                      ["*.mosaic", "*.amethyst", "*.zip", "*.json"]),
                      ("All files", ["*"])])
 
     def _on_import_file_picked(self, picked):
@@ -6943,10 +6943,10 @@ class MainWindow(QMainWindow):
             self._notify(self.tr("Could not read manifest: {0}").format(exc), "error")
             return
         if not isinstance(manifest, dict) or not manifest.get("mods"):
-            self._notify(self.tr("That file doesn't look like an Amethyst manifest."),
+            self._notify(self.tr("That file doesn't look like a Mosaic manifest."),
                          "warning")
             return
-        bundle_zip = path if Path(path).suffix.lower() in (".amethyst", ".zip") else ""
+        bundle_zip = path if Path(path).suffix.lower() in (".mosaic", ".amethyst", ".zip") else ""
         self._open_manifest_import(manifest, Path(path).stem, bundle_zip=bundle_zip)
 
     def _open_manifest_import(self, manifest, source_stem, *, bundle_zip="",
@@ -6974,7 +6974,7 @@ class MainWindow(QMainWindow):
             return
 
         # Build a bare NexusCollection + open the detail tab populated from the
-        # manifest; the bundle zip (if a .amethyst) restores mods/profile after.
+        # manifest; the bundle zip (if a .mosaic) restores mods/profile after.
         from Nexus.nexus_api import NexusCollection
         name = (manifest.get("info") or {}).get("name") or source_stem
         collection = NexusCollection(

@@ -1,9 +1,10 @@
 """profile_export.py — neutral (GUI-free) helpers for the "Export profile" feature.
 
-Packages the current profile into a shareable, zipped ``.amethyst`` manifest:
-``manifest.json`` + bundled ``mods/`` + ``overwrite/`` + ``profile/`` state files.
-This is the Amethyst/Nexus-Collections manifest format, so an exported profile can
-be re-imported through the collection-install pipeline.
+Packages the current profile into a shareable, zipped ``.mosaic`` manifest
+(also reads pre-rename ``.amethyst`` exports): ``manifest.json`` + bundled
+``mods/`` + ``overwrite/`` + ``profile/`` state files. This is the
+Mosaic/Nexus-Collections manifest format, so an exported profile can be
+re-imported through the collection-install pipeline.
 
 All logic here is a straight port of the pure parts of the Tk ``workshop_dialog``
 (``_load_mods`` / ``_write_settings`` / ``_read_settings`` / ``_write_manifest``),
@@ -98,7 +99,7 @@ def load_rows(entries, game) -> list[dict]:
                     # No Nexus identification — check whether this is a
                     # mod.io-identified mod instead, which has no downloadable
                     # reference on export and must be bundled (its files zipped
-                    # into the .amethyst package) rather than blocked.
+                    # into the .mosaic package) rather than blocked.
                     try:
                         import configparser as _cp_modio
                         _cp = _cp_modio.ConfigParser(interpolation=None)
@@ -333,7 +334,7 @@ def build_manifest(rows, game_domain: str, app_version: str, *,
         mods.append(mod_entry)
 
     return {
-        "AmethystManifest": True,
+        "MosaicManifest": True,
         "info": {
             "domainName": game_domain,
             "appVersion": app_version,
@@ -345,17 +346,19 @@ def build_manifest(rows, game_domain: str, app_version: str, *,
 def write_amethyst(out_path, manifest: dict, *, staging_root=None,
                    overwrite_root=None, profile_dir=None,
                    bundle_names=None, progress_cb=None) -> Path:
-    """Write the ``.amethyst`` zip: ``manifest.json`` + bundled ``mods/`` +
+    """Write the profile package zip: ``manifest.json`` + bundled ``mods/`` +
     ``overwrite/`` + ``profile/`` state files. Returns the final path (suffix
-    forced to .amethyst when not already .zip/.amethyst).
+    forced to .mosaic when not already .zip/.mosaic/.amethyst — the latter
+    only matters for a caller that explicitly asked for the pre-rename
+    extension; new exports always default to .mosaic).
 
     *progress_cb* (optional) is called as ``progress_cb(done_bytes, total_bytes,
     arcname)`` — once with ``done_bytes=0`` before writing starts (total known),
     then after each member is written. Members are collected up-front so the
     byte total is exact; the callback runs on the caller's thread."""
     out_path = Path(out_path)
-    if out_path.suffix.lower() not in (".zip", ".amethyst"):
-        out_path = out_path.with_suffix(".amethyst")
+    if out_path.suffix.lower() not in (".zip", ".mosaic", ".amethyst"):
+        out_path = out_path.with_suffix(".mosaic")
 
     bundle_names = list(bundle_names or [])
     staging_root = Path(staging_root) if staging_root else None
@@ -461,9 +464,9 @@ def write_amethyst(out_path, manifest: dict, *, staging_root=None,
 # ---------------------------------------------------------------------------
 
 def read_manifest(src_path) -> dict:
-    """Parse the manifest from a ``.amethyst``/``.zip`` archive (extracts the
-    inner ``manifest.json``) or a bare ``.json`` file. Returns the parsed dict.
-    Raises on read/parse failure."""
+    """Parse the manifest from a ``.mosaic``/``.amethyst``/``.zip`` archive
+    (extracts the inner ``manifest.json``) or a bare ``.json`` file. Returns
+    the parsed dict. Raises on read/parse failure."""
     src_path = Path(src_path)
     import json as _json
     import zipfile as _zip
@@ -489,7 +492,7 @@ def read_manifest(src_path) -> dict:
 
 def install_local_bundle(src_path, profile_dir, mods_dir, overwrite_dir=None, *,
                          log_fn=None) -> list[str]:
-    """Extract a locally-exported ``.amethyst`` bundle into a freshly-installed
+    """Extract a locally-exported ``.mosaic``/``.amethyst`` bundle into a freshly-installed
     profile — faithful to the Tk import (CollectionsDialog bundle-zip extraction):
 
       * ``mods/<name>/…``      → ``<mods_dir>/<name>/…`` **verbatim** (folder names
@@ -576,11 +579,11 @@ def install_local_bundle(src_path, profile_dir, mods_dir, overwrite_dir=None, *,
 # Share code — a compressed, copy-pasteable text form of the manifest
 # ---------------------------------------------------------------------------
 #
-# The "Export code" feature turns the same Amethyst manifest into a short text
+# The "Export code" feature turns the same manifest into a short text
 # string the user can paste into a chat / forum to share a modlist. It carries
 # only what a recipient can rebuild from Nexus — mods with BOTH a modId and a
 # fileId — plus embedded FOMOD/BAIN installer choices. No mod files are bundled
-# (that's what the .amethyst zip is for), so a code stays small.
+# (that's what the .mosaic zip is for), so a code stays small.
 #
 # Load order is carried by the ORDER of the manifest's ``mods`` array (top of
 # modlist first): the collection-install pipeline that consumes an imported
@@ -588,7 +591,10 @@ def install_local_bundle(src_path, profile_dir, mods_dir, overwrite_dir=None, *,
 # so mods-array order == modlist priority. For FBLO games (BG3) we additionally
 # emit a ``loadOrder`` block so the exact order survives.
 
-CODE_PREFIX = "AMMCODE1:"   # version tag; bump the digit on a format change.
+CODE_PREFIX = "MOSAICCODE1:"   # version tag; bump the digit on a format change.
+# Pre-rename prefix (was "Amethyst Mod Manager code"). decode_manifest still
+# strips this so share codes pasted before the rename keep working.
+_LEGACY_CODE_PREFIX = "AMMCODE1:"
 
 
 def build_code_manifest(entries, game, app_version: str, *,
@@ -604,7 +610,7 @@ def build_code_manifest(entries, game, app_version: str, *,
     priority first, so we reverse when writing the array to keep the imported load
     order identical to the source. No separate ``loadOrder`` block is emitted (that
     would switch the importer onto its FBLO code path); the mods-array order alone
-    carries the load order, matching the ``.amethyst`` export.
+    carries the load order, matching the ``.mosaic`` export.
 
     Beyond the mods array, the manifest carries:
 
@@ -699,19 +705,22 @@ def encode_manifest(manifest: dict) -> str:
 
 def decode_manifest(code: str) -> dict:
     """Reverse :func:`encode_manifest`. Accepts a code with or without the
-    ``AMMCODE1:`` prefix and tolerates surrounding whitespace / line breaks.
-    Raises ``ValueError`` on a malformed code."""
+    ``MOSAICCODE1:`` prefix (or the pre-rename ``AMMCODE1:`` prefix) and
+    tolerates surrounding whitespace / line breaks. Raises ``ValueError`` on
+    a malformed code."""
     if not code:
         raise ValueError("Empty code.")
     text = "".join(code.split())   # strip all whitespace / newlines
     if text.startswith(CODE_PREFIX):
         text = text[len(CODE_PREFIX):]
+    elif text.startswith(_LEGACY_CODE_PREFIX):
+        text = text[len(_LEGACY_CODE_PREFIX):]
     try:
         packed = base64.urlsafe_b64decode(text.encode("ascii"))
         raw = zlib.decompress(packed)
         manifest = json.loads(raw.decode("utf-8"))
     except Exception as exc:
-        raise ValueError(f"Not a valid Amethyst code: {exc}") from exc
+        raise ValueError(f"Not a valid share code: {exc}") from exc
     if not isinstance(manifest, dict) or not manifest.get("mods"):
         raise ValueError("Code does not contain a valid manifest.")
     return manifest

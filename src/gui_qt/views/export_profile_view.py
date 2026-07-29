@@ -1,5 +1,5 @@
 """Export Profile — a modlist-scoped tab that packages the current profile into a
-shareable ``.amethyst`` manifest. Qt port of the Tk ``gui/workshop_dialog.py``
+shareable ``.mosaic`` manifest. Qt port of the Tk ``gui/workshop_dialog.py``
 (the "Workshop"), renamed to "Export profile".
 
 Per-mod configuration table: Source (Nexus / Direct+URL / Bundle / Ignore), preferred
@@ -389,7 +389,7 @@ _COL_NAME, _COL_SOURCE, _COL_VERSION, _COL_FOMOD, _COL_OPTIONAL = range(5)
 class ExportProfileView(QWidget):
     """Hosted as a modlist-scoped tab (like Profile Settings). Builds export rows
     from the active profile's modlist, lets the user configure per-mod source /
-    version / optional / fomod, then writes a ``.amethyst`` manifest."""
+    version / optional / fomod, then writes a ``.mosaic`` manifest."""
 
     # (data_idx, options) from the version-fetch worker → UI thread.
     _versions_ready = Signal(int, object)
@@ -773,13 +773,13 @@ class ExportProfileView(QWidget):
 
         pd = self._profile_dir()
         profile_name = pd.name if pd else "manifest"
-        default_name = f"{profile_name}_export.amethyst"
+        default_name = f"{profile_name}_export.mosaic"
         from Utils.wine_proton.portal_filechooser import pick_save_file
         pick_save_file(
-            self.tr("Export Amethyst Manifest"),
+            self.tr("Export Mosaic Manifest"),
             lambda path: self._save_path_picked.emit(path),
             current_name=default_name,
-            filters=[(self.tr("Amethyst Manifest (*.amethyst)"), ["*.amethyst"]),
+            filters=[(self.tr("Mosaic Manifest (*.mosaic)"), ["*.mosaic"]),
                      (self.tr("All files"), ["*"])])
 
     def _on_save_path_picked(self, path):
