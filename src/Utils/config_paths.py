@@ -3,26 +3,46 @@ config_paths.py
 Central helpers for resolving user-writable config directories.
 
 Follows the XDG Base Directory Specification:
-  Config lives in $XDG_CONFIG_HOME/AmethystModManager  (default: ~/.config/AmethystModManager)
+  Config lives in $XDG_CONFIG_HOME/MosaicModManager  (default: ~/.config/MosaicModManager)
 
 This is required for AppImage packaging — the AppImage mount is read-only,
 so all user config must be written outside the app bundle.
 """
 
 import os
+import shutil
 from pathlib import Path
 
-APP_NAME = "AmethystModManager"
+APP_NAME = "MosaicModManager"
+# Pre-rename config dir name (the app was "Amethyst Mod Manager" until the
+# 2026-07-29 rename). get_config_dir() migrates it once on first launch
+# under the new name — see the migration note there.
+_LEGACY_APP_NAME = "AmethystModManager"
 
 
 def get_config_dir() -> Path:
     """Return the app config directory, creating it if it doesn't exist.
 
-    Respects $XDG_CONFIG_HOME; falls back to ~/.config/AmethystModManager.
+    Respects $XDG_CONFIG_HOME; falls back to ~/.config/MosaicModManager.
+
+    One-time migration: this app is a rename of Amethyst Mod Manager, not a
+    fresh product, so an existing ``~/.config/AmethystModManager`` (games,
+    profiles, downloads, logs, ...) is moved wholesale to the new path the
+    first time it's found, rather than leaving Mosaic pointed at an empty
+    directory. A failed move (e.g. cross-device, permissions) just falls
+    through to creating a fresh dir; migration is retried on the next launch
+    since the legacy dir is left in place until the move actually succeeds.
     """
     xdg = os.environ.get("XDG_CONFIG_HOME")
     base = Path(xdg) if xdg else Path.home() / ".config"
     config_dir = base / APP_NAME
+    if not config_dir.exists():
+        legacy_dir = base / _LEGACY_APP_NAME
+        if legacy_dir.is_dir():
+            try:
+                shutil.move(str(legacy_dir), str(config_dir))
+            except OSError:
+                pass
     config_dir.mkdir(parents=True, exist_ok=True)
     return config_dir
 
@@ -30,7 +50,7 @@ def get_config_dir() -> Path:
 def get_game_config_path(game_name: str) -> Path:
     """Return the paths.json path for a given game, creating parent dirs as needed.
 
-    Result: ~/.config/AmethystModManager/games/<game_name>/paths.json
+    Result: ~/.config/MosaicModManager/games/<game_name>/paths.json
     """
     path = get_config_dir() / "games" / game_name / "paths.json"
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -40,7 +60,7 @@ def get_game_config_path(game_name: str) -> Path:
 def get_game_config_dir(game_name: str) -> Path:
     """Return the config directory for a given game, creating it if needed.
 
-    Result: ~/.config/AmethystModManager/games/<game_name>/
+    Result: ~/.config/MosaicModManager/games/<game_name>/
     """
     d = get_config_dir() / "games" / game_name
     d.mkdir(parents=True, exist_ok=True)
@@ -50,7 +70,7 @@ def get_game_config_dir(game_name: str) -> Path:
 def get_loot_data_dir() -> Path:
     """Return the LOOT masterlist data directory, creating it if needed.
 
-    Result: ~/.config/AmethystModManager/LOOT/data/
+    Result: ~/.config/MosaicModManager/LOOT/data/
     """
     d = get_config_dir() / "LOOT" / "data"
     d.mkdir(parents=True, exist_ok=True)
@@ -60,7 +80,7 @@ def get_loot_data_dir() -> Path:
 def get_loot_game_dir(game_id: str) -> Path:
     """Return the per-game LOOT directory, creating it if needed.
 
-    Result: ~/.config/AmethystModManager/LOOT/<game_id>/
+    Result: ~/.config/MosaicModManager/LOOT/<game_id>/
     A global userlist.yaml placed here applies to all profiles of this game.
     """
     d = get_config_dir() / "LOOT" / game_id
@@ -69,24 +89,30 @@ def get_loot_game_dir(game_id: str) -> Path:
 
 
 def get_default_staging_root() -> Path:
-    """Return the built-in default mod-staging root: ``~/Games/Amethyst``.
+    """Return the built-in default mod-staging root: ``~/Games/Mosaic``.
 
     Mod staging must live on the *same filesystem* as the game install so that
     deployed files can be hardlinked.  Under Flatpak the app's config dir lives
     in ``~/.var/app/<id>/config`` — a separate namespace mount from the games
     exposed via ``--filesystem=home`` — so hardlinking staged files into the
     game silently falls back to symlink/copy (``os.link`` → ``EXDEV``).  Placing
-    the default staging in the user's real home (``~/Games/Amethyst``) keeps it
+    the default staging in the user's real home (``~/Games/Mosaic``) keeps it
     on the ``--filesystem=home`` mount alongside the games, so hardlinks work in
     the Flatpak, AppImage and native installs alike.
+
+    This is only the suggested default for *new* installs / newly-added games
+    (see get_default_game_staging_root below) — existing installs already
+    have an explicit ``_staging_path`` stored in their game config, which is
+    never re-derived from this constant, so a pre-rename install's mods stay
+    exactly where they are (``~/Games/Amethyst/...``) after upgrading.
     """
-    return Path.home() / "Games" / "Amethyst"
+    return Path.home() / "Games" / "Mosaic"
 
 
 def get_default_game_staging_root(game_name: str) -> Path:
     """Return the preferred staging *root* for a newly-added game.
 
-    ``~/Games/Amethyst/<game>`` — the per-game folder that holds ``mods/``,
+    ``~/Games/Mosaic/<game>`` — the per-game folder that holds ``mods/``,
     ``profiles/``, ``overwrite/`` and ``filemap.txt`` (i.e. what the backend
     stores as a game's custom ``_staging_path``).  Used by the add-game / reset
     UI to seed the staging field so new games land beside the game installs on
@@ -105,19 +131,19 @@ def get_profiles_dir() -> Path:
          so upgrades never relocate an in-use staging tree.  Games with an empty
          (default) staging_path resolve their mods dir from here, so this MUST
          stay stable for existing installs.
-      3. Fresh install → ~/Games/Amethyst/Profiles.  Unlike the config dir (which
+      3. Fresh install → ~/Games/Mosaic/Profiles.  Unlike the config dir (which
          Flatpak redirects into ~/.var/app), the user's home is exposed on the
          same mount as the game installs, so deployed files can be hardlinked
          instead of falling back to symlink/copy.
 
     NB: new games no longer default here — the add-game UI seeds a per-game
     custom root via get_default_game_staging_root() so their layout is
-    ~/Games/Amethyst/<game>/mods (no Profiles/ segment).  This function only
+    ~/Games/Mosaic/<game>/mods (no Profiles/ segment).  This function only
     resolves games that already carry an empty staging_path.
 
     The fresh-install path is returned WITHOUT being created: this is called at
     import time by every game handler (and re-run by discover_games on each
-    add-game reload), so an eager mkdir here dropped ~/Games/Amethyst into the
+    add-game reload), so an eager mkdir here dropped ~/Games/Mosaic into the
     user's home on first startup and after every game add — even when nothing
     ever stages there.  Anything that actually uses the path creates it with
     mkdir(parents=True) at that point.
@@ -136,7 +162,7 @@ def get_profiles_dir() -> Path:
 def get_exe_args_path() -> Path:
     """Return the path to exe_args.json in the config directory.
 
-    Result: ~/.config/AmethystModManager/exe_args.json
+    Result: ~/.config/MosaicModManager/exe_args.json
     """
     return get_config_dir() / "exe_args.json"
 
@@ -152,7 +178,7 @@ def get_profile_exe_args_path(profile_dir: Path) -> Path:
 def get_fomod_selections_path(game_name: str, mod_name: str) -> Path:
     """Return the path to a saved FOMOD selection file for a given game and mod.
 
-    Result: ~/.config/AmethystModManager/games/<game_name>/fomod_selections/<mod_name>.json
+    Result: ~/.config/MosaicModManager/games/<game_name>/fomod_selections/<mod_name>.json
     """
     path = get_config_dir() / "games" / game_name / "fomod_selections" / f"{mod_name}.json"
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -162,7 +188,7 @@ def get_fomod_selections_path(game_name: str, mod_name: str) -> Path:
 def get_bain_selections_path(game_name: str, mod_name: str) -> Path:
     """Return the path to a saved BAIN selection file for a given game and mod.
 
-    Result: ~/.config/AmethystModManager/games/<game_name>/bain_selections/<mod_name>.json
+    Result: ~/.config/MosaicModManager/games/<game_name>/bain_selections/<mod_name>.json
     """
     path = get_config_dir() / "games" / game_name / "bain_selections" / f"{mod_name}.json"
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -172,7 +198,7 @@ def get_bain_selections_path(game_name: str, mod_name: str) -> Path:
 def get_nexus_config_dir() -> Path:
     """Return the Nexus Mods config directory, creating it if needed.
 
-    Result: ~/.config/AmethystModManager/Nexus/
+    Result: ~/.config/MosaicModManager/Nexus/
     """
     d = get_config_dir() / "Nexus"
     d.mkdir(parents=True, exist_ok=True)
@@ -182,7 +208,7 @@ def get_nexus_config_dir() -> Path:
 def get_last_game_path() -> Path:
     """Return the path to the last-opened game state file.
 
-    Result: ~/.config/AmethystModManager/last_game.json
+    Result: ~/.config/MosaicModManager/last_game.json
     """
     return get_config_dir() / "last_game.json"
 
@@ -190,7 +216,7 @@ def get_last_game_path() -> Path:
 def get_logs_dir() -> Path:
     """Return the logs directory, creating it if it doesn't exist.
 
-    Result: ~/.config/AmethystModManager/logs/
+    Result: ~/.config/MosaicModManager/logs/
     """
     d = get_config_dir() / "logs"
     d.mkdir(parents=True, exist_ok=True)
@@ -203,7 +229,7 @@ def get_requirement_external_tool_mod_ids_path() -> Path:
     Fetched from GitHub and merged with user additions. Users can edit this file
     to add mod IDs; new IDs from the remote are appended on the next fetch.
 
-    Result: ~/.config/AmethystModManager/requirement_external_tool_mod_ids.txt
+    Result: ~/.config/MosaicModManager/requirement_external_tool_mod_ids.txt
     """
     return get_config_dir() / "requirement_external_tool_mod_ids.txt"
 
@@ -214,7 +240,7 @@ def get_custom_games_dir() -> Path:
     Users drop one JSON file per game here to add support for games not built
     into the application.
 
-    Result: ~/.config/AmethystModManager/custom_games/
+    Result: ~/.config/MosaicModManager/custom_games/
     """
     d = get_config_dir() / "custom_games"
     d.mkdir(parents=True, exist_ok=True)
@@ -224,7 +250,7 @@ def get_custom_games_dir() -> Path:
 def get_vcredist_cache_path() -> Path:
     """Return the path where the VC++ Redistributable installer is cached.
 
-    Result: ~/.config/AmethystModManager/vcredist/vc_redist.x64.exe
+    Result: ~/.config/MosaicModManager/vcredist/vc_redist.x64.exe
     """
     path = get_config_dir() / "vcredist" / "vc_redist.x64.exe"
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -234,7 +260,7 @@ def get_vcredist_cache_path() -> Path:
 def get_dotnet_cache_dir() -> Path:
     """Return the directory where .NET runtime installers are cached.
 
-    Result: ~/.config/AmethystModManager/dotnet/
+    Result: ~/.config/MosaicModManager/dotnet/
     """
     path = get_config_dir() / "dotnet"
     path.mkdir(parents=True, exist_ok=True)
@@ -247,7 +273,7 @@ def get_custom_game_images_dir() -> Path:
     When a user provides an image URL in the custom game definition, the image
     is downloaded once and stored here so the game picker can display it offline.
 
-    Result: ~/.config/AmethystModManager/custom_game_images/
+    Result: ~/.config/MosaicModManager/custom_game_images/
     """
     d = get_config_dir() / "custom_game_images"
     d.mkdir(parents=True, exist_ok=True)
@@ -263,7 +289,7 @@ def get_wine_prefixes_dir() -> Path:
     Lives in the app config (not the download cache) so "Clear Cache" never
     blows it away and a user-relocated download cache stays archive-only.
 
-    Result: ~/.config/AmethystModManager/wine_prefixes/
+    Result: ~/.config/MosaicModManager/wine_prefixes/
 
     Migrates an existing ``<download_cache>/wine_prefixes`` directory on first
     access — best-effort: if migration fails the old location is left alone.
@@ -297,7 +323,7 @@ def get_download_cache_dir() -> Path:
 
     Honours the user-configured path from ``[paths] download_cache_path`` in
     amethyst.ini.  When unset (or unwritable) falls back to
-    ``~/.config/AmethystModManager/download_cache/``.
+    ``~/.config/MosaicModManager/download_cache/``.
 
     The setting is read on every call so a path change in the Settings panel
     takes effect without restarting.
@@ -367,7 +393,7 @@ def get_plugins_dir() -> Path:
     Users drop Python scripts here to add custom wizard tools without modifying
     the application source.
 
-    Result: ~/.config/AmethystModManager/Plugins/
+    Result: ~/.config/MosaicModManager/Plugins/
     """
     d = get_config_dir() / "Plugins"
     d.mkdir(parents=True, exist_ok=True)
@@ -382,7 +408,7 @@ def get_languages_dir() -> Path:
     can drop their own ``.qm`` in to add a language without an app update. The
     built-in source-tree English is always available regardless of this folder.
 
-    Result: ~/.config/AmethystModManager/languages/
+    Result: ~/.config/MosaicModManager/languages/
     """
     d = get_config_dir() / "languages"
     d.mkdir(parents=True, exist_ok=True)
@@ -395,6 +421,6 @@ def get_download_locations_path() -> Path:
     Users can add custom folders to scan for archives in addition to ~/Downloads.
     Stored as JSON array of path strings.
 
-    Result: ~/.config/AmethystModManager/download_locations.json
+    Result: ~/.config/MosaicModManager/download_locations.json
     """
     return get_config_dir() / "download_locations.json"

@@ -782,7 +782,7 @@ class ConfigureGameView(QWidget):
         """Seed the staging field + _custom_staging with the preferred default.
 
         Priority: the user's Settings default_staging_path (if set), else the
-        built-in ~/Games/Amethyst/<game> — a per-game *root* that keeps mods
+        built-in ~/Games/Mosaic/<game> — a per-game *root* that keeps mods
         beside the game install on the same filesystem (hardlink-friendly),
         avoiding the Flatpak ~/.var/app cross-mount that forced symlink deploys.
         We set _custom_staging (the value save persists) — not just the display

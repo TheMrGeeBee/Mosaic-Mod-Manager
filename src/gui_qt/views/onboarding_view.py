@@ -359,7 +359,7 @@ class OnboardingView(QWidget):
 
         # -- Default mod staging folder --
         v.addWidget(self._section_title(self.tr("Default Mod Staging Folder")))
-        # Display-only: new games default to ~/Games/Amethyst/<game>.  Nothing
+        # Display-only: new games default to ~/Games/Mosaic/<game>.  Nothing
         # is created here — the folder appears when the first game is saved.
         v.addWidget(self._hint(self.tr("Default: {0}").format(
             get_default_staging_root() / self.tr("<game name>"))))
