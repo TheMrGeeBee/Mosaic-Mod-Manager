@@ -429,7 +429,7 @@ class MainWindow(QMainWindow):
         except Exception:
             _mm_version = ""
         self.setWindowTitle(
-            self.tr("Mosaic Mod Manager - v{0}").format(_mm_version) if _mm_version
+            self.tr("Mosaic Mod Manager - {0}").format(_mm_version) if _mm_version
             else self.tr("Mosaic Mod Manager")
         )
         self.setMinimumSize(1280, 800)   # Steam Deck is the floor
