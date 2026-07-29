@@ -22,7 +22,7 @@ from PySide6.QtWidgets import QWidget
 from gui_qt.theme.theme_qt import active_palette, _c
 
 
-_LOGO = Path(__file__).resolve().parent.parent / "icons" / "Logo.png"
+_LOGO = Path(__file__).resolve().parent.parent / "icons" / "Splash.png"
 
 # Padding around the logo so a drop shadow / rounded card has room to breathe.
 _PAD = 28
@@ -46,15 +46,17 @@ class Splash(QWidget):
         self._logo = QPixmap(str(_LOGO)) if _LOGO.exists() else QPixmap()
         if not self._logo.isNull():
             # Draw the logo at a sensible on-screen size regardless of the
-            # source resolution.
-            side = 160
+            # source resolution. Bigger than the old bare mark since this
+            # artwork bakes in the "MOSAIC MOD MANAGER" wordmark and needs
+            # to stay legible at splash size.
+            side = 260
             self._logo = self._logo.scaled(
                 side, side,
                 Qt.KeepAspectRatio, Qt.SmoothTransformation,
             )
 
-        logo_w = self._logo.width() if not self._logo.isNull() else 160
-        logo_h = self._logo.height() if not self._logo.isNull() else 160
+        logo_w = self._logo.width() if not self._logo.isNull() else 260
+        logo_h = self._logo.height() if not self._logo.isNull() else 260
         # Extra height for the status line beneath the logo.
         self.resize(logo_w + _PAD * 2, logo_h + _PAD * 2 + 26)
 
