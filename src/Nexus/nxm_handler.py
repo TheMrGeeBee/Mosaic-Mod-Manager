@@ -90,11 +90,11 @@ def _resolve_socket_path() -> Path:
     if flatpak_id:
         app_run = Path(f"/run/user/{uid}/app/{flatpak_id}")
         if app_run.is_dir():
-            return app_run / "amethyst-mod-manager.sock"
+            return app_run / "mosaic-mod-manager.sock"
     xdg = os.environ.get("XDG_RUNTIME_DIR")
     if xdg:
-        return Path(xdg) / "amethyst-mod-manager.sock"
-    return Path(f"/tmp/amethyst-mod-manager-{uid}.sock")
+        return Path(xdg) / "mosaic-mod-manager.sock"
+    return Path(f"/tmp/mosaic-mod-manager-{uid}.sock")
 
 
 # Every socket path the app *might* use across launch contexts.
@@ -113,15 +113,15 @@ def _candidate_socket_paths() -> list[Path]:
     flatpak_id = os.environ.get("FLATPAK_ID")
     if flatpak_id:
         app_run = Path(f"/run/user/{uid}/app/{flatpak_id}")
-        paths.append(app_run / "amethyst-mod-manager.sock")
+        paths.append(app_run / "mosaic-mod-manager.sock")
 
     xdg = os.environ.get("XDG_RUNTIME_DIR")
     if xdg:
-        paths.append(Path(xdg) / "amethyst-mod-manager.sock")
+        paths.append(Path(xdg) / "mosaic-mod-manager.sock")
 
     # Always-available, env-independent fallback. Both sender and server use
     # this as a common meeting point when env-derived paths diverge.
-    paths.append(Path(f"/tmp/amethyst-mod-manager-{uid}.sock"))
+    paths.append(Path(f"/tmp/mosaic-mod-manager-{uid}.sock"))
 
     # Deduplicate while preserving order.
     seen: set[Path] = set()
@@ -136,10 +136,13 @@ def _candidate_socket_paths() -> list[Path]:
 _SOCKET_PATH = _resolve_socket_path()
 # The env-independent /tmp fallback — always bound by the server in addition to
 # _SOCKET_PATH so that a sender which lost XDG_RUNTIME_DIR can still reach us.
-_FALLBACK_SOCKET_PATH = Path(f"/tmp/amethyst-mod-manager-{os.getuid()}.sock")
+_FALLBACK_SOCKET_PATH = Path(f"/tmp/mosaic-mod-manager-{os.getuid()}.sock")
 
 # XDG .desktop file name used to register the handler
-_DESKTOP_FILE_NAME = "amethystmodmanager-nxm.desktop"
+_DESKTOP_FILE_NAME = "mosaicmodmanager-nxm.desktop"
+# Pre-rename filename — _all_desktop_paths() scrubs this too so a stale
+# registration from an Amethyst Mod Manager install doesn't linger.
+_LEGACY_DESKTOP_FILE_NAME = "amethystmodmanager-nxm.desktop"
 
 
 # ---------------------------------------------------------------------------
@@ -303,7 +306,7 @@ class NxmHandler:
 
     Calling ``NxmHandler.register()`` creates (or updates) a .desktop file
     in ``~/.local/share/applications/`` that associates ``nxm://`` URLs
-    with the running AmethystModManager executable, then registers it
+    with the running MosaicModManager executable, then registers it
     with ``xdg-mime``.
     """
 
@@ -331,22 +334,28 @@ class NxmHandler:
     def _all_desktop_paths(cls) -> list[Path]:
         """
         Every location an NXM .desktop file could live in, across flatpak
-        and non-flatpak installs. Used to scrub stale registrations from
-        *other* instances before re-registering this one.
+        and non-flatpak installs, under BOTH the current filename and the
+        pre-rename (Amethyst Mod Manager) one — so a stale registration left
+        by a prior install gets cleaned up too, not just the current name.
+        Used to scrub stale registrations from *other* instances before
+        re-registering this one.
         """
         paths: list[Path] = []
-
-        # Host ~/.local/share/applications (non-flatpak + flatpak host write)
-        paths.append(Path.home() / ".local" / "share" / "applications" / _DESKTOP_FILE_NAME)
-
-        # XDG_DATA_HOME override (only meaningful outside flatpak — inside
-        # flatpak this is redirected into the sandbox)
         xdg = os.environ.get("XDG_DATA_HOME")
-        if xdg:
-            paths.append(Path(xdg) / "applications" / _DESKTOP_FILE_NAME)
 
-        # Flatpak exports dir (visible to flatpak-sandboxed browsers)
-        paths.append(cls._flatpak_desktop_path())
+        for name in (_DESKTOP_FILE_NAME, _LEGACY_DESKTOP_FILE_NAME):
+            # Host ~/.local/share/applications (non-flatpak + flatpak host write)
+            paths.append(Path.home() / ".local" / "share" / "applications" / name)
+
+            # XDG_DATA_HOME override (only meaningful outside flatpak — inside
+            # flatpak this is redirected into the sandbox)
+            if xdg:
+                paths.append(Path(xdg) / "applications" / name)
+
+            # Flatpak exports dir (visible to flatpak-sandboxed browsers)
+            paths.append(
+                Path.home() / ".local" / "share" / "flatpak" / "exports"
+                / "share" / "applications" / name)
 
         # Deduplicate while preserving order
         seen: set[Path] = set()
@@ -443,7 +452,7 @@ class NxmHandler:
     @classmethod
     def _write_mimeapps_association(cls) -> None:
         """
-        Ensure ``x-scheme-handler/nxm=amethystmodmanager-nxm.desktop`` is set
+        Ensure ``x-scheme-handler/nxm=mosaicmodmanager-nxm.desktop`` is set
         under ``[Default Applications]`` and ``[Added Associations]`` in
         mimeapps.list, so xdg-open / gio / portals resolve nxm:// correctly
         even on systems where xdg-mime isn't consulted.
@@ -472,7 +481,7 @@ class NxmHandler:
     @staticmethod
     def _patch_mimeapps_content(content: str) -> str:
         """
-        Set ``x-scheme-handler/nxm=amethystmodmanager-nxm.desktop`` under both
+        Set ``x-scheme-handler/nxm=mosaicmodmanager-nxm.desktop`` under both
         ``[Default Applications]`` and ``[Added Associations]`` sections of a
         mimeapps.list-style file. Creates the sections if missing, replaces
         the key if already present, and leaves every other line intact.
@@ -631,7 +640,8 @@ class NxmHandler:
                     if not (
                         "=" in l
                         and l.split("=", 1)[0].strip() == key
-                        and (not ours_only or _DESKTOP_FILE_NAME in l)
+                        and (not ours_only or _DESKTOP_FILE_NAME in l
+                             or _LEGACY_DESKTOP_FILE_NAME in l)
                     )
                 ]
                 if filtered != lines:
@@ -643,7 +653,7 @@ class NxmHandler:
     @classmethod
     def register(cls) -> bool:
         """
-        Register AmethystModManager as the handler for nxm:// links.
+        Register MosaicModManager as the handler for nxm:// links.
 
         Returns True on success, False if it could not be registered
         (e.g. xdg-mime not available).
@@ -661,7 +671,7 @@ class NxmHandler:
         desktop_content = (
             "[Desktop Entry]\n"
             "Type=Application\n"
-            "Name=Amethyst Mod Manager (NXM Handler)\n"
+            "Name=Mosaic Mod Manager (NXM Handler)\n"
             "Comment=Handle nxm:// download links from Nexus Mods\n"
             f"Exec={exec_cmd}\n"
             "Terminal=false\n"
