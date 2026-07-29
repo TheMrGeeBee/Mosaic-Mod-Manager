@@ -32,26 +32,20 @@
 Run the following command in a terminal. It will appear in your applications menu under Games and Utilities.
 
 ```bash
-curl -sSL https://raw.githubusercontent.com/TheMrGeeBee/Mosaic-Mod-Manager/main/src/appimage/Mosaic-MM-installer.sh | bash
+curl -sSL https://raw.githubusercontent.com/TheMrGeeBee/Mosaic-Mod-Manager/main/src/appimage/Mosaic-MM-installer.sh | bash -s -- --prerelease
 ```
 
-The application will notifiy when a new update goes live, Pressing the update button will rerun the script and update to any new version
+The project is currently beta-only (no stable release has shipped yet), so `--prerelease` is required for the installer to find a build — drop it once a stable release ships. The application will notifiy when a new update goes live, Pressing the update button will rerun the script and update to any new version
 
 ### Flatpak
 
 Run the following command
 
 ```bash
-flatpak install --user https://themrgeebee.github.io/Mosaic-Mod-Manager/mosaic.flatpakref
+flatpak install --user https://themrgeebee.github.io/Mosaic-Mod-Manager/mosaic-beta.flatpakref
 ```
 
-Updates will be shown in your package manager
-
-Manually swap to the beta branch
-
-```bash
-flatpak install --user --reinstall modmanager-origin io.github.TheMrGeeBee.MosaicModManager//beta
-```
+Updates will be shown in your package manager. This installs the beta channel — the only channel published so far; a `mosaic.flatpakref` (stable) will be added once a stable release ships.
 
 Installing from a bundle skips the 32-bit compat extensions that running Windows tools (Proton/wine) requires - The app installs them automatically on first launch, or you can add them yourself:
 
