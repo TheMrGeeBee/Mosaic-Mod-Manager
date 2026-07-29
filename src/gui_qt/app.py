@@ -274,8 +274,6 @@ class MainWindow(QMainWindow):
     _endorse_done = Signal(object)
     # Track worker → UI thread ({"ok": n}).
     _track_done = Signal(object)
-    # "Endorse AMM" worker → UI thread ({"state": str, "message": str}).
-    _amm_endorse_done = Signal(object)
     # ui_hooks.warn from any backend thread → OK-only popup on the UI thread
     # ((title, message, card_h|None)).
     _warn_popup = Signal(str, str, object)
@@ -431,8 +429,8 @@ class MainWindow(QMainWindow):
         except Exception:
             _mm_version = ""
         self.setWindowTitle(
-            self.tr("Amethyst Mod Manager - v{0}").format(_mm_version) if _mm_version
-            else self.tr("Amethyst Mod Manager")
+            self.tr("Mosaic Mod Manager - v{0}").format(_mm_version) if _mm_version
+            else self.tr("Mosaic Mod Manager")
         )
         self.setMinimumSize(1280, 800)   # Steam Deck is the floor
         # Debounced as-you-go persistence of the window geometry + body
@@ -565,7 +563,6 @@ class MainWindow(QMainWindow):
         self._reinstall_manual_found.connect(self._on_reinstall_manual_found)
         self._endorse_done.connect(self._on_endorse_done)
         self._track_done.connect(self._on_track_done)
-        self._amm_endorse_done.connect(self._on_amm_endorse_done)
         self._copy_done.connect(self._on_copy_done)
         self._col_update_scan_done.connect(self._finish_collection_update)
         # App-level non-premium installs (reinstall / missing requirements):
@@ -771,7 +768,7 @@ class MainWindow(QMainWindow):
                 self,
                 self.tr("32-bit support could not be installed"),
                 self.tr(
-                    "Amethyst could not install 32-bit support automatically. "
+                    "Mosaic could not install 32-bit support automatically. "
                     "Windows tools (and some games) may fail to run until it is "
                     "installed. Run this on a terminal, then restart the app:\n\n"
                     "{0}"
@@ -12906,22 +12903,13 @@ class MainWindow(QMainWindow):
         self._changelog_btn.clicked.connect(self._open_changelog_tab)
         h.addWidget(self._changelog_btn)
 
-        # GitHub / Ko-Fi / Endorse — colored buttons mirroring the Tk status
-        # bar. GitHub + Ko-Fi open external links; Endorse endorses the AMM
-        # Nexus page (site mod 1714) via the shared Nexus API.
+        # GitHub — opens the project's repo. Ko-Fi and "Endorse AMM" buttons
+        # (removed in the Mosaic rename) pointed at ChrisDKN's own Ko-Fi and
+        # Nexus "site mod" page for the original Amethyst Mod Manager — this
+        # fork has no equivalent of its own yet.
         self._github_btn = self._text_button(self.tr("Github"), compact=True)
         self._github_btn.clicked.connect(self._open_github)
         h.addWidget(self._github_btn)
-
-        self._kofi_btn = self._color_button(
-            self.tr("Ko-Fi"), _c(self._pal, "BTN_PURPLE"), compact=True)
-        self._kofi_btn.clicked.connect(self._open_kofi)
-        h.addWidget(self._kofi_btn)
-
-        self._endorse_amm_btn = self._color_button(
-            self.tr("♥ Endorse AMM"), _c(self._pal, "BTN_DANGER"), compact=True)
-        self._endorse_amm_btn.clicked.connect(self._endorse_amm)
-        h.addWidget(self._endorse_amm_btn)
 
         # Nexus username at the far right; hover shows API rate-limit usage.
         from gui_qt.nexus.nexus_footer import NexusFooterLabel
@@ -13000,7 +12988,7 @@ class MainWindow(QMainWindow):
     def _init_log_file(self):
         """Create one on-disk log file per session (Tk status_bar parity).
 
-        Lives at ``~/.config/AmethystModManager/logs/amethyst-<ts>.log`` and is
+        Lives at ``~/.config/MosaicModManager/logs/mosaic-<ts>.log`` and is
         appended to on every ``_append_log`` call so the file stays in sync with
         the on-screen log."""
         self._log_file = None
@@ -13008,7 +12996,7 @@ class MainWindow(QMainWindow):
             from datetime import datetime
             from Utils.config_paths import get_logs_dir
             ts = datetime.now().strftime("%m-%d-%y-%H%M%S")
-            self._log_file = get_logs_dir() / f"amethyst-{ts}.log"
+            self._log_file = get_logs_dir() / f"mosaic-{ts}.log"
         except Exception:
             self._log_file = None
 
@@ -13234,79 +13222,7 @@ class MainWindow(QMainWindow):
     # ------------------------------------------------------ social buttons
     def _open_github(self):
         from Utils.xdg import open_url
-        open_url("https://github.com/ChrisDKN/Amethyst-Mod-Manager")
-
-    def _open_kofi(self):
-        from Utils.xdg import open_url
-        open_url("https://ko-fi.com/chrisdkn")
-
-    def _endorse_amm(self):
-        """Endorse the Amethyst Mod Manager Nexus page (site mod 1714).
-
-        If the user isn't logged in we just open the mod page. Otherwise we
-        endorse on a worker thread and report the result. Nexus rejects an
-        endorsement from anyone who has never downloaded the mod
-        (``NOT_DOWNLOADED_MOD``) — something the Tk version didn't surface — so
-        we detect that and tell them to download it from Nexus first."""
-        _AMM_URL = "https://www.nexusmods.com/site/mods/1714"
-        api = self._ensure_nexus_api()
-        if api is None:
-            from Utils.xdg import open_url
-            self._notify(self.tr("Log in first (Nexus ▸ Login) — opening the "
-                                 "AMM page so you can endorse it there."), "info")
-            open_url(_AMM_URL)
-            return
-
-        import threading
-
-        def _worker():
-            import requests
-            payload = {}
-            try:
-                result = api.endorse_mod("site", 1714)
-            except requests.HTTPError as exc:
-                try:
-                    result = exc.response.json()
-                except Exception:
-                    payload = {"state": "error",
-                               "message": self.tr("Endorse AMM failed — {0}").format(exc)}
-                    self._amm_endorse_done.emit(payload)
-                    return
-            except Exception as exc:
-                payload = {"state": "error",
-                           "message": self.tr("Endorse AMM failed — {0}").format(exc)}
-                self._amm_endorse_done.emit(payload)
-                return
-
-            status = (result.get("status") or "")
-            message = (result.get("message") or "")
-            if status == "Endorsed" or message == "IS_OWN_MOD":
-                payload = {"state": "success",
-                           "message": self.tr("Thank you for endorsing!")}
-            elif message == "ALREADY_ENDORSED":
-                payload = {"state": "info",
-                           "message": self.tr("You've already endorsed — thank you!")}
-            elif message == "NOT_DOWNLOADED_MOD":
-                payload = {"state": "warning", "open_url": True,
-                           "message": self.tr(
-                               "Nexus only lets you endorse the app after you've "
-                               "downloaded it at least once. Opening the AMM page "
-                               "— please download it there first, then endorse.")}
-            else:
-                payload = {"state": "warning",
-                           "message": self.tr("Endorse AMM: {0}").format(message or status)}
-            self._amm_endorse_done.emit(payload)
-
-        self._notify(self.tr("Endorsing Amethyst Mod Manager…"), "info")
-        threading.Thread(target=_worker, daemon=True, name="endorse-amm").start()
-
-    def _on_amm_endorse_done(self, payload):
-        """UI thread: report the AMM endorse result. When Nexus reports the app
-        was never downloaded, open the mod page so the user can grab it."""
-        self._notify(payload.get("message", ""), payload.get("state", "info"))
-        if payload.get("open_url"):
-            from Utils.xdg import open_url
-            open_url("https://www.nexusmods.com/site/mods/1714")
+        open_url("https://github.com/TheMrGeeBee/Mosaic-Mod-Manager")
 
 
 def _apply_app_identity(app) -> None:
@@ -13329,10 +13245,10 @@ def _apply_app_identity(app) -> None:
     from pathlib import Path
     from PySide6.QtGui import QIcon
 
-    app.setApplicationName("Amethyst Mod Manager")
+    app.setApplicationName("Mosaic Mod Manager")
     # NB: intentionally NOT calling setApplicationDisplayName — Qt auto-appends
     # " — {DisplayName}" to every setWindowTitle(), which duplicated the app
-    # name in the title bar ("… - v2.0.0 — Amethyst Mod Manager").
+    # name in the title bar ("… - v2.0.0 — Mosaic Mod Manager").
 
     # Window icon: bundled Logo.png sits next to the other icons (src/icons/).
     # gui_qt/ is a sibling of icons/, so parent.parent/icons/Logo.png.
@@ -13343,7 +13259,7 @@ def _apply_app_identity(app) -> None:
             app.setWindowIcon(ic)
 
     # Desktop-file name for the Wayland taskbar association. Flatpak installs
-    # io.github.Amethyst.ModManager.desktop; the AppImage installs
+    # io.github.TheMrGeeBee.MosaicModManager.desktop; the AppImage installs
     # mod-manager.desktop. Detect which we're in so the compositor finds the
     # matching installed entry (and its Icon=). From source there's no
     # installed .desktop, so this is a harmless no-op (the window icon above
@@ -13353,11 +13269,11 @@ def _apply_app_identity(app) -> None:
     # running from source inside another flatpak (e.g. a flatpak VS Code /
     # terminal) sets FLATPAK_ID to that host app, and /.flatpak-info exists
     # for any flatpak-sandboxed parent, so neither is a reliable "we are the
-    # Amethyst flatpak" signal on its own.
-    if os.environ.get("FLATPAK_ID") == "io.github.Amethyst.ModManager":
-        app.setDesktopFileName("io.github.Amethyst.ModManager")
+    # Mosaic flatpak" signal on its own.
+    if os.environ.get("FLATPAK_ID") == "io.github.TheMrGeeBee.MosaicModManager":
+        app.setDesktopFileName("io.github.TheMrGeeBee.MosaicModManager")
     elif os.environ.get("APPDIR") or os.environ.get("APPIMAGE"):
-        app.setDesktopFileName("amethyst-mod-manager")
+        app.setDesktopFileName("mosaic-mod-manager")
 
 
 def run() -> int:

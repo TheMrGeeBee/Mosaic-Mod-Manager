@@ -32,10 +32,7 @@ from Utils.ui_config import (
     load_default_staging_path, save_default_staging_path,
     load_download_cache_path, save_download_cache_path,
 )
-from Utils.xdg import open_url
-
 _ICONS_DIR = Path(__file__).resolve().parent.parent.parent / "icons"
-_WIKI_URL = "https://github.com/ChrisDKN/Amethyst-Mod-Manager/wiki"
 _TOTAL_PAGES = 3
 
 
@@ -110,7 +107,7 @@ class OnboardingView(QWidget):
         header.setStyleSheet(f"background: {_c(pal, 'BG_HEADER')};")
         hl = QHBoxLayout(header)
         hl.setContentsMargins(16, 0, 16, 0)
-        title = QLabel(self.tr("Welcome to Amethyst Mod Manager"))
+        title = QLabel(self.tr("Welcome to Mosaic Mod Manager"))
         title.setStyleSheet(
             f"color: {_c(pal, 'TEXT_MAIN')}; font-size: 15px; font-weight: 600;")
         hl.addWidget(title)
@@ -202,7 +199,7 @@ class OnboardingView(QWidget):
             v.addWidget(img, 0, Qt.AlignCenter)
             v.addSpacing(20)
 
-        heading = QLabel(self.tr("Welcome to Amethyst Mod Manager"))
+        heading = QLabel(self.tr("Welcome to Mosaic Mod Manager"))
         heading.setAlignment(Qt.AlignCenter)
         heading.setStyleSheet(
             f"color: {_c(pal, 'TEXT_MAIN')}; font-size: 16px; font-weight: 600;")
@@ -237,12 +234,6 @@ class OnboardingView(QWidget):
         lang_holder = QWidget(); lang_holder.setLayout(lang_row)
         v.addWidget(lang_holder)
         v.addSpacing(20)
-
-        wiki = QPushButton(self.tr("Open Wiki"))
-        wiki.setFixedWidth(160)
-        wiki.setStyleSheet(self._orange_btn_qss())
-        wiki.clicked.connect(lambda: open_url(_WIKI_URL))
-        v.addWidget(wiki, 0, Qt.AlignCenter)
         return outer
 
     def _populate_language_combo(self):

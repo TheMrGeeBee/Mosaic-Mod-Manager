@@ -41,7 +41,7 @@ class Splash(QWidget):
         self.setAttribute(Qt.WA_DeleteOnClose, True)
 
         self._pal = active_palette()
-        self._message = message if message is not None else self.tr("Starting Amethyst…")
+        self._message = message if message is not None else self.tr("Starting Mosaic…")
 
         self._logo = QPixmap(str(_LOGO)) if _LOGO.exists() else QPixmap()
         if not self._logo.isNull():
