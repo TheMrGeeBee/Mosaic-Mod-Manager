@@ -271,11 +271,11 @@ jobs:
 
       - name: Disk space after build
         if: always()
-        run: df -h && du -sh /tmp/amethyst-mm-build 2>/dev/null || true
+        run: df -h && du -sh /tmp/mosaic-mm-build 2>/dev/null || true
 
       - uses: actions/upload-artifact@v4
         with:
-          name: AmethystModManager-AppImage
+          name: MosaicModManager-AppImage
           path: src/appimage/dist/*
           if-no-files-found: error
 
@@ -352,7 +352,7 @@ jobs:
       - name: Build Flatpak (repo)
         uses: flathub-infra/flatpak-github-actions/flatpak-builder@master
         with:
-          manifest-path: flatpak/io.github.Amethyst.ModManager.yml
+          manifest-path: flatpak/io.github.TheMrGeeBee.MosaicModManager.yml
           branch: ${{ steps.branch.outputs.name }}
           build-bundle: false
           repo-dir: repo
@@ -376,27 +376,27 @@ jobs:
           set -euo pipefail
           GPGOPT=""
           if [ "$HAVE_GPG" = "true" ]; then
-            gpg --export "$GPG_KEY_ID" > amethyst.gpg
-            GPGOPT="--gpg-keys=amethyst.gpg"
+            gpg --export "$GPG_KEY_ID" > mosaic.gpg
+            GPGOPT="--gpg-keys=mosaic.gpg"
           else
             echo "Unsigned build — bundle will not embed a verification key."
           fi
-          flatpak build-bundle repo AmethystModManager.flatpak \
-            io.github.Amethyst.ModManager '${{ steps.branch.outputs.name }}' \
+          flatpak build-bundle repo MosaicModManager.flatpak \
+            io.github.TheMrGeeBee.MosaicModManager '${{ steps.branch.outputs.name }}' \
             --runtime-repo=https://dl.flathub.org/repo/flathub.flatpakrepo \
-            --repo-url=https://chrisdkn.github.io/Amethyst-Mod-Manager/repo/ \
+            --repo-url=https://themrgeebee.github.io/Mosaic-Mod-Manager/repo/ \
             $GPGOPT
 
       - uses: actions/upload-artifact@v4
         with:
-          name: AmethystModManager-flatpak
-          path: AmethystModManager.flatpak
+          name: MosaicModManager-flatpak
+          path: MosaicModManager.flatpak
           if-no-files-found: error
 
       # The raw OSTree repo for this build — consumed by release.yml's
       # publish-pages job, which merges it into the accumulated gh-pages repo.
       - uses: actions/upload-artifact@v4
         with:
-          name: AmethystModManager-flatpak-repo
+          name: MosaicModManager-flatpak-repo
           path: repo/
           if-no-files-found: error

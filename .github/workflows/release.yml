@@ -66,12 +66,12 @@ jobs:
       - name: Download AppImage
         uses: actions/download-artifact@v4
         with:
-          name: AmethystModManager-AppImage
+          name: MosaicModManager-AppImage
           path: artifacts/
       - name: Download Flatpak
         uses: actions/download-artifact@v4
         with:
-          name: AmethystModManager-flatpak
+          name: MosaicModManager-flatpak
           path: artifacts/
 
       # Extract the section for this version from Changelog.txt.
@@ -116,7 +116,7 @@ jobs:
               echo "Run the following command to install/Update. Or download the appimage directly."
               echo
               echo '```bash'
-              echo 'curl -sSL https://raw.githubusercontent.com/ChrisDKN/Amethyst-Mod-Manager/main/src/appimage/Amethyst-MM-installer.sh | bash'
+              echo 'curl -sSL https://raw.githubusercontent.com/TheMrGeeBee/Mosaic-Mod-Manager/main/src/appimage/Mosaic-MM-installer.sh | bash'
               echo '```'
             } > release-notes.md
             rm -f raw-notes.md
@@ -184,8 +184,8 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     env:
-      PAGES_URL: https://chrisdkn.github.io/Amethyst-Mod-Manager
-      APP_ID: io.github.Amethyst.ModManager
+      PAGES_URL: https://themrgeebee.github.io/Mosaic-Mod-Manager
+      APP_ID: io.github.TheMrGeeBee.MosaicModManager
       # `secrets.*` is NOT allowed in a step-level `if:`, but it IS allowed in a
       # job-level env. Surface a plain flag here so steps can gate on env.HAVE_GPG.
       HAVE_GPG: ${{ secrets.FLATPAK_GPG_PRIVATE_KEY != '' }}
@@ -251,7 +251,7 @@ jobs:
       - name: Download this build's repo
         uses: actions/download-artifact@v4
         with:
-          name: AmethystModManager-flatpak-repo
+          name: MosaicModManager-flatpak-repo
           path: newrepo
 
       - name: Import GPG signing key
@@ -289,7 +289,7 @@ jobs:
             # read the app version out of the built commit itself instead.
             SRC=$(ostree --repo=newrepo rev-parse "$REF")
             SUBJECT=$(ostree --repo=newrepo cat "$SRC" \
-                        /files/share/amethyst-mod-manager/version.py 2>/dev/null \
+                        /files/share/mosaic-mod-manager/version.py 2>/dev/null \
                       | grep -oE '"[^"]+"' | head -1 | tr -d '"' || true)
             SUBJECT="${SUBJECT:-${GITHUB_REF_NAME}}"
           fi
@@ -328,17 +328,17 @@ jobs:
           set -euo pipefail
           GPGLINE=""
           if [ "$HAVE_GPG" = "true" ]; then
-            gpg --export "$GPG_KEY_ID" > site/amethyst.gpg
-            B64=$(base64 -w0 site/amethyst.gpg)
+            gpg --export "$GPG_KEY_ID" > site/mosaic.gpg
+            B64=$(base64 -w0 site/mosaic.gpg)
             GPGLINE="GPGKey=${B64}"
           fi
-          cat > site/amethyst.flatpakrepo <<EOF
+          cat > site/mosaic.flatpakrepo <<EOF
           [Flatpak Repo]
-          Title=Amethyst Mod Manager
+          Title=Mosaic Mod Manager
           Url=${PAGES_URL}/repo/
-          Homepage=https://github.com/ChrisDKN/Amethyst-Mod-Manager
-          Comment=Auto-update remote for Amethyst Mod Manager (stable + beta)
-          Description=Adds the Amethyst Mod Manager Flatpak remote so updates arrive via your package manager.
+          Homepage=https://github.com/TheMrGeeBee/Mosaic-Mod-Manager
+          Comment=Auto-update remote for Mosaic Mod Manager (stable + beta)
+          Description=Adds the Mosaic Mod Manager Flatpak remote so updates arrive via your package manager.
           Icon=${PAGES_URL}/icon.png
           ${GPGLINE}
           EOF
@@ -351,14 +351,14 @@ jobs:
           for BR in stable beta; do
             if ostree --repo=site/repo refs | grep -qx "app/${APP_ID}/x86_64/${BR}"; then
               SUFFIX=""; [ "$BR" = "beta" ] && SUFFIX="-beta"
-              cat > "site/amethyst${SUFFIX}.flatpakref" <<EOF
+              cat > "site/mosaic${SUFFIX}.flatpakref" <<EOF
           [Flatpak Ref]
           Name=${APP_ID}
           Branch=${BR}
-          Title=Amethyst Mod Manager (${BR})
+          Title=Mosaic Mod Manager (${BR})
           Url=${PAGES_URL}/repo/
           SuggestRemoteName=modmanager-origin
-          Homepage=https://github.com/ChrisDKN/Amethyst-Mod-Manager
+          Homepage=https://github.com/TheMrGeeBee/Mosaic-Mod-Manager
           Icon=${PAGES_URL}/icon.png
           IsRuntime=false
           RuntimeRepo=https://dl.flathub.org/repo/flathub.flatpakrepo
@@ -427,12 +427,12 @@ jobs:
               echo ""
               echo "OSTree branch: \`${{ steps.mode.outputs.ostree }}\` · Pages branch: \`gh-pages\`"
               echo ""
-              echo "Remote file: ${PAGES_URL}/amethyst.flatpakrepo"
+              echo "Remote file: ${PAGES_URL}/mosaic.flatpakrepo"
               echo "Repo URL:    ${PAGES_URL}/repo/"
               echo ""
               echo "One-command install:"
               echo '```'
-              echo "flatpak install --user ${PAGES_URL}/amethyst.flatpakref"
+              echo "flatpak install --user ${PAGES_URL}/mosaic.flatpakref"
               echo '```'
             fi
           } >> "$GITHUB_STEP_SUMMARY"

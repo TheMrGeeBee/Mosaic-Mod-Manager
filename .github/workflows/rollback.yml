@@ -36,7 +36,7 @@ jobs:
     name: Rollback ${{ inputs.channel }}
     runs-on: ubuntu-latest
     env:
-      APP_ID: io.github.Amethyst.ModManager
+      APP_ID: io.github.TheMrGeeBee.MosaicModManager
       HAVE_GPG: ${{ secrets.FLATPAK_GPG_PRIVATE_KEY != '' }}
     steps:
       - name: Install flatpak + ostree
@@ -102,7 +102,7 @@ jobs:
           # Subject the rollback commit with the restored app version so the
           # Warehouse version picker stays meaningful.
           VER=$(ostree --repo=site/repo cat "$TARGET" \
-                  /files/share/amethyst-mod-manager/version.py 2>/dev/null \
+                  /files/share/mosaic-mod-manager/version.py 2>/dev/null \
                 | grep -oE '"[^"]+"' | head -1 | tr -d '"' || true)
           SUBJECT="rollback${VER:+ to $VER}"
 
