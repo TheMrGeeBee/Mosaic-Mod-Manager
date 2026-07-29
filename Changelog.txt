@@ -1,4 +1,5 @@
-- v2.0.6
+- v1.0.0
+- Renamed to Mosaic Mod Manager. The project is no longer an upstream-tracking fork of Amethyst Mod Manager — see ATTRIBUTION.md for credit to the original project this began as. Version numbering resets to v1.0.0 to mark the relaunch; nothing below this point ever shipped as a v2.0.6 release, so this section carries that unreleased work forward under the new name and number
 ### Additions
 - Added a per-mod reorder lock: locked mods can't be dragged, sorted, moved to a separator, removed, or moved to another profile until unlocked (rename and notes remain available). "Set priority…" shows greyed out while locked
 - Added the ability to copy or move separators (name, colour, lock state) to another profile, preserving their relative order
@@ -12,7 +13,7 @@
 - Fixed mods not retaining their priority order when copied or moved to another profile while the modlist was sorted by a column or in reverse-priority view
 - Fixed separator colour/lock/collapsed state not being fully cleaned up when a separator was removed
 - Fixed mod and separator reorder-lock state being silently dropped from share-code (AMMCODE1) exports and imports
-- Fixed "Export as Amethyst package" refusing to export profiles containing mod.io-identified mods; such mods are now bundled into the export like other bundle-sourced mods
+- Fixed "Export as Mosaic package" refusing to export profiles containing mod.io-identified mods; such mods are now bundled into the export like other bundle-sourced mods
 - Fixed mod.io update detection reporting a false "update available" when the newest uploaded file was a hidden/test build rather than the mod's actual public release
 - Fixed mod.io uploader/tags staying permanently blank for mods identified before those fields existed; "Check for Updates" now backfills them
 - Fixed mod.io update checks repeatedly retrying (with several seconds of backoff each time) mods whose pak carries a leftover/placeholder PublishHandle that was never actually published to mod.io
