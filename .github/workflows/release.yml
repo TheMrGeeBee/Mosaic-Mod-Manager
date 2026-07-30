@@ -189,6 +189,7 @@ jobs:
       # `secrets.*` is NOT allowed in a step-level `if:`, but it IS allowed in a
       # job-level env. Surface a plain flag here so steps can gate on env.HAVE_GPG.
       HAVE_GPG: ${{ secrets.FLATPAK_GPG_PRIVATE_KEY != '' }}
+      HAVE_APPIMAGE_GPG: ${{ secrets.APPIMAGE_GPG_PRIVATE_KEY != '' }}
     steps:
       - name: Checkout source (for wiki site content)
         uses: actions/checkout@v4
@@ -386,6 +387,22 @@ jobs:
           # dirs (which start with characters Jekyll would try to process).
           touch site/.nojekyll
 
+      # Publish the AppImage-signing public key at a stable URL so anyone who
+      # downloaded a signed .AppImage (+ its .asc from the release, see
+      # build.yml's "Sign AppImage" step) can `gpg --import` this and verify.
+      # Separate key/secret from Flatpak's — imported here independently
+      # since jobs don't share keyrings/state.
+      - name: Publish AppImage signing public key
+        if: env.HAVE_APPIMAGE_GPG == 'true'
+        env:
+          APPIMAGE_GPG_PRIVATE_KEY: ${{ secrets.APPIMAGE_GPG_PRIVATE_KEY }}
+          APPIMAGE_GPG_KEY_ID: ${{ secrets.APPIMAGE_GPG_KEY_ID }}
+        run: |
+          set -euo pipefail
+          printf '%s' "$APPIMAGE_GPG_PRIVATE_KEY" | gpg --batch --import
+          gpg --export "$APPIMAGE_GPG_KEY_ID" > site/appimage-signing-key.pub.gpg
+          gpg --armor --export "$APPIMAGE_GPG_KEY_ID" > site/appimage-signing-key.pub.asc
+
       # Sanity-check the repo locally before pushing: pull the just-committed
       # ref into a throwaway repo. If OSTree can't read it back, the publish is
       # broken regardless of what Pages later serves — fail loudly here.
@@ -446,6 +463,9 @@ jobs:
               echo "Remote file: ${PAGES_URL}/mosaic.flatpakrepo"
               echo "Repo URL:    ${PAGES_URL}/repo/"
               echo "Wiki:        ${PAGES_URL}/wiki/"
+              if [ "$HAVE_APPIMAGE_GPG" = "true" ]; then
+                echo "AppImage signing key: ${PAGES_URL}/appimage-signing-key.pub.asc"
+              fi
               echo ""
               echo "One-command install:"
               echo '```'

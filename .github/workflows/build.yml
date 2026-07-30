@@ -126,6 +126,10 @@ jobs:
     needs: libloot-arch
     runs-on: ubuntu-latest
     container: ghcr.io/pkgforge-dev/archlinux:latest
+    env:
+      # `secrets.*` is NOT allowed in a step-level `if:`, but it IS allowed in a
+      # job-level env. Surface a plain flag here so steps can gate on env.HAVE_APPIMAGE_GPG.
+      HAVE_APPIMAGE_GPG: ${{ secrets.APPIMAGE_GPG_PRIVATE_KEY != '' }}
     steps:
       - uses: actions/checkout@v4
 
@@ -193,6 +197,7 @@ jobs:
               base-devel \
               freetype2 \
               git \
+              gnupg \
               jq \
               libx11 \
               libxrandr \
@@ -272,6 +277,32 @@ jobs:
       - name: Disk space after build
         if: always()
         run: df -h && du -sh /tmp/mosaic-mm-build 2>/dev/null || true
+
+      # Detached signature over the finished .AppImage. Unlike Flatpak's
+      # appimagetool (classic AppImage/appimagetool), the Rust tool this
+      # pipeline actually uses (pkgforge-dev/appimagetool, via quick-sharun)
+      # has no built-in signing support at all — so this is a plain gpg
+      # step, not a build-tool flag. Produces a sidecar .AppImage.asc next
+      # to the .AppImage; the upload-artifact glob below already picks it
+      # up with no further changes needed.
+      - name: Import GPG signing key
+        if: env.HAVE_APPIMAGE_GPG == 'true'
+        env:
+          GPG_PRIVATE_KEY: ${{ secrets.APPIMAGE_GPG_PRIVATE_KEY }}
+        run: printf '%s' "$GPG_PRIVATE_KEY" | gpg --batch --import
+
+      - name: Sign AppImage
+        env:
+          GPG_KEY_ID: ${{ secrets.APPIMAGE_GPG_KEY_ID }}
+        run: |
+          set -euo pipefail
+          if [ "$HAVE_APPIMAGE_GPG" = "true" ]; then
+            for f in src/appimage/dist/*.AppImage; do
+              gpg --batch --yes --local-user "$GPG_KEY_ID" --detach-sign --armor "$f"
+            done
+          else
+            echo "Unsigned build — no .asc signature will be produced."
+          fi
 
       - uses: actions/upload-artifact@v4
         with:
