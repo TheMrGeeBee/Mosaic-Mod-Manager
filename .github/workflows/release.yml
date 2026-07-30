@@ -190,6 +190,9 @@ jobs:
       # job-level env. Surface a plain flag here so steps can gate on env.HAVE_GPG.
       HAVE_GPG: ${{ secrets.FLATPAK_GPG_PRIVATE_KEY != '' }}
     steps:
+      - name: Checkout source (for wiki site content)
+        uses: actions/checkout@v4
+
       - name: Install flatpak + ostree
         run: |
           sudo apt-get update
@@ -247,6 +250,12 @@ jobs:
                    site/repo/refs/heads site/repo/refs/mirrors \
                    site/repo/refs/remotes site/repo/state \
                    site/repo/extensions site/repo/tmp/cache
+
+      - name: Copy wiki site
+        run: |
+          rm -rf site/wiki
+          mkdir -p site/wiki
+          cp -r wiki-site/. site/wiki/
 
       - name: Download this build's repo
         uses: actions/download-artifact@v4
@@ -436,6 +445,7 @@ jobs:
               echo ""
               echo "Remote file: ${PAGES_URL}/mosaic.flatpakrepo"
               echo "Repo URL:    ${PAGES_URL}/repo/"
+              echo "Wiki:        ${PAGES_URL}/wiki/"
               echo ""
               echo "One-command install:"
               echo '```'
