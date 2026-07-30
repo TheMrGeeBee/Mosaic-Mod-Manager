@@ -64,7 +64,8 @@ jobs:
   release:
     name: Publish Release
     if: |
-      startsWith(github.ref, 'refs/tags/v')
+      github.event_name == 'push'
+      && startsWith(github.ref, 'refs/tags/v')
       && needs.build.result == 'success'
     needs: build
     runs-on: ubuntu-latest
@@ -275,7 +276,7 @@ jobs:
     # remote, no GitHub Release).
     if: |
       needs.build.result == 'success'
-      && (startsWith(github.ref, 'refs/tags/v')
+      && ((github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v'))
           || inputs.dry_run_pages
           || inputs.publish_live_channel != 'none')
     needs: build
