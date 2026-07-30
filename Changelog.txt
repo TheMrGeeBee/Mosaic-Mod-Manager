@@ -7,6 +7,7 @@
 - Baldur's Gate 3 mods installed from mod.io now have their mod ID, version, uploader and tags identified automatically at install time, without needing to run "Check for Updates" first
 - The Category, Uploaded By and Version columns now show mod.io tags/uploader/version for mods that have no Nexus metadata
 - Baldur's Gate 3 mods flagged with a mod.io update can now be updated directly from the modlist — click the update flag or use "Quick Update (mod.io)" in the right-click menu — instead of having to open the mod.io page and install the file manually
+- Added a Mosaic-branded startup splash screen (mosaic mark + wordmark) with a minimum display time, so it no longer flashes by too quickly to read on fast startups
 ### Changes
 - Fixed the "Show / hide columns" tooltip capitalisation to "Show / Hide columns"
 ### Bug Fixes

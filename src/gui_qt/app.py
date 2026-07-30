@@ -354,6 +354,10 @@ class MainWindow(QMainWindow):
         # A watchdog closes it anyway if that signal never arrives.
         self._splash = splash
         self._splash_dismissed = False
+        self._splash_shown_at = None
+        if splash is not None:
+            import time as _time
+            self._splash_shown_at = _time.monotonic()
         self._pal = active_palette()
         self._gs = GameState()
         self._gs.load()
@@ -663,12 +667,29 @@ class MainWindow(QMainWindow):
         if self._splash is not None:
             QTimer.singleShot(4000, self._dismiss_splash)
 
+    # Startup is often fast enough that the splash flashes by unreadably;
+    # pad it out to this minimum, but only for the difference — a slow
+    # first load that already exceeds this is never held up further.
+    _MIN_SPLASH_MS = 900
+
     def _dismiss_splash(self):
         """Reveal the finished window and close the startup splash, exactly once.
 
         The window is shown at zero opacity while loading (see run()); restoring
         opacity here makes the now fully-rendered UI appear all at once, then the
         splash closes on top of it."""
+        if self._splash_dismissed:
+            return
+        if self._splash is not None and self._splash_shown_at is not None:
+            import time as _time
+            elapsed_ms = (_time.monotonic() - self._splash_shown_at) * 1000
+            remaining = self._MIN_SPLASH_MS - elapsed_ms
+            if remaining > 0:
+                QTimer.singleShot(int(remaining), self._finish_dismiss_splash)
+                return
+        self._finish_dismiss_splash()
+
+    def _finish_dismiss_splash(self):
         if self._splash_dismissed:
             return
         self._splash_dismissed = True
