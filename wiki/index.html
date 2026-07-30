@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mosaic Wiki — Mosaic Mod Manager</title>
+<link rel="icon" href="assets/logo-72.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div class="topbar">
+  <div class="topbar-brand">
+    <img src="assets/logo-72.png" alt="Mosaic Mod Manager">
+    <span class="wordmark">MOSAIC <span class="muted">WIKI</span></span>
+  </div>
+  <div class="topbar-right">
+    <input type="text" id="wiki-search" class="search-input" placeholder="Search the wiki...">
+    <div class="topbar-nav">
+      <a href="https://github.com/TheMrGeeBee/Mosaic-Mod-Manager">Repository</a>
+      <a href="https://github.com/TheMrGeeBee/Mosaic-Mod-Manager/releases">Releases</a>
+      <a href="#top">Home</a>
+    </div>
+  </div>
+</div>
+
+<div id="top" class="hero">
+  <img src="assets/logo-300.png" alt="Mosaic Mod Manager logo">
+  <h1>MOSAIC MOD MANAGER</h1>
+  <p class="eyebrow">Wiki &amp; Documentation</p>
+  <p class="intro">
+    A Linux-native mod manager for a wide range of games. This wiki covers
+    installation, mod management, profiles, deployment, and CLI usage &mdash;
+    everything you need to get the most out of Mosaic.
+  </p>
+  <p class="note">
+    Work in progress &mdash; some pages may be incomplete or out of date
+    while we update them for the latest release.
+  </p>
+  <div class="cta-row">
+    <a href="#installing" class="btn btn-primary">Get Started</a>
+    <a href="#faq" class="btn btn-secondary">Read the FAQ</a>
+  </div>
+</div>
+
+<div class="sections">
+  <p class="no-results" id="no-results"></p>
+
+  <section class="wiki-group" id="faq">
+    <div class="group-heading">
+      <h2>Getting Started</h2>
+      <span class="group-rule"></span>
+    </div>
+    <div class="card-grid">
+      <a href="articles/faq.html" class="wiki-card">
+        <div class="card-row">
+          <span class="card-number">1</span>
+          <h3 class="card-title">FAQ</h3>
+        </div>
+        <p class="card-desc">Common questions about setup, compatibility, and troubleshooting.</p>
+      </a>
+      <a href="#" id="installing" class="wiki-card">
+        <div class="card-row">
+          <span class="card-number">2</span>
+          <h3 class="card-title">Installing</h3>
+        </div>
+        <p class="card-desc">How to install Mosaic on your Linux system.</p>
+      </a>
+    </div>
+  </section>
+
+  <section class="wiki-group" id="mods">
+    <div class="group-heading">
+      <h2>Managing Mods</h2>
+      <span class="group-rule"></span>
+    </div>
+    <div class="card-grid">
+      <a href="#" class="wiki-card">
+        <div class="card-row">
+          <span class="card-number">3</span>
+          <h3 class="card-title">Installing a Mod</h3>
+        </div>
+        <p class="card-desc">Add mods to a profile and load order.</p>
+      </a>
+      <a href="#" class="wiki-card">
+        <div class="card-row">
+          <span class="card-number">4</span>
+          <h3 class="card-title">Profile Specific Saves</h3>
+        </div>
+        <p class="card-desc">Keep save files isolated per profile.</p>
+      </a>
+      <a href="#" class="wiki-card">
+        <div class="card-row">
+          <span class="card-number">5</span>
+          <h3 class="card-title">Updating a Mod</h3>
+        </div>
+        <p class="card-desc">Refresh an installed mod to a newer version.</p>
+      </a>
+      <a href="#" class="wiki-card">
+        <div class="card-row">
+          <span class="card-number">6</span>
+          <h3 class="card-title">Installing a Collection</h3>
+        </div>
+        <p class="card-desc">Import a bundled set of mods in one go.</p>
+      </a>
+    </div>
+  </section>
+
+  <section class="wiki-group" id="organization">
+    <div class="group-heading">
+      <h2>Organization</h2>
+      <span class="group-rule"></span>
+    </div>
+    <div class="card-grid">
+      <a href="#" class="wiki-card">
+        <div class="card-row">
+          <span class="card-number">7</span>
+          <h3 class="card-title">Using Separators</h3>
+        </div>
+        <p class="card-desc">Group and organize your mod list visually.</p>
+      </a>
+      <a href="#" class="wiki-card">
+        <div class="card-row">
+          <span class="card-number">8</span>
+          <h3 class="card-title">Root Folder Building</h3>
+        </div>
+        <p class="card-desc">Structure root-level overrides correctly.</p>
+      </a>
+    </div>
+  </section>
+
+  <section class="wiki-group" id="deployment">
+    <div class="group-heading">
+      <h2>Deployment</h2>
+      <span class="group-rule"></span>
+    </div>
+    <div class="card-grid">
+      <a href="#" class="wiki-card">
+        <div class="card-row">
+          <span class="card-number">9</span>
+          <h3 class="card-title">Deploy and Restore</h3>
+        </div>
+        <p class="card-desc">Apply your mod setup to the game, or roll it back.</p>
+      </a>
+    </div>
+  </section>
+
+  <section class="wiki-group" id="advanced">
+    <div class="group-heading">
+      <h2>Advanced</h2>
+      <span class="group-rule"></span>
+    </div>
+    <div class="card-grid">
+      <a href="#" class="wiki-card">
+        <div class="card-row">
+          <span class="card-number">10</span>
+          <h3 class="card-title">Using External Applications</h3>
+        </div>
+        <p class="card-desc">Launch tools like xEdit or BodySlide from Mosaic.</p>
+      </a>
+      <a href="#" class="wiki-card">
+        <div class="card-row">
+          <span class="card-number">11</span>
+          <h3 class="card-title">Adding a Custom Game</h3>
+        </div>
+        <p class="card-desc">Register a game Mosaic doesn&rsquo;t support out of the box.</p>
+      </a>
+      <a href="#" class="wiki-card">
+        <div class="card-row">
+          <span class="card-number">12</span>
+          <h3 class="card-title">Exporting a Profile</h3>
+        </div>
+        <p class="card-desc">Share your mod setup with others.</p>
+      </a>
+      <a href="#" class="wiki-card">
+        <div class="card-row">
+          <span class="card-number">13</span>
+          <h3 class="card-title">CLI Mode</h3>
+        </div>
+        <p class="card-desc">Run Mosaic headlessly from the command line.</p>
+      </a>
+      <a href="#" class="wiki-card">
+        <div class="card-row">
+          <span class="card-number">14</span>
+          <h3 class="card-title">Keybinds</h3>
+        </div>
+        <p class="card-desc">Reference for default keyboard shortcuts.</p>
+      </a>
+    </div>
+  </section>
+</div>
+
+<div class="site-footer">
+  <span>Mosaic Mod Manager &mdash; community wiki</span>
+  <div class="site-footer-links">
+    <a href="https://github.com/TheMrGeeBee/Mosaic-Mod-Manager">Source</a>
+    <a href="https://github.com/TheMrGeeBee/Mosaic-Mod-Manager/issues">Issues</a>
+    <a href="#top">Back to top</a>
+  </div>
+</div>
+
+<script src="search.js"></script>
+</body>
+</html>
