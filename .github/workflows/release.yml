@@ -23,6 +23,14 @@ on:
         type: choice
         options: [none, stable, beta]
         default: none
+      publish_nexus:
+        description: >-
+          Upload the AppImage and Flatpak bundle to Nexus Mods as new file
+          versions. Stable tags/refs only (a hyphenated ref, e.g. a beta tag,
+          is refused even if selected). Manual opt-in only for now — not
+          wired into the automatic tag-push release yet.
+        type: boolean
+        default: false
 
 # Required for the release-publish step (softprops/action-gh-release) and the
 # publish-pages step (which pushes the OSTree repo to the gh-pages branch).
@@ -150,6 +158,79 @@ jobs:
           body_path: ${{ steps.changelog.outputs.found == 'true' && 'release-notes.md' || '' }}
           generate_release_notes: ${{ steps.changelog.outputs.found != 'true' }}
           fail_on_unmatched_files: true
+
+  # ────────────────────────────────────────────────────────────────────
+  # Upload the AppImage and Flatpak bundle to Nexus Mods as new file
+  # versions on their existing, pre-created file slots (this action can only
+  # add a version to a slot a human already created on the Nexus website —
+  # it can't create a slot itself). Manual opt-in only (publish_nexus:
+  # true) — not wired into the automatic tag-push release yet. Stable
+  # (non-hyphenated) refs only, matching the hyphen-means-prerelease
+  # convention used everywhere else in this pipeline.
+  #
+  # No beta channel here at all yet — that needs its own file slots on
+  # Nexus created first, and is an explicit future follow-up, not this pass.
+  # ────────────────────────────────────────────────────────────────────
+  publish-nexus:
+    name: Publish to Nexus Mods
+    if: |
+      needs.build.result == 'success'
+      && inputs.publish_nexus == true
+      && !contains(github.ref_name, '-')
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download AppImage
+        uses: actions/download-artifact@v4
+        with:
+          name: MosaicModManager-AppImage
+          path: artifacts/
+      - name: Download Flatpak
+        uses: actions/download-artifact@v4
+        with:
+          name: MosaicModManager-flatpak
+          path: artifacts/
+
+      # Nexus wants plain semver ("1.0.0"), not this project's tag format
+      # ("v1.0.0") — the tag is already semver underneath the v prefix, so
+      # just strip it rather than maintaining a second version scheme.
+      - name: Resolve version + rename Flatpak bundle
+        id: nexus
+        run: |
+          set -euo pipefail
+          VERSION="${GITHUB_REF_NAME#v}"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          APPIMAGE=$(ls artifacts/*.AppImage)
+          echo "appimage_path=${APPIMAGE}" >> "$GITHUB_OUTPUT"
+          # The Flatpak bundle's build-time filename is fixed
+          # (MosaicModManager.flatpak, no version embedded) — rename this
+          # downloaded COPY only, for a clear per-version Nexus filename.
+          # Does not touch the artifact the release job already attached
+          # to the GitHub Release.
+          mv artifacts/MosaicModManager.flatpak "artifacts/MosaicModManager-${VERSION}.flatpak"
+
+      # This action has no stable release yet (only v1.0.0-beta.N point
+      # tags as of writing) — pinned to the latest available rather than a
+      # floating @v1/@main tag.
+      - name: Upload AppImage to Nexus
+        uses: Nexus-Mods/upload-action@v1.0.0-beta.10
+        with:
+          api_key: ${{ secrets.NEXUSMODS_API_KEY }}
+          file_id: ${{ vars.NEXUS_APPIMAGE_FILE_ID }}
+          filename: ${{ steps.nexus.outputs.appimage_path }}
+          version: ${{ steps.nexus.outputs.version }}
+          category: main
+          update_mod_version: true
+
+      - name: Upload Flatpak to Nexus
+        uses: Nexus-Mods/upload-action@v1.0.0-beta.10
+        with:
+          api_key: ${{ secrets.NEXUSMODS_API_KEY }}
+          file_id: ${{ vars.NEXUS_FLATPAK_FILE_ID }}
+          filename: artifacts/MosaicModManager-${{ steps.nexus.outputs.version }}.flatpak
+          version: ${{ steps.nexus.outputs.version }}
+          category: main
+          update_mod_version: true
 
   # ────────────────────────────────────────────────────────────────────
   # Publish the OSTree repo to GitHub Pages (the hosted Flatpak remote).
