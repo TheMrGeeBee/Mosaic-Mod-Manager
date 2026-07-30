@@ -5,4 +5,4 @@ Homepage=https://github.com/TheMrGeeBee/Mosaic-Mod-Manager
 Comment=Auto-update remote for Mosaic Mod Manager (stable + beta)
 Description=Adds the Mosaic Mod Manager Flatpak remote so updates arrive via your package manager.
 Icon=https://themrgeebee.github.io/Mosaic-Mod-Manager/icon.png
-
+GPGKey=mDMEamuFxRYJKwYBBAHaRw8BAQdANABbnd08JMXDLqNpMN5MnKQK/n3LFrvzpBDDMEfAs3u0I01vc2FpYyBNb2QgTWFuYWdlciA8bXJnZWViZWVAcG0ubWU+iJYEExYKAD4WIQTf5VbDfL+i27dUjw9QjGYkwDQArAUCamuFxQIbAwUJA8JnAAULCQgHAgYVCgkICwIEFgIDAQIeAQIXgAAKCRBQjGYkwDQArB16AQDtw5BGfxFMjH2stQcw840g4G+EeAwgcnMwbpIhmHcA5QEAys/m3TGnAKZf5hEipSdmuH4z+HarQcUG5XYfaH/6xQ4=
