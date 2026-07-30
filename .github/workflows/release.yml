@@ -212,7 +212,8 @@ jobs:
       # executables/bundles — zip each artifact individually rather than
       # combining them, so the AppImage and Flatpak stay separate downloads
       # matching their separate file slots. The AppImage's zip also carries
-      # its .asc signature alongside it so a downloader can verify.
+      # its .asc signature and .zsync sidecar (Gear Lever/AppImageLauncher
+      # delta-update support) alongside it, not just the raw executable.
       - name: Zip artifacts for Nexus
         id: zip
         run: |
@@ -221,7 +222,7 @@ jobs:
           APPIMAGE=$(ls artifacts/*.AppImage)
           APPIMAGE_ZIP="artifacts/MosaicModManager-${VERSION}-x86_64.AppImage.zip"
           FLATPAK_ZIP="artifacts/MosaicModManager-${VERSION}.flatpak.zip"
-          zip -j "$APPIMAGE_ZIP" "$APPIMAGE" artifacts/*.AppImage.asc
+          zip -j "$APPIMAGE_ZIP" "$APPIMAGE" artifacts/*.AppImage.asc artifacts/*.AppImage.zsync
           zip -j "$FLATPAK_ZIP" "artifacts/MosaicModManager-${VERSION}.flatpak"
           echo "appimage_zip=${APPIMAGE_ZIP}" >> "$GITHUB_OUTPUT"
           echo "flatpak_zip=${FLATPAK_ZIP}" >> "$GITHUB_OUTPUT"
@@ -235,6 +236,10 @@ jobs:
           api_key: ${{ secrets.NEXUSMODS_API_KEY }}
           file_id: ${{ vars.NEXUS_APPIMAGE_FILE_ID }}
           filename: ${{ steps.zip.outputs.appimage_zip }}
+          # Defaults to the zip's raw basename (e.g.
+          # MosaicModManager-1.0.0-x86_64.AppImage.zip) if unset — set
+          # explicitly for a readable Files-tab label.
+          display_name: "Mosaic Mod Manager - AppImage"
           version: ${{ steps.nexus.outputs.version }}
           category: main
           update_mod_version: true
@@ -245,6 +250,7 @@ jobs:
           api_key: ${{ secrets.NEXUSMODS_API_KEY }}
           file_id: ${{ vars.NEXUS_FLATPAK_FILE_ID }}
           filename: ${{ steps.zip.outputs.flatpak_zip }}
+          display_name: "Mosaic Mod Manager - Flatpak"
           version: ${{ steps.nexus.outputs.version }}
           category: main
           update_mod_version: true
