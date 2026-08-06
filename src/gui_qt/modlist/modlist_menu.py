@@ -382,6 +382,8 @@ def _build_mod_menu(view, model, row, entry, sel_mods, multi, act, stub, divider
         submenu(_mt("Nexus Actions"), _nexus_items)
     if _modio_url(view, name):
         act(_mt("Open on mod.io"), lambda: _open_on_modio(view, name))
+    if _has_modio_id(view, name):
+        act(_mt("Change Version (mod.io)"), lambda: _change_version_modio(view, name))
     if _has_update_flag(view, name):
         act(_mt("Quick Update"), lambda: _quick_update(view, [name]))
     if _has_modio_update_flag(view, name):
@@ -684,6 +686,34 @@ def _open_on_modio(view, name: str):
         open_url(url)
     except Exception:
         pass
+
+
+def _has_modio_id(view, name: str) -> bool:
+    """True if *name* has a mod.io mod id recorded in meta.ini (mirrors
+    _has_nexus_id). Gates 'Change Version (mod.io)' independent of whether an
+    update is currently flagged — same relationship Nexus's own 'Change
+    Version' has to _has_nexus_id."""
+    staging = getattr(view, "staging_dir", None)
+    if staging is None:
+        return False
+    meta_path = staging / name / "meta.ini"
+    if not meta_path.is_file():
+        return False
+    try:
+        import configparser
+        cp = configparser.ConfigParser(interpolation=None)
+        cp.read(str(meta_path), encoding="utf-8")
+        return int(cp.get("General", "modioModId", fallback="0") or "0") > 0
+    except Exception:
+        return False
+
+
+def _change_version_modio(view, name):
+    """Open the Change Version (mod.io) picker for *name* (the window installs
+    the callback in _reload_modlist). No-op if it isn't wired (e.g. headless)."""
+    cb = getattr(view, "on_change_version_modio", None)
+    if cb is not None and name:
+        cb(name)
 
 
 # ---- Move to separator -----------------------------------------------------
@@ -1459,6 +1489,7 @@ _TR_MARKERS = (
     QT_TRANSLATE_NOOP("ModListMenu", "Add separator below"),
     QT_TRANSLATE_NOOP("ModListMenu", "Bundle options…"),
     QT_TRANSLATE_NOOP("ModListMenu", "Change Version"),
+    QT_TRANSLATE_NOOP("ModListMenu", "Change Version (mod.io)"),
     QT_TRANSLATE_NOOP("ModListMenu", "Check Updates"),
     QT_TRANSLATE_NOOP("ModListMenu", "Check Updates ({0})"),
     QT_TRANSLATE_NOOP("ModListMenu", "Copy to profile"),

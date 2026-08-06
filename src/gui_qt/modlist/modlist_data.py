@@ -196,7 +196,9 @@ def read_meta_for_entries(entries: list[ModEntry], staging_dir: Path,
                 cp.read(str(meta_path), encoding="utf-8")
                 _fid = int(cp.get("General", "modioFileId", fallback="0") or "0")
                 _lfid = int(cp.get("General", "modioLatestFileId", fallback="0") or "0")
-                if _lfid and _fid and _lfid != _fid:
+                _lver = cp.get("General", "modioLatestVersion", fallback="")
+                _ignored_ver = cp.get("General", "modioIgnoredVersion", fallback="")
+                if _lfid and _fid and _lfid != _fid and _lver != _ignored_ver:
                     bits |= FLAG_MODIO_UPDATE
                     updates.add(e.name)
                 # mod.io mods never populate the Nexus "version" key — fall

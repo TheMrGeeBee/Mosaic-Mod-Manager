@@ -5682,6 +5682,88 @@ class MainWindow(QMainWindow):
             return
         self._refresh_modlist_flags()
 
+    # ---- Change Version (mod.io, plugins-panel-scoped overlay) ------------
+
+    def _open_change_version_modio_tab(self, mod_name: str):
+        """Open the Change Version (mod.io) picker for *mod_name* as a tab that
+        takes over the whole plugins panel. Triggered by the mod.io update-flag
+        click + the right-click 'Change Version (mod.io)' item. Mirrors
+        _open_change_version_tab (Nexus) but reads/writes mod.io meta.ini keys
+        and needs no premium check (mod.io files are always public)."""
+        game = self._gs.game
+        if game is None or not game.is_configured():
+            self._notify(self.tr("No configured game selected."), "warning")
+            return
+        staging = self._gs.staging_dir()
+        if staging is None:
+            self._notify(self.tr("No mod staging folder for this profile."), "warning")
+            return
+        modio_meta = _load_bg3_modio("modio_meta")
+        meta_path = staging / mod_name / "meta.ini"
+        meta = modio_meta.read_modio_meta(meta_path)
+        if meta.mod_id <= 0:
+            self._notify(self.tr("'{0}' isn't a mod.io mod.").format(mod_name), "warning")
+            return
+        api_key = _load_bg3_modio("modio_key").load_modio_key()
+        if not api_key:
+            self._notify(
+                self.tr("No mod.io API key configured — Settings ▸ mod.io API Key."),
+                "warning")
+            return
+        modio_api = _load_bg3_modio("modio_api")
+        try:
+            api = modio_api.ModioAPI(api_key)
+        except Exception as exc:
+            self._notify(self.tr("Could not initialise mod.io API: {0}").format(exc), "error")
+            return
+
+        # Reuse one overlay: rebuild it for the new mod if already open.
+        if self._tabs.has_key("change_version_modio"):
+            self._tabs.close_tab("change_version_modio")
+        from gui_qt.views.change_version_modio_view import ModioChangeVersionView
+        view = ModioChangeVersionView(
+            api, mod_name, meta, meta_path, modio_meta,
+            getattr(game, "name", "") or "",
+            install_fn=self._install_modio_change_version,
+            on_close=self._close_change_version_modio_tab,
+            log_fn=self._append_log,
+            progress_fn=self._nexus_download_progress)
+        self._change_version_modio_view = view
+        view.destroyed.connect(
+            lambda *_: setattr(self, "_change_version_modio_view", None))
+        self._tabs.open_scoped_tab(
+            view, self.tr("Change Version (mod.io)"), self._plugins_panel_stack,
+            key="change_version_modio")
+
+    def _close_change_version_modio_tab(self):
+        """Close the Change Version (mod.io) overlay + refresh modlist flags
+        (mirrors _close_change_version_tab)."""
+        if self._tabs.has_key("change_version_modio"):
+            self._tabs.close_tab("change_version_modio")
+        if getattr(self, "_install_running", False):
+            return
+        self._refresh_modlist_flags()
+
+    def _install_modio_change_version(self, mod_name, meta, file, archive_path):
+        """install_fn for ModioChangeVersionView: install the chosen file into
+        the mod's existing folder (silent replace, same as Quick Update
+        (mod.io) — mod.io has no name-matching concept, so there's no
+        "different folder name" case to defer to the user). _install_paths'
+        `metas` dict expects Nexus-shaped meta objects, so — same as Quick
+        Update (mod.io) — the install pipeline's own heuristic identification
+        runs first, then meta.ini is overwritten with the file we KNOW we
+        fetched via the existing _stamp_modio_meta helper."""
+        staging = self._gs.staging_dir()
+
+        def _done(ok, total, names):
+            if staging is not None and mod_name in (names or []):
+                self._stamp_modio_meta(staging / mod_name / "meta.ini", meta, file)
+                self._reload_modlist()
+
+        self._install_paths(
+            [archive_path], preferred_names={archive_path: mod_name},
+            on_all_done=_done)
+
     # ---- Bundle options (plugins-panel-scoped overlay) --------------------
 
     def _open_bundle_tab(self, mod_name: str):
@@ -6781,12 +6863,12 @@ class MainWindow(QMainWindow):
             # flag self-corrects once the now-relevant option is selected.
             self._reinstall_mods([e.name])
         elif flag == FLAG_MODIO_UPDATE:
-            # Unlike Nexus's FLAG_UPDATE (which opens a manual Change Version
-            # picker), mod.io has no version-choice UI to defer to — the flag
-            # means exactly one thing (a newer file is confirmed available),
-            # so clicking it goes straight to Quick Update. The mod.io page is
-            # still reachable manually via the "Open on mod.io" context-menu item.
-            self._quick_update_modio_mods([e.name])
+            # Mirrors Nexus's FLAG_UPDATE: opens the Change Version (mod.io)
+            # picker instead of installing immediately, so the user can review
+            # the file history (+ changelog) before anything downloads.
+            # Quick Update (mod.io) — the old one-click behaviour — is still
+            # available from the right-click menu.
+            self._open_change_version_modio_tab(e.name)
         elif flag == FLAG_MISSING_REQS:
             self._open_missing_reqs_tab(e.name)
         elif flag == FLAG_NOTE:
@@ -10963,6 +11045,9 @@ class MainWindow(QMainWindow):
         self._modlist_view.on_check_updates = self._on_check_updates
         # Change Version: right-click item + clicking the update flag icon.
         self._modlist_view.on_change_version = self._open_change_version_tab
+        # Change Version (mod.io): right-click item + clicking the mod.io
+        # update flag icon.
+        self._modlist_view.on_change_version_modio = self._open_change_version_modio_tab
         self._modlist_view.on_bundle_options = self._open_bundle_tab
         self._modlist_view.on_flag_clicked = self._on_modlist_flag_clicked
         # Missing Requirements: right-click item + clicking the ⚠ flag icon.

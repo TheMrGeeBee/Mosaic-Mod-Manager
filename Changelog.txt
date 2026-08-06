@@ -1,3 +1,10 @@
+- v1.0.2
+### Additions
+- Baldur's Gate 3 mod.io updates now open a "Change Version" picker instead of installing immediately — mirrors the existing Nexus flow, letting you review the file history (with each version's changelog) and pick which one to install before anything downloads. Click the mod.io update flag, or use "Change Version (mod.io)" in the right-click menu; "Quick Update (mod.io)" stays available for one-click installs without reviewing
+- Added "Ignore Update" support for mod.io mods, mirroring the existing Nexus feature — dismiss a specific version so it stops being flagged as an update until a newer one is published
+
+---
+
 - v1.0.1
 ### Bug Fixes
 - Fixed "Check for Update" silently reporting "All mods are up to date" right after launching the app without actually checking anything. A one-time keyring-availability check at startup could lose a race against the desktop's secret-service daemon and get permanently stuck treating Nexus as logged out for the rest of the session — only a full restart fixed it. The check now retries instead of caching that failure forever

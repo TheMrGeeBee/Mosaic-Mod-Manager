@@ -52,6 +52,11 @@ _KEY_NAME = "modioName"
 _KEY_PROFILE_URL = "modioProfileUrl"
 _KEY_UPLOADER = "modioUploader"
 _KEY_TAGS = "modioTags"
+# Ignore Update (Change Version picker) — mirrors Nexus's ignore_update /
+# ignored_version in Nexus.nexus_meta: once set, the ignored version stops
+# raising FLAG_MODIO_UPDATE until a newer one is published.
+_KEY_IGNORE_UPDATE = "modioIgnoreUpdate"
+_KEY_IGNORED_VERSION = "modioIgnoredVersion"
 # The PublishHandle confirmed (via mod.io error_ref 15024) to not correspond
 # to any real mod.io mod — e.g. a leftover/placeholder value from a pak that
 # was never actually published. Lets callers skip the API call entirely on
@@ -92,6 +97,8 @@ class ModioMeta:
     latest_file_id: int = 0
     latest_version: str = ""
     installed: str = ""
+    ignore_update: bool = False
+    ignored_version: str = ""
 
 
 # ---------------------------------------------------------------------------
@@ -307,6 +314,12 @@ def write_modio_meta(meta_ini_path: Path, meta: ModioMeta) -> None:
         cp.set(_SECTION, _KEY_TAGS, meta.tags)
     if meta.installed:
         cp.set(_SECTION, _KEY_INSTALLED, meta.installed)
+    # Always written (not conditional on truthiness like name/profile_url/etc
+    # above): a fresh install must actively clear a stale ignored_version from
+    # a previous Ignore-Update toggle, not just leave it in place — mirrors
+    # Nexus.nexus_meta.write_meta's unconditional handling of the same field.
+    cp.set(_SECTION, _KEY_IGNORE_UPDATE, "1" if meta.ignore_update else "0")
+    cp.set(_SECTION, _KEY_IGNORED_VERSION, meta.ignored_version)
 
     meta_ini_path.parent.mkdir(parents=True, exist_ok=True)
     with open(meta_ini_path, "w", encoding="utf-8") as f:
@@ -338,6 +351,8 @@ def read_modio_meta(meta_ini_path: Path) -> ModioMeta:
     meta.uploader = cp.get(_SECTION, _KEY_UPLOADER, fallback="")
     meta.tags = cp.get(_SECTION, _KEY_TAGS, fallback="")
     meta.installed = cp.get(_SECTION, _KEY_INSTALLED, fallback="")
+    meta.ignore_update = cp.get(_SECTION, _KEY_IGNORE_UPDATE, fallback="0") == "1"
+    meta.ignored_version = cp.get(_SECTION, _KEY_IGNORED_VERSION, fallback="")
     return meta
 
 
