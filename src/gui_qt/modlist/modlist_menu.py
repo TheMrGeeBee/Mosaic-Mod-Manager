@@ -358,8 +358,11 @@ def _build_mod_menu(view, model, row, entry, sel_mods, multi, act, stub, divider
             lambda: _toggle_root_folder(view, [name], not _is_rf))
     divider()
     # Group 3: Nexus / online & updates — each item shows only when applicable.
-    # The endorse/version/check/track/open-on-Nexus items nest under a
-    # "Nexus Actions" submenu; the rest stay inline.
+    # The endorse/version/track/open-on-Nexus items nest under "Nexus
+    # Actions"; Change Version/Open on mod.io nest under "mod.io Actions".
+    # Each submenu is independently gated on that site's own id, so a mod
+    # only on one site shows only that site's submenu. "Check Updates" is
+    # shared (checks both sources at once) and stays a top-level item.
     _endorsed = _is_endorsed(view, name)
     _has_id = _has_nexus_id(view, name)
     _nexus_items = []
@@ -369,10 +372,6 @@ def _build_mod_menu(view, model, row, entry, sel_mods, multi, act, stub, divider
              lambda: _endorse(view, [name], not _endorsed)))
         _nexus_items.append(
             (_mt("Change Version"), lambda: _change_version(view, name)))
-    if _has_id or bool(_modio_url(view, name)):
-        _nexus_items.append(
-            (_mt("Check Updates"), lambda: _check_updates(view, [name])))
-    if _has_id:
         _nexus_items.append(
             (_mt("Track Mod"), lambda: _track(view, [name])))
     if _has_nexus_page(view, name):
@@ -380,10 +379,18 @@ def _build_mod_menu(view, model, row, entry, sel_mods, multi, act, stub, divider
             (_mt("Open on Nexus"), lambda: _open_on_nexus(view, name)))
     if _nexus_items:
         submenu(_mt("Nexus Actions"), _nexus_items)
-    if _modio_url(view, name):
-        act(_mt("Open on mod.io"), lambda: _open_on_modio(view, name))
+    # mod.io items nest under their own submenu, mirroring "Nexus Actions".
+    _modio_items = []
     if _has_modio_id(view, name):
-        act(_mt("Change Version (mod.io)"), lambda: _change_version_modio(view, name))
+        _modio_items.append(
+            (_mt("Change Version (mod.io)"), lambda: _change_version_modio(view, name)))
+    if _modio_url(view, name):
+        _modio_items.append(
+            (_mt("Open on mod.io"), lambda: _open_on_modio(view, name)))
+    if _modio_items:
+        submenu(_mt("mod.io Actions"), _modio_items)
+    if _has_id or bool(_modio_url(view, name)):
+        act(_mt("Check Updates"), lambda: _check_updates(view, [name]))
     if _has_update_flag(view, name):
         act(_mt("Quick Update"), lambda: _quick_update(view, [name]))
     if _has_modio_update_flag(view, name):
@@ -1519,6 +1526,7 @@ _TR_MARKERS = (
     QT_TRANSLATE_NOOP("ModListMenu", "Missing Requirements ({0})"),
     QT_TRANSLATE_NOOP("ModListMenu", "View Requirements"),
     QT_TRANSLATE_NOOP("ModListMenu", "Mod name:"),
+    QT_TRANSLATE_NOOP("ModListMenu", "mod.io Actions"),
     QT_TRANSLATE_NOOP("ModListMenu", "Move to profile"),
     QT_TRANSLATE_NOOP("ModListMenu", "Move to profile ({0})"),
     QT_TRANSLATE_NOOP("ModListMenu", "Move to separator"),

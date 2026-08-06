@@ -180,6 +180,11 @@ class ModioChangeVersionView(QWidget):
     def _populate(self, files):
         installed_id = int(getattr(self._meta, "file_id", 0) or 0)
         latest_id = int(getattr(self._meta, "latest_file_id", 0) or 0)
+        # Every row is a version of the SAME mod (mod.io has no per-file
+        # display name like Nexus does) — show the mod's name, not the raw
+        # archive filename, which is unreadable (e.g. a hash-suffixed zip).
+        mod_display_name = (getattr(self._meta, "name", "") or "").strip() \
+            or self._mod_name
 
         hl = _hl_colors()
         self._table.setRowCount(len(files))
@@ -193,7 +198,7 @@ class ModioChangeVersionView(QWidget):
             else:
                 bg = name_fg = None
 
-            name_text = (f.filename or "") + ("  ✓" if is_installed else "")
+            name_text = mod_display_name + ("  ✓" if is_installed else "")
             cells = [name_text, f.version or "",
                      _fmt_date(f.date_added), fmt_size(f.filesize)]
             for col, text in enumerate(cells):
@@ -202,7 +207,15 @@ class ModioChangeVersionView(QWidget):
                     it.setBackground(bg)
                 if col == 0 and name_fg is not None:
                     it.setForeground(name_fg)
-                if col in (0, 1) and f.changelog:
+                if col == 0:
+                    # Archive filename stays discoverable via tooltip even
+                    # though it's no longer the visible label.
+                    tip = f.filename or ""
+                    if f.changelog:
+                        tip = f"{tip}\n\n{f.changelog}" if tip else f.changelog
+                    if tip:
+                        it.setToolTip(tip)
+                elif col == 1 and f.changelog:
                     it.setToolTip(f.changelog)
                 self._table.setItem(row, col, it)
 

@@ -2,6 +2,9 @@
 ### Additions
 - Baldur's Gate 3 mod.io updates now open a "Change Version" picker instead of installing immediately — mirrors the existing Nexus flow, letting you review the file history (with each version's changelog) and pick which one to install before anything downloads. Click the mod.io update flag, or use "Change Version (mod.io)" in the right-click menu; "Quick Update (mod.io)" stays available for one-click installs without reviewing
 - Added "Ignore Update" support for mod.io mods, mirroring the existing Nexus feature — dismiss a specific version so it stops being flagged as an update until a newer one is published
+### Changes
+- The Change Version (mod.io) file list now shows the mod's name instead of the raw archive filename (e.g. a hash-suffixed zip name); the archive filename is still available as a tooltip
+- The right-click menu's "Nexus Actions" and "mod.io Actions" submenus now appear independently based on where a mod actually exists — a Nexus-only mod no longer shows an empty-looking "Nexus Actions" entry for a mod.io-only "Check Updates", and vice versa. "Check Updates" itself (which checks both sources at once) is now a single top-level item shown whenever either applies
 
 ---
 
