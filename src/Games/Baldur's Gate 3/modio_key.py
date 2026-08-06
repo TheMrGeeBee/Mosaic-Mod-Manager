@@ -32,10 +32,10 @@ def _api_key_file_path() -> Path:
 
 
 def _keyring_ok() -> bool:
-    """Reuse the Nexus keyring probe (set once at startup)."""
+    """Reuse the Nexus keyring probe (lazily re-checked, see nexus_oauth)."""
     try:
-        from Nexus.nexus_oauth import _keyring_available
-        return _keyring_available
+        from Nexus.nexus_oauth import _is_keyring_available
+        return _is_keyring_available()
     except Exception:
         return True  # assume available if we can't check
 

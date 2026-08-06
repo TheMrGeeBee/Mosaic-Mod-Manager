@@ -1,3 +1,11 @@
+- v1.0.1
+### Bug Fixes
+- Fixed "Check for Update" silently reporting "All mods are up to date" right after launching the app without actually checking anything. A one-time keyring-availability check at startup could lose a race against the desktop's secret-service daemon and get permanently stuck treating Nexus as logged out for the rest of the session — only a full restart fixed it. The check now retries instead of caching that failure forever
+- Fixed two Nexus GraphQL update-check requests skipping the OAuth token-refresh step every other request performs, which could silently return no results for mods with a stale access token
+- The update summary now shows "Nexus: not logged in" instead of a misleading "All mods are up to date" whenever the Nexus half of a check was skipped due to a login problem
+
+---
+
 - v1.0.0
 - Renamed to Mosaic Mod Manager. The project is no longer an upstream-tracking fork of Amethyst Mod Manager — see ATTRIBUTION.md for credit to the original project this began as. Version numbering resets to v1.0.0 to mark the relaunch; nothing below this point ever shipped as a v2.0.6 release, so this section carries that unreleased work forward under the new name and number
 ### Additions

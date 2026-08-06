@@ -341,8 +341,8 @@ def _api_key_file_path() -> Path:
 def _keyring_ok() -> bool:
     """Check if keyring is available (reuses probe from nexus_oauth)."""
     try:
-        from Nexus.nexus_oauth import _keyring_available
-        return _keyring_available
+        from Nexus.nexus_oauth import _is_keyring_available
+        return _is_keyring_available()
     except Exception:
         return True  # Assume available if we can't check
 
@@ -1691,6 +1691,7 @@ class NexusAPI:
             }
         }
         """
+        self._refresh_oauth_if_needed()
         results: dict[int, NexusModUpdateInfo] = {}
         batch_size = self._GRAPHQL_UPDATE_BATCH
         for i in range(0, len(ids), batch_size):
@@ -1787,6 +1788,7 @@ class NexusAPI:
         if not mod_ids:
             return {}
 
+        self._refresh_oauth_if_needed()
         game_id = self._resolve_game_id(game_domain)
         if not game_id:
             app_log(f"GraphQL modFilesBatch: could not resolve game ID for {game_domain!r}")

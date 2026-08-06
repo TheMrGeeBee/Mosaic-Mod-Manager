@@ -59,9 +59,17 @@ from Nexus.nexus_api import _KEYRING_SERVICE, _migrate_keyring_entry
 # or the keyring service is missing (common after SteamOS updates).
 # ---------------------------------------------------------------------------
 _keyring_available: bool = False
+_keyring_probed_at: float = 0.0
+_KEYRING_RECHECK_COOLDOWN = 5.0  # seconds between re-probes after a failure
 
-def _probe_keyring() -> bool:
-    """Return True if the system keyring is usable."""
+def _probe_keyring(retry: bool = True) -> bool:
+    """Return True if the system keyring is usable.
+
+    Retries once after a short delay: the D-Bus Secret Service
+    (gnome-keyring/kwallet/KeePassXC) can still be registering itself a
+    moment after login/autostart, and a single failed attempt right then
+    shouldn't be taken as a permanent verdict.
+    """
     try:
         import subprocess
         # Check if the DBus Secret Service is reachable.
@@ -73,7 +81,7 @@ def _probe_keyring() -> bool:
             capture_output=True, text=True, timeout=3,
         )
         if "boolean true" not in result.stdout:
-            return False
+            raise RuntimeError("org.freedesktop.secrets not registered on DBus yet")
         # Service exists on DBus — verify we can actually list collections
         # (catches broken secretstorage / assertion errors).
         import secretstorage
@@ -82,19 +90,38 @@ def _probe_keyring() -> bool:
         conn.close()
         return True
     except Exception:
+        if retry:
+            time.sleep(0.5)
+            return _probe_keyring(retry=False)
         return False
 
-def _check_keyring() -> None:
-    """Probe keyring availability; set _keyring_available accordingly."""
-    global _keyring_available
-    if _probe_keyring():
-        _keyring_available = True
+def _is_keyring_available() -> bool:
+    """Cached, lazily-(re)probed keyring availability.
+
+    A successful probe is cached for the process lifetime. A *failed*
+    probe is NOT cached forever — only for _KEYRING_RECHECK_COOLDOWN
+    seconds — because the very first probe can lose a startup race
+    against the desktop's Secret Service registering on D-Bus. Caching
+    that failure permanently used to mean every OAuth-token read for the
+    rest of the run silently behaved as "not logged in" (no keyring
+    entry ever found, no error shown) — e.g. "Check for Update" reporting
+    a false "all up to date" right after launch, fixed only by
+    restarting the app. Re-probing lets the next real usage self-heal
+    instead.
+    """
+    global _keyring_available, _keyring_probed_at
+    if _keyring_available:
+        return True
+    now = time.time()
+    if now - _keyring_probed_at < _KEYRING_RECHECK_COOLDOWN:
+        return _keyring_available
+    _keyring_probed_at = now
+    _keyring_available = _probe_keyring()
+    if _keyring_available:
         app_log("OAuth: keyring backend available")
     else:
-        _keyring_available = False
         app_log("OAuth: no keyring backend available — using file-based token storage")
-
-_check_keyring()
+    return _keyring_available
 
 # ---------------------------------------------------------------------------
 # Encrypted file-based fallback token storage
@@ -240,7 +267,7 @@ _refresh_lock = threading.Lock()
 
 def load_oauth_tokens() -> Optional[OAuthTokens]:
     """Load OAuth tokens from the system keyring, or file fallback."""
-    if not _keyring_available:
+    if not _is_keyring_available():
         return _load_tokens_file()
     try:
         access  = keyring.get_password(_KEYRING_SERVICE, _KEYRING_ACCESS_KEY)
@@ -270,7 +297,7 @@ def load_oauth_tokens() -> Optional[OAuthTokens]:
 
 def save_oauth_tokens(tokens: OAuthTokens) -> None:
     """Persist OAuth tokens to the system keyring, or file fallback."""
-    if not _keyring_available:
+    if not _is_keyring_available():
         _save_tokens_file(tokens)
         return
     try:
@@ -285,7 +312,7 @@ def save_oauth_tokens(tokens: OAuthTokens) -> None:
 def clear_oauth_tokens() -> None:
     """Delete all stored OAuth tokens from keyring and file."""
     _clear_tokens_file()
-    if not _keyring_available:
+    if not _is_keyring_available():
         return
     for key in (_KEYRING_ACCESS_KEY, _KEYRING_REFRESH_KEY, _KEYRING_EXPIRES_KEY):
         try:

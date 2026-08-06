@@ -4530,7 +4530,15 @@ class MainWindow(QMainWindow):
         def _worker():
             # Carry the checked subset (None = all) so _on_updates_ready can do a
             # scoped, filemap-free flag refresh instead of a full reload.
-            out = {"nexus": None, "modio": [], "subset": subset}
+            # nexus_skipped: the game has a Nexus page but we proceeded without
+            # a Nexus login (only possible because a mod.io key covered the
+            # early guard above) — surfaced in _on_updates_ready so this never
+            # silently reads as "all mods up to date" when Nexus wasn't
+            # actually checked.
+            out = {
+                "nexus": None, "modio": [], "subset": subset,
+                "nexus_skipped": bool(domain and not have_nexus),
+            }
             try:
                 # Run the mod.io check (BG3) in parallel with the Nexus check —
                 # they hit different APIs and write disjoint meta.ini keys.
@@ -4611,6 +4619,11 @@ class MainWindow(QMainWindow):
         if modio_unknown:
             parts.append(f"{len(modio_unknown)} mod.io version"
                          f"{'s' if len(modio_unknown) != 1 else ''} unknown")
+        if result.get("nexus_skipped"):
+            # Nexus has a page for this game but wasn't actually queried (no
+            # valid login) — say so explicitly rather than letting an empty
+            # `nexus` result read as "checked, nothing found".
+            parts.append(self.tr("Nexus: not logged in"))
 
         if parts:
             _finish(", ".join(parts) + ".", "warning")
