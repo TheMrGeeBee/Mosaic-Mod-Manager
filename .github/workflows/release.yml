@@ -169,6 +169,12 @@ jobs:
   # (non-hyphenated) refs only, matching the hyphen-means-prerelease
   # convention used everywhere else in this pipeline.
   #
+  # Also handles what used to be three manual post-upload steps on the
+  # Nexus website: attaching this version's changelog (same Changelog.txt
+  # section used for the GitHub Release), and archiving the previous
+  # Main-files version. The per-file description text is left alone —
+  # it's static/rarely-changed, not something CI should own.
+  #
   # No beta channel here at all yet — that needs its own file slots on
   # Nexus created first, and is an explicit future follow-up, not this pass.
   # ────────────────────────────────────────────────────────────────────
@@ -181,6 +187,8 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
+
       - name: Download AppImage
         uses: actions/download-artifact@v4
         with:
@@ -207,6 +215,26 @@ jobs:
           # Does not touch the artifact the release job already attached
           # to the GitHub Release.
           mv artifacts/MosaicModManager.flatpak "artifacts/MosaicModManager-${VERSION}.flatpak"
+
+      # This job only runs for stable (non-hyphenated) refs, so the ref
+      # name is already a bare "- vX.Y.Z" header match — no prerelease
+      # base-stripping needed here (unlike the release job's changelog
+      # step, which also has to handle beta tags).
+      - name: Extract changelog section for Nexus
+        id: changelog
+        run: |
+          set -euo pipefail
+          tag='${{ github.ref_name }}'
+          awk -v v="- $tag" '
+            $0 == v { capture = 1; next }
+            capture && /^- v[0-9]/ { exit }
+            capture { print }
+          ' Changelog.txt | sed -e :a -e '/^$/{$d;N;ba' -e '}' > nexus-changelog.md
+          {
+            echo "text<<NEXUS_CHANGELOG_EOF"
+            cat nexus-changelog.md
+            echo "NEXUS_CHANGELOG_EOF"
+          } >> "$GITHUB_OUTPUT"
 
       # Nexus only accepts archive uploads (zip/rar/7z), not raw
       # executables/bundles — zip each artifact individually rather than
@@ -243,6 +271,13 @@ jobs:
           version: ${{ steps.nexus.outputs.version }}
           category: main
           update_mod_version: true
+          # Moves the previous Main-files version into the Files tab's
+          # "Archived files" section — was a manual step before this.
+          archive_existing_version: true
+          # changelog requires mod_id; both populate this version's entry
+          # in the Files tab's per-slot "Version history" panel.
+          mod_id: ${{ vars.NEXUS_MOD_ID }}
+          changelog: ${{ steps.changelog.outputs.text }}
 
       - name: Upload Flatpak to Nexus
         uses: Nexus-Mods/upload-action@v1.0.0-beta.10
@@ -254,6 +289,9 @@ jobs:
           version: ${{ steps.nexus.outputs.version }}
           category: main
           update_mod_version: true
+          archive_existing_version: true
+          mod_id: ${{ vars.NEXUS_MOD_ID }}
+          changelog: ${{ steps.changelog.outputs.text }}
 
   # ────────────────────────────────────────────────────────────────────
   # Publish the OSTree repo to GitHub Pages (the hosted Flatpak remote).
