@@ -2849,11 +2849,17 @@ class MainWindow(QMainWindow):
         NxmIPC.start_server(_on_nxm)
 
     def _receive_nxm(self, nxm_url: str):
-        """UI thread: handle an NXM link (from --nxm at startup or delivered via
-        IPC from a second instance). Raise the window so the user sees it."""
+        """UI thread: handle a message delivered via IPC from a second launch
+        — either a real nxm:// link (from --nxm at startup or a second
+        instance) or an empty-string focus ping (a plain relaunch while
+        already running). Either way, raise the window so the user sees it;
+        only a non-empty url is actually processed as a download."""
         from Nexus.nxm_handler import nxm_log
-        nxm_log("NXM link reached UI thread of running instance")
-        self._append_log("[nexus] received NXM link from browser")
+        if nxm_url:
+            nxm_log("NXM link reached UI thread of running instance")
+            self._append_log("[nexus] received NXM link from browser")
+        else:
+            nxm_log("Focus ping reached UI thread of running instance")
         try:
             self.setWindowState(
                 self.windowState() & ~Qt.WindowMinimized | Qt.WindowActive)
@@ -2861,7 +2867,8 @@ class MainWindow(QMainWindow):
             self.activateWindow()
         except Exception:
             pass
-        self._process_nxm_link(nxm_url)
+        if nxm_url:
+            self._process_nxm_link(nxm_url)
 
     def _match_game_for_domain(self, game_domain: str):
         """Return (name, game) for the configured game matching *game_domain*,
@@ -13397,38 +13404,57 @@ def _apply_app_identity(app) -> None:
 
 def run() -> int:
     import sys
+    import time
     from PySide6.QtWidgets import QApplication
     from Nexus.nxm_handler import NxmIPC, NxmHandler, nxm_log
+    from Utils.instance_lock import InstanceLock
 
     # The browser-spawned handoff process has no GUI, so nxm_log's file sink
     # (logs/nxm.log) is the only record of this launch — log it first thing.
     if "--nxm" in sys.argv:
         nxm_log(f"--nxm launch: argv={sys.argv[1:]}")
 
-    # Register as the nxm:// handler on every launch (idempotent) so "Download
-    # with Manager" on Nexus routes here.
+    # True single-instance gate: an OS-level advisory lock, not just an IPC
+    # socket check. Deploy/Restore have no locking of their own (plain,
+    # unlocked files on disk), so a second concurrent instance is a real
+    # corruption risk, not just a UX annoyance — this must block a second
+    # window from ever being built, not merely hand off nxm:// links.
+    # Acquired BEFORE NxmHandler.register()/QApplication so a losing launch
+    # does as little work as possible.
+    if not InstanceLock.acquire():
+        nxm_url = None
+        if "--nxm" in sys.argv:
+            try:
+                idx = sys.argv.index("--nxm")
+                nxm_url = sys.argv[idx + 1]
+            except (IndexError, ValueError):
+                nxm_log("--nxm flag present but no URL argument followed it")
+        # The lock is held by a live process, but it may still be starting up
+        # — NxmIPC.start_server() only binds after the window is built — so
+        # retry briefly rather than giving up on the first miss. Losing the
+        # lock race already proves a live process exists.
+        delivered = False
+        for _ in range(6):
+            if NxmIPC.send_to_running(nxm_url or ""):
+                delivered = True
+                break
+            time.sleep(0.5)
+        if delivered:
+            nxm_log("Handed launch off to running instance "
+                     f"({'nxm link' if nxm_url else 'focus ping'}) — exiting")
+        else:
+            nxm_log("Another instance holds the single-instance lock but "
+                     "never answered the handoff — exiting without opening "
+                     "a second window (it may still be starting, or hung)")
+        return 0
+
+    # We hold the lock: register as the nxm:// handler on every launch
+    # (idempotent) so "Download with Manager" on Nexus routes here.
     try:
         NxmHandler.register()
     except Exception:
         import traceback
         nxm_log(f"NxmHandler.register() crashed:\n{traceback.format_exc()}")
-
-    # Single-instance: if launched with --nxm and an instance is already
-    # running, hand the link off over the IPC socket and exit — don't build a
-    # second window. Done BEFORE the QApplication so the browser-spawned
-    # process is cheap. If no instance answers, fall through and open normally.
-    if "--nxm" in sys.argv:
-        try:
-            idx = sys.argv.index("--nxm")
-            nxm_url = sys.argv[idx + 1]
-        except (IndexError, ValueError):
-            nxm_url = None
-            nxm_log("--nxm flag present but no URL argument followed it")
-        if nxm_url and NxmIPC.send_to_running(nxm_url):
-            nxm_log("NXM link handed off to running instance — exiting")
-            return 0
-        if nxm_url:
-            nxm_log("No running instance — continuing into full app launch")
 
     # Migrate/clean mosaic.ini BEFORE anything reads it (theme loader, GameState).
     # Wipes a pre-Qt ini (missing [meta] version=2) so everyone starts fresh.
@@ -13517,6 +13543,14 @@ def run() -> int:
     # up so the received-link handler has a live UI to drive).
     win._start_nxm_ipc()
     rc = app.exec()
+
+    # closeEvent (including any synchronous restore-on-close file I/O) has
+    # fully finished by the time app.exec() returns — release the single-
+    # instance lock only now, so a new launch can never start touching
+    # deploy state while this exit is still cleaning up. Releasing this any
+    # earlier (e.g. in closeEvent itself) would reopen the exact race this
+    # lock exists to close.
+    InstanceLock.release()
 
     # A language change requests a clean self-restart so the whole UI rebuilds
     # in the new language (no partial live-retranslate). The window's closeEvent

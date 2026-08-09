@@ -417,6 +417,18 @@ def get_languages_dir() -> Path:
     return d
 
 
+def get_instance_lock_path() -> Path:
+    """Return the path to the single-instance advisory lock file.
+
+    Result: ~/.config/MosaicModManager/mosaic.lock
+
+    Not created here — get_config_dir() already guarantees the parent
+    directory exists; the lock file itself is opened with O_CREAT on
+    first acquire (see Utils.instance_lock).
+    """
+    return get_config_dir() / "mosaic.lock"
+
+
 def get_download_locations_path() -> Path:
     """Return the path to the extra download scan locations config file.
 

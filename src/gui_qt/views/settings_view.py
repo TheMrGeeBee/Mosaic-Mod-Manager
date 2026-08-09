@@ -639,6 +639,17 @@ class SettingsView(QWidget):
                  "— you can still update via your package manager or by "
                  "toggling the pre-release setting."))
 
+        row = self._next_row(g)
+        nxm_fix_btn = QPushButton(self.tr("Fix NXM Handler…"))
+        nxm_fix_btn.setCursor(Qt.PointingHandCursor)
+        nxm_fix_btn.clicked.connect(self._on_fix_nxm_handler)
+        g.addWidget(nxm_fix_btn, row, 0, 1, 2, Qt.AlignLeft)
+        self._add_help(g, self.tr(
+            "Re-registers Mosaic as the handler for nxm:// links (the "
+            "'Download with Manager' button on Nexus Mods). Use this if "
+            "clicking a Nexus download link opens the wrong app, or does "
+            "nothing."))
+
         self._maybe_add_flatpak_enroll(g)
 
     def _maybe_add_flatpak_enroll(self, g):
@@ -806,6 +817,24 @@ class SettingsView(QWidget):
         active = getattr(getattr(self._window, "_gs", None), "game_name", "") or ""
         CacheManagerOverlay.show_over(
             self._window, active_game_name=active)
+
+    # ---- Fix NXM Handler ---------------------------------------------------
+    def _on_fix_nxm_handler(self):
+        """Force re-registration of the nxm:// protocol handler (full scrub
+        + rewrite .desktop + xdg-mime/gio/xdg-settings). NxmHandler.register()
+        is idempotent — this is the same call made at every startup, just
+        triggerable on demand for a stale/broken association."""
+        from Nexus.nxm_handler import NxmHandler
+        try:
+            if NxmHandler.register():
+                self._notify(self.tr(
+                    "NXM handler fixed — re-registered the .desktop file "
+                    "and MIME associations."), "info")
+            else:
+                self._notify(self.tr(
+                    "Failed to register — xdg-mime not found?"), "error")
+        except Exception as exc:
+            self._notify(self.tr("NXM handler error: {0}").format(exc), "error")
 
     def _on_prerelease_toggle(self, value: bool):
         """Re-run the app update check immediately (Tk parity).

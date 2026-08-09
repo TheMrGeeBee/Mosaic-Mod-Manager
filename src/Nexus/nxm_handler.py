@@ -832,7 +832,7 @@ class NxmIPC:
         app.mainloop()
     """
 
-    _server_sockets: list[socket.socket] = []
+    _bound: dict[Path, socket.socket] = {}
     _threads: list[threading.Thread] = []
 
     @classmethod
@@ -900,7 +900,11 @@ class NxmIPC:
                         url = msg.get("nxm_url", "")
                         if url:
                             nxm_log(f"Received NXM link from new instance: {url}")
-                            callback(url)
+                        else:
+                            nxm_log("Received focus ping from new instance")
+                        # Always invoke — an empty url is a meaningful
+                        # "raise the window" ping, not a message to ignore.
+                        callback(url)
                 except Exception as exc:
                     nxm_log(f"Error handling IPC message: {exc}")
                 finally:
@@ -920,7 +924,7 @@ class NxmIPC:
                 srv = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
                 srv.bind(str(path))
                 srv.listen(4)
-                cls._server_sockets.append(srv)
+                cls._bound[path] = srv
                 t = threading.Thread(
                     target=_accept_loop, args=(srv,), daemon=True, name="nxm-ipc"
                 )
@@ -938,13 +942,30 @@ class NxmIPC:
 
     @classmethod
     def shutdown(cls) -> None:
-        """Close every IPC socket and clean up."""
-        for srv in cls._server_sockets:
+        """Close every IPC socket and clean up.
+
+        Only unlinks a well-known path if the file currently on disk is
+        still the same socket this process bound (same inode) — a path we
+        no longer own (e.g. another instance has since bound over it) is
+        left alone. This is the fix for a real bug: an unconditional
+        unlink here once deleted a live sibling instance's socket out from
+        under it, breaking nxm:// handoff until that instance restarted.
+        """
+        for path, srv in list(cls._bound.items()):
+            try:
+                our_ino = os.fstat(srv.fileno()).st_ino
+            except OSError:
+                our_ino = None
             try:
                 srv.close()
             except OSError:
                 pass
-        cls._server_sockets = []
+            if our_ino is not None:
+                try:
+                    disk_ino = os.stat(path).st_ino
+                except OSError:
+                    disk_ino = None
+                if disk_ino == our_ino:
+                    path.unlink(missing_ok=True)
+        cls._bound = {}
         cls._threads = []
-        for path in {_SOCKET_PATH, _FALLBACK_SOCKET_PATH}:
-            path.unlink(missing_ok=True)
