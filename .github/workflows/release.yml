@@ -31,6 +31,39 @@ on:
           wired into the automatic tag-push release yet.
         type: boolean
         default: false
+      nexus_changelog_and_archive:
+        description: >-
+          Attach a changelog and archive the previous Main-files version
+          when uploading to Nexus. Turn off for a one-off partial retry
+          (e.g. NEXUS_MOD_ID is broken, or a prior run already uploaded the
+          changelog successfully and you're only retrying the other file)
+          without touching the normal default behaviour.
+        type: boolean
+        default: true
+      skip_appimage_nexus_upload:
+        description: >-
+          Skip re-uploading the AppImage to Nexus. For retrying just the
+          Flatpak upload after a partial failure, without risking a
+          duplicate AppImage file version.
+        type: boolean
+        default: false
+      skip_flatpak_nexus_upload:
+        description: >-
+          Skip re-uploading the Flatpak to Nexus. For retrying just the
+          AppImage upload after a partial failure, without risking a
+          duplicate Flatpak file version.
+        type: boolean
+        default: false
+      override_version:
+        description: >-
+          Version string for Nexus uploads (e.g. "1.0.3"), used instead of
+          deriving it from the ref name. Required if dispatching this
+          workflow from a branch (e.g. main) rather than the release tag
+          itself — a tag's workflow file is frozen at tag-creation time, so
+          a bug fix to this file can only be exercised by dispatching from a
+          branch, and a branch ref name isn't a version string.
+        type: string
+        default: ''
 
 # Required for the release-publish step (softprops/action-gh-release) and the
 # publish-pages step (which pushes the OSTree repo to the gh-pages branch).
@@ -207,7 +240,10 @@ jobs:
         id: nexus
         run: |
           set -euo pipefail
-          VERSION="${GITHUB_REF_NAME#v}"
+          VERSION="${{ inputs.override_version }}"
+          if [ -z "$VERSION" ]; then
+            VERSION="${GITHUB_REF_NAME#v}"
+          fi
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
           # The Flatpak bundle's build-time filename is fixed
           # (MosaicModManager.flatpak, no version embedded) — rename this
@@ -216,15 +252,17 @@ jobs:
           # to the GitHub Release.
           mv artifacts/MosaicModManager.flatpak "artifacts/MosaicModManager-${VERSION}.flatpak"
 
-      # This job only runs for stable (non-hyphenated) refs, so the ref
-      # name is already a bare "- vX.Y.Z" header match — no prerelease
+      # This job only runs for stable (non-hyphenated) refs, so the resolved
+      # version is already a bare "- vX.Y.Z" header match — no prerelease
       # base-stripping needed here (unlike the release job's changelog
-      # step, which also has to handle beta tags).
+      # step, which also has to handle beta tags). Derived from the
+      # resolved version (not github.ref_name directly) so this still works
+      # when dispatched from a branch with override_version set.
       - name: Extract changelog section for Nexus
         id: changelog
         run: |
           set -euo pipefail
-          tag='${{ github.ref_name }}'
+          tag='v${{ steps.nexus.outputs.version }}'
           awk -v v="- $tag" '
             $0 == v { capture = 1; next }
             capture && /^- v[0-9]/ { exit }
@@ -259,6 +297,7 @@ jobs:
       # tags as of writing) — pinned to the latest available rather than a
       # floating @v1/@main tag.
       - name: Upload AppImage to Nexus
+        if: ${{ !inputs.skip_appimage_nexus_upload }}
         uses: Nexus-Mods/upload-action@v1.0.0-beta.10
         with:
           api_key: ${{ secrets.NEXUSMODS_API_KEY }}
@@ -273,13 +312,17 @@ jobs:
           update_mod_version: true
           # Moves the previous Main-files version into the Files tab's
           # "Archived files" section — was a manual step before this.
-          archive_existing_version: true
+          archive_existing_version: ${{ inputs.nexus_changelog_and_archive }}
           # changelog requires mod_id; both populate this version's entry
-          # in the Files tab's per-slot "Version history" panel.
-          mod_id: ${{ vars.NEXUS_MOD_ID }}
-          changelog: ${{ steps.changelog.outputs.text }}
+          # in the Files tab's per-slot "Version history" panel. Left empty
+          # when nexus_changelog_and_archive is off (e.g. a partial retry
+          # while NEXUS_MOD_ID is broken) — mod_id: '' is accepted by the
+          # action as "no changelog requested".
+          mod_id: ${{ inputs.nexus_changelog_and_archive && vars.NEXUS_MOD_ID || '' }}
+          changelog: ${{ inputs.nexus_changelog_and_archive && steps.changelog.outputs.text || '' }}
 
       - name: Upload Flatpak to Nexus
+        if: ${{ !inputs.skip_flatpak_nexus_upload }}
         uses: Nexus-Mods/upload-action@v1.0.0-beta.10
         with:
           api_key: ${{ secrets.NEXUSMODS_API_KEY }}
@@ -289,9 +332,9 @@ jobs:
           version: ${{ steps.nexus.outputs.version }}
           category: main
           update_mod_version: true
-          archive_existing_version: true
-          mod_id: ${{ vars.NEXUS_MOD_ID }}
-          changelog: ${{ steps.changelog.outputs.text }}
+          archive_existing_version: ${{ inputs.nexus_changelog_and_archive }}
+          mod_id: ${{ inputs.nexus_changelog_and_archive && vars.NEXUS_MOD_ID || '' }}
+          changelog: ${{ inputs.nexus_changelog_and_archive && steps.changelog.outputs.text || '' }}
 
   # ────────────────────────────────────────────────────────────────────
   # Publish the OSTree repo to GitHub Pages (the hosted Flatpak remote).
