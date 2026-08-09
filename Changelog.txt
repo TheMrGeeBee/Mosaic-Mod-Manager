@@ -1,3 +1,11 @@
+- v1.0.3
+### Additions
+- Added a "Fix NXM Handler…" button to Settings (General) to re-register the nxm:// protocol handler on demand, if Nexus's "Download with Manager" ever opens the wrong app or does nothing
+### Bug Fixes
+- Fixed "Download with Manager" on Nexus sometimes opening a brand-new Mosaic window instead of using the one already running. Closing any duplicate/stray Mosaic window could silently delete the running instance's download-handoff channel, so the next Nexus download had nowhere to go. Mosaic now enforces a true single-instance lock — only one window can ever be open at a time, and a second launch attempt (a Nexus download link, or just relaunching the app) is handed off to the existing window instead of opening a new one. This also closes a real (if rare) risk of two instances deploying or restoring mods for the same game at the same time
+
+---
+
 - v1.0.2
 ### Additions
 - Baldur's Gate 3 mod.io updates now open a "Change Version" picker instead of installing immediately — mirrors the existing Nexus flow, letting you review the file history (with each version's changelog) and pick which one to install before anything downloads. Click the mod.io update flag, or use "Change Version (mod.io)" in the right-click menu; "Quick Update (mod.io)" stays available for one-click installs without reviewing
