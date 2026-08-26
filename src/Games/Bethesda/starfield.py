@@ -67,6 +67,7 @@ class Starfield(Fallout_3):
                 nexus_url="https://www.nexusmods.com/starfield/mods/121?tab=files",
                 discord_only=True,
             ),
+            *self._bodyslide_linux_wizard_tools(),
         ]
 
     @property

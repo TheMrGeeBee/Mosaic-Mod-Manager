@@ -320,6 +320,7 @@ class MainWindow(QMainWindow):
     _export_code_ready = Signal(object, int)   # (code str|None, mod_count) share-code build → UI thread
     _install_files_picked = Signal(object)     # portal picker result (list[Path]) → UI thread
     _custom_exe_picked = Signal(object)        # portal picker result (Path|None) → UI thread
+    _shared_exe_picked = Signal(object)        # portal picker result (Path|None) → UI thread
     # Worker blocks on these to show the deferred FOMOD / BAIN pickers (holder+Event).
     _col_fomod = Signal(object)
     _col_bain = Signal(object)
@@ -606,6 +607,7 @@ class MainWindow(QMainWindow):
         self._export_code_ready.connect(self._on_export_code_ready)
         self._install_files_picked.connect(self._on_install_files_picked)
         self._custom_exe_picked.connect(self._on_custom_exe_picked)
+        self._shared_exe_picked.connect(self._on_shared_exe_picked)
         self._col_fomod.connect(self._on_col_fomod_ui)
         self._col_bain.connect(self._on_col_bain_ui)
         QTimer.singleShot(0, self._ensure_nexus_api)
@@ -7383,11 +7385,14 @@ class MainWindow(QMainWindow):
         if game is None:
             self._play_exe_paths = {}
             self._play_auto_exe_names = set()
+            self._play_shared_exe_names = set()
             self._play_exe_selector.set_items(["—"], current="—")
             return
-        from Utils.exe_launch.exe_launch import detect_framework_exes, load_custom_exes
+        from Utils.exe_launch.exe_launch import (
+            detect_framework_exes, load_custom_exes, load_shared_exes)
         self._play_exe_paths = {}
         self._play_auto_exe_names = set()
+        self._play_shared_exe_names = set()
         items = [game.name]
         # Framework states from the banner detect (worker) — lets staged-but-
         # not-deployed extenders show up too. Only when the cached map belongs
@@ -7404,6 +7409,11 @@ class MainWindow(QMainWindow):
         for p in load_custom_exes(game):
             if p.name not in self._play_exe_paths and p.name != game.name:
                 self._play_exe_paths[p.name] = p
+                items.append(p.name)
+        for p in load_shared_exes():
+            if p.name not in self._play_exe_paths and p.name != game.name:
+                self._play_exe_paths[p.name] = p
+                self._play_shared_exe_names.add(p.name)
                 items.append(p.name)
         current = game.name
         pdir = self._gs.profile_dir()
@@ -7476,6 +7486,27 @@ class MainWindow(QMainWindow):
             return
         from Utils.exe_launch.exe_launch import add_custom_exe
         add_custom_exe(game, path)
+        self._refresh_play_selector()
+        if path.name in self._play_exe_paths:
+            self._play_exe_selector.set_current(path.name)
+            self._on_play_exe_selected(path.name)
+
+    def _on_add_shared_exe(self):
+        if self._gs.game is None:
+            self._notify(self.tr("No game selected."), "warning")
+            return
+        # Picker callback fires on the portal WORKER thread → marshal via Signal.
+        from Utils.exe_launch.exe_launch import EXE_PICKER_FILTERS
+        from Utils.wine_proton.portal_filechooser import pick_file
+        pick_file("Select executable (shared across all games)",
+                  lambda p: self._shared_exe_picked.emit(p),
+                  filters=EXE_PICKER_FILTERS)
+
+    def _on_shared_exe_picked(self, path):
+        if path is None:
+            return
+        from Utils.exe_launch.exe_launch import add_shared_exe
+        add_shared_exe(path)
         self._refresh_play_selector()
         if path.name in self._play_exe_paths:
             self._play_exe_selector.set_current(path.name)
@@ -7600,7 +7631,7 @@ class MainWindow(QMainWindow):
                 self._notify(self.tr("Executable not found: {0}").format(exe_path), "warning")
                 return
             target = (exe_launch.launch_jar if exe_launch.is_jar(exe_path)
-                      else exe_launch.launch_exe_via_proton)
+                      else exe_launch.launch_custom_exe)
 
             def _launch_exe():
                 run_path = exe_path
@@ -7748,6 +7779,7 @@ class MainWindow(QMainWindow):
             on_close=_close,
             log_fn=self._append_log,
             is_auto=exe_path.name in self._play_auto_exe_names,
+            is_shared=exe_path.name in self._play_shared_exe_names,
         )
         self._exe_settings_view = view
         self._tabs.open_scoped_tab(view, self.tr("Configure: {0}").format(exe_path.name),
@@ -12708,6 +12740,7 @@ class MainWindow(QMainWindow):
             on_select=self._on_play_exe_selected,
             actions=[
                 (self.tr("+ Add custom EXE…"), self._on_add_custom_exe),
+                (self.tr("+ Add shared tool (all games)…"), self._on_add_shared_exe),
                 (self.tr("+ Add exe from staging…"), self._on_add_exe_from_staging),
                 (self.tr("+ Add exe from game folder…"),
                  self._on_add_exe_from_game_folder),

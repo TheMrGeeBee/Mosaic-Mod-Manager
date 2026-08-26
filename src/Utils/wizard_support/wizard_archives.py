@@ -33,7 +33,8 @@ except ImportError:
 if TYPE_CHECKING:
     from Games.base_game import BaseGame
 
-ARCHIVE_EXTS = {".zip", ".7z", ".rar", ".tar", ".tar.gz", ".tar.bz2", ".tar.xz"}
+ARCHIVE_EXTS = {".zip", ".7z", ".rar", ".tar", ".tar.gz", ".tar.bz2", ".tar.xz",
+                ".tar.zst", ".tzst"}
 
 
 def _noop(_msg: str) -> None:
@@ -139,7 +140,8 @@ def extract_to_dir(archive: Path, dest: Path) -> None:
             with py7zr.SevenZipFile(archive, "r") as zf:
                 zf.extractall(dest)
 
-    elif name_lower.endswith((".tar", ".tar.gz", ".tar.bz2", ".tar.xz", ".tgz")):
+    elif name_lower.endswith((".tar", ".tar.gz", ".tar.bz2", ".tar.xz", ".tgz",
+                              ".tar.zst", ".tzst")):
         with tarfile.open(archive, "r:*") as tf:
             tf.extractall(dest, filter="data")
     else:

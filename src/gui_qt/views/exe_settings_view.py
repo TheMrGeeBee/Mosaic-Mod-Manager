@@ -39,7 +39,7 @@ class ExeSettingsView(QWidget):
     _install_java_done = Signal()
 
     def __init__(self, game, exe_path: Path, on_close, log_fn=None,
-                 is_auto: bool = False):
+                 is_auto: bool = False, is_shared: bool = False):
         super().__init__()
         self._game = game
         self._exe_path = exe_path
@@ -48,6 +48,9 @@ class ExeSettingsView(QWidget):
         # Auto-detected framework entry (installed script extender): not in
         # custom_exes.json, so "Remove" becomes "Hide from dropdown".
         self._is_auto = is_auto
+        # Shared tool (shared_custom_exes.json): available in every game, so
+        # "Remove" must drop it from the shared list, not this game's own.
+        self._is_shared = is_shared
 
         from Utils.wine_proton.steam_finder import list_installed_proton
         self._proton_versions = (
@@ -114,6 +117,11 @@ class ExeSettingsView(QWidget):
 
         self._is_jar = exe_launch.is_jar(self._exe_path)
 
+        if self._is_shared:
+            bv.addWidget(hint(self.tr(
+                "This tool is shared — available in every game, not just "
+                "this one.")))
+
         # -- Java runtime (.jar only) ----------------------------------------
         if self._is_jar:
             sec_jar, sj = section(self.tr("Java runtime"))
@@ -144,6 +152,29 @@ class ExeSettingsView(QWidget):
             jr_row.addStretch(1)
             sj.addLayout(jr_row)
             bv.addWidget(sec_jar)
+
+        # -- Execution mode (non-jar only) ------------------------------------
+        if not self._is_jar:
+            sec_mode, sm = section(self.tr("Execution mode"))
+            sm.addWidget(hint(self.tr(
+                "Auto detects a native Linux binary (no .exe/.bat extension) vs "
+                "a Windows program, and runs it accordingly. Override this if "
+                "the exe doesn't follow that convention.")))
+            self._exec_mode_combo = QComboBox()
+            self._exec_mode_combo.addItem(self.tr("Auto-detect"),
+                                          exe_launch.EXEC_MODE_AUTO)
+            self._exec_mode_combo.addItem(self.tr("Native Linux binary"),
+                                          exe_launch.EXEC_MODE_NATIVE)
+            self._exec_mode_combo.addItem(self.tr("Windows (via Proton)"),
+                                          exe_launch.EXEC_MODE_PROTON)
+            no_wheel(self._exec_mode_combo)
+            self._exec_mode_combo.currentIndexChanged.connect(
+                self._on_exec_mode_changed)
+            mode_row = QHBoxLayout(); mode_row.setSpacing(8)
+            mode_row.addWidget(self._exec_mode_combo)
+            mode_row.addStretch(1)
+            sm.addLayout(mode_row)
+            bv.addWidget(sec_mode)
 
         # -- Launch arguments ------------------------------------------------
         sec_args, sa = section(self.tr("Launch arguments"))
@@ -231,8 +262,13 @@ class ExeSettingsView(QWidget):
         # -- Bottom bar ---------------------------------------------------------
         foot = QWidget(); foot.setObjectName("HeaderBar")
         fb = QHBoxLayout(foot); fb.setContentsMargins(12, 8, 12, 8); fb.setSpacing(6)
-        remove = QPushButton(self.tr("Hide from dropdown") if self._is_auto
-                             else self.tr("Remove EXE"))
+        if self._is_auto:
+            remove_label = self.tr("Hide from dropdown")
+        elif self._is_shared:
+            remove_label = self.tr("Remove shared tool")
+        else:
+            remove_label = self.tr("Remove EXE")
+        remove = QPushButton(remove_label)
         remove.setCursor(Qt.PointingHandCursor)
         remove.setStyleSheet(button_qss("BTN_DANGER", padding="6px 14px"))
         remove.clicked.connect(self._on_remove)
@@ -264,6 +300,25 @@ class ExeSettingsView(QWidget):
             idx = self._jar_runtime_combo.findData(runtime)
             if idx >= 0:
                 self._jar_runtime_combo.setCurrentIndex(idx)
+        else:
+            mode = exe_launch.load_exec_mode(game, name)
+            idx = self._exec_mode_combo.findData(mode)
+            if idx >= 0:
+                self._exec_mode_combo.setCurrentIndex(idx)
+            self._update_proton_combo_enabled()
+
+    def _on_exec_mode_changed(self, _idx=None):
+        self._update_proton_combo_enabled()
+
+    def _update_proton_combo_enabled(self):
+        """Grey out just the Proton version dropdown (not the prefix-tool
+        buttons, which are useful independent of this exe's own launch mode)
+        when Execution mode is explicitly Native — Proton version is
+        irrelevant then."""
+        if hasattr(self, "_exec_mode_combo"):
+            is_native = (self._exec_mode_combo.currentData()
+                        == exe_launch.EXEC_MODE_NATIVE)
+            self._proton_combo.setEnabled(not is_native)
 
     def _best_proton_match(self, name: str) -> str:
         """Exact match first, then prefix match ("Proton 10" → "Proton 10.0")."""
@@ -290,6 +345,9 @@ class ExeSettingsView(QWidget):
         if self._is_jar:
             exe_launch.save_jar_runtime(
                 game, name, self._jar_runtime_combo.currentData())
+        else:
+            exe_launch.save_exec_mode(
+                game, name, self._exec_mode_combo.currentData())
         self._log(f"[exe] settings saved for {name}")
         self._on_close(False)
 
@@ -300,6 +358,9 @@ class ExeSettingsView(QWidget):
             exe_launch.hide_auto_exe(self._game, self._exe_path.name)
             exe_launch.remove_custom_exe(self._game, self._exe_path)
             self._log(f"[exe] hid {self._exe_path.name} from the exe dropdown")
+        elif self._is_shared:
+            exe_launch.remove_shared_exe(self._exe_path)
+            self._log(f"[exe] removed {self._exe_path.name} from the shared tool list")
         else:
             exe_launch.remove_custom_exe(self._game, self._exe_path)
             self._log(f"[exe] removed {self._exe_path.name} from the exe list")

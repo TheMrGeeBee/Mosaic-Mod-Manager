@@ -16,6 +16,7 @@ consolidates all small per-profile JSON/text state files:
   ignored_missing_requirements list[str]
   custom_exes                 list[str]  (per-profile Run-menu exe paths)
   mod_locks                   dict[str, bool]  (mod_name -> reorder-locked)
+  mod_custom_urls             dict[str, str]  (mod_name -> url)
 
 Migration: when profile_state.json is missing but legacy per-key files exist,
 read_profile_state() merges them into a new profile_state.json and deletes those
@@ -319,6 +320,21 @@ def read_mod_notes(profile_dir: Path, state: dict | None = None) -> dict[str, st
     return out
 
 
+def read_mod_custom_urls(profile_dir: Path, state: dict | None = None) -> dict[str, str]:
+    """Read mod_custom_urls. Returns {} if absent or corrupt.
+
+    Format: {mod_name: url}. Empty/whitespace-only entries are dropped on read.
+    """
+    raw = _read_key(profile_dir, state, "mod_custom_urls")
+    if not isinstance(raw, dict):
+        return {}
+    out: dict[str, str] = {}
+    for k, v in raw.items():
+        if isinstance(k, str) and isinstance(v, str) and v.strip():
+            out[k] = v
+    return out
+
+
 def read_profile_settings(profile_dir: Path, state: dict | None = None) -> dict:
     """Read profile_settings (flags and metadata). Returns {} if absent or corrupt.
 
@@ -445,6 +461,18 @@ def write_mod_notes(profile_dir: Path, value: dict[str, str]) -> None:
     else:
         state = read_profile_state(profile_dir)
         state.pop("mod_notes", None)
+        write_profile_state(profile_dir, state)
+
+
+def write_mod_custom_urls(profile_dir: Path, value: dict[str, str]) -> None:
+    """Persist mod_custom_urls to profile_state.json. Empty/whitespace-only entries are dropped."""
+    cleaned = {k: v for k, v in value.items()
+               if isinstance(k, str) and isinstance(v, str) and v.strip()}
+    if cleaned:
+        _update_key(profile_dir, "mod_custom_urls", cleaned)
+    else:
+        state = read_profile_state(profile_dir)
+        state.pop("mod_custom_urls", None)
         write_profile_state(profile_dir, state)
 
 

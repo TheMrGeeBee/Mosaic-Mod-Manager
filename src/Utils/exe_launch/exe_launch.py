@@ -43,17 +43,29 @@ _LAUNCH_MODE_FILE = "exe_launch_mode.json"
 _CUSTOM_EXES_FILE = "custom_exes.json"
 
 EXE_PICKER_FILTERS = [
-    ("Executables (*.exe, *.bat, *.jar)", ["*.exe", "*.bat", "*.jar"]),
     ("All files", ["*"]),
+    ("Executables (*.exe, *.bat, *.jar)", ["*.exe", "*.bat", "*.jar"]),
 ]
 
 # Java-runtime modes for .jar entries, persisted per-exe in exe_launch_mode.json.
 JAR_RUNTIME_HOST = "host"      # run with the host's `java` (no Proton) — default
 JAR_RUNTIME_PROTON = "proton"  # run a Windows Java inside the game's Proton prefix
 
+# Execution-mode override for non-jar custom exes, persisted per-exe in
+# exe_launch_mode.json (mirrors JAR_RUNTIME_*).
+EXEC_MODE_AUTO = "auto"      # suffix-based auto-detect (default)
+EXEC_MODE_NATIVE = "native"  # always run directly on the host, no Proton
+EXEC_MODE_PROTON = "proton"  # always route through Proton
+
 
 def is_jar(path) -> bool:
     return str(path).lower().endswith(".jar")
+
+
+def _is_native_binary(exe_path: Path) -> bool:
+    """True if *exe_path* isn't a Windows .exe/.bat and should run directly on
+    the host instead of through Proton."""
+    return exe_path.suffix.lower() not in (".exe", ".bat")
 
 
 def _noop_log(_msg: str) -> None:
@@ -133,6 +145,44 @@ def remove_custom_exe(game, path: Path) -> None:
     remaining = [p for p in existing if p != path]
     if len(remaining) != len(existing):
         save_custom_exes(game, remaining)
+
+
+def load_shared_exes() -> list[Path]:
+    """Custom exes shared across every game/profile (entries that still
+    exist), not tied to one active profile. Stored in
+    shared_custom_exes.json."""
+    from Utils.config_paths import get_shared_custom_exes_path
+    path = get_shared_custom_exes_path()
+    if not path.is_file():
+        return []
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return []
+    if not isinstance(data, list):
+        return []
+    return [Path(s) for s in data if Path(s).is_file()]
+
+
+def save_shared_exes(paths: list[Path]) -> None:
+    from Utils.config_paths import get_shared_custom_exes_path
+    path = get_shared_custom_exes_path()
+    path.write_text(json.dumps([str(p) for p in paths], indent=2),
+                    encoding="utf-8")
+
+
+def add_shared_exe(path: Path) -> None:
+    existing = load_shared_exes()
+    if path not in existing:
+        existing.append(path)
+        save_shared_exes(existing)
+
+
+def remove_shared_exe(path: Path) -> None:
+    existing = load_shared_exes()
+    remaining = [p for p in existing if p != path]
+    if len(remaining) != len(existing):
+        save_shared_exes(remaining)
 
 
 # Launchable file types picked up by the staging scan.
@@ -412,6 +462,19 @@ def save_jar_runtime(game, exe_name: str, runtime: str) -> None:
     _write_launch_mode_key(
         game, f"__jar_runtime_{exe_name}",
         runtime if runtime == JAR_RUNTIME_PROTON else None)
+
+
+def load_exec_mode(game, exe_name: str) -> str:
+    """Saved execution mode for a non-jar custom exe: 'auto' (default),
+    'native', or 'proton'."""
+    val = _read_launch_mode_data(game).get(f"__exec_mode_{exe_name}")
+    return val if val in (EXEC_MODE_NATIVE, EXEC_MODE_PROTON) else EXEC_MODE_AUTO
+
+
+def save_exec_mode(game, exe_name: str, mode: str) -> None:
+    _write_launch_mode_key(
+        game, f"__exec_mode_{exe_name}",
+        mode if mode in (EXEC_MODE_NATIVE, EXEC_MODE_PROTON) else None)
 
 
 # ---------------------------------------------------------------------------
@@ -1803,7 +1866,7 @@ def launch_game(game, log_fn=_noop_log) -> None:
 
     # Native Linux binary (no .exe/.bat suffix): run directly instead of
     # routing through Proton, which would fail on an ELF executable.
-    if exe_path.suffix.lower() not in (".exe", ".bat"):
+    if _is_native_binary(exe_path):
         log_fn(f"Play: launching native binary: {exe_path}")
         spawn_process_watched([str(exe_path)], env=host_env(),
                               cwd=exe_path.parent,
@@ -2054,6 +2117,41 @@ def launch_exe_via_proton(exe_path: Path, game, log_fn=_noop_log) -> None:
 
     spawn_process_watched(final_cmd, env=env, cwd=exe_path.parent,
                           label=f"Run EXE {exe_path.name}", log_fn=log_fn)
+
+
+def launch_custom_exe(exe_path: Path, game, log_fn=_noop_log) -> None:
+    """Launch a non-jar custom tool exe, honouring its saved execution-mode
+    override (auto / native / proton). Call from a worker thread.
+
+    'auto' uses the same suffix-based detection as launch_game (a bare/no-
+    extension Linux binary runs natively; .exe/.bat go through Proton).
+    'native' and 'proton' force one path regardless of suffix, for exes that
+    don't follow that convention (e.g. an extensionless native tool the user
+    renamed, or a .exe that's actually a wrapper script).
+    """
+    mode = load_exec_mode(game, exe_path.name)
+    if mode == EXEC_MODE_NATIVE or (mode == EXEC_MODE_AUTO and _is_native_binary(exe_path)):
+        from Utils.xdg import host_env
+        try:
+            extra_args = shlex.split(load_exe_args(game, exe_path.name))
+        except ValueError as e:
+            log_fn(f"Run EXE: invalid arguments — {e}")
+            return
+        env = host_env()
+        base_cmd = [str(exe_path)] + extra_args
+        launch_opts = load_launch_options(game, exe_path.name)
+        if launch_opts:
+            env_updates, final_cmd = parse_launch_options(launch_opts, base_cmd)
+            if env_updates:
+                env.update(env_updates)
+        else:
+            final_cmd = base_cmd
+        log_fn(f"Run EXE: launching native binary: {exe_path}")
+        spawn_process_watched(final_cmd, env=env, cwd=exe_path.parent,
+                              label=f"Run EXE (native) {exe_path.name}",
+                              log_fn=log_fn)
+        return
+    launch_exe_via_proton(exe_path, game, log_fn)
 
 
 def resolve_jar_prefix_env(jar_path: Path, game, log_fn=_noop_log):

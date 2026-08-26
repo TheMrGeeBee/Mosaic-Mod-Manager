@@ -74,6 +74,7 @@ class SkyrimVR(Fallout_3):
                 dialog_class_path="wizards.plugin_audit.PluginAuditWizard",
                 extra={"_full_width_overlay": True},
             ),
+            *self._bodyslide_linux_wizard_tools(),
         ]
 
     @property

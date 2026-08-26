@@ -369,12 +369,6 @@ class ModListView(QTreeView):
 
     def _set_column_visible(self, col: int, visible: bool):
         self.setColumnHidden(col, not visible)
-        if col == COL_LOCKED:
-            # A deliberate toggle (either way) from the show/hide menu is now
-            # the user's real preference — it should persist normally and
-            # never get silently reverted by load_mod_lock_state()'s auto-show
-            # nudge on a later profile switch.
-            self._locked_col_auto_shown = False
         if visible:
             # Qt collapses a hidden section's width to 0; restore a sensible
             # width so the re-shown column is actually visible (not a 0-px
@@ -429,23 +423,10 @@ class ModListView(QTreeView):
         model. Called by the window after a modlist reload (profile switch,
         mod install/remove, refresh, ...).
 
-        The Locked column is opt-in (hidden by default — see _FIRST_RUN_HIDDEN)
-        so it doesn't clutter the view for the vast majority of profiles that
-        never use it. But an IMPORTED/shared profile may carry real locks the
-        recipient doesn't know about and has no reason to have pre-enabled the
-        column for — so the FIRST time this profile is seen with any mod
-        actually locked, force the column visible regardless of the persisted/
-        default column state, so the lock (and why those mods won't reorder)
-        is discoverable.
-
-        This only fires once per profile ACTIVATION, not on every reload —
-        reloads (installs, refreshes, ...) are far more frequent than profile
-        switches, and re-forcing the column open on each one would make it
-        impossible to hide again while viewing a locked profile. If the user
-        switches away and back to the same locked profile, it's nudged open
-        again; if they switch to a different profile with no locks, an
-        auto-shown column reverts to hidden (a genuinely user-shown column,
-        i.e. it was already visible before we nudged it, never gets touched)."""
+        The Locked column's visibility is never touched here — it is opt-in
+        (hidden by default, see _FIRST_RUN_HIDDEN) and only ever changes via
+        the user's own "Show / Hide columns" menu toggle
+        (_set_column_visible)."""
         locks = {}
         if self.profile_dir is not None:
             try:
@@ -454,22 +435,6 @@ class ModListView(QTreeView):
             except Exception:
                 pass
         self.model().set_mod_locks(locks)
-
-        changed_profile = getattr(self, "_locked_col_last_profile", object()) != self.profile_dir
-        self._locked_col_last_profile = self.profile_dir
-        if not changed_profile:
-            return
-        if any(locks.values()):
-            if self.isColumnHidden(COL_LOCKED):
-                self.setColumnHidden(COL_LOCKED, False)
-                if self.columnWidth(COL_LOCKED) <= 0:
-                    self.header().resizeSection(COL_LOCKED, COL_DEFAULTS.get(COL_LOCKED, 60))
-                self._fit_name_to_width()
-                self._locked_col_auto_shown = True
-        elif getattr(self, "_locked_col_auto_shown", False):
-            self.setColumnHidden(COL_LOCKED, True)
-            self._fit_name_to_width()
-            self._locked_col_auto_shown = False
 
     def _apply_separator_spanning(self):
         """Separator rows span all columns so the band + centred name + the

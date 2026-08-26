@@ -51,6 +51,7 @@ class Fallout_4VR(Fallout_3):
                 nexus_url="https://www.nexusmods.com/fallout4/mods/2737?tab=files",
                 nexus_file_id=312782,
             ),
+            *self._bodyslide_linux_wizard_tools(),
         ]
 
     @property

@@ -290,6 +290,7 @@ class Fallout_3(BaseGame):
                 nexus_url="https://www.nexusmods.com/fallout3/mods/637?tab=files",
                 nexus_file_id=1000026408,
             ),
+            *self._bodyslide_linux_wizard_tools(),
         ]
 
     # The latest official xEdit is now released through the xEdit Discord (not
@@ -417,6 +418,31 @@ class Fallout_3(BaseGame):
             )
         )
         return tools
+
+    @staticmethod
+    def _bodyslide_linux_wizard_tools() -> list[WizardTool]:
+        """"Run BodySlide"/"Run Outfit Studio" using the shared native-Linux
+        build (Utils.bodyslide_linux) — self-installing, so unlike the
+        Windows-via-Proton entries these aren't gated on the exe already
+        being staged as a mod."""
+        return [
+            WizardTool(
+                id="run_bodyslide_linux",
+                label="Run BodySlide (Native Linux)",
+                description=(
+                    "Install/update the shared native BodySlide build, "
+                    "deploy mods, and run it — no Proton prefix needed."),
+                dialog_class_path="wizards.bodyslide_linux.BodySlideLinuxWizard",
+            ),
+            WizardTool(
+                id="run_outfitstudio_linux",
+                label="Run Outfit Studio (Native Linux)",
+                description=(
+                    "Install/update the shared native Outfit Studio build, "
+                    "deploy mods, and run it — no Proton prefix needed."),
+                dialog_class_path="wizards.bodyslide_linux.OutfitStudioLinuxWizard",
+            ),
+        ]
 
     # -----------------------------------------------------------------------
     # Paths

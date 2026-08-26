@@ -112,6 +112,7 @@ class Fallout_NV(Fallout_3):
                 nexus_url="https://www.nexusmods.com/newvegas/mods/34703?tab=files",
                 nexus_file_id=1000128948,
             ),
+            *self._bodyslide_linux_wizard_tools(),
         ]
 
     @property

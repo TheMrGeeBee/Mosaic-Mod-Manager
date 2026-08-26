@@ -267,6 +267,17 @@ def get_dotnet_cache_dir() -> Path:
     return path
 
 
+def get_bodyslide_linux_dir() -> Path:
+    """Return the shared install directory for the native-Linux BodySlide/
+    Outfit Studio build (one install, shared across every game/profile).
+
+    Result: ~/.config/MosaicModManager/bodyslide-linux/
+    """
+    path = get_config_dir() / "bodyslide-linux"
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
 def get_custom_game_images_dir() -> Path:
     """Return the directory where downloaded custom game banner images are cached.
 
@@ -438,3 +449,14 @@ def get_download_locations_path() -> Path:
     Result: ~/.config/MosaicModManager/download_locations.json
     """
     return get_config_dir() / "download_locations.json"
+
+
+def get_shared_custom_exes_path() -> Path:
+    """Return the path to the shared custom-exe list config file.
+
+    Custom tools added here are available from every game/profile, unlike
+    the per-profile custom_exes list. Stored as JSON array of path strings.
+
+    Result: ~/.config/MosaicModManager/shared_custom_exes.json
+    """
+    return get_config_dir() / "shared_custom_exes.json"

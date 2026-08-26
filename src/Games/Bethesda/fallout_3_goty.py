@@ -60,4 +60,5 @@ class Fallout3_GOTY(Fallout_3):
                 nexus_url="https://www.nexusmods.com/fallout3/mods/637?tab=files",
                 nexus_file_id=1000026408,
             ),
+            *self._bodyslide_linux_wizard_tools(),
         ]

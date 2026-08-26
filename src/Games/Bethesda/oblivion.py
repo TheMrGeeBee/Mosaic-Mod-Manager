@@ -56,6 +56,7 @@ class Oblivion(Fallout_3):
                 nexus_url="https://www.nexusmods.com/oblivion/mods/11536?tab=files",
                 nexus_file_id=1000038294,
             ),
+            *self._bodyslide_linux_wizard_tools(),
         ]
 
     @property

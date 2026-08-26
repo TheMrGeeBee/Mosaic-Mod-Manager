@@ -417,6 +417,11 @@ def _build_mod_menu(view, model, row, entry, sel_mods, multi, act, stub, divider
     _has_note = bool(_mod_note(view, name))
     act(_mt("Edit note") if _has_note else _mt("Add note"),
         lambda: _open_note_editor(view, [name]))
+    _custom_url = _mod_custom_url(view, name)
+    if _custom_url:
+        act(_mt("Open custom URL"), lambda: _open_custom_url(view, name))
+    act(_mt("Edit custom URL…") if _custom_url else _mt("Add custom URL…"),
+        lambda: _open_custom_url_editor(view, name))
     if _has_conflict(model, row):
         act(_mt("Show Conflicts"), lambda: _show_conflicts(view, name))
     if _has_missing_reqs(view, name):
@@ -1090,6 +1095,74 @@ def _remove_notes(view, names):
             cb(list(names))
 
 
+# ---- Custom URL --------------------------------------------------------------
+def _profile_custom_urls(view):
+    """(profile_dir, {name: url}) for the active profile, or (None, {})."""
+    pdir = getattr(view, "profile_dir", None)
+    if pdir is None:
+        return None, {}
+    try:
+        from Utils.profile.profile_state import read_mod_custom_urls
+        return pdir, read_mod_custom_urls(pdir)
+    except Exception:
+        return pdir, {}
+
+
+def _mod_custom_url(view, name) -> str:
+    _pdir, urls = _profile_custom_urls(view)
+    return urls.get(name, "")
+
+
+def _normalize_custom_url(text: str) -> str:
+    """"" for blank input (treated as "remove"); otherwise prefixes a bare
+    host/path with https:// so "Open custom URL" always gets an openable
+    absolute URL."""
+    text = (text or "").strip()
+    if not text:
+        return ""
+    if "://" not in text:
+        text = f"https://{text}"
+    return text
+
+
+def _open_custom_url_editor(view, name):
+    """Single-mod only — a shared URL across many mods doesn't make sense the
+    way a shared/appended note does."""
+    pdir, urls = _profile_custom_urls(view)
+    if pdir is None or not name:
+        return
+    from Utils.profile.profile_state import write_mod_custom_urls
+
+    def _on_done(text):
+        if text is None:   # cancelled
+            return
+        cur = dict(urls)
+        normalized = _normalize_custom_url(text)
+        if normalized:
+            cur[name] = normalized
+        else:
+            cur.pop(name, None)
+        try:
+            write_mod_custom_urls(pdir, cur)
+        except Exception:
+            pass
+
+    TextInputOverlay.show_over(
+        view, name, _mt("Custom URL (leave blank to remove):"), _on_done,
+        initial=urls.get(name, ""), ok_label=_mt("Save"))
+
+
+def _open_custom_url(view, name):
+    url = _mod_custom_url(view, name)
+    if not url:
+        return
+    try:
+        from Utils.xdg import open_url
+        open_url(url)
+    except Exception:
+        pass
+
+
 def _open_on_nexus_multi(view, names):
     """Open each selected mod's Nexus page (skips mods without one)."""
     try:
@@ -1488,6 +1561,7 @@ def _remove_mods_multi(view, model, mod_rows):
 _TR_MARKERS = (
     QT_TRANSLATE_NOOP("ModListMenu", "Abstain from Endorsement"),
     QT_TRANSLATE_NOOP("ModListMenu", "Abstain selected ({0})"),
+    QT_TRANSLATE_NOOP("ModListMenu", "Add custom URL…"),
     QT_TRANSLATE_NOOP("ModListMenu", "Add note"),
     QT_TRANSLATE_NOOP("ModListMenu", "Add note ({0})"),
     QT_TRANSLATE_NOOP("ModListMenu", "Add"),
@@ -1503,12 +1577,14 @@ _TR_MARKERS = (
     QT_TRANSLATE_NOOP("ModListMenu", "Copy to profile ({0})"),
     QT_TRANSLATE_NOOP("ModListMenu", "Could not create the mod folder:\n{0}"),
     QT_TRANSLATE_NOOP("ModListMenu", "Create"),
+    QT_TRANSLATE_NOOP("ModListMenu", "Custom URL (leave blank to remove):"),
     QT_TRANSLATE_NOOP("ModListMenu", "Create an empty mod below"),
     QT_TRANSLATE_NOOP("ModListMenu", "Create empty mod"),
     QT_TRANSLATE_NOOP("ModListMenu", "Create empty mod below"),
     QT_TRANSLATE_NOOP("ModListMenu", "Disable Root Folder install"),
     QT_TRANSLATE_NOOP("ModListMenu", "Disable Root Folder install ({0})"),
     QT_TRANSLATE_NOOP("ModListMenu", "Disable selected ({0})"),
+    QT_TRANSLATE_NOOP("ModListMenu", "Edit custom URL…"),
     QT_TRANSLATE_NOOP("ModListMenu", "Edit note"),
     QT_TRANSLATE_NOOP("ModListMenu", "Enable Root Folder install"),
     QT_TRANSLATE_NOOP("ModListMenu", "Enable Root Folder install ({0})"),
@@ -1533,6 +1609,7 @@ _TR_MARKERS = (
     QT_TRANSLATE_NOOP("ModListMenu", "Move to separator ({0})"),
     QT_TRANSLATE_NOOP("ModListMenu", "Nexus Actions"),
     QT_TRANSLATE_NOOP("ModListMenu", "New name:"),
+    QT_TRANSLATE_NOOP("ModListMenu", "Open custom URL"),
     QT_TRANSLATE_NOOP("ModListMenu", "Open folder"),
     QT_TRANSLATE_NOOP("ModListMenu", "Open on Nexus"),
     QT_TRANSLATE_NOOP("ModListMenu", "Open on Nexus ({0})"),
@@ -1552,6 +1629,7 @@ _TR_MARKERS = (
     QT_TRANSLATE_NOOP("ModListMenu", "Rename"),
     QT_TRANSLATE_NOOP("ModListMenu", "Rename mod"),
     QT_TRANSLATE_NOOP("ModListMenu", "Rename separator"),
+    QT_TRANSLATE_NOOP("ModListMenu", "Save"),
     QT_TRANSLATE_NOOP("ModListMenu", "Separator name:"),
     QT_TRANSLATE_NOOP("ModListMenu", "Separator settings…"),
     QT_TRANSLATE_NOOP("ModListMenu", "Set priority"),

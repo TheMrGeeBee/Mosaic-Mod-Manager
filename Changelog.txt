@@ -1,3 +1,15 @@
+- v1.0.4
+### Additions
+- Added a per-mod custom URL: right-click a mod → "Add custom URL…" to attach a reference link (wiki page, Discord thread, patch notes, etc.), and "Open custom URL" to open it. A host pasted without a scheme (e.g. "example.com/page") is normalised to https:// automatically
+- Added "shared" custom tools: "+ Add shared tool (all games)…" in the Run/tools dropdown adds a tool once and makes it available from every game, instead of needing to be re-added under each game/profile separately
+- Added native Linux support for custom tools: a tool with no .exe/.bat extension now runs directly on the host instead of being forced through Proton. Each tool's settings gained an "Execution mode" option (Auto-detect / Native Linux binary / Windows via Proton) for the rare tool that doesn't follow that naming convention
+- Added native Linux BodySlide and Outfit Studio support as new Wizard Tools ("Run BodySlide (Native Linux)" / "Run Outfit Studio (Native Linux)") for every Bethesda-family game — no Proton/Wine prefix needed. Installs and keeps a shared, portable build up to date automatically, and always targets whichever game is currently active, so switching games never leaves it pointed at the wrong Data folder
+### Bug Fixes
+- Fixed "+ Add custom EXE…"'s file picker hiding native Linux binaries (files with no extension) by default — it now shows all files instead of just *.exe/*.bat/*.jar, so such tools no longer need the filter switched manually to be found
+- Fixed the mod list's "Locked" column auto-showing/hiding itself when switching profiles; it now only ever changes visibility through your own "Show / Hide columns" toggle
+
+---
+
 - v1.0.3
 ### Additions
 - Added a "Fix NXM Handler…" button to Settings (General) to re-register the nxm:// protocol handler on demand, if Nexus's "Download with Manager" ever opens the wrong app or does nothing
