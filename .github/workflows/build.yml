@@ -394,7 +394,12 @@ jobs:
           manifest-path: flatpak/io.github.TheMrGeeBee.MosaicModManager.yml
           branch: ${{ steps.branch.outputs.name }}
           build-bundle: false
-          repo-dir: repo
+          # No repo-dir input anymore (removed upstream at some point since
+          # this workflow was written — passing it now hard-fails the step
+          # with "Unexpected input(s) 'repo-dir'"). Not needed anyway: the
+          # action hardcodes its local repo name to 'repo' internally
+          # (this.localRepoName = 'repo' in its bundled dist/index.js),
+          # which already matches what the steps below expect.
           cache-key: flatpak-builder-${{ github.sha }}
           upload-artifact: false
           # Empty when secrets aren't inherited → the action skips signing.
