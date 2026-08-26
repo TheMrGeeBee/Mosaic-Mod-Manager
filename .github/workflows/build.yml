@@ -42,8 +42,16 @@ jobs:
 
       - name: Install build dependencies
         run: |
-          pacman -Syy --noconfirm
-          pacman -S --noconfirm \
+          # -Syu (full upgrade), not -Sy + targeted -S: this container image
+          # is rolling-release Arch, so installing just a few packages
+          # without upgrading the rest is an unsupported partial upgrade —
+          # it can pull in a python built against a newer glibc ABI than the
+          # container's own libc.so, breaking every C-extension import in
+          # the interpreter (fails with "GLIBC_2.xx not found") before this
+          # job ever gets to building libloot itself.
+          pacman-key --init
+          pacman -Syy --noconfirm archlinux-keyring
+          pacman -Syu --noconfirm \
               python python-pip base-devel rust git unzip
 
       - name: Resolve libloot revision and Python ABI
