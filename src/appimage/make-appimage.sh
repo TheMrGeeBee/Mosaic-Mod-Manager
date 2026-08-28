@@ -265,6 +265,10 @@ for _sz in 16 32 64 128; do
     install -Dm644 "${ASSETS_DIR}/mod-manager-${_sz}.png" \
         "$APPDIR/usr/share/icons/hicolor/${_sz}x${_sz}/apps/mod-manager.png"
 done
+# SVG (scalable) — same asset the Flatpak manifest installs, referenced
+# from its actual location under src/icons/ rather than duplicated here.
+install -Dm644 "${PROJECT_DIR}/icons/mosaic_mod_manager.svg" \
+    "$APPDIR/usr/share/icons/hicolor/scalable/apps/mod-manager.svg"
 
 # ── AppStream metainfo for catalog/discovery tooling ─────────────────
 # Not read by quick-sharun/appimagetool itself, but AppImageHub-style

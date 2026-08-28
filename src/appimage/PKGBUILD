@@ -158,6 +158,8 @@ EOF
         install -Dm644 "$_src/appimage/mod-manager-${_sz}.png" \
             "$pkgdir/usr/share/icons/hicolor/${_sz}x${_sz}/apps/mod-manager.png"
     done
+    install -Dm644 "$_src/icons/mosaic_mod_manager.svg" \
+        "$pkgdir/usr/share/icons/hicolor/scalable/apps/mod-manager.svg"
 
     # Bundled binaries — these get bundled into the AppImage as if they were
     # any other system binary (quick-sharun's /usr → "$APPDIR" rewrite).
