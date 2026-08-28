@@ -7,6 +7,10 @@
 <h3 align="center">A mod manager for Linux.</h3>
 
 <p align="center">
+    New here? See the <a href="FAQ.md">FAQ</a> for how this project relates to Amethyst Mod Manager.
+</p>
+
+<p align="center">
     <img width="800" src="src/icons/ui.png" alt="ui">
 </p>
 
