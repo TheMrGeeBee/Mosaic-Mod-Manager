@@ -5,15 +5,15 @@
 A Mo2-style mod manager for Linux, focused on making mod management for
 Baldur's Gate 3, Bethesda titles, and dozens of other games work well
 natively on Linux — no manual Wine/Proton fiddling required for most
-workflows. See the [Key Features](README.md#key-features) section of the
-README for the full list.
+workflows. See the [Key Features](https://github.com/TheMrGeeBee/Mosaic-Mod-Manager/blob/main/README.md#key-features)
+section of the README for the full list.
 
 ## Is this related to Amethyst Mod Manager?
 
 Yes. Mosaic Mod Manager started as a fork of
 [ChrisDKN/Amethyst-Mod-Manager](https://github.com/ChrisDKN/Amethyst-Mod-Manager),
 licensed under GPL-3.0. Full credit and license provenance are documented
-in [ATTRIBUTION.md](ATTRIBUTION.md).
+in [ATTRIBUTION.md](https://github.com/TheMrGeeBee/Mosaic-Mod-Manager/blob/main/ATTRIBUTION.md).
 
 ## Why the rename?
 
@@ -52,7 +52,8 @@ just renumbered to give the independent project a clean starting point.
 ## What's new since the fork?
 
 A condensed list of highlights since `v1.0.0` — see
-[Changelog.txt](Changelog.txt) for the complete, unabridged history:
+[Changelog.txt](https://github.com/TheMrGeeBee/Mosaic-Mod-Manager/blob/main/Changelog.txt)
+for the complete, unabridged history:
 
 - Per-mod reorder locking, so locked mods can't be accidentally dragged,
   sorted, or removed
