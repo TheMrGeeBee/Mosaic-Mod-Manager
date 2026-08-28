@@ -1,9 +1,0 @@
-[Desktop Entry]
-Type=Application
-Name=Mosaic Mod Manager
-Comment=Linux Mod Manager
-Exec=mosaic-mod-manager
-Icon=io.github.TheMrGeeBee.MosaicModManager
-Categories=Game;Utility;
-Terminal=false
-StartupWMClass=mosaic-mod-manager

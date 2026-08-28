@@ -266,6 +266,17 @@ for _sz in 16 32 64 128; do
         "$APPDIR/usr/share/icons/hicolor/${_sz}x${_sz}/apps/mod-manager.png"
 done
 
+# ── AppStream metainfo for catalog/discovery tooling ─────────────────
+# Not read by quick-sharun/appimagetool itself, but AppImageHub-style
+# catalogs and desktop integrators (AppImageLauncher, appimaged) validate
+# and use it if present. Same @VERSION@/@DATE@ stamping convention (VERSION
+# kept verbatim, "v" prefix and all, matching how the Flatpak manifest's
+# own metainfo build step stamps it) as flatpak/io.github.TheMrGeeBee.MosaicModManager.yml.
+install -Dm644 "${SCRIPT_DIR}/mod-manager.metainfo.xml" \
+    "$APPDIR/usr/share/metainfo/mod-manager.metainfo.xml"
+sed -i -e "s/@VERSION@/${VERSION}/" -e "s/@DATE@/$(date -u +%Y-%m-%d)/" \
+    "$APPDIR/usr/share/metainfo/mod-manager.metainfo.xml"
+
 # ── Build the AppImage ───────────────────────────────────────────────
 echo "=== Building AppImage ==="
 # OUTNAME: appimagetool reads this from the env — naming the output here

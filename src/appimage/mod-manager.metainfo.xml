@@ -1,12 +1,19 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
-  AppStream metainfo — read by Discover / GNOME Software / Warehouse to show
-  the app's name, description, and (crucially) its version + release history.
+  AppStream metainfo embedded inside the AppImage itself (AppDir path
+  usr/share/metainfo/mod-manager.metainfo.xml), read by AppImage catalog/
+  discovery tooling and appstreamcli validate.
 
-  The releases list is STAMPED AT BUILD TIME from src/version.py by the
-  flatpak manifest (a sed step rewrites the @VERSION@ / @DATE@ tokens below),
-  so this file never needs hand-editing per release. Without a matching
-  release entry, package managers report "No version information found".
+  This is a separate file from flatpak/io.github.TheMrGeeBee.MosaicModManager.metainfo.xml
+  rather than a shared/reused one because <launchable> below points at
+  mod-manager.desktop (the AppImage build ships that plain-named desktop
+  file, not the reverse-DNS one the Flatpak build uses) — everything else
+  is intentionally kept identical. The <id> itself is still reverse-DNS
+  (appstreamcli's cid-desktopapp-is-not-rdns check requires it, even
+  though the desktop file it launches isn't).
+
+  Stamped at build time from src/version.py by make-appimage.sh (same
+  @VERSION@ / @DATE@ token convention as the Flatpak manifest's metainfo).
 -->
 <component type="desktop-application">
   <id>io.github.TheMrGeeBee.MosaicModManager</id>
@@ -25,7 +32,7 @@
     </p>
   </description>
 
-  <launchable type="desktop-id">io.github.TheMrGeeBee.MosaicModManager.desktop</launchable>
+  <launchable type="desktop-id">mod-manager.desktop</launchable>
 
   <categories>
     <category>Game</category>
@@ -41,11 +48,6 @@
     <keyword>Baldur's Gate 3</keyword>
   </keywords>
 
-  <!--
-    Pinned to a specific tag (not `main`) so the URL never silently breaks
-    or goes stale as the default branch moves — the screenshot doesn't need
-    to track every release, just remain a valid, working link.
-  -->
   <screenshots>
     <screenshot type="default">
       <image>https://raw.githubusercontent.com/TheMrGeeBee/Mosaic-Mod-Manager/v1.0.4/src/icons/ui.png</image>
