@@ -22,6 +22,14 @@ on:
         type: string
         default: ""
 
+# Every job here only checks out and builds/uploads artifacts — no pushes,
+# no PR comments, no release creation (that's release.yml's job). Callers
+# that need more (release.yml's contents: write, for the gh-pages push and
+# release creation its own jobs do) still get it — this only restricts what
+# build.yml itself can do, not what the caller grants for its own jobs.
+permissions:
+  contents: read
+
 jobs:
   # ────────────────────────────────────────────────────────────────────
   # libloot must be built once per target Python ABI:

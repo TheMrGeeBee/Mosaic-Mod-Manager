@@ -24,6 +24,11 @@ on:
           - stable
         default: beta
 
+# Just builds and uploads run artifacts for manual inspection — no pushes,
+# no release creation.
+permissions:
+  contents: read
+
 jobs:
   build:
     name: Build

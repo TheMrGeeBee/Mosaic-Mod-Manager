@@ -445,7 +445,13 @@ def _build_certs_reg_content(pem_bundles: list[Path]) -> tuple[str, frozenset]:
     parts = ["Windows Registry Editor Version 5.00"]
     for bundle in pem_bundles:
         for der in _read_pem_certs(bundle):
-            thumbprint = hashlib.sha1(der).hexdigest().upper()
+            # SHA-1 here isn't a security control we chose — it's the fixed
+            # "thumbprint" format Windows CryptoAPI/crypt32 uses as the
+            # registry key name under the Root cert store (and what Wine's
+            # crypt32 implementation reads back). A stronger hash would
+            # produce a key Windows/Wine never look up. Not sensitive-data
+            # hashing in the sense this rule targets.
+            thumbprint = hashlib.sha1(der).hexdigest().upper()  # codeql[py/weak-sensitive-data-hashing]
             if thumbprint in seen:
                 continue
             seen.add(thumbprint)
