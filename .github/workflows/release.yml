@@ -313,11 +313,14 @@ jobs:
           # Moves the previous Main-files version into the Files tab's
           # "Archived files" section — was a manual step before this.
           archive_existing_version: ${{ inputs.nexus_changelog_and_archive }}
-          # changelog requires mod_id; both populate this version's entry
-          # in the Files tab's per-slot "Version history" panel. Left empty
-          # when nexus_changelog_and_archive is off (e.g. a partial retry
-          # while NEXUS_MOD_ID is broken) — mod_id: '' is accepted by the
-          # action as "no changelog requested".
+          # changelog requires mod_id. AppImage and Flatpak share ONE Nexus
+          # mod page (mod_id 2139) — the changelog is a mod-level entry, not
+          # a per-file one, so only this step (not the Flatpak step below)
+          # attaches it; doing it from both steps would just post the same
+          # changelog text twice. Left empty when nexus_changelog_and_archive
+          # is off (e.g. a partial retry while NEXUS_MOD_ID is broken, or the
+          # changelog was already added by hand) — mod_id: '' is accepted by
+          # the action as "no changelog requested".
           mod_id: ${{ inputs.nexus_changelog_and_archive && vars.NEXUS_MOD_ID || '' }}
           changelog: ${{ inputs.nexus_changelog_and_archive && steps.changelog.outputs.text || '' }}
 
@@ -332,9 +335,16 @@ jobs:
           version: ${{ steps.nexus.outputs.version }}
           category: main
           update_mod_version: true
+          # Per-file archiving is correct here (this file slot's own
+          # previous version) — but NOT the changelog: that's attached once,
+          # normally by the AppImage step above (both files share one mod
+          # page). Falls back to attaching it here only when the AppImage
+          # step itself was skipped this run (e.g. a Flatpak-only retry that
+          # still wants the automated changelog), so a changelog is never
+          # silently dropped, but is still never posted twice.
           archive_existing_version: ${{ inputs.nexus_changelog_and_archive }}
-          mod_id: ${{ inputs.nexus_changelog_and_archive && vars.NEXUS_MOD_ID || '' }}
-          changelog: ${{ inputs.nexus_changelog_and_archive && steps.changelog.outputs.text || '' }}
+          mod_id: ${{ (inputs.nexus_changelog_and_archive && inputs.skip_appimage_nexus_upload) && vars.NEXUS_MOD_ID || '' }}
+          changelog: ${{ (inputs.nexus_changelog_and_archive && inputs.skip_appimage_nexus_upload) && steps.changelog.outputs.text || '' }}
 
   # ────────────────────────────────────────────────────────────────────
   # Publish the OSTree repo to GitHub Pages (the hosted Flatpak remote).
