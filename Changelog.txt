@@ -1,3 +1,18 @@
+- v1.0.5
+### Additions
+- Added a Nexus "Endorse" button next to the GitHub link at the bottom of the window, for endorsing Mosaic Mod Manager's own Nexus Mods page
+- Added mod.io login (Wizard ▸ mod.io API Key ▸ "Log in with email") so mod.io mods can be Liked/Unliked directly from the mod list's right-click menu, mirroring the existing Nexus Endorse feature. Like/Unlike state syncs both ways with mod.io whenever you run Check for Updates
+- Added a "Backup now…" action to the profile dropdown menu — a one-step, timestamped profile backup with an optional note, lighter than a full Export
+- Added a configurable limit for automated profile backups (Settings ▸ Profile Backups, default 20, 0 = unlimited) and a "Purge" button in the backup manager to apply a lowered limit immediately instead of waiting for the next deploy
+### Changes
+- Moved the profile backup manager ("Restore backup", renamed "Backups…") out of the mod list's button row and into the profile dropdown menu, next to the new "Backup now…"
+### Bug Fixes
+- Fixed several right-click mod actions (Nexus Endorse, Track, and Change Version; mod.io Change Version) occasionally failing to find a mod's data — certain background operations (e.g. restoring a profile backup) could leave Mosaic pointed at the wrong profile's mod folder until the next full reload
+- Fixed Nexus login (Login via SSO) getting permanently stuck showing "a login is already in progress" after clearing saved Nexus credentials
+- Fixed mod.io update checks silently degrading, and the new Like feature not working at all — both were built against mod.io's old api.mod.io address, which mod.io has been rejecting since January 2025 in favour of a newer one
+
+---
+
 - v1.0.4
 ### Additions
 - Added a per-mod custom URL: right-click a mod → "Add custom URL…" to attach a reference link (wiki page, Discord thread, patch notes, etc.), and "Open custom URL" to open it. A host pasted without a scheme (e.g. "example.com/page") is normalised to https:// automatically
