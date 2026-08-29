@@ -216,6 +216,18 @@ def check_for_updates(
         except Exception as e:
             _log(f"mod.io: rating sync failed — {e}")
             current_ratings = None
+        # An empty (or non-dict) result means "we don't know", not "this user
+        # has rated nothing" — same reasoning as the Nexus endorsement sync in
+        # nexus_update_checker.py, where trusting an empty response cleared the
+        # endorsed flag on 444 mods at once. The cost of this caution is that
+        # un-liking the LAST liked mod on mod.io's website isn't picked up
+        # here; un-liking through Mosaic writes meta.ini directly, so the flag
+        # is still correct for anything done in-app.
+        if current_ratings is not None and not isinstance(current_ratings, dict):
+            _log("mod.io: rating sync skipped — unexpected response shape.")
+            current_ratings = None
+        elif not current_ratings:
+            current_ratings = None
         if current_ratings is not None:
             for folder, meta_path, meta in targets:
                 liked = current_ratings.get(meta.mod_id, 0) == 1

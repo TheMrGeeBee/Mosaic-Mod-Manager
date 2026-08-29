@@ -31,6 +31,15 @@ from Nexus.nexus_requirements import MissingRequirementInfo, check_requirements_
 ProgressCallback = Callable[[str], None]
 
 
+class _EndorsementsUnusable(Exception):
+    """The /user/endorsements response can't be trusted to clear flags with.
+
+    Internal to the endorsement sync in :func:`check_for_updates` — routed
+    through the same "skipped" branch as a NexusAPIError so an unusable
+    response is never mistaken for "this user endorses nothing".
+    """
+
+
 def _parse_install_date(meta: "NexusModMeta") -> Optional[datetime]:
     """
     Return the installation date for a mod, if determinable.
@@ -377,10 +386,23 @@ def check_for_updates(
     if save_results:
         try:
             all_endorsements = api.get_endorsements()
+            # An empty or unusable response means "we don't know", NOT "the user
+            # endorses nothing". A stale OAuth token still gets HTTP 200 here
+            # with no usable body, and treating that as authoritative wipes
+            # `endorsed` from every installed mod's meta.ini in one pass (seen
+            # live: 444 mods cleared, then restored by the next logged-in
+            # check). Only ever clear a flag from a response that actually
+            # parsed and carried entries.
+            usable = (isinstance(all_endorsements, list)
+                      and any(isinstance(e, dict) for e in all_endorsements))
+            if not usable:
+                raise _EndorsementsUnusable(
+                    "empty response — not clearing any endorsements")
             endorsed_ids: set[int] = {
                 int(e.get("mod_id", 0))
                 for e in all_endorsements
-                if e.get("domain_name", "") == game_domain
+                if isinstance(e, dict)
+                and e.get("domain_name", "") == game_domain
                 and (e.get("status", "") or "").lower() == "endorsed"
                 and int(e.get("mod_id", 0)) > 0
             }
@@ -394,7 +416,7 @@ def check_for_updates(
                         endorsed_changed += 1
             if endorsed_changed:
                 _log(f"  Endorsement status updated for {endorsed_changed} mod(s).")
-        except NexusAPIError as exc:
+        except (NexusAPIError, _EndorsementsUnusable) as exc:
             _log(f"  Endorsement sync skipped ({exc})")
 
     # -----------------------------------------------------------------------

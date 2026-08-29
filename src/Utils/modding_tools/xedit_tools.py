@@ -302,13 +302,15 @@ def restore_after_xedit(game: "BaseGame", display_name: str, log_fn=None) -> Non
         _log(f"{name} Wizard: post-edit restore failed: {exc}")
     finally:
         # Leave the active profile exactly as we found it so the panel reload
-        # rebuilds the profile the user actually has selected.
-        if saved_profile_dir is not None:
-            try:
-                game.set_active_profile_dir(saved_profile_dir)
-                game.load_paths()
-            except Exception:
-                pass
+        # rebuilds the profile the user actually has selected. Restored
+        # unconditionally: skipping this when the entry value was None used to
+        # leave the game pointed at the LAST-DEPLOYED profile instead, which
+        # then resolves staging/meta paths to the wrong profile's folder.
+        try:
+            game.set_active_profile_dir(saved_profile_dir)
+            game.load_paths()
+        except Exception:
+            pass
     # The game is no longer deployed — drop the deploy-active flag so the
     # profile dropdown loses its green "deployed" highlight (mirrors what the
     # Restore button does).  The caller refreshes the UI afterwards.

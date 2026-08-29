@@ -96,7 +96,18 @@ def read_meta_for_entries(entries: list[ModEntry], staging_dir: Path,
 
     try:
         from Nexus.nexus_meta import read_meta
-    except Exception:
+    except Exception as exc:
+        # Returning empty flags here blanks the ENTIRE Flags column while the
+        # rest of the modlist still looks normal — indistinguishable from
+        # "nothing is flagged" unless it's said out loud. Nexus/__init__ pulls
+        # in nexus_api (and therefore keyring), so a missing/broken optional
+        # dependency lands here rather than at startup.
+        try:
+            from Utils.app_log import app_log
+            app_log(f"modlist flags: meta reader unavailable ({exc}) — "
+                    f"no flags will be shown.")
+        except Exception:
+            pass
         return (versions, installed, flags, categories, updates, fomod, bain,
                 missing_reqs, descriptions, authors)
 

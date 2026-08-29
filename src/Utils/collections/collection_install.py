@@ -182,6 +182,13 @@ def cleanup_cancelled_install(game, profile_dir: "Path | None", *,
     import shutil
     if profile_dir is not None and Path(profile_dir).is_dir() and game is not None \
             and getattr(game, "is_configured", lambda: True)():
+        # Whatever profile the user was actually on before this install — put it
+        # back at the end. Leaving the game with no active profile makes
+        # get_effective_mod_staging_path() fall back to the SHARED mods/ folder,
+        # which for a profile_specific_mods profile is empty, so every later
+        # meta.ini read finds nothing (this is what blanked the modlist's Flags
+        # column after a Check Updates).
+        caller_profile_dir = getattr(game, "_active_profile_dir", None)
         try:
             game.set_active_profile_dir(Path(profile_dir))
             game.load_paths()
@@ -202,7 +209,16 @@ def cleanup_cancelled_install(game, profile_dir: "Path | None", *,
         except Exception as exc:
             log_fn(f"Cancel: restore_root_folder failed: {exc}")
         try:
-            game.set_active_profile_dir(None)
+            # Only restore a profile that will still exist once this function
+            # returns — the collection's own dir is rmtree'd below when
+            # delete_profile is set, and pointing the game at a deleted folder
+            # would be worse than pointing it at nothing.
+            restore_to = caller_profile_dir
+            if restore_to is not None and (
+                    Path(restore_to) == Path(profile_dir)
+                    or not Path(restore_to).is_dir()):
+                restore_to = None
+            game.set_active_profile_dir(restore_to)
             game.load_paths()
         except Exception:
             pass

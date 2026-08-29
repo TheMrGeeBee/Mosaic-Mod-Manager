@@ -1,3 +1,13 @@
+- v1.0.6
+### Bug Fixes
+- Fixed every icon disappearing from the mod list's Flags column after running Check Updates — endorsed, notes, root, missing requirements, all of them. This is the same root cause as the right-click actions fixed in v1.0.5, surfacing in a part of the app that fix didn't reach: certain background operations could leave Mosaic pointed at the wrong profile, or at no profile at all, after which it looked for mod data in the shared mods folder rather than the profile's own, found nothing there, and cleared the whole column. Restarting brought the icons back because no data was ever lost. Check Updates now re-checks which profile is active before reading mod data, and Mosaic will never blank the Flags column when it can't find a profile's mods at all
+- Fixed Check Updates clearing the Endorsed flag from every installed mod when your Nexus login had quietly expired. Nexus answers the endorsements request successfully but with an empty list in that state, which Mosaic took to mean "this user endorses nothing" and wrote to every mod's meta.ini; the next check while properly logged in put them all back. An empty or unreadable response is now treated as "unknown" and leaves your flags alone
+- Fixed the same problem for mod.io Liked flags, which could be cleared in bulk by a Check Updates if mod.io returned nothing for your ratings
+- Fixed Check Updates failing to start at all if the saved mod.io login couldn't be read (for example with a locked keyring), instead of carrying on without it and leaving the button stuck on "Checking…"
+- Fixed what caused the above in the first place: cancelling a collection install left Mosaic pointed at no profile at all, and a couple of other background tasks could hand back the wrong one when they finished. Instead of guarding each affected feature as it turns up — which is what v1.0.5 did — these now put back whichever profile you were actually on, which should close out this class of "wrong profile's mod folder" bug rather than patch it one feature at a time
+
+---
+
 - v1.0.5
 ### Additions
 - Added a Nexus "Endorse" button next to the GitHub link at the bottom of the window, for endorsing Mosaic Mod Manager's own Nexus Mods page

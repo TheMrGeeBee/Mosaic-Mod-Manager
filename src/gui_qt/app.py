@@ -4594,6 +4594,13 @@ class MainWindow(QMainWindow):
         if game is None or not game.is_configured():
             self._notify(self.tr("No configured game selected."), "warning")
             return
+        # A background worker (restore, collection rollback, deploy) can leave
+        # game._active_profile_dir stale or None, which makes staging_dir()
+        # silently fall back to the SHARED mods/ folder — empty for a
+        # profile_specific_mods profile. Everything downstream (the meta.ini
+        # writes here, and the flag refresh in _on_updates_ready) would then
+        # read the wrong folder. Same guard as the per-mod handlers below.
+        self._gs.reassert_active_profile()
 
         domain = getattr(game, "nexus_game_domain", "") or ""
         api = self._ensure_nexus_api() if domain else None
@@ -6496,8 +6503,17 @@ class MainWindow(QMainWindow):
         """Return a stored mod.io OAuth access token, or None (not logged
         in via Wizard ▸ mod.io API Key ▸ Log in with email). Mirrors the guard shape
         of _ensure_nexus_api, but there's no validate()/refresh step yet —
-        see modio_oauth.py for why."""
-        tokens = _load_bg3_modio("modio_oauth").load_modio_tokens()
+        see modio_oauth.py for why.
+
+        Never raises: this is called on the UI thread from _on_check_updates,
+        where a keyring failure (locked/absent backend) or a module-load error
+        must not take down the whole update check. Same defensive shape as
+        _modio_key_present."""
+        try:
+            tokens = _load_bg3_modio("modio_oauth").load_modio_tokens()
+        except Exception as exc:
+            self._append_log(f"mod.io: could not read the saved login ({exc}).")
+            return None
         if not tokens:
             return None
         return tokens.get("access_token") or None
@@ -8256,9 +8272,11 @@ class MainWindow(QMainWindow):
                         restore_root_folder(root_folder_dir, game_root, log_fn=log_fn)
                     game.clear_deploy_active()
                 finally:
-                    if original_profile_dir is not None:
-                        game.set_active_profile_dir(original_profile_dir)
-                        game.load_paths()
+                    # Restored unconditionally — skipping this when the entry
+                    # value was None left the game on the LAST-DEPLOYED profile,
+                    # so later staging/meta reads resolved to the wrong folder.
+                    game.set_active_profile_dir(original_profile_dir)
+                    game.load_paths()
             except Exception as e:
                 log_fn(f"error for {game.name}: {e}")
 
@@ -11647,6 +11665,12 @@ class MainWindow(QMainWindow):
         The filemap-derived overlays (pre-RTX / root-rule) refresh via the
         conflict-ready path instead."""
         from gui_qt.modlist.modlist_data import read_meta_for_entries
+        # Reached from ten call sites, several of them right after a background
+        # worker finished — never trust the game object's current active-profile
+        # state here. Without this, a stale _active_profile_dir sends
+        # staging_dir() to the shared (empty) mods/ folder and the read below
+        # comes back with no flags for anything.
+        self._gs.reassert_active_profile()
         staging = self._gs.staging_dir()
         if staging is None:
             return
@@ -11661,6 +11685,21 @@ class MainWindow(QMainWindow):
                 profile_dir=self._gs.profile_dir(),
                 is_bg3=(getattr(self._gs.game, "game_id", "") == "baldurs_gate_3"))
         except Exception:
+            return
+        # Safety net, independent of the guard above. A full refresh returning
+        # nothing is legitimate (clearing the last note on a short list), but
+        # not when the staging folder holds no meta.ini for ANY known mod —
+        # that only happens when the read went to the wrong folder, and
+        # blanking the whole Flags column on the strength of it is never right.
+        # The probe only runs in that already-suspicious case, and stops at the
+        # first hit.
+        if (subset is None and not flags and entries
+                and getattr(self._modlist_model, "_flags", None)
+                and not any((staging / e.name / "meta.ini").is_file()
+                            for e in entries)):
+            self._append_log(
+                f"Flag refresh skipped: no mod metadata found under {staging} "
+                f"({len(entries)} mod(s) expected) — keeping the current flags.")
             return
         if subset is None:
             (self._mod_categories, self._mod_authors, self._mod_updates,
