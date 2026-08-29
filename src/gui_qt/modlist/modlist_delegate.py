@@ -24,7 +24,7 @@ from gui_qt.modlist.modlist_data import (
     FLAG_UPDATE, FLAG_ENDORSED, FLAG_ROOT, FLAG_MODIFIED_MF, FLAG_MISSING_REQS,
     FLAG_COLLECTION_BUNDLED, FLAG_COLLECTION_PATCHED, FLAG_NOTE, FLAG_XEDIT,
     FLAG_BUNDLE, FLAG_MODIO_UPDATE, FLAG_PRERTX, FLAG_ROOT_RULE,
-    FLAG_RERUN_FOMOD,
+    FLAG_RERUN_FOMOD, FLAG_MODIO_LIKED,
 )
 
 # Flag bit → icon filename, painted left-to-right in the Flags column, in the
@@ -39,6 +39,7 @@ _FLAG_ICONS = [
     (FLAG_UPDATE, "update.png"),
     (FLAG_MODIO_UPDATE, "update_modio.png"),
     (FLAG_ENDORSED, "endorsed.png"),
+    (FLAG_MODIO_LIKED, "modio_liked.png"),
     # info.png: pre-RTX OR collection bundled/patched — only ONE ever paints (see
     # _flag_icons). The hover tooltip distinguishes which.
     (FLAG_PRERTX, "info.png"),
@@ -68,6 +69,7 @@ _FLAG_TIPS = {
     FLAG_UPDATE: QT_TRANSLATE_NOOP("ModRowDelegate", "Update available on Nexus Mods"),
     FLAG_MODIO_UPDATE: QT_TRANSLATE_NOOP("ModRowDelegate", "Update available on mod.io"),
     FLAG_ENDORSED: QT_TRANSLATE_NOOP("ModRowDelegate", "Endorsed"),
+    FLAG_MODIO_LIKED: QT_TRANSLATE_NOOP("ModRowDelegate", "Liked on mod.io"),
     FLAG_PRERTX: QT_TRANSLATE_NOOP("ModRowDelegate", "Pre-RTX mod"),
     FLAG_COLLECTION_BUNDLED: QT_TRANSLATE_NOOP("ModRowDelegate", "This mod is a collection bundled mod"),
     FLAG_COLLECTION_PATCHED: QT_TRANSLATE_NOOP("ModRowDelegate", "This mod has diff patches applied by the collection install"),

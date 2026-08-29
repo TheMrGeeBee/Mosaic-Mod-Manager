@@ -245,6 +245,10 @@ def _build_mod_menu(view, model, row, entry, sel_mods, multi, act, stub, divider
         _reqs_multi = [nm for nm in _names if _has_missing_reqs(view, nm)]
         _qu = [nm for nm in _names if _has_update_flag(view, nm)]
         _qu_modio = [nm for nm in _names if _has_modio_update_flag(view, nm)]
+        _modio_like_multi = [nm for nm in _names
+                             if _has_modio_id(view, nm) and not _is_modio_liked(view, nm)]
+        _modio_unlike_multi = [nm for nm in _names
+                               if _has_modio_id(view, nm) and _is_modio_liked(view, nm)]
         # Reinstall: archive on disk OR redownloadable from Nexus (mod/file id).
         _reinstall_multi = [nm for nm in _names
                             if _installation_archive(view, nm) is not None
@@ -274,6 +278,18 @@ def _build_mod_menu(view, model, row, entry, sel_mods, multi, act, stub, divider
                  lambda ns=_nexus_multi: _open_on_nexus_multi(view, ns)))
         if _nexus_sub:
             submenu(_mt("Nexus Actions"), _nexus_sub)
+        # mod.io items nest under their own submenu, mirroring "Nexus Actions".
+        _modio_sub = []
+        if _modio_unlike_multi:
+            _modio_sub.append(
+                (_mtf("Unlike selected ({0})", len(_modio_unlike_multi)),
+                 lambda ns=_modio_unlike_multi: _modio_like(view, ns, False)))
+        if _modio_like_multi:
+            _modio_sub.append(
+                (_mtf("Like selected ({0})", len(_modio_like_multi)),
+                 lambda ns=_modio_like_multi: _modio_like(view, ns, True)))
+        if _modio_sub:
+            submenu(_mt("mod.io Actions"), _modio_sub)
         if _reqs_multi:
             act(_mtf("Missing Requirements ({0})", len(_reqs_multi)),
                 lambda ns=_reqs_multi: _missing_reqs(view, ns))
@@ -382,6 +398,10 @@ def _build_mod_menu(view, model, row, entry, sel_mods, multi, act, stub, divider
     # mod.io items nest under their own submenu, mirroring "Nexus Actions".
     _modio_items = []
     if _has_modio_id(view, name):
+        _liked = _is_modio_liked(view, name)
+        _modio_items.append(
+            (_mt("Unlike Mod (mod.io)") if _liked else _mt("Like Mod (mod.io)"),
+             lambda: _modio_like(view, [name], not _liked)))
         _modio_items.append(
             (_mt("Change Version (mod.io)"), lambda: _change_version_modio(view, name)))
     if _modio_url(view, name):
@@ -726,6 +746,34 @@ def _change_version_modio(view, name):
     cb = getattr(view, "on_change_version_modio", None)
     if cb is not None and name:
         cb(name)
+
+
+def _is_modio_liked(view, name: str) -> bool:
+    """True if the logged-in mod.io user has rated this mod (mirrors
+    _is_endorsed) — read raw like the other mod.io fields in this file
+    (bypasses Nexus's read_meta, which knows nothing about modio* keys)."""
+    staging = getattr(view, "staging_dir", None)
+    if staging is None:
+        return False
+    meta_path = staging / name / "meta.ini"
+    if not meta_path.is_file():
+        return False
+    try:
+        import configparser
+        cp = configparser.ConfigParser(interpolation=None)
+        cp.read(str(meta_path), encoding="utf-8")
+        return cp.get("General", "modioLiked", fallback="0") == "1"
+    except Exception:
+        return False
+
+
+def _modio_like(view, names, like: bool):
+    """Like/unlike the mods on mod.io — delegated to the window (needs the
+    shared mod.io OAuth token + a worker thread; see
+    app._on_modlist_modio_like). Mirrors _endorse."""
+    cb = getattr(view, "on_modio_like", None)
+    if cb is not None and names:
+        cb(list(names), like)
 
 
 # ---- Move to separator -----------------------------------------------------
@@ -1591,6 +1639,8 @@ _TR_MARKERS = (
     QT_TRANSLATE_NOOP("ModListMenu", "Enable selected ({0})"),
     QT_TRANSLATE_NOOP("ModListMenu", "Endorse Mod"),
     QT_TRANSLATE_NOOP("ModListMenu", "Endorse selected ({0})"),
+    QT_TRANSLATE_NOOP("ModListMenu", "Like Mod (mod.io)"),
+    QT_TRANSLATE_NOOP("ModListMenu", "Like selected ({0})"),
     QT_TRANSLATE_NOOP("ModListMenu", "Lock Separator"),
     QT_TRANSLATE_NOOP("ModListMenu", "Lock Separators"),
     QT_TRANSLATE_NOOP("ModListMenu", "Lock mod"),
@@ -1639,6 +1689,8 @@ _TR_MARKERS = (
     QT_TRANSLATE_NOOP("ModListMenu", "Sort Alphabetically ({0})"),
     QT_TRANSLATE_NOOP("ModListMenu", "Track Mod"),
     QT_TRANSLATE_NOOP("ModListMenu", "Track Mod ({0})"),
+    QT_TRANSLATE_NOOP("ModListMenu", "Unlike Mod (mod.io)"),
+    QT_TRANSLATE_NOOP("ModListMenu", "Unlike selected ({0})"),
     QT_TRANSLATE_NOOP("ModListMenu", "Unlock Separator"),
     QT_TRANSLATE_NOOP("ModListMenu", "Unlock Separators"),
     QT_TRANSLATE_NOOP("ModListMenu", "{0} ({1})"),

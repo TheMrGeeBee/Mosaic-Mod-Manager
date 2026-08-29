@@ -4,7 +4,8 @@ modlist.txt / plugins.txt / state JSON) so the user can restore one, mark it
 
 The list is split into two sections: user-made backups (created via the
 New backup button, or automated ones marked Keep — never pruned, no limit)
-and automated backups (created before every deploy, pruned to the newest 20).
+and automated backups (created before every deploy, pruned to the retention
+limit set in Settings ▸ Profile Backups — default 20, 0 = unlimited).
 
 Opens as a plugins-panel-scoped tab (covers the whole plugins panel while the
 modlist stays live). Qt port of the Tk gui/backup_restore_dialog.py; reuses the
@@ -30,7 +31,7 @@ from gui_qt.overlays.confirm_overlay import ConfirmOverlay
 from Utils.profile.profile_backup import (
     create_backup, list_backups, restore_backup, backup_stats, delete_backup,
     is_backup_kept, set_backup_kept, get_backup_label, set_backup_label,
-    is_backup_manual, is_backup_user_made,
+    is_backup_manual, is_backup_user_made, purge_old_backups,
 )
 
 # Human-friendly weekday + date + time, e.g. "Fri 04 Jul 2026 · 14:30".
@@ -66,7 +67,7 @@ class BackupRestoreView(QWidget):
         # Toolbar: title + Close.
         bar = QWidget(); bar.setObjectName("HeaderBar")
         hb = QHBoxLayout(bar); hb.setContentsMargins(12, 8, 8, 8); hb.setSpacing(8)
-        title = QLabel(self.tr("Restore backup — {0}").format(self._profile_name))
+        title = QLabel(self.tr("Backups — {0}").format(self._profile_name))
         title.setStyleSheet(f"color:{_c(p,'TEXT_MAIN')}; font-weight:600;")
         hb.addWidget(title)
         hb.addStretch(1)
@@ -99,6 +100,13 @@ class BackupRestoreView(QWidget):
         self._new_btn = self._colored_button(self.tr("New backup"), "BTN_SUCCESS")
         self._new_btn.clicked.connect(self._on_create)
         rh.addWidget(self._new_btn)
+        self._purge_btn = self._colored_button(self.tr("Purge"), "BTN_DANGER")
+        self._purge_btn.setToolTip(self.tr(
+            "Apply the automated backup limit (Settings ▸ Profile Backups) now, "
+            "instead of waiting for the next deploy. Manual and kept backups "
+            "are never removed."))
+        self._purge_btn.clicked.connect(self._on_purge)
+        rh.addWidget(self._purge_btn)
         rh.addStretch(1)
         self._restore_btn = self._colored_button(self.tr("Restore"), "BTN_WARN_ORANGE")
         self._restore_btn.setEnabled(False)
@@ -255,10 +263,25 @@ class BackupRestoreView(QWidget):
 
     def _on_create(self):
         try:
-            create_backup(self._profile_dir, log_fn=self._log, manual=True)
+            bdir = create_backup(self._profile_dir, log_fn=self._log, manual=True)
         except Exception as exc:  # noqa: BLE001 — surface, don't crash the tab
             self._log(f"[backup] create failed: {exc}")
-        self._reload_list()
+            self._reload_list()
+            return
+
+        def _done(text):
+            if text:
+                set_backup_label(bdir, text.strip())
+            self._reload_list()
+            self._select_backup(bdir)
+
+        TextInputOverlay.show_over(
+            self,
+            self.tr("Backup created"),
+            self.tr("Optional note for this backup (leave blank to use the date)."),
+            _done,
+            ok_label=self.tr("Save"),
+        )
 
     def _on_keep(self):
         sel = self._selected_backup()
@@ -313,6 +336,32 @@ class BackupRestoreView(QWidget):
             self.tr("Remove backup \"{0}\"? This cannot be undone.").format(name),
             _done,
             confirm_label=self.tr("Remove"),
+        )
+
+    def _on_purge(self):
+        """Apply the configured retention limit now (see Utils.ui_config
+        load_backup_retention_limit) instead of waiting for the next
+        create_backup() call. Manual/kept backups are never touched."""
+        def _done(ok):
+            if not ok:
+                return
+            try:
+                removed = purge_old_backups(self._profile_dir, log_fn=self._log)
+            except Exception as exc:  # noqa: BLE001
+                self._log(f"[backup] purge failed: {exc}")
+                return
+            self._log(f"[backup] purge removed {removed} backup(s)." if removed
+                       else "[backup] purge: nothing to remove.")
+            self._reload_list()
+
+        ConfirmOverlay.show_over(
+            self,
+            self.tr("Purge old backups"),
+            self.tr("Remove automated backups beyond the configured limit "
+                    "(Settings ▸ Profile Backups)? Manual and kept backups "
+                    "are never removed. This cannot be undone."),
+            _done,
+            confirm_label=self.tr("Purge"),
         )
 
     def _on_restore(self):

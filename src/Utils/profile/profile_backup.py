@@ -5,7 +5,9 @@ Each backup is stored in its own folder under profile_dir/backups/<timestamp>/.
 Used before deploy (create_backup) and via Restore backup UI (list_backups, restore_backup).
 
 Backups fall into two groups:
-  - Automated: created before each deploy; pruned to the newest _MAX_BACKUPS.
+  - Automated: created before each deploy; pruned to the newest retention
+    limit (Utils.ui_config.load_backup_retention_limit — user-configurable
+    in Settings, 0 = unlimited).
   - User-made: created via the New backup button (.manual marker) or marked
     kept (.keep marker). Never pruned; removable only via delete_backup.
 """
@@ -20,7 +22,6 @@ from pathlib import Path
 from Utils.app_log import safe_log as _safe_log
 
 _TIMESTAMP_FMT = "%Y%m%d_%H%M%S"
-_MAX_BACKUPS = 20
 _BACKUPS_SUBDIR = "backups"
 _TIMESTAMP_PATTERN = re.compile(r"^\d{8}_\d{6}$")
 _SEPARATOR_SUFFIX = "_separator"
@@ -117,13 +118,36 @@ def set_backup_label(backup_dir: Path, label: str) -> None:
         marker.unlink()
 
 
-def create_backup(profile_dir: Path, log_fn=None, manual: bool = False) -> None:
+def _prunable_backups(backups_dir: Path) -> list[Path]:
+    """Automated (non-user-made) backup folders, oldest first."""
+    dirs = [
+        p for p in backups_dir.iterdir()
+        if p.is_dir() and _parse_timestamp_from_dirname(p.name) is not None
+           and not is_backup_user_made(p)
+    ]
+    dirs.sort(key=lambda p: p.name)
+    return dirs
+
+
+def _retention_limit() -> int:
+    """Configured automated-backup retention limit (0 = unlimited)."""
+    try:
+        from Utils.ui_config import load_backup_retention_limit
+        return load_backup_retention_limit()
+    except Exception:
+        return 20
+
+
+def create_backup(profile_dir: Path, log_fn=None, manual: bool = False) -> Path:
     """
     Create a new backup in profile_dir/backups/<timestamp>/ containing
     modlist.txt, plugins.txt, and (if present) profile_state.json.
-    Automated backups (manual=False) are pruned to the newest _MAX_BACKUPS;
-    user-made backups (manual=True, or later marked kept) are never pruned
-    and don't count toward the limit.
+    Automated backups (manual=False) are pruned to the configured retention
+    limit (0 = unlimited); user-made backups (manual=True, or later marked
+    kept) are never pruned and don't count toward the limit.
+
+    Returns the created backup folder, so callers can attach a label
+    (see set_backup_label) without a separate list_backups() lookup.
     """
     _log = _safe_log(log_fn)
     backups_dir = profile_dir / _BACKUPS_SUBDIR
@@ -142,26 +166,43 @@ def create_backup(profile_dir: Path, log_fn=None, manual: bool = False) -> None:
     if manual:
         (backup_folder / _MANUAL_MARKER).touch(exist_ok=True)
 
-    # Prune to _MAX_BACKUPS: list subdirs by name (chronological order), remove oldest.
-    # User-made backups are excluded from pruning (and from the count).
-    def _prunable_backups():
-        dirs = [
-            p for p in backups_dir.iterdir()
-            if p.is_dir() and _parse_timestamp_from_dirname(p.name) is not None
-               and not is_backup_user_made(p)
-        ]
-        dirs.sort(key=lambda p: p.name)
-        return dirs
+    limit = _retention_limit()
+    if limit > 0:
+        subdirs = _prunable_backups(backups_dir)
+        while len(subdirs) > limit:
+            oldest = subdirs.pop(0)
+            try:
+                shutil.rmtree(oldest)
+                _log(f"Backup: removed oldest {oldest.name}")
+            except OSError:
+                pass
 
-    subdirs = _prunable_backups()
-    while len(subdirs) > _MAX_BACKUPS:
+    return backup_folder
+
+
+def purge_old_backups(profile_dir: Path, log_fn=None) -> int:
+    """Apply the configured retention limit right now, instead of waiting for
+    the next create_backup() call — e.g. right after lowering the limit in
+    Settings, or just to reclaim space on demand. User-made/kept backups are
+    never touched. Returns the number of backups removed."""
+    _log = _safe_log(log_fn)
+    backups_dir = profile_dir / _BACKUPS_SUBDIR
+    if not backups_dir.is_dir():
+        return 0
+    limit = _retention_limit()
+    if limit <= 0:
+        return 0
+    subdirs = _prunable_backups(backups_dir)
+    removed = 0
+    while len(subdirs) > limit:
         oldest = subdirs.pop(0)
         try:
             shutil.rmtree(oldest)
-            _log(f"Backup: removed oldest {oldest.name}")
+            _log(f"Backup: purged {oldest.name}")
+            removed += 1
         except OSError:
             pass
-        subdirs = _prunable_backups()
+    return removed
 
 
 def list_backups(profile_dir: Path) -> list[tuple[datetime, Path]]:

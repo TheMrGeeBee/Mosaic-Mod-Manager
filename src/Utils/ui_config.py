@@ -828,6 +828,48 @@ _EXTRACTION_SECTION = "extraction"
 _EXTRACTION_THREADS_CEILING = 128
 
 
+# ---------------------------------------------------------------------------
+# Profile backup retention (Utils.profile.profile_backup)
+# ---------------------------------------------------------------------------
+_BACKUPS_SECTION = "backups"
+_BACKUP_LIMIT_KEY = "retention_limit"
+_BACKUP_LIMIT_DEFAULT = 20
+_BACKUP_LIMIT_CEILING = 1000
+
+
+def load_backup_retention_limit() -> int:
+    """Return the max number of automated backups kept per profile before
+    older ones are pruned (0 = unlimited). Mirrors load_download_speed_limit's
+    0-means-unlimited convention."""
+    path = get_ui_config_path()
+    if not path.is_file():
+        return _BACKUP_LIMIT_DEFAULT
+    try:
+        parser = _new_parser()
+        parser.read(path)
+        if not parser.has_section(_BACKUPS_SECTION):
+            return _BACKUP_LIMIT_DEFAULT
+        raw = parser[_BACKUPS_SECTION].get(_BACKUP_LIMIT_KEY, str(_BACKUP_LIMIT_DEFAULT))
+        return max(0, min(_BACKUP_LIMIT_CEILING, int(raw)))
+    except Exception:
+        return _BACKUP_LIMIT_DEFAULT
+
+
+def save_backup_retention_limit(limit: int) -> None:
+    """Persist the automated-backup retention limit (0 = unlimited)."""
+    path = get_ui_config_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    parser = _new_parser()
+    if path.is_file():
+        parser.read(path)
+    if _BACKUPS_SECTION not in parser:
+        parser[_BACKUPS_SECTION] = {}
+    value = max(0, min(_BACKUP_LIMIT_CEILING, int(limit or 0)))
+    parser[_BACKUPS_SECTION][_BACKUP_LIMIT_KEY] = str(value)
+    with path.open("w", encoding="utf-8") as f:
+        parser.write(f)
+
+
 def load_extraction_settings() -> dict:
     """Return extraction resource settings with keys:
 

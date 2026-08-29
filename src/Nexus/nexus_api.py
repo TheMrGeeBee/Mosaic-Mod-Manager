@@ -506,6 +506,20 @@ class NexusAPIError(Exception):
         self.url = url
 
 
+def _response_error_message(resp: requests.Response) -> str:
+    """Best-effort human-readable message for a failed response — Nexus's
+    JSON error body's "message" field when present, else the raw body text,
+    else the HTTP reason phrase."""
+    try:
+        body = resp.json()
+        msg = body.get("message")
+        if msg:
+            return str(msg)
+    except Exception:
+        pass
+    return resp.text[:300] or resp.reason
+
+
 class RateLimitError(NexusAPIError):
     """Raised when the server returns HTTP 429."""
     def __init__(self, url: str = ""):
@@ -670,12 +684,7 @@ class NexusAPI:
                     "Invalid or expired API key", 401, url)
 
             if not resp.ok:
-                try:
-                    body = resp.json()
-                    msg = body.get("message", resp.reason)
-                except Exception:
-                    msg = resp.text[:300] or resp.reason
-                raise NexusAPIError(msg, resp.status_code, url)
+                raise NexusAPIError(_response_error_message(resp), resp.status_code, url)
 
             return resp.json()
 
@@ -1330,15 +1339,20 @@ class NexusAPI:
         return self._get("/user/endorsements")
 
     def endorse_mod(self, game_domain: str, mod_id: int, version: str = "") -> dict:
-        """Endorse a mod on Nexus Mods."""
+        """Endorse a mod on Nexus Mods.
+
+        Raises :class:`NexusAPIError` with Nexus's own message on failure —
+        notably, Nexus returns 403 for "you can't endorse your own mod",
+        which read as an opaque HTTPError before this parsed the body.
+        """
+        path = f"/games/{game_domain}/mods/{mod_id}/endorse"
         resp = self._session.post(
-            f"{API_BASE}/games/{game_domain}/mods/{mod_id}/endorse",
-            json={"Version": version},
-            timeout=self._timeout,
-        )
+            f"{API_BASE}{path}", json={"Version": version}, timeout=self._timeout)
         self._update_rate_limits(resp)
-        self._log_response("POST", f"/games/{game_domain}/mods/{mod_id}/endorse", resp)
-        resp.raise_for_status()
+        self._log_response("POST", path, resp)
+        if not resp.ok:
+            raise NexusAPIError(_response_error_message(resp), resp.status_code,
+                                resp.url)
         return resp.json()
 
     def abstain_mod(self, game_domain: str, mod_id: int, version: str = "") -> dict:
@@ -1356,14 +1370,14 @@ class NexusAPI:
         except Exception as exc:
             app_log(f"GraphQL abstain failed, falling back to REST: {exc}")
 
+        path = f"/games/{game_domain}/mods/{mod_id}/abstain"
         resp = self._session.post(
-            f"{API_BASE}/games/{game_domain}/mods/{mod_id}/abstain",
-            json={"Version": version},
-            timeout=self._timeout,
-        )
+            f"{API_BASE}{path}", json={"Version": version}, timeout=self._timeout)
         self._update_rate_limits(resp)
-        self._log_response("POST", f"/games/{game_domain}/mods/{mod_id}/abstain", resp)
-        resp.raise_for_status()
+        self._log_response("POST", path, resp)
+        if not resp.ok:
+            raise NexusAPIError(_response_error_message(resp), resp.status_code,
+                                resp.url)
         return resp.json()
 
     def _abstain_mod_graphql(self, game_domain: str, mod_id: int) -> dict | None:

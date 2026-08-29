@@ -44,17 +44,24 @@ def _load_bg3_modio(stem: str):
 
 
 class ModioSettingsView(WizardViewBase):
-    """Enter, test and store the mod.io API key."""
+    """Enter, test and store the mod.io API key; optionally log in with
+    email too (needed for Like — the read-only key can't do that)."""
 
     _save_done_sig = Signal(str, bool, str)   # (key, ok, err)
+    _email_sent_sig = Signal(bool, str)       # (ok, err)
+    _login_done_sig = Signal(bool, str)       # (ok, err)
 
     def __init__(self, game: "BaseGame", log_fn=None, on_close=None, ctx=None,
                  **_extra):
         super().__init__(game, log_fn, on_close, ctx, title=self.tr("mod.io API Key"))
         self._busy = False
+        self._login_busy = False
         self._modio_key = _load_bg3_modio("modio_key")
+        self._modio_oauth = _load_bg3_modio("modio_oauth")
 
         self._save_done_sig.connect(self._guard(self._save_done))
+        self._email_sent_sig.connect(self._guard(self._email_sent))
+        self._login_done_sig.connect(self._guard(self._login_done))
         self._stack.addWidget(self._build_page())
 
     def _build_page(self) -> QWidget:
@@ -96,7 +103,60 @@ class ModioSettingsView(WizardViewBase):
         rh.addWidget(self._save_btn)
         rh.addStretch(1)
         lay.addWidget(row)
+
+        lay.addSpacing(12)
+        self._make_note(lay, self.tr(
+            "Optional: log in with email to Like mods on mod.io from the app.\n"
+            "Not needed for update checks — only for Like."))
+
+        self._login_email = QLineEdit()
+        self._login_email.setPlaceholderText(self.tr("Email address"))
+        self._login_email.setMinimumWidth(420)
+        lay.addWidget(self._login_email, 0, Qt.AlignHCenter)
+
+        email_row = QWidget()
+        eh = QHBoxLayout(email_row); eh.setContentsMargins(0, 4, 0, 0); eh.setSpacing(8)
+        eh.addStretch(1)
+        self._send_code_btn = self._accent_btn(self.tr("Send code"))
+        self._send_code_btn.clicked.connect(self._on_send_code)
+        eh.addWidget(self._send_code_btn)
+        eh.addStretch(1)
+        lay.addWidget(email_row)
+
+        self._login_code = QLineEdit()
+        self._login_code.setPlaceholderText(self.tr("Code from email"))
+        self._login_code.setMinimumWidth(420)
+        lay.addWidget(self._login_code, 0, Qt.AlignHCenter)
+
+        login_row = QWidget()
+        lh = QHBoxLayout(login_row); lh.setContentsMargins(0, 4, 0, 0); lh.setSpacing(8)
+        lh.addStretch(1)
+        self._logout_btn = QPushButton(self.tr("Log out"))
+        self._logout_btn.setCursor(Qt.PointingHandCursor)
+        self._logout_btn.clicked.connect(self._on_logout)
+        lh.addWidget(self._logout_btn)
+        self._verify_btn = self._accent_btn(self.tr("Verify"))
+        self._verify_btn.clicked.connect(self._on_verify_code)
+        lh.addWidget(self._verify_btn)
+        lh.addStretch(1)
+        lay.addWidget(login_row)
+
+        self._login_status = self._make_status(lay)
+        self._refresh_login_status()
         return page
+
+    def _refresh_login_status(self):
+        tokens = None
+        try:
+            tokens = self._modio_oauth.load_modio_tokens()
+        except Exception:
+            tokens = None
+        if tokens:
+            self._set_status(self._login_status,
+                             self.tr("Logged in to mod.io — Like is available."),
+                             _GREEN_OK)
+        else:
+            self._set_status(self._login_status, "")
 
     def _set_result(self, text: str, ok: "bool | None" = None):
         color = ""
@@ -155,3 +215,94 @@ class ModioSettingsView(WizardViewBase):
             self._log("mod.io: API key cleared.")
         except Exception as e:
             self._set_result(self.tr("Could not clear key: {0}").format(e), ok=False)
+
+    # ---- email login --------------------------------------------------------
+    def _on_send_code(self):
+        if self._login_busy:
+            return
+        email = self._login_email.text().strip()
+        if not email:
+            self._set_status(self._login_status, self.tr("Enter an email address first."),
+                             _RED_ERR)
+            return
+        api_key = self._entry.text().strip()
+        if not api_key:
+            self._set_status(self._login_status,
+                             self.tr("Enter and save your mod.io API key first."), _RED_ERR)
+            return
+        self._login_busy = True
+        self._send_code_btn.setEnabled(False)
+        self._set_status(self._login_status, self.tr("Sending code…"))
+
+        def worker():
+            ok = False
+            err = ""
+            try:
+                self._modio_oauth.request_email_code(email, api_key)
+                ok = True
+            except Exception as e:
+                err = str(e)
+            safe_emit(self._email_sent_sig, ok, err)
+
+        threading.Thread(target=worker, daemon=True, name="modio-email-request").start()
+
+    def _email_sent(self, ok: bool, err: str):
+        self._login_busy = False
+        self._send_code_btn.setEnabled(True)
+        if ok:
+            self._set_status(self._login_status,
+                             self.tr("Code sent — check your email, then enter it below."),
+                             _GREEN_OK)
+        else:
+            self._set_status(self._login_status,
+                             self.tr("Could not send code: {0}").format(err), _RED_ERR)
+
+    def _on_verify_code(self):
+        if self._login_busy:
+            return
+        code = self._login_code.text().strip()
+        if not code:
+            self._set_status(self._login_status, self.tr("Enter the code from your email."),
+                             _RED_ERR)
+            return
+        api_key = self._entry.text().strip()
+        if not api_key:
+            self._set_status(self._login_status,
+                             self.tr("Enter and save your mod.io API key first."), _RED_ERR)
+            return
+        self._login_busy = True
+        self._verify_btn.setEnabled(False)
+        self._set_status(self._login_status, self.tr("Verifying…"))
+
+        def worker():
+            ok = False
+            err = ""
+            try:
+                self._modio_oauth.exchange_code(code, api_key)
+                ok = True
+            except Exception as e:
+                err = str(e)
+            safe_emit(self._login_done_sig, ok, err)
+
+        threading.Thread(target=worker, daemon=True, name="modio-email-exchange").start()
+
+    def _login_done(self, ok: bool, err: str):
+        self._login_busy = False
+        self._verify_btn.setEnabled(True)
+        if ok:
+            self._login_code.clear()
+            self._set_status(self._login_status,
+                             self.tr("Logged in to mod.io — Like is available."), _GREEN_OK)
+            self._log("mod.io: logged in via email.")
+        else:
+            self._set_status(self._login_status,
+                             self.tr("Could not verify code: {0}").format(err), _RED_ERR)
+
+    def _on_logout(self):
+        try:
+            self._modio_oauth.clear_modio_tokens()
+            self._refresh_login_status()
+            self._log("mod.io: logged out.")
+        except Exception as e:
+            self._set_status(self._login_status, self.tr("Could not log out: {0}").format(e),
+                             _RED_ERR)

@@ -62,6 +62,15 @@ _KEY_IGNORED_VERSION = "modioIgnoredVersion"
 # was never actually published. Lets callers skip the API call entirely on
 # future checks instead of re-querying (and retrying) a permanently-404 id.
 _KEY_NOT_FOUND_ID = "modioNotFoundId"
+# Whether the logged-in mod.io user has rated this mod positively (see
+# modio_oauth.py — requires OAuth login, the read-only API key can't set or
+# read personal ratings). Like Nexus's `endorsed`, this is a per-mod-id
+# preference, not version-scoped — unlike ignore_update/ignored_version above,
+# a caller that rebuilds a ModioMeta from scratch on reinstall should carry
+# an existing `liked` value forward rather than let it silently reset to
+# False; the modlist's Like toggle (app.py) round-trips read/modify/write for
+# exactly this reason instead of constructing a fresh ModioMeta.
+_KEY_LIKED = "modioLiked"
 
 
 def _load_sibling(stem: str):
@@ -99,6 +108,7 @@ class ModioMeta:
     installed: str = ""
     ignore_update: bool = False
     ignored_version: str = ""
+    liked: bool = False
 
 
 # ---------------------------------------------------------------------------
@@ -320,6 +330,7 @@ def write_modio_meta(meta_ini_path: Path, meta: ModioMeta) -> None:
     # Nexus.nexus_meta.write_meta's unconditional handling of the same field.
     cp.set(_SECTION, _KEY_IGNORE_UPDATE, "1" if meta.ignore_update else "0")
     cp.set(_SECTION, _KEY_IGNORED_VERSION, meta.ignored_version)
+    cp.set(_SECTION, _KEY_LIKED, "1" if meta.liked else "0")
 
     meta_ini_path.parent.mkdir(parents=True, exist_ok=True)
     with open(meta_ini_path, "w", encoding="utf-8") as f:
@@ -353,6 +364,7 @@ def read_modio_meta(meta_ini_path: Path) -> ModioMeta:
     meta.installed = cp.get(_SECTION, _KEY_INSTALLED, fallback="")
     meta.ignore_update = cp.get(_SECTION, _KEY_IGNORE_UPDATE, fallback="0") == "1"
     meta.ignored_version = cp.get(_SECTION, _KEY_IGNORED_VERSION, fallback="")
+    meta.liked = cp.get(_SECTION, _KEY_LIKED, fallback="0") == "1"
     return meta
 
 

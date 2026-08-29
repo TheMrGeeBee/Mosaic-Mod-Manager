@@ -65,6 +65,7 @@ def check_for_updates(
     api_key: str,
     progress_cb: Optional[ProgressCallback] = None,
     only_names: Optional[set[str]] = None,
+    access_token: Optional[str] = None,
 ) -> list[ModioUpdateInfo]:
     """Return update info for every mod.io-tracked mod under *staging_root*.
 
@@ -72,6 +73,16 @@ def check_for_updates(
     mods are omitted.  meta.ini is refreshed with the latest file id/version.
     If *only_names* is given, restrict the check to those staging folder names
     (used by the right-click "Check Updates" on specific mods).
+
+    If *access_token* is given (mod.io email login — see modio_oauth.py, not
+    just the read-only api_key), also syncs each mod's Like/Unlike state from
+    mod.io (one batched get_my_ratings() call) — this is the only way to
+    pick up a rating made directly on the mod.io website, since Mosaic has
+    no other way to learn about it. Deliberately NOT done immediately after
+    a Like/Unlike through Mosaic itself: confirmed live that mod.io's rating
+    read can return stale data for several seconds right after a write, so
+    checking immediately would be unreliable — Check for Updates runs later
+    and on-demand, when that has settled.
     """
     _log = progress_cb or (lambda m: None)
     results: list[ModioUpdateInfo] = []
@@ -193,6 +204,29 @@ def check_for_updates(
                 modio_meta.write_modio_meta(meta_path, meta)
             except OSError as e:
                 app_log(f"mod.io: could not update meta.ini for '{folder.name}': {e}")
+
+    # Phase 3 (optional): sync Like/Unlike state from mod.io — one batched
+    # call for everything just checked, mirroring Nexus's own endorsement
+    # sync in nexus_update_checker.py. Only runs when the caller has a mod.io
+    # email login (access_token); the read-only api_key can't read personal
+    # ratings at all, so this is silently skipped without one.
+    if access_token:
+        try:
+            current_ratings = api.get_my_ratings(access_token)
+        except Exception as e:
+            _log(f"mod.io: rating sync failed — {e}")
+            current_ratings = None
+        if current_ratings is not None:
+            for folder, meta_path, meta in targets:
+                liked = current_ratings.get(meta.mod_id, 0) == 1
+                if liked == meta.liked:
+                    continue
+                meta.liked = liked
+                try:
+                    modio_meta.write_modio_meta(meta_path, meta)
+                except OSError as e:
+                    app_log(f"mod.io: could not sync liked state for "
+                            f"'{folder.name}': {e}")
 
     _log(f"mod.io: {len(results)} mod(s) need attention.")
     return results

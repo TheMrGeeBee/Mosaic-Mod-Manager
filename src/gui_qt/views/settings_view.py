@@ -70,6 +70,7 @@ class SettingsView(QWidget):
         self._build_user_interface()
         self._build_downloads()
         self._build_general()
+        self._build_backups()
         self._build_paths()
         self._v.addStretch(1)
 
@@ -722,6 +723,29 @@ class SettingsView(QWidget):
             cancel_label=self.tr("Cancel"),
             danger=False,
         )
+
+    def _build_backups(self):
+        """Profile backup retention (Utils.profile.profile_backup). Manual/
+        kept backups are never affected by this — it only caps automated
+        pre-deploy backups."""
+        g = self._section(self.tr("Profile Backups"))
+        lim_sld, lim_lbl = self._slider(
+            g, self.tr("Automated backup limit"), 0, 500,
+            uc.load_backup_retention_limit(), self._save_backup_limit)
+        def _fmt_limit(v, _lbl=lim_lbl):
+            _lbl.setText(self.tr("Unlimited") if int(v) == 0 else str(int(v)))
+        lim_sld.valueChanged.connect(_fmt_limit)
+        _fmt_limit(lim_sld.value())
+        self._add_help(
+            g, self.tr("How many automated backups (created before every deploy) "
+               "to keep per profile before the oldest are pruned. 0 = keep "
+               "them all. Manual backups and ones marked “Keep” are "
+               "never pruned. Lowering this doesn't remove anything "
+               "immediately — use “Purge” in a profile's Backups "
+               "view to apply the new limit right away."))
+
+    def _save_backup_limit(self, value):
+        self._safe_save(uc.save_backup_retention_limit, int(value))
 
     def _build_paths(self):
         g = self._section(self.tr("Paths"))

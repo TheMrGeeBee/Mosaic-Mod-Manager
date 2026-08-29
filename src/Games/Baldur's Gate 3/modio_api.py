@@ -19,9 +19,13 @@ import requests
 from Utils.app_log import app_log
 from Utils.ca_bundle import resolve_ca_bundle
 
-# mod.io's BG3 game is addressable by name-id ("@baldursgate3") so we never
-# need to resolve the numeric game id (6715) ourselves.
-_API_ROOT = "https://api.mod.io/v1"
+# mod.io retired api.mod.io in favour of per-game subdomains (enforced since
+# 2025-01-01 — a bare api.mod.io call now returns 401 error_ref 11001,
+# "deprecated api.mod.io domain", confirmed live 2026-08-29). The game
+# subdomain needs the NUMERIC game id (name-id paths like /games/@baldursgate3
+# still resolve fine underneath it — confirmed live — so _GAME stays as-is).
+_GAME_ID = 6715
+_API_ROOT = f"https://g-{_GAME_ID}.modapi.io/v1"
 _GAME = "@baldursgate3"
 
 # Cache mod_id -> (timestamp, list[ModioFile]) for the session.
@@ -384,3 +388,88 @@ class ModioAPI:
             app_log(f"mod.io key test network error: {e}")
             return False
         return resp.status_code == 200
+
+    # -- Personal rating ("Like") — needs a user OAuth token, not the ------
+    # -- app's own read-only API key (see modio_oauth.py). ------------------
+
+    def rate_mod(self, mod_id: int, rating: int, access_token: str) -> dict:
+        """Set the logged-in user's rating on *mod_id* (1 = like, -1 =
+        dislike, 0 = clear). Requires a mod.io OAuth access token — the
+        read-only api_key cannot write. Raises :class:`ModioAPIError` on
+        failure — mod.io's own message is usually specific (e.g. "You have
+        already submitted a negative rating for this mod", "This game is
+        not currently accepting downvotes against mods" — the latter
+        confirmed live for Baldur's Gate 3: dislikes are rejected outright
+        with error_ref 19300, unrelated to any account-linking status —
+        Larian-account linking was tested live and does NOT gate rating at
+        the API level, only some mod.io *website* UI affordances).
+
+        The 200/201 response here is the only reliable success signal —
+        confirmed live that GET /me/ratings can return stale data
+        immediately after a successful write, so callers should NOT treat a
+        follow-up read as verification.
+        """
+        if mod_id <= 0:
+            raise ValueError("mod_id must be a positive integer")
+        if not access_token:
+            raise ModioAPIError("mod.io login required (no access token)")
+        url = f"{_API_ROOT}/games/{_GAME}/mods/{mod_id}/ratings"
+        try:
+            resp = self._session.post(
+                url,
+                headers={"Authorization": f"Bearer {access_token}"},
+                data={"rating": rating},
+                timeout=self._timeout,
+            )
+        except requests.RequestException as e:
+            raise ModioAPIError(f"network error: {e}") from e
+        if resp.status_code == 401:
+            raise ModioAPIError("mod.io login expired — please log in again (HTTP 401)")
+        if resp.status_code not in (200, 201):
+            raise ModioAPIError(f"HTTP {resp.status_code}: {resp.text[:200]}")
+        try:
+            body = resp.json()
+        except ValueError:
+            body = {}
+        app_log(f"mod.io: rate_mod({mod_id}, {rating}) -> HTTP {resp.status_code}: {body}")
+        return body
+
+    def get_my_ratings(self, access_token: str) -> "dict[int, int]":
+        """Return {mod_id: rating} for every mod the logged-in user has
+        rated, across all of mod.io (not just this game) — mirrors Nexus's
+        get_endorsements() batch-sync pattern. Raises :class:`ModioAPIError`
+        on failure.
+        """
+        if not access_token:
+            raise ModioAPIError("mod.io login required (no access token)")
+        out: "dict[int, int]" = {}
+        url = f"{_API_ROOT}/me/ratings"
+        params = {"_limit": 100, "_offset": 0}
+        while True:
+            try:
+                resp = self._session.get(
+                    url,
+                    headers={"Authorization": f"Bearer {access_token}"},
+                    params=params,
+                    timeout=self._timeout,
+                )
+            except requests.RequestException as e:
+                raise ModioAPIError(f"network error: {e}") from e
+            if resp.status_code == 401:
+                raise ModioAPIError("mod.io login expired — please log in again (HTTP 401)")
+            if resp.status_code != 200:
+                raise ModioAPIError(f"HTTP {resp.status_code}: {resp.text[:200]}")
+            try:
+                body = resp.json()
+            except ValueError as e:
+                raise ModioAPIError(f"invalid JSON response: {e}") from e
+            data = body.get("data", [])
+            for d in data:
+                mid = int((d.get("mod") or {}).get("id") or d.get("mod_id") or 0)
+                rating = int(d.get("rating") or 0)
+                if mid:
+                    out[mid] = rating
+            if len(data) < params["_limit"]:
+                break
+            params["_offset"] += params["_limit"]
+        return out

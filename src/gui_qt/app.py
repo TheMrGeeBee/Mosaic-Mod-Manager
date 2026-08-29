@@ -66,11 +66,14 @@ def _modio_key_present(game) -> bool:
         return False
 
 
-def _check_modio_updates(game, staging, log_fn, only_names=None):
+def _check_modio_updates(game, staging, log_fn, only_names=None, access_token=None):
     """BG3-only mod.io update check. Returns a list of ModioUpdateInfo (mods
     with a newer file, or unknown installed version), or [] for other games /
     when no mod.io key is configured. *only_names* restricts the check to those
-    staging folder names. Never raises."""
+    staging folder names. *access_token* (mod.io email login), when given,
+    also syncs Like/Unlike state from mod.io — see check_for_updates's own
+    docstring for why this is a Check-for-Updates concern, not something
+    done right after a Like/Unlike. Never raises."""
     try:
         if getattr(game, "game_id", "") != "baldurs_gate_3":
             return []
@@ -79,7 +82,8 @@ def _check_modio_updates(game, staging, log_fn, only_names=None):
             return []
         checker = _load_bg3_modio("modio_update_checker")
         return checker.check_for_updates(
-            Path(staging), api_key, progress_cb=log_fn, only_names=only_names)
+            Path(staging), api_key, progress_cb=log_fn, only_names=only_names,
+            access_token=access_token)
     except Exception as e:
         log_fn(f"mod.io: update check failed — {e}")
         return []
@@ -93,6 +97,12 @@ _RESTART_REQUESTED = False
 # to a detached wizard tab: the pipeline advances to the next queued archive
 # without counting or renaming it (the detached wizard owns its own outcome).
 _WIZARD_HANDOFF = object()
+
+# Mosaic Mod Manager's own Nexus Mods listing (a "site" mod, not tied to a
+# specific game) — https://www.nexusmods.com/site/mods/2139. Also referenced
+# as the NEXUS_MOD_ID repo variable in .github/workflows/release.yml.
+_MOSAIC_NEXUS_DOMAIN = "site"
+_MOSAIC_NEXUS_MOD_ID = 2139
 
 
 # Quick-configure submenu labels come from the GUI-free Utils.exe_launch.quick_configure and
@@ -272,6 +282,10 @@ class MainWindow(QMainWindow):
     _app_update_found = Signal(object)
     # Endorse/abstain worker → UI thread ({"ok": n, "endorse": bool}).
     _endorse_done = Signal(object)
+    # Endorse-Mosaic worker → UI thread ({"endorsed": bool, "notify": bool, "error": str|None}).
+    _mosaic_endorse_done = Signal(object)
+    # mod.io Like/Unlike worker → UI thread ({"ok": n, "like": bool, "names": [...]}).
+    _modio_like_done = Signal(object)
     # Track worker → UI thread ({"ok": n}).
     _track_done = Signal(object)
     # ui_hooks.warn from any backend thread → OK-only popup on the UI thread
@@ -567,6 +581,8 @@ class MainWindow(QMainWindow):
         self._reinstall_manual_ready.connect(self._on_reinstall_manual_ready)
         self._reinstall_manual_found.connect(self._on_reinstall_manual_found)
         self._endorse_done.connect(self._on_endorse_done)
+        self._mosaic_endorse_done.connect(self._on_mosaic_endorse_done)
+        self._modio_like_done.connect(self._on_modio_like_done)
         self._track_done.connect(self._on_track_done)
         self._copy_done.connect(self._on_copy_done)
         self._col_update_scan_done.connect(self._finish_collection_update)
@@ -1300,16 +1316,17 @@ class MainWindow(QMainWindow):
             "Filters": self._toggle_modlist_filters,
             "Refresh Modlist": self._on_refresh_modlist,
             "Check Updates": self._on_check_updates,
-            "Restore backup": self._open_restore_backup_tab,
         }
         # (canonical key, translated display). Key drives handler lookup + the
         # == comparisons below; display is the visible button text.
+        # "Backups…"/"Backup now…" moved to the profile dropdown menu (see
+        # _profile_actions) — they belong next to Export/Import, not buried
+        # in this row, per user feedback.
         self._modlist_footer_btns: list[QToolButton] = []
         for label, disp in [("Expand all", self.tr("Expand all")),
                             ("Enable all", self.tr("Enable all")),
                             ("Check Updates", self.tr("Check Updates")),
                             ("Filters", self.tr("Filters")),
-                            ("Restore backup", self.tr("Restore backup")),
                             ("Refresh Modlist", self.tr("Refresh Modlist"))]:
             b = self._text_button(disp, compact=True)
             b.setFixedHeight(self._FOOT_BTN_H)
@@ -2774,8 +2791,80 @@ class MainWindow(QMainWindow):
         """Worker reported the validated username (or None) — update the footer."""
         if name:
             self._append_log(f"[nexus] logged in as {name}")
+            self._check_mosaic_endorsed()
         if hasattr(self, "_nexus_footer"):
             self._nexus_footer.set_username(name)
+
+    def _check_mosaic_endorsed(self):
+        """Background: does the logged-in user already endorse Mosaic's own
+        Nexus listing? Fetched once per login (not polled) to set the
+        Endorse button's initial label/state."""
+        import threading
+
+        def _worker():
+            endorsed = False
+            error = None
+            try:
+                for e in self._nexus_api.get_endorsements() or []:
+                    if (str(e.get("domain_name", "")) == _MOSAIC_NEXUS_DOMAIN
+                            and int(e.get("mod_id", 0) or 0) == _MOSAIC_NEXUS_MOD_ID
+                            and str(e.get("status", "")).lower() == "endorsed"):
+                        endorsed = True
+                        break
+            except Exception as exc:
+                error = str(exc)
+            self._mosaic_endorse_done.emit(
+                {"endorsed": endorsed, "notify": False, "error": error})
+        threading.Thread(target=_worker, daemon=True, name="mosaic-endorse-check").start()
+
+    def _on_endorse_mosaic(self):
+        """Endorse (or abstain from) Mosaic Mod Manager's own Nexus listing —
+        the log bar has no 'currently selected mod' context, unlike the
+        modlist's per-mod Endorse (see _on_modlist_endorse), so this always
+        targets Mosaic's own page."""
+        api = self._ensure_nexus_api()
+        if api is None:
+            self._notify(self.tr("Log in first: Nexus ▸ Login to Nexus."), "warning")
+            return
+        new_state = not getattr(self, "_mosaic_endorsed", False)
+        import threading
+
+        def _worker():
+            try:
+                if new_state:
+                    api.endorse_mod(_MOSAIC_NEXUS_DOMAIN, _MOSAIC_NEXUS_MOD_ID)
+                else:
+                    api.abstain_mod(_MOSAIC_NEXUS_DOMAIN, _MOSAIC_NEXUS_MOD_ID)
+                self._mosaic_endorse_done.emit(
+                    {"endorsed": new_state, "notify": True, "error": None})
+            except Exception as exc:
+                self._mosaic_endorse_done.emit({
+                    "endorsed": getattr(self, "_mosaic_endorsed", False),
+                    "notify": True, "error": str(exc),
+                })
+        threading.Thread(target=_worker, daemon=True, name="endorse-mosaic").start()
+
+    def _on_mosaic_endorse_done(self, payload):
+        """UI thread: apply the Endorse-Mosaic result (silent state refresh,
+        or a user-initiated click — see the 'notify' flag)."""
+        error = payload.get("error")
+        notify = payload.get("notify")
+        if error:
+            if notify:
+                self._notify(
+                    self.tr("Nexus: couldn't update endorsement — {0}").format(error),
+                    "warning")
+            else:
+                self._append_log(f"[nexus] Mosaic endorsement check failed: {error}")
+            return
+        self._mosaic_endorsed = bool(payload.get("endorsed"))
+        if hasattr(self, "_endorse_mosaic_btn"):
+            self._endorse_mosaic_btn.setText(
+                self.tr("Endorsed ✓") if self._mosaic_endorsed else self.tr("Endorse"))
+        if notify:
+            msg = (self.tr("Endorsed Mosaic Mod Manager on Nexus — thank you!")
+                   if self._mosaic_endorsed else self.tr("Endorsement removed."))
+            self._notify(msg, "success")
 
     def _open_onboarding_tab(self):
         """Open first-run onboarding as a fullscreen detachable tab (like the
@@ -4375,14 +4464,19 @@ class MainWindow(QMainWindow):
 
     def _nexus_login_sso(self):
         """Start the browser OAuth flow. Keeps the client on self so the
-        'Paste login code' fallback can complete the same session."""
+        'Paste login code' fallback can complete the same session.
+
+        A previous attempt (abandoned tab, browser never completed the
+        redirect, etc.) can still be 'running' — rather than permanently
+        blocking every future login until its 5-minute timeout elapses,
+        cancel it (releases the local callback port) and start clean. This
+        is what a user clicking Login again clearly wants."""
         from Nexus.nexus_oauth import NexusOAuthClient, CLIENT_ID
         if not CLIENT_ID:
             self._notify(self.tr("Nexus login is unavailable in this build."), "warning")
             return
         if self._oauth_client is not None and self._oauth_client.is_running:
-            self._notify(self.tr("A Nexus login is already in progress."), "info")
-            return
+            self._oauth_client.cancel()
         self._oauth_client = NexusOAuthClient(
             on_token=lambda t: self._oauth_event.emit("token", t),
             on_error=lambda m: self._oauth_event.emit("error", m),
@@ -4421,6 +4515,12 @@ class MainWindow(QMainWindow):
         clear_api_key()
         clear_oauth_tokens()
         self._nexus_api = None
+        # Also tear down any in-flight login attempt so a fresh SSO login
+        # (e.g. testing a different account) never gets stuck behind a
+        # lingering one — cancel() releases the local callback port.
+        if self._oauth_client is not None:
+            self._oauth_client.cancel()
+            self._oauth_client = None
         if hasattr(self, "_nexus_footer"):
             self._nexus_footer.set_username(None)
         self._notify(self.tr("Nexus credentials cleared."), "warning")
@@ -4499,6 +4599,10 @@ class MainWindow(QMainWindow):
         api = self._ensure_nexus_api() if domain else None
         have_nexus = domain and api is not None
         have_modio = _modio_key_present(game)
+        # Optional — only used to sync Like/Unlike state (see
+        # _check_modio_updates); None (not logged in via email) just skips
+        # that part, update-checking itself only ever needed the api_key.
+        modio_access_token = self._ensure_modio_oauth()
 
         # mod.io (BG3) can run without a Nexus login. Only bail for "needs Nexus
         # login" when there's also no mod.io key to fall back on.
@@ -4506,7 +4610,7 @@ class MainWindow(QMainWindow):
             if getattr(game, "game_id", "") == "baldurs_gate_3":
                 self._notify(
                     self.tr("Log in to Nexus (Nexus ▸ Login) or set a mod.io API key "
-                    "(mod.io API Key tool) to check for updates."), "warning")
+                    "(Wizard ▸ mod.io API Key) to check for updates."), "warning")
             elif not domain:
                 self._notify(self.tr("'{0}' has no Nexus Mods page.").format(game.name), "warning")
             else:
@@ -4557,7 +4661,7 @@ class MainWindow(QMainWindow):
                     modio_box["results"] = _check_modio_updates(
                         game, staging,
                         lambda m: self._op_log.emit(f"[modio] {m}"),
-                        only_names=subset)
+                        only_names=subset, access_token=modio_access_token)
 
                 modio_thread = None
                 if have_modio:
@@ -5327,7 +5431,7 @@ class MainWindow(QMainWindow):
         api_key = _load_bg3_modio("modio_key").load_modio_key()
         if not api_key:
             self._notify(
-                self.tr("No mod.io API key configured — Settings ▸ mod.io API Key."),
+                self.tr("No mod.io API key configured — Wizard ▸ mod.io API Key."),
                 "warning")
             return
         staging = self._gs.staging_dir()
@@ -5581,7 +5685,47 @@ class MainWindow(QMainWindow):
             f"Quick Update (mod.io): {problems} mod(s) couldn't be updated — "
             "see the log.", "warning")
 
-    # ---- Restore backup (plugins-panel-scoped overlay) --------------------
+    # ---- Backups (plugins-panel-scoped overlay) ----------------------------
+
+    def _backup_profile_now(self):
+        """Create a manual, timestamped profile backup with an optional note
+        in one step — the lightweight alternative to Export profile (which
+        bundles/reinstalls every mod) and Export code (clipboard-only, still
+        re-resolves Nexus mods on import). See Utils.profile.profile_backup
+        for exactly what a backup captures (modlist/plugins/profile state,
+        not mod files)."""
+        game = self._gs.game
+        if game is None or not game.is_configured():
+            self._notify(self.tr("No configured game selected."), "warning")
+            return
+        pname = self._gs.profile
+        if not pname:
+            self._notify(self.tr("No profile selected."), "warning")
+            return
+        profile_dir = game.get_profile_root() / "profiles" / pname
+
+        def _done(text):
+            if text is None:
+                return
+            from Utils.profile.profile_backup import create_backup, set_backup_label
+            try:
+                bdir = create_backup(profile_dir, log_fn=self._append_log, manual=True)
+            except Exception as exc:  # noqa: BLE001 — surface, don't crash
+                self._notify(self.tr("Backup failed: {0}").format(exc), "warning")
+                return
+            note = (text or "").strip()
+            if note:
+                set_backup_label(bdir, note)
+            self._notify(self.tr("Backup created."), "success")
+
+        from gui_qt.overlays.text_input_overlay import TextInputOverlay
+        TextInputOverlay.show_over(
+            self,
+            self.tr("Backup now"),
+            self.tr("Optional note for this backup (leave blank to use the date)."),
+            _done,
+            ok_label=self.tr("Create backup"),
+        )
 
     def _open_restore_backup_tab(self):
         """Open the Restore backup list for the current profile as a tab that
@@ -5605,7 +5749,7 @@ class MainWindow(QMainWindow):
             on_close=self._close_restore_backup_tab,
             log_fn=self._append_log)
         self._tabs.open_scoped_tab(
-            view, self.tr("Restore backup"), self._plugins_panel_stack,
+            view, self.tr("Backups"), self._plugins_panel_stack,
             key="restore_backup")
 
     def _on_backup_restored(self):
@@ -5642,6 +5786,7 @@ class MainWindow(QMainWindow):
         if not domain:
             self._notify(self.tr("'{0}' has no Nexus Mods page.").format(game.name), "warning")
             return
+        self._gs.reassert_active_profile()
         staging = self._gs.staging_dir()
         if staging is None:
             self._notify(self.tr("No mod staging folder for this profile."), "warning")
@@ -5703,6 +5848,7 @@ class MainWindow(QMainWindow):
         if game is None or not game.is_configured():
             self._notify(self.tr("No configured game selected."), "warning")
             return
+        self._gs.reassert_active_profile()
         staging = self._gs.staging_dir()
         if staging is None:
             self._notify(self.tr("No mod staging folder for this profile."), "warning")
@@ -5716,7 +5862,7 @@ class MainWindow(QMainWindow):
         api_key = _load_bg3_modio("modio_key").load_modio_key()
         if not api_key:
             self._notify(
-                self.tr("No mod.io API key configured — Settings ▸ mod.io API Key."),
+                self.tr("No mod.io API key configured — Wizard ▸ mod.io API Key."),
                 "warning")
             return
         modio_api = _load_bg3_modio("modio_api")
@@ -6300,6 +6446,7 @@ class MainWindow(QMainWindow):
             return
         game = self._gs.game
         domain = getattr(game, "nexus_game_domain", "") or ""
+        self._gs.reassert_active_profile()
         staging = self._gs.staging_dir()
         if staging is None or not domain:
             return
@@ -6345,6 +6492,96 @@ class MainWindow(QMainWindow):
             self._notify(self.tr("No mods were updated (already in that state or no "
                          "Nexus id)."), "info")
 
+    def _ensure_modio_oauth(self):
+        """Return a stored mod.io OAuth access token, or None (not logged
+        in via Wizard ▸ mod.io API Key ▸ Log in with email). Mirrors the guard shape
+        of _ensure_nexus_api, but there's no validate()/refresh step yet —
+        see modio_oauth.py for why."""
+        tokens = _load_bg3_modio("modio_oauth").load_modio_tokens()
+        if not tokens:
+            return None
+        return tokens.get("access_token") or None
+
+    def _on_modlist_modio_like(self, names, like: bool):
+        """Like / unlike the given mods on mod.io (right-click). Runs on a
+        worker thread, updates each mod's meta.ini `liked` flag, then
+        refreshes the modlist so the flag icon updates. Mirrors
+        _on_modlist_endorse; needs a mod.io OAuth login (not just the
+        read-only API key — see modio_oauth.py)."""
+        import threading
+        names = [n for n in (names or []) if n]
+        if not names:
+            return
+        access_token = self._ensure_modio_oauth()
+        if access_token is None:
+            self._notify(
+                self.tr("Log in to mod.io first: Wizard ▸ mod.io API Key ▸ "
+                        "Log in with email."),
+                "warning")
+            return
+        api_key = _load_bg3_modio("modio_key").load_modio_key()
+        if not api_key:
+            self._notify(self.tr("mod.io API key not configured."), "warning")
+            return
+        self._gs.reassert_active_profile()
+        staging = self._gs.staging_dir()
+        if staging is None:
+            return
+        msg = (self.tr("Liking {0} mod(s)…") if like
+               else self.tr("Unliking {0} mod(s)…")).format(len(names))
+        self._notify(msg, "info")
+
+        def _worker():
+            # NOTE: deliberately does NOT verify via get_my_ratings() after
+            # posting — confirmed live (2026-08-29) that GET /me/ratings can
+            # return stale data immediately after a successful POST (the POST
+            # itself returns a clear success message, e.g. "Your previous
+            # rating for this mod has been removed", while the very next GET
+            # still shows the old value). mod.io's own POST response is the
+            # only reliable success signal; trust it, mirroring how
+            # _on_modlist_endorse trusts Nexus's endorse_mod() without a
+            # separate read-back check.
+            modio_api = _load_bg3_modio("modio_api")
+            modio_meta = _load_bg3_modio("modio_meta")
+            api = modio_api.ModioAPI(api_key)
+            ok = 0
+            for nm in names:
+                meta_path = staging / nm / "meta.ini"
+                if not meta_path.is_file():
+                    continue
+                try:
+                    meta = modio_meta.read_modio_meta(meta_path)
+                    if not meta.mod_id:
+                        continue
+                    api.rate_mod(meta.mod_id, 1 if like else 0, access_token)
+                    meta.liked = like
+                    modio_meta.write_modio_meta(meta_path, meta)
+                    ok += 1
+                except Exception as exc:
+                    # mod.io's own error message is usually specific and
+                    # actionable (e.g. "You have already submitted a negative
+                    # rating for this mod", "This game is not currently
+                    # accepting downvotes against mods") — surfaced as-is
+                    # rather than guessing a cause.
+                    self._op_log.emit(f"mod.io: {'like' if like else 'unlike'} "
+                                      f"failed for '{nm}': {exc}")
+            self._modio_like_done.emit({"ok": ok, "like": like, "names": list(names)})
+
+        threading.Thread(target=_worker, daemon=True, name="modio-like").start()
+
+    def _on_modio_like_done(self, payload):
+        """UI thread: report the like/unlike result + refresh the flag."""
+        ok = payload.get("ok", 0)
+        if ok:
+            msg = (self.tr("Liked {0} mod(s) on mod.io.") if payload.get("like")
+                   else self.tr("Unliked {0} mod(s) on mod.io.")).format(ok)
+            self._notify(msg, "success")
+            self._refresh_modlist_flags(payload.get("names"))
+        else:
+            self._notify(self.tr("mod.io didn't update any mods — see the log "
+                         "for its exact reason (already in that state, no "
+                         "mod.io id, or a rejected request)."), "warning")
+
     def _on_modlist_track(self, names):
         """Start tracking the given mods on Nexus (right-click). Runs on a worker
         thread via the shared API, reading each mod's Nexus id from its meta.ini.
@@ -6359,6 +6596,7 @@ class MainWindow(QMainWindow):
             return
         game = self._gs.game
         domain = getattr(game, "nexus_game_domain", "") or ""
+        self._gs.reassert_active_profile()
         staging = self._gs.staging_dir()
         if staging is None or not domain:
             return
@@ -6990,6 +7228,10 @@ class MainWindow(QMainWindow):
             self._remove_current_profile()
         elif which == "settings":
             self._open_profile_settings_tab()
+        elif which == "backup_now":
+            self._backup_profile_now()
+        elif which == "backups":
+            self._open_restore_backup_tab()
         elif which == "export":
             self._open_export_profile_tab()
         elif which == "import":
@@ -8297,6 +8539,9 @@ class MainWindow(QMainWindow):
         # Profile settings, then the export/import group (profile + code together).
         actions.extend([
             (self.tr("Profile settings…"), lambda: self._on_profile_action("settings"),
+             {"separator_after": True}),
+            (self.tr("Backup now…"), lambda: self._on_profile_action("backup_now")),
+            (self.tr("Backups…"), lambda: self._on_profile_action("backups"),
              {"separator_after": True}),
             (self.tr("Export profile…"), lambda: self._on_profile_action("export")),
             (self.tr("Import profile…"), lambda: self._on_profile_action("import")),
@@ -11113,6 +11358,8 @@ class MainWindow(QMainWindow):
                            self._rebuild_conflicts_async(rescan_index=True))
         # Endorse/Abstain: needs the shared Nexus API + a flag refresh.
         self._modlist_view.on_endorse = self._on_modlist_endorse
+        # Like/Unlike (mod.io): needs the mod.io OAuth token + a flag refresh.
+        self._modlist_view.on_modio_like = self._on_modlist_modio_like
         # Track: needs the shared Nexus API (no meta.ini flag to persist).
         self._modlist_view.on_track = self._on_modlist_track
         # A saved note may change the note flag — light flag-only refresh.
@@ -13062,13 +13309,17 @@ class MainWindow(QMainWindow):
         self._changelog_btn.clicked.connect(self._open_changelog_tab)
         h.addWidget(self._changelog_btn)
 
-        # GitHub — opens the project's repo. Ko-Fi and "Endorse AMM" buttons
-        # (removed in the Mosaic rename) pointed at ChrisDKN's own Ko-Fi and
-        # Nexus "site mod" page for the original Amethyst Mod Manager — this
-        # fork has no equivalent of its own yet.
+        # GitHub — opens the project's repo.
         self._github_btn = self._text_button(self.tr("Github"), compact=True)
         self._github_btn.clicked.connect(self._open_github)
         h.addWidget(self._github_btn)
+
+        # Endorse Mosaic's own Nexus listing (site/2139) — the Mosaic-era
+        # equivalent of the pre-rename "Endorse AMM" button, which pointed at
+        # the original Amethyst Mod Manager's Nexus page.
+        self._endorse_mosaic_btn = self._text_button(self.tr("Endorse"), compact=True)
+        self._endorse_mosaic_btn.clicked.connect(self._on_endorse_mosaic)
+        h.addWidget(self._endorse_mosaic_btn)
 
         # Nexus username at the far right; hover shows API rate-limit usage.
         from gui_qt.nexus.nexus_footer import NexusFooterLabel
