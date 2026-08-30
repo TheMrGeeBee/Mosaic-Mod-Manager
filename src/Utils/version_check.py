@@ -579,11 +579,19 @@ def _launch_remote_reinstall(branch: str) -> str:
     # user has. Reinstall pins the branch (handles same-branch update AND
     # channel switch — `flatpak update` won't cross branches).
     remote = _effective_remote_name()
+    # Relaunch the branch we just installed, NOT a bare app id. A channel
+    # switch leaves the old branch installed too (flatpak treats branches as
+    # separate installs, so --reinstall only replaces the matching ref), and a
+    # bare `flatpak run <app>` then resolves to whichever branch happens to be
+    # "current" — which may be the one we just switched away from. That would
+    # relaunch the OLD build and make the enroll/update look like it silently
+    # did nothing. Confirmed live: a beta bundle enrolled onto stable left both
+    # installed, with `flatpak info <app>` refusing as ambiguous.
     cmd = (
         f"sleep 2 && "
         f"{host} flatpak install --user --reinstall --noninteractive -y "
         f"{remote} {ref} && "
-        f"{host} flatpak run {_APP_ID} &>/dev/null &"
+        f"{host} flatpak run {_APP_ID}//{branch} &>/dev/null &"
     )
     try:
         subprocess.Popen(
