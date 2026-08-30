@@ -1,0 +1,64 @@
+# Maintainer: MrGeeBee <mrgeebee@pm.me>
+#
+# AUR package wrapping the official, GPG-signed AppImage release — not a
+# from-source build. See src/appimage/PKGBUILD in the main repo for the
+# actual build pipeline; that file stays internal (feeds the CI AppImage
+# build via quick-sharun) and is not this package.
+pkgname=mosaic-mod-manager-appimage
+pkgver=1.0.4
+pkgrel=1
+pkgdesc='A mod manager for Linux and the Steam Deck (AppImage)'
+url='https://github.com/TheMrGeeBee/Mosaic-Mod-Manager'
+license=('GPL-3.0-or-later')
+arch=('x86_64')
+depends=('hicolor-icon-theme')
+optdepends=('fuse2: run without --appimage-extract-and-run')
+
+# Signing key for the AppImage release assets, published at
+# https://themrgeebee.github.io/Mosaic-Mod-Manager/appimage-signing-key.pub.asc
+validpgpkeys=('EEED9FA136E43922A8898E760CC8D2A1787FD648')
+
+pkgver() {
+  curl -fsSI "https://github.com/TheMrGeeBee/Mosaic-Mod-Manager/releases/latest" |
+    grep -i '^location:' | sed -E 's|.*tag/v([^[:space:]]+).*|\1|' | tr -d '\r'
+}
+
+source=(
+  "MosaicModManager-v${pkgver}-${CARCH}.AppImage::https://github.com/TheMrGeeBee/Mosaic-Mod-Manager/releases/download/v${pkgver}/MosaicModManager-v${pkgver}-${CARCH}.AppImage"
+  "MosaicModManager-v${pkgver}-${CARCH}.AppImage.asc::https://github.com/TheMrGeeBee/Mosaic-Mod-Manager/releases/download/v${pkgver}/MosaicModManager-v${pkgver}-${CARCH}.AppImage.asc"
+  "mod-manager.desktop::https://raw.githubusercontent.com/TheMrGeeBee/Mosaic-Mod-Manager/v${pkgver}/src/appimage/mod-manager.desktop"
+  "mod-manager.png::https://raw.githubusercontent.com/TheMrGeeBee/Mosaic-Mod-Manager/v${pkgver}/src/appimage/mod-manager.png"
+  "mod-manager-16.png::https://raw.githubusercontent.com/TheMrGeeBee/Mosaic-Mod-Manager/v${pkgver}/src/appimage/mod-manager-16.png"
+  "mod-manager-32.png::https://raw.githubusercontent.com/TheMrGeeBee/Mosaic-Mod-Manager/v${pkgver}/src/appimage/mod-manager-32.png"
+  "mod-manager-64.png::https://raw.githubusercontent.com/TheMrGeeBee/Mosaic-Mod-Manager/v${pkgver}/src/appimage/mod-manager-64.png"
+  "mod-manager-128.png::https://raw.githubusercontent.com/TheMrGeeBee/Mosaic-Mod-Manager/v${pkgver}/src/appimage/mod-manager-128.png"
+)
+# The AppImage/.asc pair are verified by PGP (validpgpkeys above), which is
+# why they're SKIP here — that's the real integrity check for those two,
+# not a shortcut. The desktop/icon files are static; SKIP on them would
+# hide any accidental change, so they carry real sha256sums instead. A
+# future release that actually changes these assets will fail here until
+# the sums are updated, which is the point — not a bug.
+sha256sums=('SKIP'
+            'SKIP'
+            'd02bd265a2b395d1a26f7aa1312da506f8ac29ef1c09fac1a4ed127246f3eb28'
+            '727f04fa4900ed03562256ed83492f0ad7f3b4be1f38cc86e649f094e769a684'
+            '20aa6fdb53ff061a374bcf8d633f4477c4a412104c5da539bb7b33907744cc99'
+            '7bd88b6998a4dac3df1c5541de8e5393f130c9064796f77efa597a2c8b8f2fd5'
+            '76107fecfdb9a5d981eee07e7eea73d8b25e8b0372d20aec79ccefecd96917e2'
+            'e5955cbbc54b7fdc4cd0d7049799f3e261020517114be4f82416316306641225')
+
+package() {
+  install -Dm755 "MosaicModManager-v${pkgver}-${CARCH}.AppImage" \
+    "$pkgdir/opt/$pkgname/mosaic-mod-manager.AppImage"
+  install -d "$pkgdir/usr/bin"
+  ln -s "/opt/$pkgname/mosaic-mod-manager.AppImage" "$pkgdir/usr/bin/mod-manager"
+
+  install -Dm644 mod-manager.desktop "$pkgdir/usr/share/applications/mod-manager.desktop"
+  install -Dm644 mod-manager.png "$pkgdir/usr/share/icons/hicolor/256x256/apps/mod-manager.png"
+  local _sz
+  for _sz in 16 32 64 128; do
+    install -Dm644 "mod-manager-${_sz}.png" \
+      "$pkgdir/usr/share/icons/hicolor/${_sz}x${_sz}/apps/mod-manager.png"
+  done
+}
