@@ -1687,9 +1687,11 @@ def install_collection_archive(
             stage_src_root = str(fomod_base)
             installed_files, active_files, loose_files = _collection_plugin_context(
                 game, profile_dir)
+            cross_mod_dep = False
             try:
                 from Utils.installers.fomod_installer import (
-                    resolve_files, check_module_dependencies)
+                    resolve_files, check_module_dependencies,
+                    fomod_has_cross_mod_dependency)
                 ok, msg = check_module_dependencies(
                     config, installed_files, active_files, loose_files)
                 if not ok:
@@ -1697,6 +1699,7 @@ def install_collection_archive(
                            "satisfied — it may not work until these are met:")
                     for line in (msg or "").splitlines():
                         log_fn(f"  {line}")
+                cross_mod_dep = fomod_has_cross_mod_dependency(config)
             except Exception:
                 resolve_files = None  # type: ignore
 
@@ -1706,9 +1709,25 @@ def install_collection_archive(
             # install defaults inline.
             has_steps = bool(getattr(config, "steps", None))
 
-            if fomod_auto_selections is None and defer_interactive_fomod and has_steps:
-                log_fn("FOMOD installer detected — deferring until dependencies "
-                       "are installed.")
+            # Defer even an author-scripted FOMOD (fomod_auto_selections given)
+            # when its own step visibility / conditionalFileInstalls depend on a
+            # FILE from another mod (cross_mod_dep) — not just its own flags.
+            # Auto-selected FOMODs otherwise skip the "wait for dependencies"
+            # defer entirely and install inline, concurrently with the rest of
+            # the collection; for a patch-style FOMOD whose branching checks a
+            # sibling mod's plugin, that races the sibling's own install and can
+            # silently resolve as if that plugin were absent, dropping a patch
+            # the author actually selected. A FOMOD with no such cross-mod gate
+            # is fully self-contained (its own flags only) and stays on the fast
+            # immediate path regardless of install order.
+            if defer_interactive_fomod and has_steps and (
+                    fomod_auto_selections is None
+                    or cross_mod_dep):
+                reason = ("no author selections recorded" if fomod_auto_selections is None
+                          else "the author's choices depend on another mod's plugin "
+                               "being installed first")
+                log_fn(f"FOMOD installer detected — deferring until dependencies "
+                       f"are installed ({reason}).")
                 prepared.cleanup()
                 return FOMOD_DEFERRED
 

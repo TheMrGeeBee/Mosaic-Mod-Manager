@@ -110,6 +110,43 @@ def evaluate_dependency(dep: Dependency, flag_state: dict[str, str],
     return True
 
 
+def _dependency_has_file_check(dep: "Dependency | None") -> bool:
+    """True if *dep*, or any node in its composite tree, is a fileDependency —
+    i.e. references another mod's plugin rather than only this FOMOD's own
+    flag state."""
+    if dep is None:
+        return False
+    if dep.dep_type == "file":
+        return True
+    if dep.dep_type == "composite":
+        return any(_dependency_has_file_check(d) for d in dep.sub_deps)
+    return False
+
+
+def fomod_has_cross_mod_dependency(config: ModuleConfig) -> bool:
+    """True if this FOMOD's resolved file list can vary based on another
+    mod's plugin being present/active — a step's ``<visible>`` gate or a
+    ``<conditionalFileInstalls>`` pattern keyed on a fileDependency, rather
+    than only this FOMOD's own selected options.
+
+    Collection installs use this to decide whether an author-scripted FOMOD
+    (``fomod_auto_selections`` supplied, which otherwise installs immediately
+    unlike an interactive one) must still be DEFERRED until its dependencies
+    are staged — see ``install_collection_archive`` in
+    ``Utils/mods/mod_install.py``. Without this, a patch-style FOMOD whose
+    branching depends on a sibling collection mod's plugin can resolve
+    against an incomplete, still-installing profile purely because of
+    concurrent-install timing, silently dropping content the author selected
+    even though the recorded choice is correct."""
+    for step in config.steps:
+        if _dependency_has_file_check(step.visible_condition):
+            return True
+    for pattern in config.conditional_file_installs:
+        if _dependency_has_file_check(pattern.dependency):
+            return True
+    return False
+
+
 # ---------------------------------------------------------------------------
 # Plugin type resolution
 # ---------------------------------------------------------------------------

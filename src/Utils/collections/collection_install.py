@@ -1001,7 +1001,14 @@ def run_collection_install(
                 fomod_auto_selections=auto_fomod, bain_auto_selections=auto_bain,
                 prebuilt_meta=_pmeta, preferred_name=_preferred,
                 skip_index_update=True, overwrite_existing=overwrite_existing,
-                defer_interactive_fomod=(auto_fomod is None),
+                # Always True here, not (auto_fomod is None): this caller always
+                # supports deferring to the second pass, and install_collection_
+                # archive itself now also defers an author-scripted FOMOD (auto_fomod
+                # given) whose steps depend on a sibling mod's plugin file
+                # (fomod_has_cross_mod_dependency) — gating this on auto_fomod being
+                # None would suppress that check for every FOMOD that HAS recorded
+                # choices, i.e. exactly the case it exists to catch.
+                defer_interactive_fomod=True,
                 defer_interactive_bain=(auto_bain is None),
                 resolve_fomod=cb.resolve_fomod, resolve_bain=cb.resolve_bain,
                 on_installed=_capture_fomod, cancel=_col_stop)
