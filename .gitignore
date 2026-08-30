@@ -7,7 +7,7 @@
 src/appimage/build
 flatpak/build
 flatpak/repo
-/AmethystModManager-flatpak-repo/
+/MosaicModManager-flatpak-repo/
 *.flatpak
 *.AppImage
 /AUR
@@ -20,6 +20,12 @@ decky/
 .mcp.json
 **/__pycache__/
 /tools
-AmethystModManager-AppImage/
+MosaicModManager-AppImage/
 *.AppImage.zsync
 src/appimage/dist/
+
+# Name->SHA record of the 107 pre-rename local-only tags (v0.1.0-v2.0.5-beta.2,
+# Feb-Jul 2026), deleted 2026-08-30 because the post-rename version reset to
+# v1.0.0 made them collide with new release tags. None were ever pushed.
+# Recreate any with: git tag <name> <sha>
+stale-local-tags-backup.txt
