@@ -314,13 +314,33 @@ jobs:
           # "Archived files" section — was a manual step before this.
           archive_existing_version: ${{ inputs.nexus_changelog_and_archive }}
           # changelog requires mod_id. AppImage and Flatpak share ONE Nexus
-          # mod page (mod_id 2139) — the changelog is a mod-level entry, not
-          # a per-file one, so only this step (not the Flatpak step below)
-          # attaches it; doing it from both steps would just post the same
-          # changelog text twice. Left empty when nexus_changelog_and_archive
-          # is off (e.g. a partial retry while NEXUS_MOD_ID is broken, or the
-          # changelog was already added by hand) — mod_id: '' is accepted by
-          # the action as "no changelog requested".
+          # mod page — the changelog is a mod-level entry, not a per-file one,
+          # so only this step (not the Flatpak step below) attaches it; doing
+          # it from both steps would just post the same changelog text twice.
+          # Left empty when nexus_changelog_and_archive is off (e.g. a partial
+          # retry while NEXUS_MOD_ID is broken, or the changelog was already
+          # added by hand) — mod_id: '' is accepted by the action as "no
+          # changelog requested".
+          #
+          # NEXUS_MOD_ID must be the v3 COMPOSITE UID (9856949946459), NOT the
+          # 2139 from the mod page URL. This action talks to
+          # api.nexusmods.com/v3, whose /mods/{id} endpoints key off
+          # (numeric_game_id << 32) | game_scoped_id — here
+          # (2295 << 32) | 2139, game 2295 being the "site" domain. The same
+          # scheme our own client uses (Nexus/nexus_api.py get_mods_batch,
+          # which stringifies uids for /mods/batch); Nexus's OpenAPI types the
+          # path param as a STRING "unique identifier for the mod" precisely
+          # because a uid overflows 32 bits.
+          # Setting this to the URL id makes every release fail the changelog
+          # step with `404 Mod not found: 2139` AFTER the file itself has
+          # already uploaded — so the retry then needs
+          # skip_appimage_nexus_upload=true to avoid a duplicate file version.
+          # That cost v1.0.5 and v1.0.6 a failed run each. Resolve the uid for
+          # any mod with:
+          #   curl -s https://api.nexusmods.com/v2/graphql \
+          #     -H 'Content-Type: application/json' \
+          #     -d '{"query":"query M($ids:[CompositeDomainWithIdInput!]!){legacyModsByDomain(ids:$ids){nodes{uid}}}","variables":{"ids":[{"gameDomain":"site","modId":2139}]}}'
+          # File-slot ids (file_id above) are v3-native and need NO conversion.
           mod_id: ${{ inputs.nexus_changelog_and_archive && vars.NEXUS_MOD_ID || '' }}
           changelog: ${{ inputs.nexus_changelog_and_archive && steps.changelog.outputs.text || '' }}
 
