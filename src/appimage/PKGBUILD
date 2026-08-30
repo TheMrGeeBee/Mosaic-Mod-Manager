@@ -23,7 +23,7 @@ pkgrel=1
 pkgdesc='Linux-native mod manager for a variety of games'
 arch=('x86_64')
 url='https://github.com/TheMrGeeBee/Mosaic-Mod-Manager'
-license=('GPL-3.0-only')
+license=('GPL-3.0-or-later')
 # qt6-wayland is explicit: pyside6 doesn't hard-depend on it, and quick-sharun
 # only deploys the wayland-*/ Qt plugin dirs when they exist on disk.
 # qt6-imageformats provides libqwebp.so (omitted from qt6-base): Nexus serves
