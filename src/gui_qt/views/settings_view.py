@@ -662,9 +662,9 @@ class SettingsView(QWidget):
         is hidden. No-op outside the flatpak or when already remote-tracked.
         """
         from Utils.version_check import (
-            is_flatpak, flatpak_installed_from_remote, hosted_infra_available,
+            is_flatpak, flatpak_installed_from_remote, flatpak_remote_available,
         )
-        if not hosted_infra_available():
+        if not flatpak_remote_available():
             return  # no hosted remote published yet — nothing to offer
         if not is_flatpak() or flatpak_installed_from_remote():
             return

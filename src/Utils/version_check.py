@@ -19,14 +19,24 @@ _APP_UPDATE_FLATPAK_BUNDLE_URL = (
 )
 _APP_ID = "io.github.TheMrGeeBee.MosaicModManager"
 
-# Hosted Flatpak remote (GitHub Pages) + AUR package — infrastructure this
-# fork doesn't have of its own yet (these URLs point at where they'd live
-# once published, matching the release.yml PAGES_URL fix and a plausible
-# future AUR package name, but nothing is actually hosted there today).
-# _HOSTED_INFRA_AVAILABLE gates every public function that depends on them
-# (see below) so they're disabled rather than silently pointing at 404s —
-# flip it to True once the remote/package are actually published.
-_HOSTED_INFRA_AVAILABLE = False
+# Two INDEPENDENT pieces of hosted infrastructure, each gating the public
+# functions below that depend on it, so a missing one is disabled rather than
+# silently pointing at 404s. These were a single _HOSTED_INFRA_AVAILABLE flag
+# while neither existed; they were split once their statuses diverged, because
+# one flag meant the working half had to stay off to protect the missing half.
+
+# Self-hosted Flatpak remote on GitHub Pages — LIVE since v1.0.6, published by
+# release.yml's publish-pages job on every stable tag push. Verified serving
+# both the `stable` and `beta` refs, with appstream metadata and a GPGKey in
+# mosaic.flatpakrepo. This is our OWN remote: no third-party review, unrelated
+# to Flathub.
+_FLATPAK_REMOTE_AVAILABLE = True
+
+# AUR package — still absent (the AUR API returns resultcount: 0). Blocked on
+# AUR registration reopening; it is locked down against automated account
+# creation, so this is waiting on Arch, not on a decision here. aur/PKGBUILD
+# is written and ready. Flip to True once the package is actually published.
+_AUR_PACKAGE_AVAILABLE = False
 
 # Hosted Flatpak remote (GitHub Pages). Adding this remote lets the OS handle
 # updates natively (`flatpak update`, GNOME Software, Discover) with delta
@@ -41,14 +51,18 @@ _AUR_API_URL = "https://aur.archlinux.org/rpc/v5/info/mosaic-mod-manager"
 _AUR_PACKAGE_URL = "https://aur.archlinux.org/packages/mosaic-mod-manager"
 
 
-def hosted_infra_available() -> bool:
-    """True once the hosted Flatpak remote / AUR package actually exist.
+def flatpak_remote_available() -> bool:
+    """True when the hosted Flatpak remote actually exists (it does).
 
     UI code should gate any hosted-remote-only affordance (e.g. the Settings
     "Enable automatic updates" button) on this, not just try the call and
     handle failure — a permanently-failing button is worse than no button.
+
+    Deliberately NOT named for "hosted infra" in general: it used to also
+    stand for the AUR package, and that conflation is what kept this remote
+    switched off after it went live. AUR has its own flag.
     """
-    return _HOSTED_INFRA_AVAILABLE
+    return _FLATPAK_REMOTE_AVAILABLE
 
 
 def is_appimage() -> bool:
@@ -143,7 +157,7 @@ def _fetch_latest_version(
 
 def _fetch_aur_version(*, force: bool = False) -> str | None:
     """Fetch the current AUR package version; return None on error (or when
-    disabled — see _HOSTED_INFRA_AVAILABLE, no AUR package exists yet).
+    disabled — see _AUR_PACKAGE_AVAILABLE, no AUR package exists yet).
 
     The AUR version string includes a pkgrel suffix (e.g. '0.7.9-1').
     We strip everything from the first '-' onwards so callers get a plain
@@ -151,7 +165,7 @@ def _fetch_aur_version(*, force: bool = False) -> str | None:
 
     Uses ETag caching + a 1-hour throttle (AUR supports conditional GETs too).
     """
-    if not _HOSTED_INFRA_AVAILABLE:
+    if not _AUR_PACKAGE_AVAILABLE:
         return None
     import json
     try:
@@ -418,9 +432,9 @@ def flatpak_installed_from_remote() -> bool:
     --repo-url bundle install creates (now the SAME name). Bundle installs WITHOUT
     --repo-url (or any non-remote install) have no matching origin → False.
     Conservatively returns False when the host can't be queried (or when
-    disabled — see _HOSTED_INFRA_AVAILABLE, no remote is hosted yet).
+    disabled — see _FLATPAK_REMOTE_AVAILABLE).
     """
-    if not _HOSTED_INFRA_AVAILABLE:
+    if not _FLATPAK_REMOTE_AVAILABLE:
         return False
     cp = _host_flatpak("info", "--show-origin", _APP_ID)
     if cp is None or cp.returncode != 0:
@@ -434,7 +448,7 @@ def flatpak_installed_from_remote() -> bool:
 
 def flatpak_remote_present() -> bool:
     """True if a remote pointing at our hosted repo is configured (any name)."""
-    if not _HOSTED_INFRA_AVAILABLE:
+    if not _FLATPAK_REMOTE_AVAILABLE:
         return False
     return _remote_name_for_our_url() is not None
 
@@ -458,10 +472,10 @@ def polish_flatpak_origin() -> None:
     "<version> → <branch>" (it falls back to the branch name when the target
     has no appstream version). Flip the flag and set a proper title so update
     entries read "2.0.4-beta.4 → 2.0.4-beta.5" instead. No-op when the remote
-    is absent, already enumerable, disabled (see _HOSTED_INFRA_AVAILABLE), or
+    is absent, already enumerable, disabled (see _FLATPAK_REMOTE_AVAILABLE), or
     the host can't be reached.
     """
-    if not _HOSTED_INFRA_AVAILABLE:
+    if not _FLATPAK_REMOTE_AVAILABLE:
         return
     name = _remote_name_for_our_url()
     if not name:
@@ -486,9 +500,9 @@ def flatpak_remote_branch_available(branch: str) -> bool:
     the first beta tag is published), so an install/switch targeting a missing
     branch would fail silently in the detached child. Callers use this to
     surface "channel not published yet" instead. Always False while disabled
-    (see _HOSTED_INFRA_AVAILABLE) — no remote is hosted yet.
+    (see _FLATPAK_REMOTE_AVAILABLE).
     """
-    if not _HOSTED_INFRA_AVAILABLE:
+    if not _FLATPAK_REMOTE_AVAILABLE:
         return False
     cp = _host_flatpak("remote-info", "--user", _effective_remote_name(),
                        f"{_APP_ID}//{branch}")
@@ -594,11 +608,11 @@ def enroll_flatpak_remote(*, allow_prerelease: bool = False) -> str:
     Returns "launched" (child started — caller should close the app),
     "no-branch" (remote reachable but the requested channel isn't published
     yet, e.g. beta before the first beta release), or "unavailable" (host
-    flatpak unreachable, or disabled — see _HOSTED_INFRA_AVAILABLE, no
-    remote is hosted yet). GPG verification stays on — the .flatpakrepo the
-    remote-add consumes carries the signing key.
+    flatpak unreachable, or disabled — see _FLATPAK_REMOTE_AVAILABLE). GPG
+    verification stays on — the .flatpakrepo the remote-add consumes carries
+    the signing key.
     """
-    if not _HOSTED_INFRA_AVAILABLE:
+    if not _FLATPAK_REMOTE_AVAILABLE:
         return "unavailable"
     import shutil
     if not shutil.which("flatpak-spawn"):
@@ -622,9 +636,9 @@ def update_flatpak_from_remote(*, allow_prerelease: bool = False) -> str:
     "no-branch" (the requested channel isn't published on the remote, so the
     detached install would fail silently — surface it instead), or
     "unavailable" (host flatpak unreachable, or disabled — see
-    _HOSTED_INFRA_AVAILABLE, no remote is hosted yet).
+    _FLATPAK_REMOTE_AVAILABLE).
     """
-    if not _HOSTED_INFRA_AVAILABLE:
+    if not _FLATPAK_REMOTE_AVAILABLE:
         return "unavailable"
     import shutil
     if not shutil.which("flatpak-spawn"):
