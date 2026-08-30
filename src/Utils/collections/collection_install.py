@@ -1922,9 +1922,24 @@ def _write_collection_plugins(game, profile_dir, plugins_path, collection_schema
     schema_plugins: list[dict] = collection_schema.get("plugins", [])
     if schema_plugins and overwrite_existing is None:
         try:
-            author_entries = [
-                PluginEntry(name=p.get("name", ""), enabled=p.get("enabled", True))
-                for p in schema_plugins if p.get("name", "")]
+            # Some collection.json manifests list the same plugin name more than
+            # once in the ``plugins`` array (seen with GTS's 137 duplicate
+            # entries — same .esp referenced from more than one mod record).
+            # Dedup by lowercase name, keeping the first occurrence: without
+            # this, LOOT-less hosts (LOOT sort failing/unavailable falls back
+            # to this flat list verbatim) write plugins.txt/loadorder.txt with
+            # the same plugin repeated 2-3x, which is what actually broke those
+            # files — not a missing/off-site mod, which this filter already
+            # drops separately via the "missing" pass below.
+            _seen_names: set = set()
+            author_entries: list = []
+            for p in schema_plugins:
+                _pname = p.get("name", "")
+                if not _pname or _pname.lower() in _seen_names:
+                    continue
+                _seen_names.add(_pname.lower())
+                author_entries.append(
+                    PluginEntry(name=_pname, enabled=p.get("enabled", True)))
             author_lower = {e.name.lower() for e in author_entries}
             vanilla_map = _vanilla_plugins_for_game(game)
             plugins_include_vanilla = getattr(game, "plugins_include_vanilla", False)
