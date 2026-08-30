@@ -523,6 +523,49 @@ class NexusDownloader:
             file_id=link.file_id,
         )
 
+    def download_direct_url(
+        self,
+        url: str,
+        file_name: str,
+        dest_dir: Path | None = None,
+        progress_cb: ProgressCallback | None = None,
+        cancel: threading.Event | None = None,
+    ) -> DownloadResult:
+        """
+        Download a plain, already-resolved URL directly — no Nexus API call,
+        no signed CDN link. For a collection's off-site mods (manifest
+        ``source.type: "direct"``, e.g. a GitHub release asset): those carry
+        a real, public, downloadable URL the manifest gives us outright, so
+        there's nothing to resolve first.
+
+        Reuses the same streaming/atomic-naming/bandwidth-throttle/cancel
+        machinery as a Nexus download, just without a mod_id/file_id (both
+        stay 0, so no ``.fileid`` sidecar gets written — cache re-matching
+        for this file has to go by name/size/md5 alone, exactly what
+        ``_find_cached_archive`` already falls back to when mod_id is 0).
+
+        Unlike ``_download_from_links`` (Nexus mirrors, tried in order),
+        there's only ever one URL here, so this mirrors its cancel/error
+        handling directly rather than going through that wrapper.
+        """
+        try:
+            return self._stream_download(
+                url=url,
+                file_name=file_name,
+                dest_dir=dest_dir or self._download_dir,
+                progress_cb=progress_cb,
+                cancel=cancel,
+                game_domain="",
+                mod_id=0,
+                file_id=0,
+            )
+        except DownloadCancelled:
+            return DownloadResult(success=False, error="Download cancelled",
+                                  game_domain="", mod_id=0, file_id=0)
+        except Exception as exc:
+            return DownloadResult(success=False, error=str(exc),
+                                  game_domain="", mod_id=0, file_id=0)
+
     def download_file(
         self,
         game_domain: str,

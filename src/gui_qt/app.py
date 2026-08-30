@@ -4162,6 +4162,17 @@ class MainWindow(QMainWindow):
 
         # Terminal states.
         self._col_install_running = False
+        # run_collection_install checked the download cache for every off-site
+        # (manifest source.type "browse"/"direct") mod and auto-installed any
+        # it found there — control.unresolved_offsite is what's ACTUALLY still
+        # missing, which supersedes the full off-site list the detail view
+        # built before the install ran (self._col_offsite, set at _premium
+        # time). Must read this before clearing the control below.
+        if self._col_install_control is not None:
+            _still_missing = getattr(self._col_install_control,
+                                     "unresolved_offsite", None)
+            if _still_missing is not None:
+                self._col_offsite = list(_still_missing)
         self._col_install_control = None
         # A detached-wizard staging job may have been held off while this
         # collection install ran (see _run_staged_finish guard) — drain it now.

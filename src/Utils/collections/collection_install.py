@@ -49,7 +49,7 @@ from Utils.ui_config import (
     load_keep_fomod_archives)
 from Nexus.nexus_download import (
     DownloadResult, _find_cached_archive, delete_archive_and_sidecar,
-    _get_downloads_dir)
+    _get_downloads_dir, _md5_matches)
 from Nexus.nexus_meta import build_meta_from_download
 
 
@@ -163,6 +163,14 @@ class CollectionInstallControl:
     # or None (Skip, honored for optional mods only). Mirrors Tk's
     # _manual_file_queue.
     manual_queue: _queue.Queue = field(default_factory=_queue.Queue)
+    # Off-site (source.type "browse"/"direct") mods the manifest lists that
+    # STILL need a manual download after this run — populated by
+    # run_collection_install once it has checked the download cache for each
+    # one (see _try_offsite_from_cache). The caller reads this instead of
+    # blindly showing every off-site entry from the manifest, so a mod the
+    # user already downloaded by hand (and that got auto-installed from
+    # cache) doesn't get reported as still missing.
+    unresolved_offsite: "list[tuple[str, str]]" = field(default_factory=list)
 
 
 # ---------------------------------------------------------------------------
@@ -1253,6 +1261,125 @@ def run_collection_install(
                 _archive_use_count[_akey] = _archive_use_count.get(_akey, 0) + 1
             cb.on_extract_queue(mod.file_id, mod.mod_name or mod.file_name or "")
             _enqueue_install(mod, result, mod_domain)
+
+    # ---- off-site mods (source.type "browse"/"direct") ----------------
+    # These have no Nexus modId/fileId, so they never entered `mods`/
+    # `to_download` — the collection detail view routes them straight to the
+    # "off-site mods" panel for a manual download. But a user who already
+    # downloaded one by hand (e.g. on a previous install attempt) has it
+    # sitting in the same download cache/extra locations every Nexus mod is
+    # checked against — nothing was ever looking there for these, so a
+    # re-install kept re-prompting for a file that was already on disk.
+    # "browse" entries (a webpage, not a direct file link) still can't be
+    # resolved automatically; "direct" ones carry a real URL plus fileSize/
+    # md5 the manifest already gives us, which is exactly what
+    # _find_cached_archive needs.
+    #
+    # Runs BEFORE the main download/install pipeline, not after: any
+    # already-installed FOMOD/BAIN whose step visibility or conditional files
+    # depend on this content (fomod_has_cross_mod_dependency) needs it staged
+    # first, same reasoning as deferring those to the end wouldn't help here —
+    # this has to be staged before anything else even starts, not slotted in
+    # afterward. Positioning matters too: install_order entries sort by their
+    # first element against schema_file_id_to_pos, which — per
+    # _resolve_collection_priorities/_topo_sort_collection — treats mods[-1]
+    # (end of the manifest's mods array) as position 0 (top of modlist.txt,
+    # highest priority). An off-site entry has no fileId to look up a real
+    # pos for, so its own array index has to be reversed the same way
+    # (len(schema_mods) - 1 - index) or it sorts backwards — an index near
+    # the START of the array would otherwise land near the TOP (highest
+    # priority) instead of near the bottom where mods[low index] actually
+    # belong.
+    if not _col_stop.is_set():
+        _offsite_unresolved: "list[tuple[str, str]]" = []
+        _offsite_dirs = _scan_dirs(include_all=True)
+        for _oi, _osmod in enumerate(schema_mods):
+            _osrc = _osmod.get("source") or {}
+            _ostype = (_osrc.get("type") or "").lower()
+            if _ostype not in ("browse", "direct"):
+                continue
+            _osname = _osmod.get("name") or ""
+            _osurl = _osrc.get("url") or _osrc.get("fileUrl") or ""
+            if _ostype != "direct" or not _osurl:
+                if _osurl:
+                    _offsite_unresolved.append((_osname, _osurl))
+                continue
+            _osize = int(_osrc.get("fileSize") or 0)
+            _omd5 = (_osrc.get("md5") or "").strip().lower()
+            _found: "Path | None" = None
+            for _odir in _offsite_dirs:
+                _cand, _complete = _find_cached_archive(
+                    _odir, _osname, _osize, expected_md5=_omd5)
+                if _cand is not None and _complete:
+                    _found = _cand
+                    break
+            if _found is None:
+                # Not cached anywhere — the manifest gives us a real,
+                # already-resolved URL for a "direct" entry (unlike "browse",
+                # which is just a webpage), so fetch it ourselves rather than
+                # making the user do it by hand. Saved into the game's own
+                # download cache dir so a future re-install (or another
+                # collection needing the same file) gets the cache hit above
+                # instead of downloading it again.
+                log(f"Off-site mod not cached — downloading directly: "
+                    f"{_osname} ({_osurl})")
+                _odest_dir = get_download_cache_dir_for_game(
+                    getattr(game, "name", "") or "")
+                _odest_dir.mkdir(parents=True, exist_ok=True)
+                _odl_result = downloader.download_direct_url(
+                    url=_osurl, file_name=_osname, dest_dir=_odest_dir,
+                    cancel=_col_stop)
+                if not _odl_result.success or not _odl_result.file_path:
+                    log(f"Off-site mod download failed for '{_osname}': "
+                        f"{_odl_result.error or 'unknown error'}")
+                    _offsite_unresolved.append((_osname, _osurl))
+                    continue
+                _dl_path = Path(_odl_result.file_path)
+                # Verify it's actually the version the collection author
+                # tested against — a "direct" URL can drift (a maintainer
+                # replacing a GitHub release asset in place, a redirect
+                # target changing) without the manifest ever knowing, and
+                # installing a silently-different file is worse than not
+                # installing anything.
+                _size_ok = (_osize <= 0
+                           or abs(_dl_path.stat().st_size - _osize) / max(_osize, 1) <= 0.01)
+                _md5_ok = _md5_matches(_dl_path, _omd5)
+                if not (_size_ok and _md5_ok):
+                    log(f"Off-site mod '{_osname}' downloaded but doesn't "
+                        f"match the collection's expected file (size/md5 "
+                        f"mismatch) — leaving for manual install.")
+                    try:
+                        _dl_path.unlink(missing_ok=True)
+                    except Exception:
+                        pass
+                    _offsite_unresolved.append((_osname, _osurl))
+                    continue
+                _found = _dl_path
+            log(f"Off-site mod ready — installing automatically before the "
+                f"rest of the collection: {_osname} ({_found})")
+            try:
+                _opmeta = build_meta_from_download(
+                    game_domain=game_domain, mod_id=0, file_id=0,
+                    archive_name=_found.name, from_collection=_slug)
+                _opmeta.nexus_name = _osname
+                _ofolder = install_collection_archive(
+                    str(_found), game, profile_dir, log_fn=log,
+                    prebuilt_meta=_opmeta, preferred_name=_osname,
+                    skip_index_update=True, overwrite_existing=overwrite_existing,
+                    defer_interactive_fomod=True, defer_interactive_bain=True,
+                    resolve_fomod=cb.resolve_fomod, resolve_bain=cb.resolve_bain,
+                    cancel=_col_stop)
+            except Exception as _oexc:
+                log(f"Off-site mod install failed for '{_osname}': {_oexc}")
+                _ofolder = None
+            if _ofolder and _ofolder not in (FOMOD_DEFERRED, BAIN_DEFERRED):
+                installed += 1
+                install_order.append((len(schema_mods) - 1 - _oi, _ofolder))
+            else:
+                # Deferred (rare for a plain patch archive) or failed — still
+                # needs a look, so don't silently drop it from the reminder.
+                _offsite_unresolved.append((_osname, _osurl))
+        ctl.unresolved_offsite = _offsite_unresolved
 
     # ---- launch pipeline ---------------------------------------------
     if to_download:
