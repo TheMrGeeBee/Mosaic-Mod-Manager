@@ -74,9 +74,13 @@ def register_bethesda_game_path(
             return True
     except OSError:
         pass
+    # reg.exe writes through whatever WOW64 view its OWN process bitness
+    # defaults to, same as real Windows — without an explicit /reg: flag,
+    # BOTH calls below silently redirect into Wow6432Node regardless of the
+    # literal key path requested, leaving the plain (64-bit) key unwritten.
     keys = [
-        r"HKLM\Software\Bethesda Softworks" + "\\" + registry_game_name,
-        r"HKLM\Software\Wow6432Node\Bethesda Softworks" + "\\" + registry_game_name,
+        (r"HKLM\Software\Bethesda Softworks" + "\\" + registry_game_name, "64"),
+        (r"HKLM\Software\Wow6432Node\Bethesda Softworks" + "\\" + registry_game_name, "32"),
     ]
     _log(f"Bethesda registry: registering {registry_game_name} → {wine_value}")
     # runinprefix: no steam.exe shim, so the write doesn't flash the game as
@@ -86,17 +90,21 @@ def register_bethesda_game_path(
     # "run" (its env carries no SteamAppId, so nothing shows in Steam anyway).
     verb = ("runinprefix"
             if (Path(prefix_dir) / "pfx" / "user.reg").is_file() else "run")
+    from Utils.exe_launch.exe_launch import _apply_run_host_shim
+    pfx_dir = Path(prefix_dir) / "pfx"
     all_ok = True
-    for key in keys:
+    for key, view in keys:
         cmd = proton_run_command(
             proton_script, verb,
             "reg", "add", key,
             "/v", "Installed Path",
             "/t", "REG_SZ",
             "/d", wine_value,
+            "/reg:" + view,
             "/f",
             env=env,
         )
+        cmd = _apply_run_host_shim(cmd, pfx_dir, "Bethesda registry", _log)
         try:
             result = subprocess.run(
                 cmd, env=env,

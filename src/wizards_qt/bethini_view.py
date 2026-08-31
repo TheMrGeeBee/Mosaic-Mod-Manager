@@ -113,22 +113,27 @@ class BethiniView(WizardViewBase):
                     return
                 proton_script, compat_data, env = result
 
-                # On an isolated/shared prefix, seed the Bethesda registry
-                # key and link My Games + plugins.txt so BethINI can locate
-                # the game and edit the same INIs the game uses.  No-op when
-                # running in the game's own prefix.
+                # Seed the Bethesda registry key so BethINI can locate the
+                # game — always, even in the game's own prefix: Steam only
+                # writes this key when the sandboxed game launch itself
+                # writes it, and that value can be a sandbox-only path a
+                # bare tool launch can't resolve (idempotent, so a
+                # correctly-registered prefix just skips the write).
+                try:
+                    from Utils.wine_proton.bethesda_registry import maybe_register_for_game
+                    maybe_register_for_game(
+                        prefix_dir=compat_data,
+                        proton_script=proton_script,
+                        env=env,
+                        game=game,
+                        log_fn=_wlog,
+                    )
+                except Exception as exc:
+                    _wlog(f"registry write skipped: {exc}")
+                # My Games + plugins.txt linking is only needed for an
+                # isolated/shared prefix seeded FROM the game's — the game's
+                # own prefix already has the real files.
                 if prefix_mode != PREFIX_MODE_GAME:
-                    try:
-                        from Utils.wine_proton.bethesda_registry import maybe_register_for_game
-                        maybe_register_for_game(
-                            prefix_dir=compat_data,
-                            proton_script=proton_script,
-                            env=env,
-                            game=game,
-                            log_fn=_wlog,
-                        )
-                    except Exception as exc:
-                        _wlog(f"registry write skipped: {exc}")
                     link_mygames(game, compat_data / "pfx", _wlog)
                     link_plugins_txt(game, compat_data / "pfx", _wlog)
 

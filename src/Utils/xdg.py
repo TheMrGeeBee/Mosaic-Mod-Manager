@@ -106,6 +106,12 @@ def spawn_watched(
     # `flatpak-spawn --host` inherits it and the spawned host process fails
     # to start with "Failed to change to directory".
     cwd = os.path.expanduser("~") if os.path.isdir(os.path.expanduser("~")) else "/"
+    # log_fn is almost always the caller's own app_log-registered function
+    # (e.g. MainWindow._append_log), which app_log() ALSO forwards to — so
+    # calling both unconditionally double-logs every message here. Prefer the
+    # caller's explicit log_fn and only fall back to the global app_log() when
+    # no log_fn was supplied.
+    _log = log_fn if log_fn else app_log
     try:
         proc = subprocess.Popen(
             cmd,
@@ -115,10 +121,7 @@ def spawn_watched(
             stderr=subprocess.PIPE,
         )
     except FileNotFoundError as exc:
-        msg = f"{label}: {cmd[0]} not found ({exc})"
-        app_log(msg)
-        if log_fn:
-            log_fn(msg)
+        _log(f"{label}: {cmd[0]} not found ({exc})")
         if on_fail:
             on_fail()
         return
@@ -128,17 +131,11 @@ def spawn_watched(
         rc = proc.returncode
         if rc != 0:
             text = err.decode(errors="replace").strip() or "(no output)"
-            msg = f"{label}: rc={rc} {text}"
-            app_log(msg)
-            if log_fn:
-                log_fn(msg)
+            _log(f"{label}: rc={rc} {text}")
             if on_fail:
                 on_fail()
         elif log_success:
-            msg = f"{label}: handed off via {cmd[0]} (rc=0)"
-            app_log(msg)
-            if log_fn:
-                log_fn(msg)
+            _log(f"{label}: handed off via {cmd[0]} (rc=0)")
 
     threading.Thread(target=_watch, daemon=True).start()
 
@@ -147,8 +144,8 @@ def xdg_open(path: str | Path, log_fn: Callable[[str], None] | None = None) -> N
     """Open *path* with the user's default application via xdg-open.
 
     Uses host_env() so that the launched application (e.g. Dolphin) loads
-    its own system libraries. Failures are logged to app_log (always) and
-    log_fn (if provided), so they don't disappear silently.
+    its own system libraries. Failures are logged via log_fn if provided,
+    else app_log, so they don't disappear silently.
 
     Inside a Flatpak sandbox the runtime's xdg-open usually can't resolve
     host MIME associations (or lacks the target app entirely), so we route

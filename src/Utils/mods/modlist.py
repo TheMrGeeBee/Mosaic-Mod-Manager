@@ -152,12 +152,19 @@ def prepend_mod(modlist_path: Path, mod_name: str, enabled: bool = True,
     already exists, its current enabled/locked flags are kept (so reinstalling
     or updating a disabled mod does not silently re-enable it). ``enabled`` is
     only used for brand-new entries in that case.
+
+    Matches case-insensitively (see ``ensure_mod_preserving_position``'s
+    docstring for why) — otherwise an MO2-transferred entry with different
+    casing than the real folder dodges both the lookup and the removal below,
+    leaving an orphaned duplicate instead of being moved.
     """
     with _lock_for(modlist_path):
         entries = read_modlist(modlist_path)
-        existing = next((e for e in entries if e.name == mod_name), None)
+        existing = next((e for e in entries
+                         if e.name.casefold() == mod_name.casefold()), None)
         # Remove any existing entry with the same name
-        entries = [e for e in entries if e.name != mod_name]
+        entries = [e for e in entries
+                  if e.name.casefold() != mod_name.casefold()]
         if preserve_existing_state and existing is not None:
             new_entry = ModEntry(name=mod_name, enabled=existing.enabled,
                                  locked=existing.locked)
@@ -182,11 +189,20 @@ def ensure_mod_preserving_position(
     disabled mod does not silently re-enable it. Otherwise the enabled flag is
     set to ``enabled``. If no entry exists, the mod is added at the top (highest
     priority), matching prepend_mod's behaviour for new mods.
+
+    Matches the existing entry case-insensitively — an MO2-transferred
+    modlist.txt can carry different casing than the real staging folder, and a
+    case-sensitive match silently misses it: the mod appears to "move to the
+    end" because a fresh top-priority entry gets inserted for the update while
+    the original, differently-cased entry is orphaned at its old position with
+    a name matching nothing real. The matched entry's name is normalised to
+    *mod_name* so it stays byte-consistent with the real folder from here on.
     """
     with _lock_for(modlist_path):
         entries = read_modlist(modlist_path)
         for e in entries:
-            if e.name == mod_name:
+            if e.name.casefold() == mod_name.casefold():
+                e.name = mod_name
                 if not preserve_existing_state:
                     e.enabled = enabled
                 write_modlist(modlist_path, entries)

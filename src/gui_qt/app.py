@@ -9859,25 +9859,68 @@ class MainWindow(QMainWindow):
             self._maybe_prompt_remove_previous(prev, name)
         self._install_next()   # continue the queue
 
+    @staticmethod
+    def _resolve_staging_dir_name(staging: Path, name: str) -> str | None:
+        """Resolve *name* to an actual child directory of *staging*.
+
+        Tries an exact match first, then falls back to a case-insensitive
+        match. A modlist.txt entry (e.g. one carried over from a Mod
+        Organizer 2 profile transferred from a case-insensitive Windows
+        filesystem onto a case-sensitive Linux one) can differ in case from
+        the real on-disk folder — an exact ``.is_dir()`` check alone would
+        then silently fail to find a folder that does, in fact, exist.
+        Returns the real on-disk name (which may differ in case from
+        *name*), or None if no matching directory exists at all.
+        """
+        if (staging / name).is_dir():
+            return name
+        try:
+            lname = name.casefold()
+            for child in staging.iterdir():
+                if child.is_dir() and child.name.casefold() == lname:
+                    return child.name
+        except OSError:
+            pass
+        return None
+
     def _maybe_prompt_remove_previous(self, old_name: str, new_name: str):
         """Show the borderless 'Remove previous version?' overlay if both the old
         and new mods exist. Remove → the new mod inherits the old one's modlist
-        position + enabled state, then the old mod is removed."""
+        position + enabled state, then the old mod is removed.
+
+        *old_name*/*new_name* are the modlist.txt entry names — used as-is for
+        all modlist.txt reads/writes below. The on-disk existence check (and
+        the folder actually deleted on "Remove") instead resolves through
+        _resolve_staging_dir_name, so a case-only mismatch between the
+        recorded name and the real folder (see its docstring) doesn't
+        silently skip this prompt with no explanation.
+        """
         staging = self._gs.staging_dir()
         if staging is None:
             return
-        if not (staging / old_name).is_dir() or not (staging / new_name).is_dir():
+        old_disk_name = self._resolve_staging_dir_name(staging, old_name)
+        new_disk_name = self._resolve_staging_dir_name(staging, new_name)
+        if old_disk_name is None or new_disk_name is None:
+            self._append_log(
+                "[install] remove-previous prompt skipped — "
+                f"{'old' if old_disk_name is None else 'new'} mod folder "
+                f"not found on disk ('{old_name if old_disk_name is None else new_name}').")
             return
         from gui_qt.overlays.remove_previous_overlay import RemovePreviousOverlay
 
         def _done(result):
             if result == "remove":
-                self._remove_previous_version(old_name, new_name)
+                self._remove_previous_version(old_name, new_name, old_disk_name)
 
         RemovePreviousOverlay.show_over(self, old_name, new_name, _done)
 
-    def _remove_previous_version(self, old_name: str, new_name: str):
-        """New mod inherits old's modlist slot + enabled state; old is removed."""
+    def _remove_previous_version(self, old_name: str, new_name: str,
+                                 old_disk_name: str | None = None):
+        """New mod inherits old's modlist slot + enabled state; old is removed.
+
+        *old_disk_name* is the real on-disk folder name for *old_name* (may
+        differ only in case — see _resolve_staging_dir_name); falls back to
+        *old_name* itself when not supplied, matching prior behaviour."""
         try:
             from Utils.mods.modlist import read_modlist, write_modlist
             from Utils.mods.mod_remove import remove_mods
@@ -9905,8 +9948,10 @@ class MainWindow(QMainWindow):
                 rest.insert(min(idx, len(rest)), new_e)
                 write_modlist(ml, rest)
             # Delete the old mod's files/plugins/index (NOT its modlist row —
-            # already dropped above).
-            remove_mods(game, pdir, [old_name],
+            # already dropped above). Use the real on-disk folder name so a
+            # case-only mismatch against the modlist.txt string doesn't leave
+            # the actual folder behind undeleted.
+            remove_mods(game, pdir, [old_disk_name or old_name],
                         log_fn=lambda m: self._append_log(f"[remove] {m}"))
         except Exception as exc:
             self._append_log(f"[install] remove-previous failed: {exc}")
