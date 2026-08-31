@@ -1,3 +1,12 @@
+- v1.0.8
+### Bug Fixes
+- Fixed modding tools launched with "use the game's own prefix" (BethINI Pie and others) failing to start at all with a "could not load kernel32.dll" error. The game's own Proton prefix has its core Windows libraries symlinked through a path that's only reachable from inside Steam's own sandboxed game launch — a tool launched directly by Mosaic couldn't see it. Affected tools now automatically work around this when it's needed, and are unaffected otherwise
+- Fixed tools unable to auto-detect the game's install location when run in the game's own prefix, and even when they could, 64-bit tools still failing to see it while 32-bit ones worked. Steam doesn't reliably write this for every install (a custom Steam library in particular), and the write itself was only ever reaching the 32-bit registry view. The game's install path is now registered correctly for both 32-bit and 64-bit tools whenever a wizard runs, not just when using an isolated prefix
+- Fixed a mod jumping to the bottom of the load order the first time it's updated after importing a Mod Organizer 2 modlist, requiring a manual reorder to put it back — caused by a case-sensitive comparison that could miss a mod's own existing entry whenever MO2's recorded name and the mod's real folder name differed only in letter casing. Updating a mod now finds and keeps its existing position regardless of case differences carried over from MO2
+- Fixed several background operations (Play, and others using the same launch helper) logging every message to the application log twice
+
+---
+
 - v1.0.7
 ### Additions
 - Collection installs now try to resolve an off-site mod (one the collection author linked from GitHub or another non-Nexus host) automatically instead of always stopping to ask for a manual download: first checking whether it's already sitting in the download cache from a previous attempt, then downloading it directly from the manifest's own link if not. Either way the file is verified against the size and checksum the collection author recorded before it's installed, so a host silently swapping the linked file is caught rather than installed unnoticed. The mod is also placed at the same conflict-priority position the collection author gave it, the same as every other mod in the collection, rather than defaulting to the top
