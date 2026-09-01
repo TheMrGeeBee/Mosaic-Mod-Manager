@@ -873,6 +873,16 @@ class Fallout_3(BaseGame):
                 if target.is_symlink():
                     target.unlink()
                 elif target.exists():
+                    # A real file here means the game itself (or a native Steam
+                    # launch, e.g. dismissing the "Download and activate?" AE
+                    # Creations prompt, which writes bFreebiesSeen=1) has
+                    # written state we don't want to discard by symlinking over
+                    # it — carry its current content into the profile's own
+                    # copy before it gets backed up out of the way, so the
+                    # profile starts from what the game actually has rather
+                    # than a possibly-stale clone of the default profile.
+                    shutil.copy2(target, src)
+                    _log(f"  Copied live {target.name} into the profile before linking.")
                     backup = target.with_suffix(".bak")
                     target.rename(backup)
                     _log(f"  Backed up {target.name} → {backup.name}")

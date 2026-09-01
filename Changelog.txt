@@ -1,3 +1,10 @@
+- v1.0.10
+### Bug Fixes
+- Fixed a Bethesda game's own INI settings (e.g. Skyrim's `bFreebiesSeen` flag, which suppresses the "Download and activate?" Anniversary Edition Creations prompt once dismissed) getting silently discarded the first time profile-specific INI files were set up for a new profile. The real, live INI in the game's My Games folder was simply backed up and replaced with a symlink to the profile's own copy — which could be an older, unrelated clone — discarding whatever the game had actually written there. The live file's content is now carried into the profile before it's linked, so settings the game itself already set (like a dismissed AE Creations prompt) survive into the profile instead of resetting
+- Fixed the startup splash showing the main window's content faintly bleeding through around its edges under native Wayland/KDE Plasma sessions. The window was kept invisible while loading via `setWindowOpacity(0.0)`, which X11 honors but which Wayland compositors generally don't implement for a client's own window — the fully-opaque window was actually rendering the whole time. It's now minimised instead while loading, a basic window operation every compositor reliably supports, and un-minimised once fully rendered
+
+---
+
 - v1.0.9
 ### Bug Fixes
 - Fixed a mod's enabled state and load-order position being silently reset whenever its install folder needed renaming to stay reachable by Wine tools (folder names ending in a period, e.g. acronym-style names like "M.I.N.T."). The rename itself was correct and necessary, but the modlist sync that ran right after it read the old name as deleted and the new name as an unrelated new mod — disabling it and dropping it to the very top of the load order instead of leaving it where it was. Renamed mods now keep their enabled state and position

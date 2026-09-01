@@ -693,8 +693,8 @@ class MainWindow(QMainWindow):
     def _dismiss_splash(self):
         """Reveal the finished window and close the startup splash, exactly once.
 
-        The window is shown at zero opacity while loading (see run()); restoring
-        opacity here makes the now fully-rendered UI appear all at once, then the
+        The window is shown minimised while loading (see run()); un-minimising
+        it here makes the now fully-rendered UI appear all at once, then the
         splash closes on top of it."""
         if self._splash_dismissed:
             return
@@ -711,7 +711,7 @@ class MainWindow(QMainWindow):
         if self._splash_dismissed:
             return
         self._splash_dismissed = True
-        self.setWindowOpacity(1.0)
+        self.setWindowState(self.windowState() & ~Qt.WindowMinimized)
         s, self._splash = self._splash, None
         if s is not None:
             try:
@@ -13906,12 +13906,22 @@ def run() -> int:
     except Exception:
         pass
     # Show the window immediately so its layout gets a real size (the deferred
-    # singleShot(0) setup in __init__ reads live widget heights), but at zero
-    # opacity so nothing is visibly rendered behind the splash while it loads.
-    # _dismiss_splash restores opacity once the plugin panel — the last render
-    # step — is populated, so the window appears fully drawn, not mid-render.
+    # singleShot(0) setup in __init__ reads live widget heights), but minimised
+    # so nothing is visibly rendered behind the splash while it loads.
+    # setWindowOpacity(0.0) used to do this job, then an off-screen move was
+    # tried instead — both are a silent no-op under native Wayland/KWin (no
+    # client-requested-opacity protocol most compositors implement, and
+    # compositors generally refuse a client's own absolute-position requests
+    # too), so the fully-opaque window kept rendering right where it was about
+    # to appear, bleeding through the splash's translucent card. Minimising is
+    # a basic, universally-implemented window operation on both X11 and
+    # Wayland/KWin — Qt still lays the widget hierarchy out normally, it just
+    # isn't composited on screen. _dismiss_splash un-minimises (preserving any
+    # other state bit, e.g. Maximized, restored from last session) once the
+    # plugin panel — the last render step — is populated, so the window
+    # appears fully drawn, not mid-render.
     if _splash is not None:
-        win.setWindowOpacity(0.0)
+        win.setWindowState(win.windowState() | Qt.WindowMinimized)
     win.show()
     if _splash is not None:
         try:
