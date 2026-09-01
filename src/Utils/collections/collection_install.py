@@ -120,6 +120,314 @@ def _fomod_choices_from_collection(choices: dict) -> "dict[str, dict[str, list[s
 
 
 # ---------------------------------------------------------------------------
+# Collection manifest index — every read-only lookup derived from collection.json
+# ---------------------------------------------------------------------------
+@dataclass(frozen=True)
+class CollectionSchemaIndex:
+    """Read-only lookups derived once from ``collection.json``.
+
+    Built by :func:`_build_schema_index` before the download/install pipeline
+    starts and never mutated afterwards, so it is safe to share unsynchronised
+    across the download and install worker threads.
+
+    ``file_id_to_pos`` is the REVERSED priority rank (0 = top of the modlist),
+    resolved via ``_resolve_collection_priorities``. ``file_id_to_arrayidx`` is
+    the plain ``mods``-array index — manual mode prompts in the order the author
+    listed the mods, which is NOT the same order."""
+    mods: "list[dict]"
+    file_id_to_pos: "dict[int, int]"
+    file_id_to_arrayidx: "dict[int, int]"
+    file_id_to_logical: "dict[int, str]"
+    file_id_to_mod_id: "dict[int, int]"
+    file_id_to_install_type: "dict[int, str]"
+    file_id_to_category: "dict[int, str]"
+    file_id_to_phase: "dict[int, int]"
+    file_id_to_size: "dict[int, int]"
+    file_id_to_md5: "dict[int, str]"
+    file_id_to_domain: "dict[int, str]"
+    file_id_to_suffix: "dict[int, str]"
+    pos_to_name: "dict[int, str]"
+    fomod_by_file_id: "dict[int, dict]"
+    bain_by_file_id: "dict[int, dict]"
+
+
+def _build_schema_index(collection_schema: dict) -> CollectionSchemaIndex:
+    """Derive every per-file_id lookup the install pipeline needs from
+    ``collection.json``.
+
+    Pure: no I/O, no network, no game/API access — the whole thing is a fold
+    over ``collection_schema["mods"]``."""
+    schema_mods: list[dict] = collection_schema.get("mods", [])
+    schema_file_id_to_pos: dict[int, int] = _resolve_collection_priorities(collection_schema)
+    schema_pos_to_name: dict[int, str] = {}
+    schema_file_id_to_logical: dict[int, str] = {}
+    schema_file_id_to_mod_id: dict[int, int] = {}
+    schema_file_id_to_install_type: dict[int, str] = {}
+    schema_file_id_to_category: dict[int, str] = {}
+    schema_file_id_to_phase: dict[int, int] = {}
+    # source.fileSize / source.md5 / mods[].domainName — the GraphQL mod list
+    # omits these for cross-domain entries (e.g. a Skyrim SE mod referenced by
+    # an Enderal SE collection), so manual mode matches against the manifest
+    # values first (Tk parity: collections_dialog.py schema_file_id_to_size/…).
+    schema_file_id_to_size: dict[int, int] = {}
+    schema_file_id_to_md5: dict[int, str] = {}
+    schema_file_id_to_domain: dict[int, str] = {}
+    # mods-array index (collection.json install order). NOT the same as
+    # schema_file_id_to_pos, which is the REVERSED priority rank (0 = top of
+    # modlist) — manual mode prompts in the order the author listed the mods.
+    schema_file_id_to_arrayidx: dict[int, int] = {}
+    fomod_by_file_id: dict[int, dict] = {}
+    bain_by_file_id: dict[int, dict] = {}
+    _raw_logical: dict[int, str] = {}
+    _raw_name: dict[int, str] = {}
+    for schema_mod in schema_mods:
+        src = schema_mod.get("source") or {}
+        fid = src.get("fileId")
+        if fid is not None:
+            fid = int(fid)
+            _raw_logical[fid] = src.get("logicalFilename") or ""
+            _raw_name[fid] = schema_mod.get("name") or ""
+    _logical_counts: dict[str, int] = {}
+    for raw in _raw_logical.values():
+        if raw:
+            _logical_counts[raw] = _logical_counts.get(raw, 0) + 1
+
+    for pos, schema_mod in enumerate(schema_mods):
+        src = schema_mod.get("source") or {}
+        fid = src.get("fileId")
+        if fid is not None:
+            fid = int(fid)
+            topo_pos = schema_file_id_to_pos.get(fid, pos)
+            schema_pos_to_name[topo_pos] = schema_mod.get("name") or ""
+            raw_logical = _raw_logical.get(fid, "")
+            schema_name = _raw_name.get(fid, "")
+            if raw_logical and _logical_counts.get(raw_logical, 0) > 1:
+                logical = schema_name or raw_logical
+            else:
+                logical = raw_logical or schema_name
+            schema_file_id_to_logical[fid] = logical
+            mid = src.get("modId")
+            if mid:
+                schema_file_id_to_mod_id[fid] = int(mid)
+            _sz = src.get("fileSize")
+            if _sz:
+                try:
+                    schema_file_id_to_size[fid] = int(_sz)
+                except (TypeError, ValueError):
+                    pass
+            _md5_v = (src.get("md5") or "").strip().lower()
+            if _md5_v:
+                schema_file_id_to_md5[fid] = _md5_v
+            _dom = (schema_mod.get("domainName") or "").strip()
+            if _dom:
+                schema_file_id_to_domain[fid] = _dom
+            schema_file_id_to_arrayidx[fid] = pos
+            _details = schema_mod.get("details") or {}
+            _det_type = (_details.get("type") or "").strip()
+            if _det_type:
+                schema_file_id_to_install_type[fid] = _det_type
+            _det_cat = (_details.get("category") or "").strip()
+            if _det_cat:
+                schema_file_id_to_category[fid] = _det_cat
+            try:
+                schema_file_id_to_phase[fid] = int(schema_mod.get("phase") or 0)
+            except (TypeError, ValueError):
+                schema_file_id_to_phase[fid] = 0
+            choices = schema_mod.get("choices") or {}
+            if choices.get("type") == "fomod":
+                fomod_by_file_id[fid] = _fomod_choices_from_collection(choices)
+            elif choices.get("type") == "fomod_selections":
+                fomod_by_file_id[fid] = choices["selections"]
+            elif choices.get("type") == "bain_selections":
+                bain_by_file_id[fid] = choices["selections"]
+
+    schema_file_id_to_suffix: dict[int, str] = _build_collision_suffix_map(
+        schema_mods, schema_file_id_to_logical, schema_pos_to_name,
+        schema_file_id_to_pos)
+
+    return CollectionSchemaIndex(
+        mods=schema_mods,
+        file_id_to_pos=schema_file_id_to_pos,
+        file_id_to_arrayidx=schema_file_id_to_arrayidx,
+        file_id_to_logical=schema_file_id_to_logical,
+        file_id_to_mod_id=schema_file_id_to_mod_id,
+        file_id_to_install_type=schema_file_id_to_install_type,
+        file_id_to_category=schema_file_id_to_category,
+        file_id_to_phase=schema_file_id_to_phase,
+        file_id_to_size=schema_file_id_to_size,
+        file_id_to_md5=schema_file_id_to_md5,
+        file_id_to_domain=schema_file_id_to_domain,
+        file_id_to_suffix=schema_file_id_to_suffix,
+        pos_to_name=schema_pos_to_name,
+        fomod_by_file_id=fomod_by_file_id,
+        bain_by_file_id=bain_by_file_id,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Pure per-mod lookups over a CollectionSchemaIndex. Hoisted out of
+# run_collection_install() — each takes the index explicitly instead of
+# closing over ~15 separate map locals.
+# ---------------------------------------------------------------------------
+def _schema_sort_key(idx: CollectionSchemaIndex, m) -> int:
+    """Collection-defined install order; unlisted mods sort last."""
+    return idx.file_id_to_pos.get(m.file_id, len(idx.mods))
+
+
+def _match_existing(idx: CollectionSchemaIndex, already_by_ids: dict,
+                    already_by_fid: dict, mod) -> str:
+    """Folder name of an already-installed copy of *mod*, or ""."""
+    _mid = idx.file_id_to_mod_id.get(mod.file_id, 0) or getattr(mod, "mod_id", 0) or 0
+    if _mid > 0 and (_mid, mod.file_id) in already_by_ids:
+        return already_by_ids[(_mid, mod.file_id)]
+    return already_by_fid.get(mod.file_id, "")
+
+
+def _name_candidates(idx: CollectionSchemaIndex, mod) -> "list[str]":
+    """Candidate install-folder names for *mod*, best first."""
+    from Utils.mods.mod_name_utils import _suggest_mod_names
+    logical = idx.file_id_to_logical.get(mod.file_id, "") or ""
+    schema_name = idx.pos_to_name.get(
+        idx.file_id_to_pos.get(mod.file_id, -1), "") or ""
+    candidates: list[str] = []
+    name_sources = (logical, schema_name) if (logical or schema_name) \
+        else (mod.mod_name or "",)
+    for raw in name_sources:
+        if raw:
+            for s in _suggest_mod_names(raw):
+                if s and s not in candidates:
+                    candidates.append(s)
+    return candidates
+
+
+def _preferred_name(idx: CollectionSchemaIndex, mod) -> str:
+    """Install-folder name for *mod*, plus any collision suffix."""
+    logical = idx.file_id_to_logical.get(mod.file_id, "") or ""
+    schema_name = idx.pos_to_name.get(
+        idx.file_id_to_pos.get(mod.file_id, -1), "") or ""
+    pref = logical or schema_name or mod.mod_name or ""
+    return pref + idx.file_id_to_suffix.get(mod.file_id, "")
+
+
+def _manual_domain(idx: CollectionSchemaIndex, game_domain: str, mod) -> str:
+    """Nexus domain for *mod*, honouring cross-domain manifest entries."""
+    return ((getattr(mod, "domain_name", "") or "").strip()
+            or idx.file_id_to_domain.get(mod.file_id, "")
+            or game_domain)
+
+
+def _manual_url(idx: CollectionSchemaIndex, game_domain: str, mod) -> str:
+    """Nexus files-tab URL for *mod* (manual mode "Open Download Page")."""
+    # Prefer collection.json's source.modId + domainName for cross-domain
+    # entries so "Open Download Page" lands on the mod's real Nexus page.
+    _mid = idx.file_id_to_mod_id.get(mod.file_id, 0) or mod.mod_id
+    return (f"https://www.nexusmods.com/{_manual_domain(idx, game_domain, mod)}"
+            f"/mods/{_mid}?tab=files&file_id={mod.file_id}")
+
+
+def _build_prebuilt_meta(idx: CollectionSchemaIndex, slug: str, mod,
+                         effective_domain: str):
+    """meta.ini contents to write alongside *mod* once installed, or None."""
+    try:
+        _effective_mod_id = idx.file_id_to_mod_id.get(mod.file_id, 0) or mod.mod_id
+        pmeta = build_meta_from_download(
+            game_domain=effective_domain, mod_id=_effective_mod_id,
+            file_id=mod.file_id, archive_name=mod.file_name or "",
+            from_collection=slug)
+        pmeta.nexus_name = mod.mod_name or ""
+        pmeta.author = mod.mod_author or ""
+        pmeta.uploaded_by = mod.uploaded_by or ""
+        pmeta.version = mod.version or ""
+        if getattr(mod, "category_id", 0):
+            pmeta.category_id = mod.category_id
+        if getattr(mod, "category_name", ""):
+            pmeta.category_name = mod.category_name
+        # Manifest category name (details.category) — the only source, as
+        # the GraphQL mod list omits categories. Applied when the mod
+        # object itself carries none.
+        _schema_cat = idx.file_id_to_category.get(mod.file_id, "")
+        if _schema_cat and not pmeta.category_name:
+            pmeta.category_name = _schema_cat
+        if idx.file_id_to_install_type.get(mod.file_id, "").lower() == "dinput":
+            pmeta.root_folder = True
+        return pmeta
+    except Exception:
+        return None
+
+
+def _fetch_extra_meta(api, game_domain: str, idx: CollectionSchemaIndex,
+                      extra_meta: dict, ready: threading.Event, log) -> None:
+    """Background batched GraphQL fetch of category + endorsement.
+
+    Runs concurrently with the whole download/install pipeline and never gates
+    the critical path; Step 5 waits on *ready* before reconciling."""
+    try:
+        unique_mids = sorted(set(idx.file_id_to_mod_id.values()))
+        if unique_mids:
+            result = api.graphql_mod_update_info_batch(
+                [(game_domain, mid) for mid in unique_mids])
+            extra_meta.update(result)
+    except Exception as exc:
+        log(f"Collection install: background metadata fetch failed: {exc}")
+    finally:
+        ready.set()
+
+
+# ---------------------------------------------------------------------------
+# Shared pipeline state
+# ---------------------------------------------------------------------------
+@dataclass
+class _PipelineState:
+    """Mutable state shared by the download producers and the install consumers.
+
+    Bundled into one object so the pipeline stages can be passed what they need
+    without either closing over ~17 separate locals or growing a 20-argument
+    signature. ``dl_done`` / ``dl_bytes_done`` / ``total_bytes`` are here for a
+    second reason: as plain locals they needed ``nonlocal`` to be rebound from a
+    nested function, which is what kept the download/install stages trapped
+    inside ``run_collection_install``. As attributes they rebind across a
+    function boundary like the other fields mutate.
+
+    LOCK DISCIPLINE — unchanged from when these were locals, and load-bearing:
+
+    * ``dl_lock`` guards ``dl_done``, ``dl_bytes_done``, ``total_bytes``,
+      ``dl_results``, ``per_mod_prev`` and ``dl_last_emit``.
+    * ``install_lock`` guards ``install_counters``, ``install_results``,
+      ``fomod_deferred``, ``bain_deferred``, ``archive_use_count``,
+      ``external_archive_paths`` and ``mod_outcomes``.
+    * ``iq_seq_lock`` guards only the install-queue sequence counter.
+
+    ``mod_outcomes`` is also written unlocked during the single-threaded
+    prescan, before any worker thread exists; every write once the pipeline is
+    running holds ``install_lock``.
+
+    Read a field under the same lock that guards writing it. Nothing here is
+    safe to touch unsynchronised once the workers have started."""
+    # --- rebound scalars (were nonlocal) ---
+    dl_done: int = 0
+    dl_bytes_done: int = 0
+    total_bytes: int = 0
+    # --- locks ---
+    dl_lock: threading.Lock = field(default_factory=threading.Lock)
+    install_lock: threading.Lock = field(default_factory=threading.Lock)
+    iq_seq_lock: threading.Lock = field(default_factory=threading.Lock)
+    # --- download bookkeeping (dl_lock) ---
+    dl_results: "dict[int, tuple]" = field(default_factory=dict)
+    per_mod_prev: "dict[int, int]" = field(default_factory=dict)
+    dl_last_emit: "dict[int, float]" = field(default_factory=dict)
+    agg_state: dict = field(default_factory=dict)
+    # --- install bookkeeping (install_lock) ---
+    install_counters: dict = field(
+        default_factory=lambda: {"installed": 0, "skipped": 0, "done": 0})
+    install_results: "dict[int, str]" = field(default_factory=dict)
+    fomod_deferred: list = field(default_factory=list)
+    bain_deferred: list = field(default_factory=list)
+    archive_use_count: "dict[str, int]" = field(default_factory=dict)
+    external_archive_paths: "set[str]" = field(default_factory=set)
+    mod_outcomes: "dict[int, dict]" = field(default_factory=dict)
+
+
+# ---------------------------------------------------------------------------
 # Callback / control interface (the Qt caller wires each to a Signal.emit).
 # ---------------------------------------------------------------------------
 def _noop(*_a, **_k):
@@ -382,119 +690,18 @@ def run_collection_install(
         except Exception as exc:
             log(f"Collection install: could not save manifest: {exc}")
 
-    schema_mods: list[dict] = collection_schema.get("mods", [])
-    schema_file_id_to_pos: dict[int, int] = _resolve_collection_priorities(collection_schema)
-    schema_pos_to_name: dict[int, str] = {}
-    schema_file_id_to_logical: dict[int, str] = {}
-    schema_file_id_to_mod_id: dict[int, int] = {}
-    schema_file_id_to_install_type: dict[int, str] = {}
-    schema_file_id_to_category: dict[int, str] = {}
-    schema_file_id_to_phase: dict[int, int] = {}
-    # source.fileSize / source.md5 / mods[].domainName — the GraphQL mod list
-    # omits these for cross-domain entries (e.g. a Skyrim SE mod referenced by
-    # an Enderal SE collection), so manual mode matches against the manifest
-    # values first (Tk parity: collections_dialog.py schema_file_id_to_size/…).
-    schema_file_id_to_size: dict[int, int] = {}
-    schema_file_id_to_md5: dict[int, str] = {}
-    schema_file_id_to_domain: dict[int, str] = {}
-    # mods-array index (collection.json install order). NOT the same as
-    # schema_file_id_to_pos, which is the REVERSED priority rank (0 = top of
-    # modlist) — manual mode prompts in the order the author listed the mods.
-    schema_file_id_to_arrayidx: dict[int, int] = {}
-    fomod_by_file_id: dict[int, dict] = {}
-    bain_by_file_id: dict[int, dict] = {}
-    _raw_logical: dict[int, str] = {}
-    _raw_name: dict[int, str] = {}
-    for schema_mod in schema_mods:
-        src = schema_mod.get("source") or {}
-        fid = src.get("fileId")
-        if fid is not None:
-            fid = int(fid)
-            _raw_logical[fid] = src.get("logicalFilename") or ""
-            _raw_name[fid] = schema_mod.get("name") or ""
-    _logical_counts: dict[str, int] = {}
-    for raw in _raw_logical.values():
-        if raw:
-            _logical_counts[raw] = _logical_counts.get(raw, 0) + 1
-
-    for pos, schema_mod in enumerate(schema_mods):
-        src = schema_mod.get("source") or {}
-        fid = src.get("fileId")
-        if fid is not None:
-            fid = int(fid)
-            topo_pos = schema_file_id_to_pos.get(fid, pos)
-            schema_pos_to_name[topo_pos] = schema_mod.get("name") or ""
-            raw_logical = _raw_logical.get(fid, "")
-            schema_name = _raw_name.get(fid, "")
-            if raw_logical and _logical_counts.get(raw_logical, 0) > 1:
-                logical = schema_name or raw_logical
-            else:
-                logical = raw_logical or schema_name
-            schema_file_id_to_logical[fid] = logical
-            mid = src.get("modId")
-            if mid:
-                schema_file_id_to_mod_id[fid] = int(mid)
-            _sz = src.get("fileSize")
-            if _sz:
-                try:
-                    schema_file_id_to_size[fid] = int(_sz)
-                except (TypeError, ValueError):
-                    pass
-            _md5_v = (src.get("md5") or "").strip().lower()
-            if _md5_v:
-                schema_file_id_to_md5[fid] = _md5_v
-            _dom = (schema_mod.get("domainName") or "").strip()
-            if _dom:
-                schema_file_id_to_domain[fid] = _dom
-            schema_file_id_to_arrayidx[fid] = pos
-            _details = schema_mod.get("details") or {}
-            _det_type = (_details.get("type") or "").strip()
-            if _det_type:
-                schema_file_id_to_install_type[fid] = _det_type
-            _det_cat = (_details.get("category") or "").strip()
-            if _det_cat:
-                schema_file_id_to_category[fid] = _det_cat
-            try:
-                schema_file_id_to_phase[fid] = int(schema_mod.get("phase") or 0)
-            except (TypeError, ValueError):
-                schema_file_id_to_phase[fid] = 0
-            choices = schema_mod.get("choices") or {}
-            if choices.get("type") == "fomod":
-                fomod_by_file_id[fid] = _fomod_choices_from_collection(choices)
-            elif choices.get("type") == "fomod_selections":
-                fomod_by_file_id[fid] = choices["selections"]
-            elif choices.get("type") == "bain_selections":
-                bain_by_file_id[fid] = choices["selections"]
-    # Category + endorsement never come from the collection manifest — kick
-    # off a background batched GraphQL fetch NOW, concurrently with the whole
-    # download/install pipeline, so it's ready (or nearly ready) by the time
-    # Step 5 reconciles. Never gates the critical path.
+    # Every read-only lookup derived from collection.json, built once and
+    # then shared unsynchronised across the download/install workers.
+    idx = _build_schema_index(collection_schema)
     _extra_meta: "dict[int, object]" = {}
     _extra_meta_ready = threading.Event()
 
-    def _fetch_extra_meta():
-        try:
-            unique_mids = sorted(set(schema_file_id_to_mod_id.values()))
-            if unique_mids:
-                result = api.graphql_mod_update_info_batch(
-                    [(game_domain, mid) for mid in unique_mids])
-                _extra_meta.update(result)
-        except Exception as exc:
-            log(f"Collection install: background metadata fetch failed: {exc}")
-        finally:
-            _extra_meta_ready.set()
-
     threading.Thread(target=_fetch_extra_meta, daemon=True,
+                     args=(api, game_domain, idx, _extra_meta,
+                           _extra_meta_ready, log),
                      name="col-extra-meta").start()
 
-    def _sort_key(m):
-        return schema_file_id_to_pos.get(m.file_id, len(schema_mods))
-
-    ordered_mods = sorted(mods, key=_sort_key)
-
-    schema_file_id_to_suffix: dict[int, str] = _build_collision_suffix_map(
-        schema_mods, schema_file_id_to_logical, schema_pos_to_name,
-        schema_file_id_to_pos)
+    ordered_mods = sorted(mods, key=lambda m: _schema_sort_key(idx, m))
 
     # ------------------------------------------------------------------
     # Step 2 pre-scan staging for already-installed mods
@@ -544,27 +751,6 @@ def run_collection_install(
             except Exception:
                 pass
 
-    def _match_existing(mod) -> str:
-        _mid = schema_file_id_to_mod_id.get(mod.file_id, 0) or getattr(mod, "mod_id", 0) or 0
-        if _mid > 0 and (_mid, mod.file_id) in already_installed_by_ids:
-            return already_installed_by_ids[(_mid, mod.file_id)]
-        return already_installed_by_fid.get(mod.file_id, "")
-
-    def _name_candidates(mod) -> "list[str]":
-        from Utils.mods.mod_name_utils import _suggest_mod_names
-        logical = schema_file_id_to_logical.get(mod.file_id, "") or ""
-        schema_name = schema_pos_to_name.get(
-            schema_file_id_to_pos.get(mod.file_id, -1), "") or ""
-        candidates: list[str] = []
-        name_sources = (logical, schema_name) if (logical or schema_name) \
-            else (mod.mod_name or "",)
-        for raw in name_sources:
-            if raw:
-                for s in _suggest_mod_names(raw):
-                    if s and s not in candidates:
-                        candidates.append(s)
-        return candidates
-
     # Remove staging folders for unticked optional mods
     if skipped_fids and skipped_mods:
         import shutil as _shutil_skip
@@ -573,14 +759,15 @@ def run_collection_install(
             if not mod.file_id or mod.file_id not in skipped_fids:
                 continue
             # Exact (mod_id, file_id) / file_id match is always safe.
-            folder_name = _match_existing(mod)
+            folder_name = _match_existing(
+                idx, already_installed_by_ids, already_installed_by_fid, mod)
             if not folder_name:
                 # Name fallback: only for legacy installs with no id match. A
                 # cleaned title ("HSMarkarth - The Warrens - AE" → "HSMarkarth -
                 # The Warrens") can collide with a DIFFERENT mod's folder, so
                 # never remove a folder that carries another mod's file_id —
                 # removing an optional must never take out another mod.
-                for candidate in _name_candidates(mod):
+                for candidate in _name_candidates(idx, mod):
                     key = candidate.lower()
                     if key not in staging_lower_map:
                         continue
@@ -621,11 +808,11 @@ def run_collection_install(
     # recorded so we can loudly report any that silently fell out of the pipeline
     # (the "N mods missing" bug). status ∈ existing/queued/installed/deferred/
     # download_failed/stage_empty/error/no_file_id.
-    _mod_outcomes: "dict[int, dict]" = {}
+    state = _PipelineState()
 
     def _record_outcome(mod, status, detail=""):
         fid = getattr(mod, "file_id", 0) or 0
-        _mod_outcomes[fid] = {"name": getattr(mod, "mod_name", "") or "",
+        state.mod_outcomes[fid] = {"name": getattr(mod, "mod_name", "") or "",
                               "mod_id": getattr(mod, "mod_id", 0) or 0,
                               "status": status, "detail": detail}
 
@@ -634,7 +821,7 @@ def run_collection_install(
     # the post-install bundle extraction does). Counting them "skipped" here
     # reported perfectly-installed bundled mods as skipped in the final summary.
     _schema_bundle_names = {
-        (m.get("name") or "").strip().lower() for m in schema_mods
+        (m.get("name") or "").strip().lower() for m in idx.mods
         if ((m.get("source") or {}).get("type") or "").lower() == "bundle"
         or (m.get("source") or {}).get("bundle") is True}
 
@@ -649,9 +836,10 @@ def run_collection_install(
             _record_outcome(mod, "no_file_id")
             skipped += 1
             continue
-        existing_folder: str = _match_existing(mod)
+        existing_folder: str = _match_existing(
+            idx, already_installed_by_ids, already_installed_by_fid, mod)
         if not existing_folder:
-            for candidate in _name_candidates(mod):
+            for candidate in _name_candidates(idx, mod):
                 key = candidate.lower()
                 if key in staging_lower_map:
                     existing_folder = staging_lower_map[key]
@@ -661,7 +849,7 @@ def run_collection_install(
                 f"'{existing_folder}' — skipping")
             _record_outcome(mod, "existing", existing_folder)
             if not skip_existing:
-                install_order.append((_sort_key(mod), existing_folder))
+                install_order.append((_schema_sort_key(idx, mod), existing_folder))
             installed += 1
         else:
             _record_outcome(mod, "queued")
@@ -679,7 +867,7 @@ def run_collection_install(
     _DL_WORKERS = _col_cfg["max_concurrent"]
     _INSTALL_WORKERS = _col_cfg.get("max_extract_workers", 4)
     # Archive-clear settings, read ONCE — _maybe_delete_archive used to re-parse
-    # the settings INI per mod while holding _install_lock, serialising the
+    # the settings INI per mod while holding state.install_lock, serialising the
     # install consumers on file I/O for nothing (settings don't change mid-run).
     _col_force_clear_cfg = bool(_col_cfg.get("clear_archive_after_install", False))
     _clear_after_install_cfg = load_clear_archive_after_install()
@@ -716,35 +904,30 @@ def run_collection_install(
     import os as _os_col
     _COL_TIMING = bool(_os_col.environ.get("MM_COL_TIMING"))
 
-    _dl_results: dict[int, tuple] = {}
-    _dl_lock = threading.Lock()
-    _dl_done = 0
     _dl_total = len(to_download)
 
     _to_download_fids = {getattr(m, "file_id", None) for m in to_download}
-    _total_bytes = sum(getattr(m, "size_bytes", 0) or 0 for m in ordered_mods)
+    state.total_bytes = sum(getattr(m, "size_bytes", 0) or 0 for m in ordered_mods)
     # The real collection size (installed/uncompressed = totalSize + assetsSizeBytes,
     # from get_collection_detail) is what the detail header shows and what the user
-    # expects to see. The download bar tracks compressed archive bytes (_total_bytes),
+    # expects to see. The download bar tracks compressed archive bytes (state.total_bytes),
     # which is much smaller, so surface the true size separately for the label.
     if collection_total_size > 0:
         cb.on_display_total(int(collection_total_size))
-    _dl_bytes_done = sum(
+    state.dl_bytes_done = sum(
         getattr(m, "size_bytes", 0) or 0 for m in ordered_mods
         if getattr(m, "file_id", None) not in _to_download_fids)
-    _per_mod_prev: dict[int, int] = {}
 
     # Aggregate-download speed state (replaces the Tk after()-timer poll).
     import time as _time_mod
-    _agg_state = {"prev_bytes": 0, "prev_time": _time_mod.monotonic(), "speed": 0.0,
-                  "last_emit": 0.0}
+    state.agg_state = {"prev_bytes": 0, "prev_time": _time_mod.monotonic(),
+                       "speed": 0.0, "last_emit": 0.0}
     # Progress-emit throttle: NexusDownloader calls progress_cb per read (~every
     # few KB). Emitting a Signal per chunk (×N concurrent downloads) floods the Qt
     # event loop and the X server's shared-memory backing store → the desktop can
     # freeze (xcb_shm_create_segment failures). Cap emissions to ~10/sec each, as
     # the Tk version did via a 200ms after()-timer poll.
     _EMIT_INTERVAL = 0.1
-    _dl_last_emit: dict[int, float] = {}
 
     _col_cancel = ctl.cancel
     _col_pause = ctl.pause
@@ -752,16 +935,9 @@ def run_collection_install(
     _dl_finished = threading.Event()
 
     _mem_budget = ExtractionMemoryBudget(max_workers=_INSTALL_WORKERS)
-    _archive_use_count: dict[str, int] = {}
-    _external_archive_paths: set[str] = set()
-
-    _install_lock = threading.Lock()
-    _install_counters = {"installed": 0, "skipped": 0, "done": 0}
-    _install_results: dict[int, str] = dict(already_installed_by_fid)
-    _install_results.update(
+    state.install_results.update(already_installed_by_fid)
+    state.install_results.update(
         {fid: folder for (_mid, fid), folder in already_installed_by_ids.items()})
-    _fomod_deferred: list = []
-    _bain_deferred: list = []
 
     # Priority hand-off queue: when several downloaded archives are waiting, the
     # install consumers always take the SMALLEST first so one big archive can't
@@ -773,10 +949,9 @@ def run_collection_install(
     _install_queue: _queue.PriorityQueue = _queue.PriorityQueue(
         maxsize=_PIPELINE_QUEUE_SIZE)
     _iq_seq = _itertools.count()
-    _iq_seq_lock = threading.Lock()
 
     def _iq_next_seq() -> int:
-        with _iq_seq_lock:
+        with state.iq_seq_lock:
             return next(_iq_seq)
 
     def _enqueue_install(mod, result, domain) -> None:
@@ -799,56 +974,21 @@ def run_collection_install(
     def _agg_push(force: bool = False):
         now = _time_mod.monotonic()
         # Throttle emissions to ~10/sec (speed is still averaged over 0.5s).
-        if not force and now - _agg_state["last_emit"] < _EMIT_INTERVAL:
+        if not force and now - state.agg_state["last_emit"] < _EMIT_INTERVAL:
             return
-        _agg_state["last_emit"] = now
-        with _dl_lock:
-            agg = _dl_bytes_done
-            total = _total_bytes
-        dt = now - _agg_state["prev_time"]
+        state.agg_state["last_emit"] = now
+        with state.dl_lock:
+            agg = state.dl_bytes_done
+            total = state.total_bytes
+        dt = now - state.agg_state["prev_time"]
         if dt >= 0.5:
-            _agg_state["speed"] = (agg - _agg_state["prev_bytes"]) / dt
-            _agg_state["prev_bytes"] = agg
-            _agg_state["prev_time"] = now
-        cb.on_agg_download(agg, total, _agg_state["speed"] / (1024 * 1024))
-
-    def _build_prebuilt_meta(mod, effective_domain):
-        try:
-            _effective_mod_id = schema_file_id_to_mod_id.get(mod.file_id, 0) or mod.mod_id
-            pmeta = build_meta_from_download(
-                game_domain=effective_domain, mod_id=_effective_mod_id,
-                file_id=mod.file_id, archive_name=mod.file_name or "",
-                from_collection=_slug)
-            pmeta.nexus_name = mod.mod_name or ""
-            pmeta.author = mod.mod_author or ""
-            pmeta.uploaded_by = mod.uploaded_by or ""
-            pmeta.version = mod.version or ""
-            if getattr(mod, "category_id", 0):
-                pmeta.category_id = mod.category_id
-            if getattr(mod, "category_name", ""):
-                pmeta.category_name = mod.category_name
-            # Manifest category name (details.category) — the only source, as
-            # the GraphQL mod list omits categories. Applied when the mod
-            # object itself carries none.
-            _schema_cat = schema_file_id_to_category.get(mod.file_id, "")
-            if _schema_cat and not pmeta.category_name:
-                pmeta.category_name = _schema_cat
-            if schema_file_id_to_install_type.get(mod.file_id, "").lower() == "dinput":
-                pmeta.root_folder = True
-            return pmeta
-        except Exception:
-            return None
-
-    def _preferred_name(mod):
-        logical = schema_file_id_to_logical.get(mod.file_id, "") or ""
-        schema_name = schema_pos_to_name.get(
-            schema_file_id_to_pos.get(mod.file_id, -1), "") or ""
-        pref = logical or schema_name or mod.mod_name or ""
-        return pref + schema_file_id_to_suffix.get(mod.file_id, "")
+            state.agg_state["speed"] = (agg - state.agg_state["prev_bytes"]) / dt
+            state.agg_state["prev_bytes"] = agg
+            state.agg_state["prev_time"] = now
+        cb.on_agg_download(agg, total, state.agg_state["speed"] / (1024 * 1024))
 
     # ---- download producer -------------------------------------------
     def _download_one(mod):
-        nonlocal _dl_done
         mod_domain = (getattr(mod, "domain_name", "") or "").strip() or game_domain
         # Expected archive size for cache validation / partial-download detection.
         # The GraphQL mod list omits size_bytes for cross-domain entries (e.g. a
@@ -857,21 +997,20 @@ def run_collection_install(
         # this, expected_size_bytes=0 disables the 95%-truncation check and a
         # partially-downloaded archive gets extracted (and fails) instead of being
         # redownloaded.
-        _exp_size = (schema_file_id_to_size.get(mod.file_id, 0)
+        _exp_size = (idx.file_id_to_size.get(mod.file_id, 0)
                      or getattr(mod, "size_bytes", 0) or 0)
         if _col_stop.is_set():
-            with _dl_lock:
-                _dl_done += 1
+            with state.dl_lock:
+                state.dl_done += 1
             _enqueue_install(mod, None, mod_domain)
             return
 
         def _progress_cb(cur, tot, _fid=mod.file_id, _mod=mod):
-            nonlocal _dl_bytes_done, _total_bytes
-            with _dl_lock:
-                prev = _per_mod_prev.get(_fid, 0)
+            with state.dl_lock:
+                prev = state.per_mod_prev.get(_fid, 0)
                 delta = max(cur - prev, 0)
-                _per_mod_prev[_fid] = cur
-                _dl_bytes_done += delta
+                state.per_mod_prev[_fid] = cur
+                state.dl_bytes_done += delta
                 is_first = prev == 0 and cur > 0
                 # A mod's declared size is often unknown (0) or an estimate; the
                 # real content-length (`tot`) or bytes seen so far may exceed it.
@@ -880,7 +1019,7 @@ def run_collection_install(
                 _declared = getattr(_mod, "size_bytes", 0) or 0
                 _real = max(tot if tot and tot > 0 else 0, cur)
                 if _real > _declared:
-                    _total_bytes += _real - _declared
+                    state.total_bytes += _real - _declared
                     _mod.size_bytes = _real
             if is_first:
                 cb.on_dl_mod_start(_fid, _mod.mod_name or _mod.file_name or "",
@@ -889,8 +1028,8 @@ def run_collection_install(
             # final 100% so the bar never sticks short).
             _now = _time_mod.monotonic()
             _complete = tot > 0 and cur >= tot
-            if is_first or _complete or _now - _dl_last_emit.get(_fid, 0.0) >= _EMIT_INTERVAL:
-                _dl_last_emit[_fid] = _now
+            if is_first or _complete or _now - state.dl_last_emit.get(_fid, 0.0) >= _EMIT_INTERVAL:
+                state.dl_last_emit[_fid] = _now
                 cb.on_dl_mod_update(_fid, cur, tot)
             _agg_push(force=is_first)
 
@@ -902,7 +1041,7 @@ def run_collection_install(
             _ext_found, _ext_complete = _find_cached_archive(
                 _ext_dir, mod.file_name or mod.mod_name or "",
                 _exp_size, mod.mod_id, mod.file_id,
-                expected_md5=(schema_file_id_to_md5.get(mod.file_id, "")
+                expected_md5=(idx.file_id_to_md5.get(mod.file_id, "")
                               or (getattr(mod, "md5", "") or "").strip().lower()))
             if _ext_found and _ext_complete:
                 log(f"Collection install: '{mod.mod_name}' found in {_ext_dir} — "
@@ -911,8 +1050,8 @@ def run_collection_install(
                     success=True, file_path=_ext_found, file_name=_ext_found.name,
                     bytes_downloaded=_ext_found.stat().st_size, game_domain=mod_domain,
                     mod_id=mod.mod_id, file_id=mod.file_id)
-                with _install_lock:
-                    _external_archive_paths.add(str(_ext_found))
+                with state.install_lock:
+                    state.external_archive_paths.add(str(_ext_found))
                 break
 
         try:
@@ -929,18 +1068,18 @@ def run_collection_install(
                 f"(mod_id={mod.mod_id}, file_id={mod.file_id}): {exc}\n{_tb.format_exc()}")
 
         mod_size = getattr(mod, "size_bytes", 0) or 0
-        if mod_size > 0 and _per_mod_prev.get(mod.file_id, 0) == 0:
+        if mod_size > 0 and state.per_mod_prev.get(mod.file_id, 0) == 0:
             _progress_cb(mod_size, mod_size)
 
-        with _dl_lock:
-            _dl_done += 1
-            _dl_results[mod.file_id] = (result, effective_domain)
-            done = _dl_done
-        with _install_lock:
+        with state.dl_lock:
+            state.dl_done += 1
+            state.dl_results[mod.file_id] = (result, effective_domain)
+            done = state.dl_done
+        with state.install_lock:
             if result and result.success and result.file_path:
                 _akey = str(result.file_path)
-                _archive_use_count[_akey] = _archive_use_count.get(_akey, 0) + 1
-            _inst_done = _install_counters["done"]
+                state.archive_use_count[_akey] = state.archive_use_count.get(_akey, 0) + 1
+            _inst_done = state.install_counters["done"]
         _set_status(f"Downloaded {_pre_done + done}/{total}, "
                     f"installed {_pre_done + _inst_done}/{total}…")
         cb.on_dl_mod_finish(mod.file_id)
@@ -964,9 +1103,9 @@ def run_collection_install(
     # ---- install consumer --------------------------------------------
     def _install_one(mod, result, effective_domain):
         if _col_stop.is_set():
-            with _install_lock:
-                _install_counters["skipped"] += 1
-                _install_counters["done"] += 1
+            with state.install_lock:
+                state.install_counters["skipped"] += 1
+                state.install_counters["done"] += 1
             cb.on_extract_remove(mod.file_id)
             return
         if result is None or not result.success or not result.file_path:
@@ -980,18 +1119,18 @@ def run_collection_install(
                 _reason = "success but no file_path"
             log(f"Collection install: download failed for '{mod.mod_name}' "
                 f"(mod_id={mod.mod_id}, file_id={mod.file_id}): {_reason}")
-            with _install_lock:
+            with state.install_lock:
                 _record_outcome(mod, "download_failed", _reason)
-                _install_counters["skipped"] += 1
-                _install_counters["done"] += 1
+                state.install_counters["skipped"] += 1
+                state.install_counters["done"] += 1
             cb.on_extract_remove(mod.file_id)
             return
 
         archive_path = str(result.file_path)
-        auto_fomod = fomod_by_file_id.get(mod.file_id)
-        auto_bain = bain_by_file_id.get(mod.file_id)
-        _pmeta = _build_prebuilt_meta(mod, effective_domain)
-        _preferred = _preferred_name(mod)
+        auto_fomod = idx.fomod_by_file_id.get(mod.file_id)
+        auto_bain = idx.bain_by_file_id.get(mod.file_id)
+        _pmeta = _build_prebuilt_meta(idx, _slug, mod, effective_domain)
+        _preferred = _preferred_name(idx, mod)
 
         _extract_est = get_uncompressed_size(archive_path)
         _mem_budget.acquire(_extract_est)
@@ -1026,16 +1165,16 @@ def run_collection_install(
         _installed_was_fomod = _fomod_flag["value"]
 
         if folder_name == FOMOD_DEFERRED:
-            with _install_lock:
-                _fomod_deferred.append((mod, result, effective_domain))
+            with state.install_lock:
+                state.fomod_deferred.append((mod, result, effective_domain))
                 _record_outcome(mod, "deferred", "fomod")
-                _install_counters["done"] += 1
+                state.install_counters["done"] += 1
             return
         if folder_name == BAIN_DEFERRED:
-            with _install_lock:
-                _bain_deferred.append((mod, result, effective_domain))
+            with state.install_lock:
+                state.bain_deferred.append((mod, result, effective_domain))
                 _record_outcome(mod, "deferred", "bain")
-                _install_counters["done"] += 1
+                state.install_counters["done"] += 1
             return
 
         # Paused/cancelled mid-extraction: the temp files are already removed by
@@ -1043,17 +1182,17 @@ def run_collection_install(
         # skip the "produced NO staged files — dropped" warning (that's for a real
         # structural failure, not a user pause).
         if not folder_name and _col_stop.is_set():
-            with _install_lock:
+            with state.install_lock:
                 _record_outcome(mod, "cancelled", "paused mid-extraction")
-                _install_counters["skipped"] += 1
-                _install_counters["done"] += 1
+                state.install_counters["skipped"] += 1
+                state.install_counters["done"] += 1
             return
 
-        with _install_lock:
+        with state.install_lock:
             if folder_name:
-                _install_results[mod.file_id] = folder_name
+                state.install_results[mod.file_id] = folder_name
                 _record_outcome(mod, "installed", folder_name)
-                _install_counters["installed"] += 1
+                state.install_counters["installed"] += 1
             else:
                 # install_collection_archive returned falsy — the mod extracted
                 # but nothing was staged (structure not recognised / all files
@@ -1064,13 +1203,13 @@ def run_collection_install(
                     f"archive={Path(archive_path).name}) — dropped.")
                 _record_outcome(mod, "stage_empty",
                                 f"archive={Path(archive_path).name}")
-                _install_counters["skipped"] += 1
-            _install_counters["done"] += 1
-            done_so_far = _install_counters["done"]
+                state.install_counters["skipped"] += 1
+            state.install_counters["done"] += 1
+            done_so_far = state.install_counters["done"]
             _maybe_delete_archive(archive_path, _installed_was_fomod)
 
-        with _dl_lock:
-            dl_done_now = _dl_done
+        with state.dl_lock:
+            dl_done_now = state.dl_done
         _set_status(f"Downloaded {_pre_done + dl_done_now}/{total}, "
                     f"installed {_pre_done + done_so_far}/{total}…")
         _set_progress((_pre_done + done_so_far) / total if total else 1.0)
@@ -1079,10 +1218,10 @@ def run_collection_install(
 
     def _maybe_delete_archive(archive_path: str, was_fomod: bool) -> None:
         """Decrement archive use-count; delete at zero honoring settings. Caller
-        must hold _install_lock."""
-        if archive_path not in _archive_use_count:
+        must hold state.install_lock."""
+        if archive_path not in state.archive_use_count:
             return
-        _archive_use_count[archive_path] -= 1
+        state.archive_use_count[archive_path] -= 1
         _keep_for_fomod = (not _col_force_clear_cfg and was_fomod
                            and _keep_fomod_archives_cfg)
         _should_clear = _col_force_clear_cfg or (
@@ -1092,8 +1231,8 @@ def run_collection_install(
             # it was a FOMOD and the user keeps FOMOD archives (the user just
             # downloaded it by hand — leaving it behind clutters ~/Downloads).
             _should_clear = not (was_fomod and _keep_fomod_archives_cfg)
-        if (_archive_use_count[archive_path] == 0 and _should_clear
-                and archive_path not in _external_archive_paths):
+        if (state.archive_use_count[archive_path] == 0 and _should_clear
+                and archive_path not in state.external_archive_paths):
             try:
                 delete_archive_and_sidecar(Path(archive_path))
             except Exception as _del_exc:
@@ -1113,10 +1252,10 @@ def run_collection_install(
                 log(f"Collection install: unexpected error installing "
                     f"'{mod.mod_name}' (mod_id={getattr(mod,'mod_id',0)}, "
                     f"file_id={getattr(mod,'file_id',0)}): {exc}\n{_tbx.format_exc()}")
-                with _install_lock:
+                with state.install_lock:
                     _record_outcome(mod, "error", str(exc))
-                    _install_counters["skipped"] += 1
-                    _install_counters["done"] += 1
+                    state.install_counters["skipped"] += 1
+                    state.install_counters["done"] += 1
             finally:
                 _install_queue.task_done()
 
@@ -1127,8 +1266,8 @@ def run_collection_install(
             _pre_plugins: list = []
             _seen_plugins: set = set()
             _pre_staging = game.get_effective_mod_staging_path()
-            with _install_lock:
-                _pre_results = dict(_install_results)
+            with state.install_lock:
+                _pre_results = dict(state.install_results)
             for _fid, _fname in _pre_results.items():
                 _mod_dir = _pre_staging / _fname
                 if not _mod_dir.is_dir():
@@ -1152,26 +1291,14 @@ def run_collection_install(
     # ---- manual (non-premium) producer --------------------------------
     # Port of Tk _run_manual_install's sequential prompt+poll loop; the
     # install side is the shared consumer pipeline above.
-    def _manual_domain(mod) -> str:
-        return ((getattr(mod, "domain_name", "") or "").strip()
-                or schema_file_id_to_domain.get(mod.file_id, "")
-                or game_domain)
-
-    def _manual_url(mod) -> str:
-        # Prefer collection.json's source.modId + domainName for cross-domain
-        # entries so "Open Download Page" lands on the mod's real Nexus page.
-        _mid = schema_file_id_to_mod_id.get(mod.file_id, 0) or mod.mod_id
-        return (f"https://www.nexusmods.com/{_manual_domain(mod)}/mods/{_mid}"
-                f"?tab=files&file_id={mod.file_id}")
-
     def _wait_for_manual_file(mod) -> "Path | None":
         """Poll download folders until the mod's archive appears, or the user
         picks a file / skips (optional mods only) / pauses / cancels."""
         scan_dirs = _scan_dirs(include_all=True)
-        _eff_mod_id = schema_file_id_to_mod_id.get(mod.file_id, 0) or mod.mod_id
-        _exp_size = (schema_file_id_to_size.get(mod.file_id, 0)
+        _eff_mod_id = idx.file_id_to_mod_id.get(mod.file_id, 0) or mod.mod_id
+        _exp_size = (idx.file_id_to_size.get(mod.file_id, 0)
                      or getattr(mod, "size_bytes", 0) or 0)
-        _exp_md5 = (schema_file_id_to_md5.get(mod.file_id, "")
+        _exp_md5 = (idx.file_id_to_md5.get(mod.file_id, "")
                     or (getattr(mod, "md5", "") or "").strip().lower())
         while not _col_stop.is_set():
             try:
@@ -1198,17 +1325,16 @@ def run_collection_install(
         return None  # paused / cancelled
 
     def _manual_produce(mods_seq: list) -> None:
-        nonlocal _dl_done
         _current_phase: "int | None" = None
         for i, mod in enumerate(mods_seq):
-            mod_domain = _manual_domain(mod)
+            mod_domain = _manual_domain(idx, game_domain, mod)
             if _col_stop.is_set():
-                with _dl_lock:
-                    _dl_done += 1
+                with state.dl_lock:
+                    state.dl_done += 1
                 _enqueue_install(mod, None, mod_domain)
                 continue
 
-            _this_phase = schema_file_id_to_phase.get(mod.file_id, 0)
+            _this_phase = idx.file_id_to_phase.get(mod.file_id, 0)
             if _current_phase is not None and _this_phase != _current_phase:
                 # All earlier-phase installs must land before a later-phase
                 # FOMOD reads plugins.txt (Tk _write_phase_plugins_txt parity).
@@ -1223,42 +1349,43 @@ def run_collection_install(
                 "n_manual": len(mods_seq),
                 "installed_base": installed,
                 "name": mod.mod_name or f"Mod {mod.mod_id}",
-                "size": (schema_file_id_to_size.get(mod.file_id, 0)
+                "size": (idx.file_id_to_size.get(mod.file_id, 0)
                          or getattr(mod, "size_bytes", 0) or 0),
                 "file_name": mod.file_name or "",
                 "optional": bool(getattr(mod, "optional", False)),
-                "url": _manual_url(mod),
-                "upcoming": [(m.mod_name or f"Mod {m.mod_id}", _manual_url(m))
+                "url": _manual_url(idx, game_domain, mod),
+                "upcoming": [(m.mod_name or f"Mod {m.mod_id}",
+                              _manual_url(idx, game_domain, m))
                              for m in mods_seq[i + 1:i + 5]],
             })
 
             archive = _wait_for_manual_file(mod)
             if _col_stop.is_set():
-                with _dl_lock:
-                    _dl_done += 1
+                with state.dl_lock:
+                    state.dl_done += 1
                 _enqueue_install(mod, None, mod_domain)
                 continue
             if archive is None:
                 log(f"Manual install: skipped '{mod.mod_name}'")
-                with _install_lock:
+                with state.install_lock:
                     _record_outcome(mod, "skipped_manual")
-                    _install_counters["skipped"] += 1
-                    _install_counters["done"] += 1
-                with _dl_lock:
-                    _dl_done += 1
+                    state.install_counters["skipped"] += 1
+                    state.install_counters["done"] += 1
+                with state.dl_lock:
+                    state.dl_done += 1
                 continue
 
             result = DownloadResult(
                 success=True, file_path=archive, file_name=archive.name,
                 bytes_downloaded=archive.stat().st_size,
                 game_domain=mod_domain, mod_id=mod.mod_id, file_id=mod.file_id)
-            with _dl_lock:
-                _dl_done += 1
-            with _install_lock:
+            with state.dl_lock:
+                state.dl_done += 1
+            with state.install_lock:
                 # Counted but NOT marked external → deleted after install
                 # (Tk manual parity; see _maybe_delete_archive).
                 _akey = str(archive)
-                _archive_use_count[_akey] = _archive_use_count.get(_akey, 0) + 1
+                state.archive_use_count[_akey] = state.archive_use_count.get(_akey, 0) + 1
             cb.on_extract_queue(mod.file_id, mod.mod_name or mod.file_name or "")
             _enqueue_install(mod, result, mod_domain)
 
@@ -1281,19 +1408,19 @@ def run_collection_install(
     # first, same reasoning as deferring those to the end wouldn't help here —
     # this has to be staged before anything else even starts, not slotted in
     # afterward. Positioning matters too: install_order entries sort by their
-    # first element against schema_file_id_to_pos, which — per
+    # first element against idx.file_id_to_pos, which — per
     # _resolve_collection_priorities/_topo_sort_collection — treats mods[-1]
     # (end of the manifest's mods array) as position 0 (top of modlist.txt,
     # highest priority). An off-site entry has no fileId to look up a real
     # pos for, so its own array index has to be reversed the same way
-    # (len(schema_mods) - 1 - index) or it sorts backwards — an index near
+    # (len(idx.mods) - 1 - index) or it sorts backwards — an index near
     # the START of the array would otherwise land near the TOP (highest
     # priority) instead of near the bottom where mods[low index] actually
     # belong.
     if not _col_stop.is_set():
         _offsite_unresolved: "list[tuple[str, str]]" = []
         _offsite_dirs = _scan_dirs(include_all=True)
-        for _oi, _osmod in enumerate(schema_mods):
+        for _oi, _osmod in enumerate(idx.mods):
             _osrc = _osmod.get("source") or {}
             _ostype = (_osrc.get("type") or "").lower()
             if _ostype not in ("browse", "direct"):
@@ -1374,7 +1501,7 @@ def run_collection_install(
                 _ofolder = None
             if _ofolder and _ofolder not in (FOMOD_DEFERRED, BAIN_DEFERRED):
                 installed += 1
-                install_order.append((len(schema_mods) - 1 - _oi, _ofolder))
+                install_order.append((len(idx.mods) - 1 - _oi, _ofolder))
             else:
                 # Deferred (rare for a plain patch archive) or failed — still
                 # needs a look, so don't silently drop it from the reminder.
@@ -1397,8 +1524,8 @@ def run_collection_install(
             # double-ended scheduler that dedicated one worker to the
             # largest-remaining mods.)
             _to_download_sorted = order_by_size(to_download)
-            if _total_bytes > 0:
-                cb.on_agg_download(_dl_bytes_done, _total_bytes, 0.0)
+            if state.total_bytes > 0:
+                cb.on_agg_download(state.dl_bytes_done, state.total_bytes, 0.0)
 
         # Each download fetches its own signed CDN link lazily inside
         # download_file (exactly one get_download_links call per mod actually
@@ -1415,9 +1542,9 @@ def run_collection_install(
             # Prompt order: phase first, then the author's mods-array order
             # within a phase — the order a human reads the collection page.
             to_download.sort(
-                key=lambda m: (schema_file_id_to_phase.get(m.file_id, 0),
-                               schema_file_id_to_arrayidx.get(
-                                   m.file_id, len(schema_mods))))
+                key=lambda m: (idx.file_id_to_phase.get(m.file_id, 0),
+                               idx.file_id_to_arrayidx.get(
+                                   m.file_id, len(idx.mods))))
             _manual_produce(to_download)
         else:
             run_smallest_first(_to_download_sorted, _download_one, _DL_WORKERS,
@@ -1425,25 +1552,25 @@ def run_collection_install(
 
         _dl_finished.set()
         if not manual_mode:
-            cb.on_agg_download(_total_bytes, _total_bytes, 0.0)
+            cb.on_agg_download(state.total_bytes, state.total_bytes, 0.0)
         for _ in range(_INSTALL_WORKERS):
             _enqueue_done()
         for t in _consumer_threads:
             t.join()
 
         _process_deferred(
-            _bain_deferred, _fomod_deferred, game, profile_dir, api,
-            schema_mods, schema_file_id_to_phase, schema_file_id_to_pos,
-            schema_file_id_to_mod_id, schema_file_id_to_install_type,
-            schema_file_id_to_category,
-            schema_file_id_to_logical, schema_pos_to_name, schema_file_id_to_suffix,
-            fomod_by_file_id, bain_by_file_id, _install_results,
-            _install_counters, _install_lock, _archive_use_count,
-            _external_archive_paths, _col_stop, _slug, overwrite_existing,
+            state.bain_deferred, state.fomod_deferred, game, profile_dir, api,
+            idx.mods, idx.file_id_to_phase, idx.file_id_to_pos,
+            idx.file_id_to_mod_id, idx.file_id_to_install_type,
+            idx.file_id_to_category,
+            idx.file_id_to_logical, idx.pos_to_name, idx.file_id_to_suffix,
+            idx.fomod_by_file_id, idx.bain_by_file_id, state.install_results,
+            state.install_counters, state.install_lock, state.archive_use_count,
+            state.external_archive_paths, _col_stop, _slug, overwrite_existing,
             _write_preliminary_plugins_txt, _maybe_delete_archive, cb, log, _set_status)
 
-    installed += _install_counters["installed"]
-    skipped += _install_counters["skipped"]
+    installed += state.install_counters["installed"]
+    skipped += state.install_counters["skipped"]
 
     # rebuild mod index once for all newly installed mods.
     # NB: use the *canonical* game attrs (mod_folder_strip_prefixes /
@@ -1461,7 +1588,7 @@ def run_collection_install(
     # plugins) until Refresh. Only profile-specific-mods profiles (fresh
     # collection installs) coincide, which masked the bug. Mirrors
     # mod_install._update_indexes.
-    if _install_counters["installed"] > 0:
+    if state.install_counters["installed"] > 0:
         try:
             log("Updating mod index…")
             from Utils.filemap import rebuild_mod_index
@@ -1488,10 +1615,10 @@ def run_collection_install(
 
     # build install_order from parallel results
     for mod in to_download:
-        sort_key = _sort_key(mod)
-        folder = (_install_results.get(mod.file_id)
-                  or schema_pos_to_name.get(sort_key) or mod.mod_name)
-        if mod.file_id in _install_results:
+        sort_key = _schema_sort_key(idx, mod)
+        folder = (state.install_results.get(mod.file_id)
+                  or idx.pos_to_name.get(sort_key) or mod.mod_name)
+        if mod.file_id in state.install_results:
             install_order.append((sort_key, folder))
 
     # Step 2c: bundled assets from the collection archive
@@ -1499,7 +1626,7 @@ def run_collection_install(
         try:
             _n_bundled, _n_bundle_skipped = _install_bundled_assets(
                 game, api, profile_dir, staging_path, collection_schema,
-                schema_mods, download_link_path, revision_number,
+                idx.mods, download_link_path, revision_number,
                 collection_slug, staging_lower_map, install_order, log, _set_status)
             installed += _n_bundled
             skipped += _n_bundle_skipped
@@ -1532,7 +1659,7 @@ def run_collection_install(
         try:
             _run_step3b(game, api, profile_dir, staging_path, collection_schema,
                         download_link_path, collection_slug, revision_number,
-                        _install_results, log)
+                        state.install_results, log)
         except Exception as exc:
             log(f"Collection install: Step 3b failed: {exc}")
 
@@ -1590,13 +1717,13 @@ def run_collection_install(
     if modlist_path.is_file() and not _col_pause.is_set():
         try:
             _apply_schema_disabled_mods(
-                modlist_path, collection_schema, schema_file_id_to_pos,
+                modlist_path, collection_schema, idx.file_id_to_pos,
                 install_order, log)
         except Exception as exc:
             log(f"Collection install: apply disabled states failed: {exc}")
         try:
             _apply_schema_locked_mods(
-                modlist_path, collection_schema, schema_file_id_to_pos,
+                modlist_path, collection_schema, idx.file_id_to_pos,
                 install_order, profile_dir, log)
         except Exception as exc:
             log(f"Collection install: apply mod locks failed: {exc}")
@@ -1626,11 +1753,11 @@ def run_collection_install(
                 fid = getattr(mod, "file_id", 0) or 0
                 if not fid:
                     continue
-                folder = _install_results.get(fid)
+                folder = state.install_results.get(fid)
                 staged_ok = bool(folder) and (_final_staging is not None
                                               and (Path(_final_staging) / folder).is_dir())
                 if not staged_ok:
-                    oc = _mod_outcomes.get(fid, {})
+                    oc = state.mod_outcomes.get(fid, {})
                     if oc.get("status") == "skipped_manual":
                         continue  # user chose to skip an optional mod
                     _missing.append((getattr(mod, "mod_name", "") or f"file {fid}",
@@ -1652,15 +1779,15 @@ def run_collection_install(
     # touches anything if the install was cancelled/paused — same guard as the
     # verification block above, so this can't race with cleanup_cancelled_install
     # deleting the profile dir.
-    if not _col_cancel.is_set() and not _col_pause.is_set() and _install_results:
+    if not _col_cancel.is_set() and not _col_pause.is_set() and state.install_results:
         try:
             _extra_meta_ready.wait(timeout=30.0)
             if _extra_meta:
                 from Nexus.nexus_meta import read_meta, write_meta
                 _staging_for_backfill = game.get_effective_mod_staging_path()
                 _updated = 0
-                for fid, folder in _install_results.items():
-                    mid = schema_file_id_to_mod_id.get(fid, 0)
+                for fid, folder in state.install_results.items():
+                    mid = idx.file_id_to_mod_id.get(fid, 0)
                     extra = _extra_meta.get(mid)
                     if extra is None:
                         continue
