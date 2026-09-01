@@ -82,17 +82,36 @@ fi
 echo "Latest version: ${LATEST_VERSION}"
 echo ""
 
+# TARGET_APPIMAGE (optional): set by an in-app self-update to the path of the
+# AppImage file actually being run, when that differs from our own default
+# ~/Applications location. That happens whenever a third-party integration
+# tool (Gear Lever, AppImageLauncher, ...) has moved/renamed the file it
+# manages — writing to the default path regardless would silently create a
+# second, orphaned copy while leaving the copy those tools (and things like
+# topgrade) track stuck on the old version forever. When set, we overwrite
+# that exact file in place and skip the icon/.desktop entry below: the
+# integration tool already owns and manages its own.
+EXTERNALLY_MANAGED=0
+if [ -n "${TARGET_APPIMAGE:-}" ]; then
+    APPIMAGE_DEST="$TARGET_APPIMAGE"
+    EXTERNALLY_MANAGED=1
+fi
+
 # Create directories if they don't exist
 mkdir -p "$APPLICATIONS_DIR"
 mkdir -p "$ICONS_DIR"
 mkdir -p "$APPLICATIONS_DESKTOP_DIR"
+if [ "$EXTERNALLY_MANAGED" -eq 1 ]; then
+    mkdir -p "$(dirname "$APPIMAGE_DEST")"
+else
+    APPIMAGE_DEST="$APPLICATIONS_DIR/$APPIMAGE_NAME"
+fi
 
 # Download AppImage to a sibling temp file, then atomically rename it into
 # place. Writing directly to the destination fails with ETXTBSY ("Text file
 # busy") when the currently-running AppImage is still being unmounted by the
 # kernel. rename(2) on the same filesystem only swaps the directory entry —
 # the running process keeps its open inode, so there is no conflict.
-APPIMAGE_DEST="$APPLICATIONS_DIR/$APPIMAGE_NAME"
 APPIMAGE_TMP="$APPIMAGE_DEST.new"
 echo "Downloading AppImage..."
 if command -v curl &>/dev/null; then
@@ -107,6 +126,13 @@ fi
 chmod +x "$APPIMAGE_TMP"
 mv -f "$APPIMAGE_TMP" "$APPIMAGE_DEST"
 echo "AppImage installed to $APPIMAGE_DEST (executable)."
+
+if [ "$EXTERNALLY_MANAGED" -eq 1 ]; then
+    echo ""
+    echo "Updated in place — leaving the icon and .desktop entry to the tool"
+    echo "that manages this AppImage (Gear Lever, AppImageLauncher, etc.)."
+    exit 0
+fi
 
 # Download icon
 echo "Downloading icon..."

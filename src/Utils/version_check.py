@@ -5,6 +5,7 @@ Used by the app shell. No dependency on any gui modules.
 
 import os
 import re
+import shlex
 import subprocess
 
 from Utils.gh_cache import fetch_text as _gh_fetch_text
@@ -242,7 +243,24 @@ def run_installer(allow_prerelease: bool = False):
     Output is logged to $XDG_CONFIG_HOME/mosaic-update.log for debugging.
     sleep 2 gives the app time to fully exit before the installer overwrites
     the running AppImage.
+
+    The AppImage runtime always sets APPIMAGE to the absolute path of the
+    file actually being run. That can differ from our own installer's default
+    ~/Applications location when a third-party integration tool (Gear Lever,
+    AppImageLauncher, etc.) has moved the file elsewhere — overwriting the
+    default path regardless would silently create a second, orphaned copy at
+    the new version while leaving the copy those tools (and things like
+    topgrade) actually track stuck on the old one. Captured here, before
+    APPIMAGE gets stripped out of clean_env below, and forwarded to the
+    installer so it updates whichever file is actually running.
     """
+    running_path = os.environ.get("APPIMAGE", "")
+    default_path = os.path.expanduser("~/Applications/MosaicModManager-x86_64.AppImage")
+    externally_managed = bool(running_path) and (
+        os.path.realpath(running_path) != os.path.realpath(default_path)
+    )
+    target_path = running_path if externally_managed else default_path
+
     config_dir = os.path.join(
         os.environ.get("XDG_CONFIG_HOME", os.path.expanduser("~/.config")),
         "MosaicModManager",
@@ -250,14 +268,17 @@ def run_installer(allow_prerelease: bool = False):
     os.makedirs(config_dir, exist_ok=True)
     log_path = os.path.join(config_dir, "mosaic-update.log")
     installer_args = " --prerelease" if allow_prerelease else ""
+    target_env = (
+        f"TARGET_APPIMAGE={shlex.quote(target_path)} " if externally_managed else ""
+    )
     cmd = (
         f"sleep 2 && "
         f"SCRIPT=$(mktemp /tmp/mosaic-installer-XXXXXX.sh) && "
         f"curl -sSL {_APP_UPDATE_INSTALLER_URL} -o \"$SCRIPT\" && "
         f"chmod +x \"$SCRIPT\" && "
-        f"bash \"$SCRIPT\"{installer_args} && "
+        f"{target_env}bash \"$SCRIPT\"{installer_args} && "
         f"rm -f \"$SCRIPT\" && "
-        f"nohup \"$HOME/Applications/MosaicModManager-x86_64.AppImage\" &>/dev/null &"
+        f"nohup {shlex.quote(target_path)} &>/dev/null &"
     )
 
     # Build a clean environment: start from the current env then strip every

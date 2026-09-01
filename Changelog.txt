@@ -1,3 +1,9 @@
+- v1.0.11
+### Bug Fixes
+- Fixed the in-app updater always overwriting `~/Applications/MosaicModManager-x86_64.AppImage`, even when a third-party AppImage integration tool (Gear Lever, AppImageLauncher, etc.) had moved the running copy elsewhere. That silently created a second, orphaned copy at the new version and relaunched from it, while the copy those tools (and things like topgrade) actually track stayed on the old version and kept prompting to update. The updater now updates whichever file is actually running, and leaves the icon/`.desktop` entry alone when an external tool owns them
+
+---
+
 - v1.0.10
 ### Bug Fixes
 - Fixed a Bethesda game's own INI settings (e.g. Skyrim's `bFreebiesSeen` flag, which suppresses the "Download and activate?" Anniversary Edition Creations prompt once dismissed) getting silently discarded the first time profile-specific INI files were set up for a new profile. The real, live INI in the game's My Games folder was simply backed up and replaced with a symlink to the profile's own copy — which could be an older, unrelated clone — discarding whatever the game had actually written there. The live file's content is now carried into the profile before it's linked, so settings the game itself already set (like a dismissed AE Creations prompt) survive into the profile instead of resetting
