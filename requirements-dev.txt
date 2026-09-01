@@ -1,0 +1,11 @@
+# Development-only dependencies. Not needed to run Mosaic Mod Manager.
+#
+# System python3 is externally-managed (PEP 668), so pytest goes in a venv that
+# inherits the system site-packages (keyring, requests, PySide6 — all already
+# present system-wide). Do NOT use src/.venv; that one is stale and missing
+# keyring.
+#
+#     python3 -m venv --system-site-packages .venv
+#     .venv/bin/python -m pip install -r requirements-dev.txt
+#     .venv/bin/python -m pytest tests/ -q
+pytest
