@@ -1,11 +1,17 @@
 # Development-only dependencies. Not needed to run Mosaic Mod Manager.
 #
-# System python3 is externally-managed (PEP 668), so pytest goes in a venv that
-# inherits the system site-packages (keyring, requests, PySide6 — all already
-# present system-wide). Do NOT use src/.venv; that one is stale and missing
-# keyring.
+# These install into the project-root .venv -- the same one run_qt.sh uses
+# (see its VENV="../.venv"), which already carries every runtime dependency:
 #
-#     python3 -m venv --system-site-packages .venv
-#     .venv/bin/python -m pip install -r requirements-dev.txt
+#     .venv/bin/pip install -r requirements-dev.txt
 #     .venv/bin/python -m pytest tests/ -q
+#
+# Do NOT create that venv with --system-site-packages; it is a self-contained
+# venv and does not need system packages. Do NOT use src/.venv either -- that
+# is the old Tk app's venv, has no PySide6, and is missing keyring.
+#
+# Note: length-preserving edits to a source file can collide with the .pyc
+# mtime+size cache key and appear to pass. When mutation-testing, clear
+# __pycache__ or export PYTHONDONTWRITEBYTECODE=1.
 pytest
+pyflakes

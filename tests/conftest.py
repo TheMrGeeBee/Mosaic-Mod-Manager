@@ -4,10 +4,10 @@ The project has no installable package config — ``run_qt.sh`` runs from inside
 ``src/``, so the test suite reproduces that import root instead of introducing
 packaging just for tests.
 
-Run with the repo-root ``.venv`` (created with ``--system-site-packages`` so it
-inherits keyring/requests/PySide6 from the system interpreter). Do NOT use
-``src/.venv`` — that one is stale and missing ``keyring``. See
-``requirements-dev.txt`` for the exact commands.
+Run with the project-root ``.venv`` — the same venv ``run_qt.sh`` uses (its
+``VENV="../.venv"``), which already carries PySide6, keyring and requests. Do
+NOT use ``src/.venv``: that is the old Tk app's venv, has no PySide6 and is
+missing keyring. See ``requirements-dev.txt`` for the exact commands.
 """
 from __future__ import annotations
 
