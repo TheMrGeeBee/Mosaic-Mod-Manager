@@ -1,3 +1,9 @@
+- v1.0.9
+### Bug Fixes
+- Fixed a mod's enabled state and load-order position being silently reset whenever its install folder needed renaming to stay reachable by Wine tools (folder names ending in a period, e.g. acronym-style names like "M.I.N.T."). The rename itself was correct and necessary, but the modlist sync that ran right after it read the old name as deleted and the new name as an unrelated new mod — disabling it and dropping it to the very top of the load order instead of leaving it where it was. Renamed mods now keep their enabled state and position
+
+---
+
 - v1.0.8
 ### Bug Fixes
 - Fixed modding tools launched with "use the game's own prefix" (BethINI Pie and others) failing to start at all with a "could not load kernel32.dll" error. The game's own Proton prefix has its core Windows libraries symlinked through a path that's only reachable from inside Steam's own sandboxed game launch — a tool launched directly by Mosaic couldn't see it. Affected tools now automatically work around this when it's needed, and are unaffected otherwise
