@@ -307,3 +307,74 @@ def test_manual_url_falls_back_to_the_mod_objects_own_id_and_game_domain():
     idx = _build_schema_index({"mods": []})
     url = _manual_url(idx, "gamedom", FakeMod(9, mod_id=88))
     assert url == "https://www.nexusmods.com/gamedom/mods/88?tab=files&file_id=9"
+
+
+# --------------------------------------------------------------------------
+# _fetch_extra_meta (background thread target)
+# --------------------------------------------------------------------------
+class _FakeAPI:
+    def __init__(self, result=None, boom=False):
+        self.seen = None
+        self._result = result or {}
+        self._boom = boom
+
+    def graphql_mod_update_info_batch(self, pairs):
+        self.seen = pairs
+        if self._boom:
+            raise RuntimeError("network down")
+        return self._result
+
+
+def test_fetch_extra_meta_batches_deduplicated_mod_ids():
+    """Three manifest entries, two distinct modIds -- the batch must not ask
+    for the same mod twice."""
+    import threading
+
+    from Utils.collections.collection_install import _fetch_extra_meta
+
+    idx = _build_schema_index({"mods": [
+        mod_entry(1, name="A", mod_id=100),
+        mod_entry(2, name="B", mod_id=200),
+        mod_entry(3, name="C", mod_id=100),
+    ]})
+    api = _FakeAPI({100: "meta-100", 200: "meta-200"})
+    extra, ready, logs = {}, threading.Event(), []
+
+    _fetch_extra_meta(api, "skyrimspecialedition", idx, extra, ready, logs.append)
+
+    assert api.seen == [("skyrimspecialedition", 100), ("skyrimspecialedition", 200)]
+    assert extra == {100: "meta-100", 200: "meta-200"}
+    assert ready.is_set()
+    assert logs == []
+
+
+def test_fetch_extra_meta_sets_ready_even_when_the_api_raises():
+    """Step 5 waits on this event. If a failure left it unset the install
+    would block forever instead of just missing categories."""
+    import threading
+
+    from Utils.collections.collection_install import _fetch_extra_meta
+
+    idx = _build_schema_index({"mods": [mod_entry(1, name="A", mod_id=100)]})
+    extra, ready, logs = {}, threading.Event(), []
+
+    _fetch_extra_meta(_FakeAPI(boom=True), "d", idx, extra, ready, logs.append)
+
+    assert ready.is_set()
+    assert extra == {}
+    assert logs and "background metadata fetch failed" in logs[0]
+
+
+def test_fetch_extra_meta_skips_the_api_call_when_no_mod_ids_are_known():
+    import threading
+
+    from Utils.collections.collection_install import _fetch_extra_meta
+
+    idx = _build_schema_index({"mods": [mod_entry(1, name="No mod id")]})
+    api = _FakeAPI()
+    ready = threading.Event()
+
+    _fetch_extra_meta(api, "d", idx, {}, ready, lambda _m: None)
+
+    assert api.seen is None
+    assert ready.is_set()
