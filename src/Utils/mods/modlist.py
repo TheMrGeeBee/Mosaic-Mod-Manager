@@ -256,6 +256,12 @@ def sync_modlist_with_mods_folder(modlist_path: Path, mods_dir: Path) -> None:
         from Utils.mods.mod_name_utils import sanitize_mod_folder_name
     except Exception:
         sanitize_mod_folder_name = None
+    # old folder name -> sanitized name, for mods actually renamed below. Used
+    # to patch existing modlist.txt lines in place (see the parse loop further
+    # down) so a rename doesn't look like "old mod deleted, new mod appeared"
+    # — that would silently drop the enabled bit and load-order position, and
+    # append a disabled duplicate instead.
+    renamed: dict[str, str] = {}
     if sanitize_mod_folder_name is not None:
         try:
             for d in list(mods_dir.iterdir()):
@@ -275,6 +281,7 @@ def sync_modlist_with_mods_folder(modlist_path: Path, mods_dir: Path) -> None:
                     continue
                 try:
                     d.rename(target)
+                    renamed[d.name] = clean
                     app_log(f"Modlist sync: renamed mod folder {d.name!r} → "
                             f"{clean!r} (the original name would desync the "
                             f"modlist/index and is unreachable to Wine tools).")
@@ -302,6 +309,13 @@ def sync_modlist_with_mods_folder(modlist_path: Path, mods_dir: Path) -> None:
                 continue
             if stripped[0] in ("+", "-", "*"):
                 name = stripped[1:]
+                # Follow a rename from the normalising pass above so it reads
+                # as "same mod, new name" rather than "deleted, then a new
+                # disabled duplicate appeared" — preserves the enabled bit
+                # (the +/-/* prefix) and the line's load-order position.
+                if name in renamed:
+                    name = renamed[name]
+                    stripped = stripped[0] + name
                 # Keep separators always; only keep mods that exist on disk.
                 if name.endswith("_separator") or name in on_disk:
                     existing_lines.append(stripped)
