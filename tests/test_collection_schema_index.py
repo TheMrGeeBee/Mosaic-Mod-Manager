@@ -21,7 +21,8 @@ from Utils.collections.collection_install import (
 
 
 def mod_entry(file_id, *, name="", logical=None, mod_id=None, size=None,
-              md5=None, domain=None, phase=None, details=None, choices=None):
+              md5=None, domain=None, phase=None, details=None, choices=None,
+              hashes=None):
     """One ``collection.json`` ``mods[]`` entry. Omitted keys stay absent, which
     is the case the real manifests exercise most."""
     source: dict = {}
@@ -44,6 +45,8 @@ def mod_entry(file_id, *, name="", logical=None, mod_id=None, size=None,
         entry["details"] = details
     if choices is not None:
         entry["choices"] = choices
+    if hashes is not None:
+        entry["hashes"] = hashes
     return entry
 
 
@@ -378,3 +381,44 @@ def test_fetch_extra_meta_skips_the_api_call_when_no_mod_ids_are_known():
 
     assert api.seen is None
     assert ready.is_set()
+
+
+# --------------------------------------------------------------------------
+# file_id_to_hashes — the author's recorded file set, used when a FOMOD has
+# no replayable `choices`
+# --------------------------------------------------------------------------
+def test_hashes_populate_the_index():
+    idx = _build_schema_index({"mods": [mod_entry(1, name="M", hashes=[
+        {"path": "A.esp", "md5": "aa"}, {"path": "meshes\\b.nif", "md5": "bb"}])]})
+    assert idx.file_id_to_hashes[1] == [
+        {"path": "A.esp", "md5": "aa"}, {"path": "meshes\\b.nif", "md5": "bb"}]
+
+
+def test_absent_or_empty_hashes_yield_no_entry():
+    idx = _build_schema_index({"mods": [
+        mod_entry(1, name="none"), mod_entry(2, name="empty", hashes=[])]})
+    assert 1 not in idx.file_id_to_hashes
+    assert 2 not in idx.file_id_to_hashes
+
+
+def test_entries_missing_path_or_md5_are_dropped():
+    """A partial list would resolve to a partial install, so incomplete
+    entries must not reach the resolver."""
+    idx = _build_schema_index({"mods": [mod_entry(1, name="M", hashes=[
+        {"path": "Good.esp", "md5": "aa"},
+        {"path": "NoMd5.esp"},
+        {"md5": "cc"},
+        {"path": "", "md5": "dd"},
+        {"path": "Blank.esp", "md5": ""},
+    ])]})
+    assert idx.file_id_to_hashes[1] == [{"path": "Good.esp", "md5": "aa"}]
+
+
+def test_a_mod_can_carry_both_choices_and_hashes():
+    """Vortex emits one or the other in practice, but the format permits both
+    and the index must not lose either."""
+    idx = _build_schema_index({"mods": [mod_entry(1, name="M",
+        choices={"type": "fomod_selections", "selections": {"a": [1]}},
+        hashes=[{"path": "A.esp", "md5": "aa"}])]})
+    assert idx.fomod_by_file_id[1] == {"a": [1]}
+    assert idx.file_id_to_hashes[1] == [{"path": "A.esp", "md5": "aa"}]

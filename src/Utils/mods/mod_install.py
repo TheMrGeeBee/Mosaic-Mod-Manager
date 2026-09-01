@@ -1539,6 +1539,91 @@ def _collection_plugin_context(game, profile_dir: "Path | None"
     return installed_files, active_files, loose_files
 
 
+def _resolve_files_from_hashes(root, hashes, log_fn
+                               ) -> "list[tuple[str, str, bool]] | None":
+    """Reproduce a collection author's FOMOD install from the manifest's
+    ``hashes`` list instead of replaying option selections.
+
+    Vortex records an author's FOMOD install EITHER as replayable ``choices``
+    OR as ``hashes`` — ``[{"path", "md5"}]``, the exact file set the author's
+    install produced. Only ``choices`` was ever read, so hashes-only FOMODs
+    fell through to the wizard and the user had to guess the author's options.
+
+    ``path`` is the DESTINATION path; the archive holds the SOURCE path (a
+    FOMOD renames on install — e.g. ``Patches/Vigil Enforcer/X.esp`` installs
+    as ``X.esp``), so matching keys on md5, never on path.
+
+    Returns a ``(source_rel, dest_rel, is_folder)`` file_list relative to
+    *root*, matching ``resolve_files``' shape so staging is unchanged — or
+    None if ANY entry is unresolvable. All-or-nothing on purpose: staging a
+    subset would silently produce a broken mod, which is worse than prompting.
+    """
+    import hashlib
+
+    files: "list[str]" = []
+    for dirpath, _dirs, names in os.walk(root):
+        for n in names:
+            files.append(os.path.join(dirpath, n))
+    if not files:
+        return None
+
+    by_rel = {os.path.relpath(f, root).replace(os.sep, "/").lower(): f
+              for f in files}
+    by_base: "dict[str, list[str]]" = {}
+    for f in files:
+        by_base.setdefault(os.path.basename(f).lower(), []).append(f)
+
+    md5_cache: "dict[str, str]" = {}
+    def _md5(path: str) -> str:
+        got = md5_cache.get(path)
+        if got is None:
+            h = hashlib.md5()
+            try:
+                with open(path, "rb") as fh:
+                    for chunk in iter(lambda: fh.read(1 << 20), b""):
+                        h.update(chunk)
+            except OSError:
+                got = ""
+            else:
+                got = h.hexdigest()
+            md5_cache[path] = got
+        return got
+
+    by_md5 = None            # built lazily; the full scan is the last resort
+    out: "list[tuple[str, str, bool]]" = []
+    for entry in hashes:
+        want = (entry.get("md5") or "").strip().lower()
+        dest = (entry.get("path") or "").replace("\\", "/").lstrip("/")
+        if not want or not dest:
+            log_fn("Collection FOMOD: manifest hash entry missing path/md5 — "
+                   "falling back to the installer.")
+            return None
+        # 1) the destination path also exists verbatim in the archive
+        cand = by_rel.get(dest.lower())
+        if cand is not None and _md5(cand) == want:
+            out.append((os.path.relpath(cand, root), dest.replace("/", os.sep), False))
+            continue
+        # 2) same basename somewhere in the tree (the FOMOD-rename case)
+        hit = None
+        for cand in by_base.get(os.path.basename(dest).lower(), ()):
+            if _md5(cand) == want:
+                hit = cand
+                break
+        # 3) full md5 scan — handles a rename that also changed the basename
+        if hit is None:
+            if by_md5 is None:
+                by_md5 = {}
+                for f in files:
+                    by_md5.setdefault(_md5(f), f)
+            hit = by_md5.get(want)
+        if hit is None:
+            log_fn(f"Collection FOMOD: no file matching the author's manifest "
+                   f"for '{dest}' — falling back to the installer.")
+            return None
+        out.append((os.path.relpath(hit, root), dest.replace("/", os.sep), False))
+    return out
+
+
 def _archive_lists_fomod_config(archive_path: str) -> bool:
     """Best-effort probe: True when the archive LISTING (no extraction) shows a
     fomod/ModuleConfig.xml. Lets a collection install defer an interactive FOMOD
@@ -1594,6 +1679,7 @@ def install_collection_archive(
         preferred_name: str = "",
         prebuilt_meta=None,
         fomod_auto_selections: "dict | None" = None,
+        fomod_auto_hashes: "list[dict] | None" = None,
         bain_auto_selections: "dict | None" = None,
         overwrite_existing: "bool | None" = None,
         skip_index_update: bool = True,
@@ -1638,6 +1724,7 @@ def install_collection_archive(
     # 7z time on big texture packs). Listing misses fall through to the normal
     # extract-then-detect defer below.
     if (defer_interactive_fomod and fomod_auto_selections is None
+            and not fomod_auto_hashes
             and _archive_lists_fomod_config(str(archive))):
         log_fn("FOMOD installer detected (archive listing) — deferring until "
                "dependencies are installed.")
@@ -1720,8 +1807,11 @@ def install_collection_archive(
             # the author actually selected. A FOMOD with no such cross-mod gate
             # is fully self-contained (its own flags only) and stays on the fast
             # immediate path regardless of install order.
+            # A hashed file set is exact, so it clears the "no author
+            # selections" defer — but NOT the cross-mod one: that file set was
+            # captured with the sibling mod present, so it still has to wait.
             if defer_interactive_fomod and has_steps and (
-                    fomod_auto_selections is None
+                    (fomod_auto_selections is None and not fomod_auto_hashes)
                     or cross_mod_dep):
                 reason = ("no author selections recorded" if fomod_auto_selections is None
                           else "the author's choices depend on another mod's plugin "
@@ -1731,7 +1821,20 @@ def install_collection_archive(
                 prepared.cleanup()
                 return FOMOD_DEFERRED
 
-            if fomod_auto_selections is not None:
+            # The author recorded a file set rather than replayable choices:
+            # reproduce it directly and skip option resolution entirely. Falls
+            # back to the normal paths (returning None) if anything is
+            # unresolvable, so a partial match never becomes a partial install.
+            hash_file_list = None
+            if fomod_auto_selections is None and fomod_auto_hashes:
+                hash_file_list = _resolve_files_from_hashes(
+                    fomod_base, fomod_auto_hashes, log_fn)
+
+            if hash_file_list is not None:
+                log_fn("FOMOD installer detected — applying collection author's "
+                       f"recorded file manifest ({len(hash_file_list)} file(s)).")
+                final_selections = None      # nothing replayable to persist
+            elif fomod_auto_selections is not None:
                 log_fn("FOMOD installer detected — applying collection author's "
                        "choices automatically.")
                 final_selections = fomod_auto_selections
@@ -1763,7 +1866,9 @@ def install_collection_archive(
                                                final_selections,
                                                prepared.profile_dir)
                 try:
-                    if final_selections is None:
+                    if hash_file_list is not None:
+                        file_list = hash_file_list
+                    elif final_selections is None:
                         file_list = _default_fomod_file_list(
                             config, installed_files, active_files, loose_files, log_fn)
                     else:
