@@ -361,6 +361,53 @@ def update_flags(step: InstallStep, selections: dict[str, list[str]],
 # File resolution
 # ---------------------------------------------------------------------------
 
+def _build_group_fallback(config: "ModuleConfig",
+                          all_selections: dict) -> "dict[str, list[str]]":
+    """Group-name -> selected plugins, for recovering selections whose step
+    keys do not line up with this FOMOD's steps.
+
+    Selections recorded by a collection author are keyed by the manifest's own
+    ``options[]`` array index, and that order does NOT have to match the
+    FOMOD's ``installSteps`` order — Vortex has been observed emitting them
+    reversed (Skyrim Unbound Reborn: FOMOD step 0 is "Patches" while the
+    manifest's ``options[0]`` is the unnamed Options/Addons step). When they
+    disagree every step receives the wrong step's groups, no group name
+    matches, and ALL of the author's selections are silently dropped, leaving
+    only ``requiredInstallFiles``. Matching on ``step.name`` cannot rescue it
+    either: the index lookup returns a truthy-but-wrong dict, and a step whose
+    name is empty falls back to its index and collides again.
+
+    Group names survive that reordering, so they are the stable key. Only
+    unambiguous ones are eligible — a name must appear exactly once among this
+    FOMOD's groups AND exactly once across *all_selections*, so two steps
+    sharing a group name with different plugin lists are never cross-applied.
+    """
+    group_counts: dict[str, int] = {}
+    for step in config.steps:
+        for group in step.groups:
+            group_counts[group.name] = group_counts.get(group.name, 0) + 1
+    sel_counts: dict[str, int] = {}
+    for step_sel in all_selections.values():
+        for gname in step_sel:
+            sel_counts[gname] = sel_counts.get(gname, 0) + 1
+    fallback: dict[str, list[str]] = {}
+    for step_sel in all_selections.values():
+        for gname, plugins in step_sel.items():
+            if group_counts.get(gname) == 1 and sel_counts.get(gname) == 1:
+                fallback[gname] = plugins
+    return fallback
+
+
+def _selected_in_group(step_selections: dict, group_name: str,
+                       group_fallback: dict) -> "set[str]":
+    """Plugins selected for *group_name*. An explicit entry wins even when it
+    is empty ("the author chose nothing here"); only a genuinely absent group
+    falls back to the group-name map."""
+    if group_name in step_selections:
+        return set(step_selections[group_name])
+    return set(group_fallback.get(group_name, []))
+
+
 def resolve_files(config: ModuleConfig,
                   all_selections: dict[str, dict[str, list[str]]],
                   installed_files: set[str] | None = None,
@@ -388,6 +435,8 @@ def resolve_files(config: ModuleConfig,
         required.append((fi.priority, fi.source_path,
                          fi.destination_path, fi.is_folder))
 
+    _group_fallback = _build_group_fallback(config, all_selections)
+
     # Build final flag state by replaying all steps in order
     flag_state: dict[str, str] = {}
     for i, step in enumerate(config.steps):
@@ -403,7 +452,8 @@ def resolve_files(config: ModuleConfig,
         # for backward compatibility with previously saved selection JSON.
         step_selections = all_selections.get(str(i)) or all_selections.get(step.name, {})
         for group in step.groups:
-            selected_names = set(step_selections.get(group.name, []))
+            selected_names = _selected_in_group(step_selections, group.name,
+                                                _group_fallback)
             for plugin in group.plugins:
                 ptype = resolve_plugin_type(plugin, flag_state, inst_files,
                                             active_files, loose_files)
@@ -578,6 +628,7 @@ def _collect_dep_plugin_clauses(config: ModuleConfig, all_selections: dict,
     Deduped case-insensitively.
     """
     all_selections = all_selections or {}
+    _group_fallback = _build_group_fallback(config, all_selections)
     option_conditions: list[str] = []
     seen: set[str] = set()
     # Replay flag state so step-visibility gates match what the user actually saw.
@@ -590,7 +641,8 @@ def _collect_dep_plugin_clauses(config: ModuleConfig, all_selections: dict,
         step_selections = all_selections.get(str(i)) or \
             all_selections.get(step.name, {})
         for group in step.groups:
-            selected_names = set(step_selections.get(group.name, []))
+            selected_names = _selected_in_group(step_selections, group.name,
+                                                _group_fallback)
             for plugin in group.plugins:
                 is_selected = (group.group_type == "SelectAll"
                                or plugin.name in selected_names)
