@@ -1585,7 +1585,8 @@ def run_collection_install(
             idx.fomod_by_file_id, idx.bain_by_file_id, state.install_results,
             state.install_counters, state.install_lock, state.archive_use_count,
             state.external_archive_paths, _col_stop, _slug, overwrite_existing,
-            _write_preliminary_plugins_txt, _maybe_delete_archive, cb, log, _set_status)
+            _write_preliminary_plugins_txt, _maybe_delete_archive, cb, log, _set_status,
+            file_id_to_hashes=idx.file_id_to_hashes)
 
     installed += state.install_counters["installed"]
     skipped += state.install_counters["skipped"]
@@ -1861,7 +1862,8 @@ def _process_deferred(
         fomod_by_file_id, bain_by_file_id, _install_results,
         _install_counters, _install_lock, _archive_use_count,
         _external_archive_paths, _col_stop, _slug, overwrite_existing,
-        _write_preliminary_plugins_txt, _maybe_delete_archive, cb, log, _set_status):
+        _write_preliminary_plugins_txt, _maybe_delete_archive, cb, log, _set_status,
+        *, file_id_to_hashes=None):
     from Nexus.nexus_meta import build_meta_from_download
 
     def _mk_meta_and_name(mod, domain):
@@ -1968,6 +1970,11 @@ def _process_deferred(
                     progress_fn=lambda d, t, p=None, _f=_mod.file_id:
                         cb.on_extract_update(_f, int(d), int(t)),
                     fomod_auto_selections=fomod_by_file_id.get(_mod.file_id),
+                    # A hashes-only FOMOD still lands here when it has a
+                    # cross-mod dependency — deferring it is correct, but
+                    # without this it would then open the wizard despite the
+                    # author having recorded the exact file set.
+                    fomod_auto_hashes=(file_id_to_hashes or {}).get(_mod.file_id),
                     bain_auto_selections=bain_by_file_id.get(_mod.file_id),
                     prebuilt_meta=_pmeta, preferred_name=_pref,
                     skip_index_update=True, overwrite_existing=overwrite_existing,
