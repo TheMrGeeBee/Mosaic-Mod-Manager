@@ -4011,6 +4011,9 @@ class MainWindow(QMainWindow):
         if _game_name:
             from Utils.config_paths import get_fomod_selections_path
             _sel_path = get_fomod_selections_path(_game_name, payload["name"])
+        _prof_sel_path = self._profile_fomod_selection_path(
+            getattr(getattr(self._gs, "game", None), "_active_profile_dir", None),
+            payload["name"])
         # Merge the live plugin-panel state (see the manual-install path below):
         # plugins.txt can lag the model, so a FOMOD `state="Active"` dep wouldn't
         # match until a save/sort. Union the panel's enabled/all sets.
@@ -4030,6 +4033,7 @@ class MainWindow(QMainWindow):
                                on_cancel=lambda: _finish_ev(None),
                                saved_selections=payload.get("saved"),
                                selections_path=_sel_path,
+                               profile_selections_path=_prof_sel_path,
                                installed_files=_c_inst,
                                active_files=_c_act,
                                loose_files=payload.get("loose"))
@@ -6884,6 +6888,20 @@ class MainWindow(QMainWindow):
     # pick MAIN (or file chooser if several) → download → hand to _install_paths.
     # All worker stages hop back to the UI thread via Signals (NOT QThread).
 
+    @staticmethod
+    def _profile_fomod_selection_path(profile_dir, mod_name):
+        """``<profile>/fomod/<mod>.json`` — the profile-scoped mirror of a saved
+        FOMOD selection. Returned whether or not it exists; the wizard's Reset
+        deletes it alongside the global copy, because
+        _read_saved_fomod_selections falls back to the mirror and a
+        global-only delete lets a cleared selection silently come back."""
+        if not profile_dir or not mod_name:
+            return None
+        try:
+            return Path(profile_dir) / "fomod" / f"{mod_name}.json"
+        except (TypeError, ValueError):
+            return None
+
     def _new_dl_key(self) -> str:
         """Unique tracking key for one download operation, so concurrent
         downloads can be told apart in the combined progress card."""
@@ -9579,6 +9597,8 @@ class MainWindow(QMainWindow):
                 from Utils.config_paths import get_fomod_selections_path
                 _sel_path = get_fomod_selections_path(_game_name,
                                                       prepared.mod_name)
+            _prof_sel_path = self._profile_fomod_selection_path(
+                getattr(prepared, "profile_dir", None), prepared.mod_name)
             _inst, _act, _loose = prepared.fomod_context
             # prepared.fomod_context was read from plugins.txt/loadorder.txt on the
             # worker thread. Those files can lag the LIVE plugin panel: a mod
@@ -9607,6 +9627,7 @@ class MainWindow(QMainWindow):
                                    on_cancel=_cancel,
                                    saved_selections=prepared.saved_fomod_selections,
                                    selections_path=_sel_path,
+                                   profile_selections_path=_prof_sel_path,
                                    installed_files=_inst, active_files=_act,
                                    loose_files=_loose)
             # Closing the tab (× / detached-window close) cancels the install.
