@@ -265,6 +265,115 @@ def _build_schema_index(collection_schema: dict) -> CollectionSchemaIndex:
 
 
 # ---------------------------------------------------------------------------
+# Pure per-mod lookups over a CollectionSchemaIndex. Hoisted out of
+# run_collection_install() — each takes the index explicitly instead of
+# closing over ~15 separate map locals.
+# ---------------------------------------------------------------------------
+def _schema_sort_key(idx: CollectionSchemaIndex, m) -> int:
+    """Collection-defined install order; unlisted mods sort last."""
+    return idx.file_id_to_pos.get(m.file_id, len(idx.mods))
+
+
+def _match_existing(idx: CollectionSchemaIndex, already_by_ids: dict,
+                    already_by_fid: dict, mod) -> str:
+    """Folder name of an already-installed copy of *mod*, or ""."""
+    _mid = idx.file_id_to_mod_id.get(mod.file_id, 0) or getattr(mod, "mod_id", 0) or 0
+    if _mid > 0 and (_mid, mod.file_id) in already_by_ids:
+        return already_by_ids[(_mid, mod.file_id)]
+    return already_by_fid.get(mod.file_id, "")
+
+
+def _name_candidates(idx: CollectionSchemaIndex, mod) -> "list[str]":
+    """Candidate install-folder names for *mod*, best first."""
+    from Utils.mods.mod_name_utils import _suggest_mod_names
+    logical = idx.file_id_to_logical.get(mod.file_id, "") or ""
+    schema_name = idx.pos_to_name.get(
+        idx.file_id_to_pos.get(mod.file_id, -1), "") or ""
+    candidates: list[str] = []
+    name_sources = (logical, schema_name) if (logical or schema_name) \
+        else (mod.mod_name or "",)
+    for raw in name_sources:
+        if raw:
+            for s in _suggest_mod_names(raw):
+                if s and s not in candidates:
+                    candidates.append(s)
+    return candidates
+
+
+def _preferred_name(idx: CollectionSchemaIndex, mod) -> str:
+    """Install-folder name for *mod*, plus any collision suffix."""
+    logical = idx.file_id_to_logical.get(mod.file_id, "") or ""
+    schema_name = idx.pos_to_name.get(
+        idx.file_id_to_pos.get(mod.file_id, -1), "") or ""
+    pref = logical or schema_name or mod.mod_name or ""
+    return pref + idx.file_id_to_suffix.get(mod.file_id, "")
+
+
+def _manual_domain(idx: CollectionSchemaIndex, game_domain: str, mod) -> str:
+    """Nexus domain for *mod*, honouring cross-domain manifest entries."""
+    return ((getattr(mod, "domain_name", "") or "").strip()
+            or idx.file_id_to_domain.get(mod.file_id, "")
+            or game_domain)
+
+
+def _manual_url(idx: CollectionSchemaIndex, game_domain: str, mod) -> str:
+    """Nexus files-tab URL for *mod* (manual mode "Open Download Page")."""
+    # Prefer collection.json's source.modId + domainName for cross-domain
+    # entries so "Open Download Page" lands on the mod's real Nexus page.
+    _mid = idx.file_id_to_mod_id.get(mod.file_id, 0) or mod.mod_id
+    return (f"https://www.nexusmods.com/{_manual_domain(idx, game_domain, mod)}"
+            f"/mods/{_mid}?tab=files&file_id={mod.file_id}")
+
+
+def _build_prebuilt_meta(idx: CollectionSchemaIndex, slug: str, mod,
+                         effective_domain: str):
+    """meta.ini contents to write alongside *mod* once installed, or None."""
+    try:
+        _effective_mod_id = idx.file_id_to_mod_id.get(mod.file_id, 0) or mod.mod_id
+        pmeta = build_meta_from_download(
+            game_domain=effective_domain, mod_id=_effective_mod_id,
+            file_id=mod.file_id, archive_name=mod.file_name or "",
+            from_collection=slug)
+        pmeta.nexus_name = mod.mod_name or ""
+        pmeta.author = mod.mod_author or ""
+        pmeta.uploaded_by = mod.uploaded_by or ""
+        pmeta.version = mod.version or ""
+        if getattr(mod, "category_id", 0):
+            pmeta.category_id = mod.category_id
+        if getattr(mod, "category_name", ""):
+            pmeta.category_name = mod.category_name
+        # Manifest category name (details.category) — the only source, as
+        # the GraphQL mod list omits categories. Applied when the mod
+        # object itself carries none.
+        _schema_cat = idx.file_id_to_category.get(mod.file_id, "")
+        if _schema_cat and not pmeta.category_name:
+            pmeta.category_name = _schema_cat
+        if idx.file_id_to_install_type.get(mod.file_id, "").lower() == "dinput":
+            pmeta.root_folder = True
+        return pmeta
+    except Exception:
+        return None
+
+
+def _fetch_extra_meta(api, game_domain: str, idx: CollectionSchemaIndex,
+                      extra_meta: dict, ready: threading.Event, log) -> None:
+    """Background batched GraphQL fetch of category + endorsement.
+
+    Runs concurrently with the whole download/install pipeline and never gates
+    the critical path; Step 5 waits on *ready* before reconciling."""
+    try:
+        unique_mids = sorted(set(idx.file_id_to_mod_id.values()))
+        if unique_mids:
+            result = api.graphql_mod_update_info_batch(
+                [(game_domain, mid) for mid in unique_mids])
+            extra_meta.update(result)
+    except Exception as exc:
+        log(f"Collection install: background metadata fetch failed: {exc}")
+    finally:
+        ready.set()
+
+
+# ---------------------------------------------------------------------------
 # Callback / control interface (the Qt caller wires each to a Signal.emit).
 # ---------------------------------------------------------------------------
 def _noop(*_a, **_k):
@@ -533,25 +642,12 @@ def run_collection_install(
     _extra_meta: "dict[int, object]" = {}
     _extra_meta_ready = threading.Event()
 
-    def _fetch_extra_meta():
-        try:
-            unique_mids = sorted(set(idx.file_id_to_mod_id.values()))
-            if unique_mids:
-                result = api.graphql_mod_update_info_batch(
-                    [(game_domain, mid) for mid in unique_mids])
-                _extra_meta.update(result)
-        except Exception as exc:
-            log(f"Collection install: background metadata fetch failed: {exc}")
-        finally:
-            _extra_meta_ready.set()
-
     threading.Thread(target=_fetch_extra_meta, daemon=True,
+                     args=(api, game_domain, idx, _extra_meta,
+                           _extra_meta_ready, log),
                      name="col-extra-meta").start()
 
-    def _sort_key(m):
-        return idx.file_id_to_pos.get(m.file_id, len(idx.mods))
-
-    ordered_mods = sorted(mods, key=_sort_key)
+    ordered_mods = sorted(mods, key=lambda m: _schema_sort_key(idx, m))
 
     # ------------------------------------------------------------------
     # Step 2 pre-scan staging for already-installed mods
@@ -601,27 +697,6 @@ def run_collection_install(
             except Exception:
                 pass
 
-    def _match_existing(mod) -> str:
-        _mid = idx.file_id_to_mod_id.get(mod.file_id, 0) or getattr(mod, "mod_id", 0) or 0
-        if _mid > 0 and (_mid, mod.file_id) in already_installed_by_ids:
-            return already_installed_by_ids[(_mid, mod.file_id)]
-        return already_installed_by_fid.get(mod.file_id, "")
-
-    def _name_candidates(mod) -> "list[str]":
-        from Utils.mods.mod_name_utils import _suggest_mod_names
-        logical = idx.file_id_to_logical.get(mod.file_id, "") or ""
-        schema_name = idx.pos_to_name.get(
-            idx.file_id_to_pos.get(mod.file_id, -1), "") or ""
-        candidates: list[str] = []
-        name_sources = (logical, schema_name) if (logical or schema_name) \
-            else (mod.mod_name or "",)
-        for raw in name_sources:
-            if raw:
-                for s in _suggest_mod_names(raw):
-                    if s and s not in candidates:
-                        candidates.append(s)
-        return candidates
-
     # Remove staging folders for unticked optional mods
     if skipped_fids and skipped_mods:
         import shutil as _shutil_skip
@@ -630,14 +705,15 @@ def run_collection_install(
             if not mod.file_id or mod.file_id not in skipped_fids:
                 continue
             # Exact (mod_id, file_id) / file_id match is always safe.
-            folder_name = _match_existing(mod)
+            folder_name = _match_existing(
+                idx, already_installed_by_ids, already_installed_by_fid, mod)
             if not folder_name:
                 # Name fallback: only for legacy installs with no id match. A
                 # cleaned title ("HSMarkarth - The Warrens - AE" → "HSMarkarth -
                 # The Warrens") can collide with a DIFFERENT mod's folder, so
                 # never remove a folder that carries another mod's file_id —
                 # removing an optional must never take out another mod.
-                for candidate in _name_candidates(mod):
+                for candidate in _name_candidates(idx, mod):
                     key = candidate.lower()
                     if key not in staging_lower_map:
                         continue
@@ -706,9 +782,10 @@ def run_collection_install(
             _record_outcome(mod, "no_file_id")
             skipped += 1
             continue
-        existing_folder: str = _match_existing(mod)
+        existing_folder: str = _match_existing(
+            idx, already_installed_by_ids, already_installed_by_fid, mod)
         if not existing_folder:
-            for candidate in _name_candidates(mod):
+            for candidate in _name_candidates(idx, mod):
                 key = candidate.lower()
                 if key in staging_lower_map:
                     existing_folder = staging_lower_map[key]
@@ -718,7 +795,7 @@ def run_collection_install(
                 f"'{existing_folder}' — skipping")
             _record_outcome(mod, "existing", existing_folder)
             if not skip_existing:
-                install_order.append((_sort_key(mod), existing_folder))
+                install_order.append((_schema_sort_key(idx, mod), existing_folder))
             installed += 1
         else:
             _record_outcome(mod, "queued")
@@ -869,40 +946,6 @@ def run_collection_install(
             _agg_state["prev_time"] = now
         cb.on_agg_download(agg, total, _agg_state["speed"] / (1024 * 1024))
 
-    def _build_prebuilt_meta(mod, effective_domain):
-        try:
-            _effective_mod_id = idx.file_id_to_mod_id.get(mod.file_id, 0) or mod.mod_id
-            pmeta = build_meta_from_download(
-                game_domain=effective_domain, mod_id=_effective_mod_id,
-                file_id=mod.file_id, archive_name=mod.file_name or "",
-                from_collection=_slug)
-            pmeta.nexus_name = mod.mod_name or ""
-            pmeta.author = mod.mod_author or ""
-            pmeta.uploaded_by = mod.uploaded_by or ""
-            pmeta.version = mod.version or ""
-            if getattr(mod, "category_id", 0):
-                pmeta.category_id = mod.category_id
-            if getattr(mod, "category_name", ""):
-                pmeta.category_name = mod.category_name
-            # Manifest category name (details.category) — the only source, as
-            # the GraphQL mod list omits categories. Applied when the mod
-            # object itself carries none.
-            _schema_cat = idx.file_id_to_category.get(mod.file_id, "")
-            if _schema_cat and not pmeta.category_name:
-                pmeta.category_name = _schema_cat
-            if idx.file_id_to_install_type.get(mod.file_id, "").lower() == "dinput":
-                pmeta.root_folder = True
-            return pmeta
-        except Exception:
-            return None
-
-    def _preferred_name(mod):
-        logical = idx.file_id_to_logical.get(mod.file_id, "") or ""
-        schema_name = idx.pos_to_name.get(
-            idx.file_id_to_pos.get(mod.file_id, -1), "") or ""
-        pref = logical or schema_name or mod.mod_name or ""
-        return pref + idx.file_id_to_suffix.get(mod.file_id, "")
-
     # ---- download producer -------------------------------------------
     def _download_one(mod):
         nonlocal _dl_done
@@ -1047,8 +1090,8 @@ def run_collection_install(
         archive_path = str(result.file_path)
         auto_fomod = idx.fomod_by_file_id.get(mod.file_id)
         auto_bain = idx.bain_by_file_id.get(mod.file_id)
-        _pmeta = _build_prebuilt_meta(mod, effective_domain)
-        _preferred = _preferred_name(mod)
+        _pmeta = _build_prebuilt_meta(idx, _slug, mod, effective_domain)
+        _preferred = _preferred_name(idx, mod)
 
         _extract_est = get_uncompressed_size(archive_path)
         _mem_budget.acquire(_extract_est)
@@ -1209,18 +1252,6 @@ def run_collection_install(
     # ---- manual (non-premium) producer --------------------------------
     # Port of Tk _run_manual_install's sequential prompt+poll loop; the
     # install side is the shared consumer pipeline above.
-    def _manual_domain(mod) -> str:
-        return ((getattr(mod, "domain_name", "") or "").strip()
-                or idx.file_id_to_domain.get(mod.file_id, "")
-                or game_domain)
-
-    def _manual_url(mod) -> str:
-        # Prefer collection.json's source.modId + domainName for cross-domain
-        # entries so "Open Download Page" lands on the mod's real Nexus page.
-        _mid = idx.file_id_to_mod_id.get(mod.file_id, 0) or mod.mod_id
-        return (f"https://www.nexusmods.com/{_manual_domain(mod)}/mods/{_mid}"
-                f"?tab=files&file_id={mod.file_id}")
-
     def _wait_for_manual_file(mod) -> "Path | None":
         """Poll download folders until the mod's archive appears, or the user
         picks a file / skips (optional mods only) / pauses / cancels."""
@@ -1258,7 +1289,7 @@ def run_collection_install(
         nonlocal _dl_done
         _current_phase: "int | None" = None
         for i, mod in enumerate(mods_seq):
-            mod_domain = _manual_domain(mod)
+            mod_domain = _manual_domain(idx, game_domain, mod)
             if _col_stop.is_set():
                 with _dl_lock:
                     _dl_done += 1
@@ -1284,8 +1315,9 @@ def run_collection_install(
                          or getattr(mod, "size_bytes", 0) or 0),
                 "file_name": mod.file_name or "",
                 "optional": bool(getattr(mod, "optional", False)),
-                "url": _manual_url(mod),
-                "upcoming": [(m.mod_name or f"Mod {m.mod_id}", _manual_url(m))
+                "url": _manual_url(idx, game_domain, mod),
+                "upcoming": [(m.mod_name or f"Mod {m.mod_id}",
+                              _manual_url(idx, game_domain, m))
                              for m in mods_seq[i + 1:i + 5]],
             })
 
@@ -1545,7 +1577,7 @@ def run_collection_install(
 
     # build install_order from parallel results
     for mod in to_download:
-        sort_key = _sort_key(mod)
+        sort_key = _schema_sort_key(idx, mod)
         folder = (_install_results.get(mod.file_id)
                   or idx.pos_to_name.get(sort_key) or mod.mod_name)
         if mod.file_id in _install_results:
