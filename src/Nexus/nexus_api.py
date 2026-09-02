@@ -290,6 +290,41 @@ class NexusCollectionMod:
                             # (e.g. Skyrim mods inside an Enderal collection)
 
 
+@dataclass
+class MyCollectionRevision:
+    """One revision of a collection the signed-in user owns."""
+    id: int = 0
+    revision_number: int = 0
+    status: str = ""            # "draft" | "published" (server wording)
+    mod_count: int = 0
+    created_at: str = ""
+    published: bool = False
+    changelog_id: int = 0
+    changelog: str = ""
+
+
+@dataclass
+class MyCollection:
+    """A collection owned by the signed-in user (myCollections query)."""
+    id: int = 0
+    slug: str = ""
+    name: str = ""
+    summary: str = ""
+    description: str = ""
+    status: str = ""            # listed | unlisted | under_moderation | discarded
+    tile_image_url: str = ""
+    game_domain: str = ""
+    game_name: str = ""
+    category_id: int = 0
+    category_name: str = ""
+    endorsements: int = 0
+    total_downloads: int = 0
+    draft_revision_number: int = 0
+    latest_published_revision: int = 0
+    updated_at: str = ""
+    revisions: list = field(default_factory=list)   # [MyCollectionRevision]
+
+
 # ---------------------------------------------------------------------------
 # API key persistence (system keyring, with file fallback)
 # ---------------------------------------------------------------------------
@@ -524,6 +559,59 @@ class RateLimitError(NexusAPIError):
     """Raised when the server returns HTTP 429."""
     def __init__(self, url: str = ""):
         super().__init__("Rate limit exceeded — slow down", 429, url)
+
+
+def _collect_error_ids(errors) -> "tuple[set, set]":
+    """(mod ids, file ids) referenced by a GraphQL error list."""
+    mod_ids: set = set()
+    file_ids: set = set()
+
+    def _walk(node):
+        if isinstance(node, dict):
+            for key, value in node.items():
+                lowered = str(key).lower()
+                if isinstance(value, (int, str)) and str(value).isdigit():
+                    if lowered == "modid":
+                        mod_ids.add(int(value))
+                    elif lowered == "fileid":
+                        file_ids.add(int(value))
+                else:
+                    _walk(value)
+        elif isinstance(node, list):
+            for item in node:
+                _walk(item)
+
+    for err in errors or []:
+        _walk(err.get("extensions") if isinstance(err, dict) else None)
+    return mod_ids, file_ids
+
+
+def describe_collection_error(errors, manifest: "dict | None" = None) -> str:
+    """Turn Nexus's terse collection-mutation errors into something actionable.
+
+    Nexus answers with things like "Mod 184013, skyrimspecialedition not
+    available." — a bare id the author has no way to place. Map it back to
+    the mod's name in the manifest we just sent and say what to do about it.
+    """
+    raw = "; ".join(str(e.get("message") or "?") for e in errors or [])
+    mod_ids, file_ids = _collect_error_ids(errors)
+    named: list = []
+    if manifest and (mod_ids or file_ids):
+        for mod in manifest.get("mods") or []:
+            src = mod.get("source") or {}
+            mid = int(src.get("modId") or 0)
+            fid = int(src.get("fileId") or 0)
+            if (mid and mid in mod_ids) or (fid and fid in file_ids):
+                label = mod.get("name") or src.get("logicalFilename") or "?"
+                named.append(f"'{label}' (Nexus mod {mid or '?'})")
+    if not named:
+        return f"Nexus rejected the request: {raw}"
+    if "not available" in raw.lower() or "not found" in raw.lower():
+        return (f"Nexus rejected {', '.join(named)}: that mod page is no "
+                "longer available (hidden, removed, or restricted), so it "
+                "can't be part of a collection. Remove the mod, or change "
+                "its source to Browse/Manual so users fetch it themselves.")
+    return f"Nexus rejected {', '.join(named)}: {raw}"
 
 
 class NexusAPI:
@@ -2962,6 +3050,366 @@ class NexusAPI:
         except Exception as exc:
             app_log(f"get_collection_archive_full error: {exc}")
             return {}
+
+    # -- Collection upload (create / revise / publish) ----------------------
+    # Mirrors the collection-authoring pipeline Vortex's own submit flow
+    # uses: presigned-URL query -> raw PUT of the archive -> createCollection
+    # / createOrUpdateRevision, then a separate publishRevision. The
+    # mutations receive a FILTERED manifest (info minus installInstructions;
+    # mods minus choices/patches/details/phase; source minus
+    # fileSize/tag/instructions) — the full manifest travels inside the
+    # uploaded archive itself.
+
+    def _post_graphql(self, query: str, variables: "dict | None" = None,
+                      op: str = "GraphQL") -> requests.Response:
+        """POST one GraphQL query/mutation to GRAPHQL_BASE; updates rate
+        limits and logs the response like every other call in this class."""
+        resp = self._session.post(
+            GRAPHQL_BASE, json={"query": query, "variables": variables or {}},
+            timeout=self._timeout)
+        self._update_rate_limits(resp)
+        self._log_response("POST", op, resp)
+        return resp
+
+    def get_collection_upload_url(self) -> "dict | None":
+        """Request a presigned archive-upload URL; returns {'url', 'uuid'} or None."""
+        query = "query { collectionRevisionUploadUrl { url uuid } }"
+        try:
+            resp = self._post_graphql(query, op="GraphQL CollectionUploadUrl")
+            data = (resp.json().get("data") or {}).get(
+                "collectionRevisionUploadUrl") or {}
+            if data.get("url") and data.get("uuid"):
+                return {"url": data["url"], "uuid": data["uuid"]}
+            app_log(f"get_collection_upload_url: unexpected response {resp.text[:300]}")
+        except Exception as exc:
+            app_log(f"get_collection_upload_url error: {exc}")
+        return None
+
+    def upload_collection_archive(self, url: str, file_path,
+                                  progress_cb=None) -> "tuple[bool, str]":
+        """PUT the collection archive to the presigned URL (no API auth headers).
+
+        Returns ``(ok, detail)``; *detail* describes the failure in terms the
+        UI can show, since a bare "upload failed" arrives after the user has
+        already spent the whole transfer.
+        """
+        path = Path(file_path)
+        total = path.stat().st_size
+
+        class _Reader:
+            # requests derives Content-Length from __len__; a plain generator
+            # would switch to chunked encoding, which presigned PUTs reject.
+            def __init__(self, fh):
+                self._fh = fh
+                self._done = 0
+
+            def __len__(self):
+                return total
+
+            def read(self, size=-1):
+                chunk = self._fh.read(size)
+                if chunk:
+                    self._done += len(chunk)
+                    if progress_cb:
+                        progress_cb(self._done, total)
+                return chunk
+
+        try:
+            with open(path, "rb") as fh:
+                resp = requests.put(
+                    url, data=_Reader(fh),
+                    headers={"Content-Type": "application/octet-stream"},
+                    timeout=600, verify=self._session.verify)
+            if 200 <= resp.status_code < 300:
+                return True, ""
+            body = (resp.text or "")[:300]
+            app_log(f"upload_collection_archive: HTTP {resp.status_code} {body}")
+            if ("EntityTooLarge" in body
+                    or (resp.status_code in (403, 413)
+                        and "too large" in body.lower())):
+                return False, (
+                    f"the storage service rejected the archive as too large "
+                    f"({total / 1024 ** 3:.1f} GB). A collection has to "
+                    "upload in one piece, so some bundled content has to "
+                    "come out.")
+            return False, f"the upload was rejected (HTTP {resp.status_code})."
+        except Exception as exc:
+            app_log(f"upload_collection_archive error: {exc}")
+            return False, f"the upload could not be completed ({exc})."
+
+    @staticmethod
+    def filter_collection_manifest(manifest: dict) -> dict:
+        """The manifest subset the create/revise mutations accept (Vortex filterInfo)."""
+        info = {k: v for k, v in (manifest.get("info") or {}).items()
+                if k != "installInstructions"}
+        mods = []
+        for mod in manifest.get("mods") or []:
+            m = {k: v for k, v in mod.items()
+                 if k in ("name", "version", "optional", "domainName",
+                          "source", "author")}
+            src = m.get("source") or {}
+            m["source"] = {k: v for k, v in src.items()
+                           if k not in ("fileSize", "tag", "instructions")}
+            mods.append(m)
+        return {"info": info, "mods": mods}
+
+    _CREATE_COLLECTION_MUTATION = """
+mutation CreateCollection($payload: CollectionPayload!, $uuid: String!) {
+  createCollection(collectionData: $payload, uuid: $uuid) {
+    success
+    collectionId
+    collection { id slug }
+    revision { id revisionNumber }
+  }
+}"""
+
+    _CREATE_REVISION_MUTATION = """
+mutation CreateOrUpdateRevision($payload: CollectionPayload!,
+                                $collectionId: Int!, $uuid: String!) {
+  createOrUpdateRevision(collectionData: $payload,
+                         collectionId: $collectionId, uuid: $uuid) {
+    success
+    collectionId
+    collection { id slug }
+    revision { id revisionNumber }
+  }
+}"""
+
+    def _run_collection_mutation(self, mutation: str, variables: dict,
+                                 op: str, result_key: str,
+                                 manifest: "dict | None" = None) -> "dict | None":
+        """POST one collection mutation; returns its payload dict or None."""
+        try:
+            resp = self._post_graphql(mutation, variables, op=f"GraphQL {op}")
+            body = resp.json()
+            errors = body.get("errors")
+            if errors:
+                raise NexusAPIError(
+                    describe_collection_error(errors, manifest), url=GRAPHQL_BASE)
+            data = (body.get("data") or {}).get(result_key) or {}
+            if not data.get("success"):
+                app_log(f"{op}: success=false in {str(data)[:300]}")
+                return None
+            return data
+        except NexusAPIError:
+            raise
+        except Exception as exc:
+            app_log(f"{op} error: {exc}")
+            return None
+
+    def create_collection(self, manifest: dict, uuid: str) -> "dict | None":
+        """Create a brand-new collection from an uploaded archive's uuid."""
+        payload = self.filter_collection_manifest(manifest)
+        return self._run_collection_mutation(
+            self._CREATE_COLLECTION_MUTATION,
+            {"payload": payload, "uuid": uuid},
+            "CreateCollection", "createCollection", manifest)
+
+    def create_or_update_revision(self, manifest: dict, collection_id: int,
+                                  uuid: str) -> "dict | None":
+        """Add a new revision to an existing collection from an uploaded uuid."""
+        payload = self.filter_collection_manifest(manifest)
+        return self._run_collection_mutation(
+            self._CREATE_REVISION_MUTATION,
+            {"payload": payload, "collectionId": int(collection_id), "uuid": uuid},
+            "CreateOrUpdateRevision", "createOrUpdateRevision", manifest)
+
+    def get_collection_status(self, slug: str, collection_id: int = 0) -> str:
+        """Whether a collection we intend to revise is still there.
+
+        Returns "ok" / "discarded" / "missing" / "unknown". "unknown" means
+        the lookup itself failed — callers must NOT treat that as gone, or a
+        network blip turns an "upload revision" into a duplicate collection.
+
+        The owner's own view is authoritative: a never-published draft or an
+        unlisted collection is invisible to the plain ``collection(slug:)``
+        lookup, so check ``myCollections`` (which asks for unlisted, under-
+        moderation and adult content) first.
+        """
+        try:
+            mine = self.get_my_collections()
+        except Exception as exc:
+            app_log(f"get_collection_status: myCollections failed: {exc}")
+            return "unknown"
+        wanted_slug = (slug or "").lower()
+        for col in mine:
+            if ((wanted_slug and col.slug.lower() == wanted_slug)
+                    or (collection_id and col.id == int(collection_id))):
+                return "ok"
+
+        if not slug:
+            return "missing"
+        query = ('query CollectionStatus($slug: String) { '
+                 'collection(slug: $slug, viewAdultContent: true) '
+                 '{ id collectionStatus } }')
+        try:
+            resp = self._post_graphql(query, {"slug": slug},
+                                      op="GraphQL CollectionStatus")
+            body = resp.json()
+            for err in body.get("errors") or []:
+                code = (err.get("extensions") or {}).get("code", "")
+                if code == "COLLECTION_DISCARDED":
+                    return "discarded"
+            if ((body.get("data") or {}).get("collection") or {}).get("id"):
+                return "ok"
+        except Exception as exc:
+            app_log(f"get_collection_status error: {exc}")
+            return "unknown"
+        return "missing"
+
+    _MY_COLLECTIONS_QUERY = """
+query MyCollections($count: Int, $offset: Int) {
+  myCollections(count: $count, offset: $offset, viewAdultContent: true,
+                viewUnlisted: true, viewUnderModeration: true) {
+    nodesCount
+    nodes {
+      id slug name summary description collectionStatus
+      draftRevisionNumber endorsements totalDownloads updatedAt
+      tileImage { url }
+      game { domainName name }
+      category { id name }
+      latestPublishedRevision { revisionNumber }
+      revisions {
+        id revisionNumber revisionStatus status modCount createdAt
+        collectionChangelog { id description }
+      }
+    }
+  }
+}"""
+
+    def get_my_collections(self, count: int = 50,
+                           offset: int = 0) -> "list[MyCollection]":
+        """Collections owned by the signed-in user, drafts and unlisted included."""
+        try:
+            resp = self._post_graphql(
+                self._MY_COLLECTIONS_QUERY,
+                {"count": int(count), "offset": int(offset)},
+                op="GraphQL MyCollections")
+            body = resp.json()
+            if body.get("errors"):
+                msgs = "; ".join(e.get("message", "?") for e in body["errors"])
+                raise NexusAPIError(f"Nexus rejected the request: {msgs}",
+                                    url=GRAPHQL_BASE)
+            nodes = ((body.get("data") or {}).get("myCollections")
+                     or {}).get("nodes") or []
+        except NexusAPIError:
+            raise
+        except Exception as exc:
+            app_log(f"get_my_collections error: {exc}")
+            return []
+
+        out: "list[MyCollection]" = []
+        for n in nodes:
+            game = n.get("game") or {}
+            cat = n.get("category") or {}
+            latest = n.get("latestPublishedRevision") or {}
+            revisions = []
+            for r in (n.get("revisions") or []):
+                chlog = r.get("collectionChangelog") or {}
+                # The server spells the state in either field depending on
+                # version; treat anything that isn't an explicit draft as live.
+                state = str(r.get("revisionStatus")
+                            or r.get("status") or "").lower()
+                revisions.append(MyCollectionRevision(
+                    id=int(r.get("id") or 0),
+                    revision_number=int(r.get("revisionNumber") or 0),
+                    status=state,
+                    mod_count=int(r.get("modCount") or 0),
+                    created_at=r.get("createdAt", "") or "",
+                    published=state not in ("draft", "drafted", ""),
+                    changelog_id=int(chlog.get("id") or 0),
+                    changelog=chlog.get("description", "") or "",
+                ))
+            revisions.sort(key=lambda r: r.revision_number, reverse=True)
+            out.append(MyCollection(
+                id=int(n.get("id") or 0),
+                slug=n.get("slug", "") or "",
+                name=n.get("name", "") or "",
+                summary=n.get("summary", "") or "",
+                description=n.get("description", "") or "",
+                status=str(n.get("collectionStatus") or "").lower(),
+                tile_image_url=(n.get("tileImage") or {}).get("url", "") or "",
+                game_domain=game.get("domainName", "") or "",
+                game_name=game.get("name", "") or "",
+                category_id=int(cat.get("id") or 0),
+                category_name=cat.get("name", "") or "",
+                endorsements=int(n.get("endorsements") or 0),
+                total_downloads=int(n.get("totalDownloads") or 0),
+                draft_revision_number=int(n.get("draftRevisionNumber") or 0),
+                latest_published_revision=int(latest.get("revisionNumber") or 0),
+                updated_at=n.get("updatedAt", "") or "",
+                revisions=revisions,
+            ))
+        return out
+
+    def get_collection_categories(self) -> "list[tuple[int, str]]":
+        """The (id, name) collection categories Nexus offers, or []."""
+        query = "query CollectionCategories { categories(global: true) { id name } }"
+        try:
+            resp = self._post_graphql(query, op="GraphQL CollectionCategories")
+            cats = (resp.json().get("data") or {}).get("categories") or []
+            return [(int(c["id"]), c.get("name", "")) for c in cats if c.get("id")]
+        except Exception as exc:
+            app_log(f"get_collection_categories error: {exc}")
+            return []
+
+    def publish_revision(self, revision_id: int, listed: bool = True,
+                         adult_content: bool = False) -> bool:
+        """Publish a draft revision, listed or unlisted."""
+        mutation = """
+mutation PublishRevision($revisionId: ID!, $status: CollectionStatus,
+                         $adult: Boolean) {
+  publishRevision(revisionId: $revisionId, collectionStatus: $status,
+                  hasAdultResources: $adult) { success }
+}"""
+        result = self._run_collection_mutation(
+            mutation,
+            {"revisionId": str(revision_id),
+             "status": "listed" if listed else "unlisted",
+             "adult": bool(adult_content)},
+            "PublishRevision", "publishRevision")
+        return bool(result)
+
+    def edit_collection(self, collection_id: int, *, name: "str | None" = None,
+                        summary: "str | None" = None,
+                        description: "str | None" = None,
+                        category_id: "int | None" = None) -> bool:
+        """Update a collection's metadata; only the passed fields change."""
+        variables: dict = {"collectionId": int(collection_id)}
+        decls = ["$collectionId: Int!"]
+        args = ["collectionId: $collectionId"]
+        for key, value, gql in (("name", name, "String"),
+                                ("summary", summary, "String"),
+                                ("description", description, "String")):
+            if value is not None:
+                variables[key] = value
+                decls.append(f"${key}: {gql}")
+                args.append(f"{key}: ${key}")
+        if category_id:
+            variables["categoryId"] = str(category_id)
+            decls.append("$categoryId: ID")
+            args.append("categoryId: $categoryId")
+        mutation = (f"mutation EditCollection({', '.join(decls)}) {{ "
+                    f"editCollection({', '.join(args)}) {{ success }} }}")
+        result = self._run_collection_mutation(
+            mutation, variables, "EditCollection", "editCollection")
+        return bool(result)
+
+    def set_collection_listed(self, collection_id: int, listed: bool) -> bool:
+        """List (publicly visible) or unlist a collection."""
+        if listed:
+            mutation = ("mutation ListCollection($id: Int!) { "
+                        "listCollection(collectionId: $id) { success } }")
+            variables = {"id": int(collection_id)}
+            key = "listCollection"
+        else:
+            mutation = ("mutation UnlistCollection($id: ID!) { "
+                        "unlistCollection(collectionId: $id) { success } }")
+            variables = {"id": str(collection_id)}
+            key = "unlistCollection"
+        result = self._run_collection_mutation(
+            mutation, variables, key[0].upper() + key[1:], key)
+        return bool(result)
 
     # -- Helpers ------------------------------------------------------------
 

@@ -7867,6 +7867,8 @@ class MainWindow(QMainWindow):
             self._open_restore_backup_tab()
         elif which == "export":
             self._open_export_profile_tab()
+        elif which == "create_collection":
+            self._open_create_collection_tab()
         elif which == "import":
             self._import_profile()
         elif which == "export_code":
@@ -7896,6 +7898,29 @@ class MainWindow(QMainWindow):
         self._tabs.open_scoped_tab(
             view, self.tr("Export Profile"), self._modlist_panel_stack,
             key="export_profile")
+
+    def _open_create_collection_tab(self):
+        """Open the Create/Publish Collection panel scoped over the MODLIST
+        panel (like Export Profile): builds a real Nexus/Vortex collection
+        archive from the current modlist, exportable locally or publishable
+        as a draft revision on Nexus."""
+        if self._gs.game_name is None:
+            self._notify(self.tr("No game selected."), "warning")
+            return
+        game = self._gs.game
+        if game is None or not game.is_configured():
+            self._notify(self.tr("No configured game selected."), "warning")
+            return
+        if self._tabs.has_key("create_collection"):
+            self._tabs.focus_key("create_collection")
+            return
+        api = self._ensure_nexus_api()   # optional — publish needs it, export doesn't
+        from gui_qt.views.create_collection_view import CreateCollectionView
+        view = CreateCollectionView(self, game, api, log_fn=self._append_log)
+        self._create_collection_view = view
+        self._tabs.open_scoped_tab(
+            view, self.tr("Create Collection"), self._modlist_panel_stack,
+            key="create_collection")
 
     def _import_profile(self):
         """Import a .mosaic / manifest: parse it, then reuse the collection detail
@@ -9304,6 +9329,8 @@ class MainWindow(QMainWindow):
             (self.tr("Import profile…"), lambda: self._on_profile_action("import")),
             (self.tr("Export code…"), lambda: self._on_profile_action("export_code")),
             (self.tr("Import code…"), lambda: self._on_profile_action("import_code")),
+            (self.tr("Create/Publish Collection…"),
+             lambda: self._on_profile_action("create_collection")),
         ])
         return actions
 
