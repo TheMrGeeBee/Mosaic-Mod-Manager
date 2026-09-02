@@ -1,3 +1,9 @@
+Releases are listed newest first. Entries below the `- Amethyst vX.Y.Z`
+headers predate the 2026-07-29 rename to Mosaic Mod Manager and its version
+reset to v1.0.0; they keep Amethyst Mod Manager's original numbering, which
+overlaps the numbers above, and the prefix is what keeps the two apart (and
+keeps release tooling from matching the wrong section).
+
 - v1.0.12
 ### Bug Fixes
 - Fixed a collection's FOMOD mods installing as good as empty — only the files their installer always installs, none of the options — whenever the collection stored the author's choices in a different order than the mod's own installer steps presented them. Every one of the author's selections was silently discarded, with nothing in the log to say so. On one collection this reduced Skyrim Unbound Reborn from the 31 plugins the author selected to 1, and the two files it dropped were needed by 24 other mods, which then showed up as "missing master" errors on mods that had installed perfectly well themselves
@@ -134,7 +140,7 @@
 
 ---
 
-- v2.0.5
+- Amethyst v2.0.5
 - Added an argument field in the xedit wizards for adding additional command line arguments
 - Condensed the Nexus actions in the right click context menu into a sub menu
 - The plugins tab is no longer shown for games that do not use it
@@ -143,7 +149,7 @@
 
 ---
 
-- v2.0.4
+- Amethyst v2.0.4
 ### Additions
 - Added the option to change download speed limits
 - Added a flatpak remote for easier flatpak updating
@@ -160,15 +166,18 @@
 - Exporting a profile now shows export progress
 - Reworked the Oblivion Remastered handler to be more in line with how other ue5 games are handled
 - Separated automated backups from manually created backups in the restore backup menu
+- The app will now warn if a game handler fails to load instead of silently dropping that game from the list
 ### Bug Fixes
 - Fixed fomod flag not being applied to the meta.ini meaning the show only fomod filter would not work on new fomod installs
 - Fixed an issue where vanilla files could be removed from the game folder when removing a mod that contained vanilla file overrides
 - Fixed an issue where mods would not have their category filled when installed via a collection or when an md5 lookup is used on the mod
 - Fixed folders being created in the home directory when the default staging folder was changed
+- Fixed Nexus per-file naming
+- Fixed mods absent from a BG3 imported load order being disabled instead of keeping their current enabled state
 
 ---
 
-- v2.0.3
+- Amethyst v2.0.3
 ### Game support
 - Added Hollow Knight: Silksong
 - Added Windrose
@@ -202,17 +211,9 @@
 - Fixed starfield's archive invalidation being applied to the wrong ini file
 - Fixed manually installed plugins not appearing in the plugins panel
 - Fixed bg3mm importer disabling mods not listed in loadorder.json
-
 ---
 
-- v2.0.4
-- Fixed Nexus per-file naming
-- Fixed mods absent from a BG3 imported load order being disabled instead of keeping their current enabled state
-- The app will now warn if a game handler fails to load instead of silently dropping that game from the list
-
----
-
-- v2.0.2
+- Amethyst v2.0.2
 ### Bug Fixes
 - Fixed segfault on startup caused by incompatible fontconfig files
 - Fixed an issue where plugins from disabled optional mods in collections would show up in plugins.txt
@@ -222,12 +223,12 @@
 
 ---
 
-- v2.0.1
+- Amethyst v2.0.1
 - Fixed various issues with 2.0.0 that didn't appear during testing
 
 ---
 
-- v2.0.0
+- Amethyst v2.0.0
 ### UI Rework
 - Complete rework of the user interface from scratch in QT
 - Overlays now open as tabs that can be switched between and undocked
@@ -266,7 +267,7 @@
 
 ---
 
-- v1.3.13
+- Amethyst v1.3.13
 - Runtime generated files that appear in a games root folder are now rescued and sent to the profiles root folder (the root folder separator)
 - Added a right click option to the overwrite separator to display a log of files that entered the overwrite folder
 - Added a right click option to move a mod to another profile
@@ -276,7 +277,7 @@
 
 ---
 
-- v1.3.12
+- Amethyst v1.3.12
 ### Additions
 - Added a wizard for Creation kit
 - Added a Tales of Two Wastelands installer and setup wizard
@@ -311,7 +312,7 @@
 
 ---
 
-- v1.3.11
+- Amethyst v1.3.11
 - Reworked RE engine bundle style mods to be detected and presented better, an interface can now be opened for these mods to change the options.
 - Fixed bugs related to reverse priority sorting
 - Sorted the right click context menu into categories
@@ -329,7 +330,7 @@
 
 ---
 
-- v1.3.10
+- Amethyst v1.3.10
 - Added Fallout 76 support
 - Fixed separator settings deploy method option not working
 - Added a global filter to not deploy macOS related files
@@ -351,7 +352,7 @@
 
 ---
 
-- v1.3.9
+- Amethyst v1.3.9
 - Potential fix for ssl error causing nexus login to fail
 - Tweaked Fonv and Fo3 to add bsa files to SArchiveList based on plugin load order
 - Bain installer now shows the name of the mod being installed
@@ -370,7 +371,7 @@
 
 ---
 
-- v1.3.8
+- Amethyst v1.3.8
 - Added support for Dragon Age: Origins
 - Added support for Jagged Alliance 3
 - Tweak to steam finder to use libraryfolder.vdf if present
@@ -387,7 +388,7 @@
 
 ---
 
-- v1.3.7
+- Amethyst v1.3.7
 - Reworked Archive Invalidation for some bethesda games, Uses a dummy bsa file to make the gamebryo engine load loose files
 - Fixed a bug where removing the root folder install flag from a mod after deploying would send the mod to overwrite when restoring.
 - Fixed arrows not appearing in the archive tab treeview
@@ -404,7 +405,7 @@
 
 ---
 
-- v1.3.6
+- Amethyst v1.3.6
 - Tweaked Bethesda game routing rules to stop some dll files incorrectly being sent to the root folder
 - Fixed a bug where setting a mod to root folder install while a modlist is deployed would send it to the wrong location on next deploy
 - Reworked the clear cache setting, It now opens a menu to break down cache by game
@@ -416,7 +417,7 @@
 
 ---
 
-- v1.3.5
+- Amethyst v1.3.5
 - Tweaked the separator settings menu/custom deploy locations
 - Tweaked ue5 conflict detection to stop showing false conflicts
 - Fixed a bug where a renamed separator would still behave as if it had it's old name
@@ -428,7 +429,7 @@
 
 ---
 
-- v1.3.4
+- Amethyst v1.3.4
 - Added a Skygen and plugin audit wizard
 - Fixed BepInEx folders not being routed to the correct location
 - Fixed nvse_loader.exe not being routed to the root folder
@@ -437,7 +438,7 @@
 
 ---
 
-- v1.3.3
+- Amethyst v1.3.3
 - Fixed plugins being disabled on manual collection installs
 - Added a filter by filetype to the modlist filters
 - Fix for collection installed script extenders not installing correctly due to the Data folder being stripped and the contents within it landing in the root folder
@@ -447,7 +448,7 @@
 
 ---
 
-- v1.3.2
+- Amethyst v1.3.2
 - Reworked the download Tab
 - Removed the option to symlink plugins, This was just a debugging feature I forgot to remove
 - Added to option to skip the script extender swap step for Bethesda games
@@ -466,13 +467,13 @@
 
 ---
 
-- v1.3.1
+- Amethyst v1.3.1
 - Added some missing dependencies to appimage build
 - d3dcompiler install uses will fallback to winetricks if protontricks fails
 
 ---
 
-- v1.3.0
+- Amethyst v1.3.0
 - Switch to quick-sharun for appimage builds for better compatibility
 - Added Bsa and Ba2 packing and unpacking, Loose files can be packed in the mod files tab and archives can be unpacked
 - Removed some duplicate code (Game handlers had a lot)
@@ -489,7 +490,7 @@
 
 ---
 
-- v1.2.14
+- Amethyst v1.2.14
 - Fixed staged folders not being found when deploying with cyberpunk
 - Fixed web/file browsers not opening in the flatpak build
 - added mods.txt handling for ue5 games
@@ -498,13 +499,13 @@
 
 ---
 
-- v1.2.13
+- Amethyst v1.2.13
 - Fixed instances of collections installing the wrong mod if a cached mod happened to have the same fileid caused in the last update
 - Fixed some inconsistency between deploy types related to routing rules caused in the previous update
 
 ---
 
-- v1.2.12
+- Amethyst v1.2.12
 - Fixed vanilla plugins modified by quick auto clean not returning to the data folder
 - Added some missing required top level folders for bethesda games to reduce bad installs
 - Changed plugin esl eligibility check to use libloot instead
@@ -519,7 +520,7 @@
 
 ---
 
-- v1.2.11
+- Amethyst v1.2.11
 - Added Red Dead Redemption 2
 - Moved the set deployment paths window/option to the mod files tab
 - Tweaks/fixes to reverse priority ordering
@@ -537,7 +538,7 @@
 
 ---
 
-- v1.2.10
+- Amethyst v1.2.10
 - Added a opt in to pre releases option in the settings menu, When toggled on the update checker will always use the latest pre release if available
 - Added a search content option to the ini files tab, This can search and highlight specific strings within all text based files in the staging folder
 - Script extenders no longer appear in the run exe dropdown, These don't work if you run them this way
@@ -549,7 +550,7 @@
 
 ---
 
-- v1.2.9
+- Amethyst v1.2.9
 - The collection install window is now more informative, Shows currently downloading mods and mods being extracted
 - Tweaks to the fomod parser and installer
 - Added the suggested name selector to the rename option when a mod already exists
@@ -561,7 +562,7 @@
 
 ---
 
-- v1.2.8
+- Amethyst v1.2.8
 - Added new conflict icons, The modlist rows are slightly taller to make them more visible.
 - Toml files are now displayed in the ini files tab
 - Added a search bar to the archive tab
@@ -572,7 +573,7 @@
 
 ---
 
-- v1.2.7
+- Amethyst v1.2.7
 - Added aggregated flags to the separators, collapsed separators now show flags/conflicts of mods in them
 - Fixed infinite loading screen in add game menu on first run
 - Collection installs now auto-flag mods with details.type "dinput" as Root Folder installs
@@ -585,20 +586,20 @@
 
 ---
 
-- v1.2.6
+- Amethyst v1.2.6
 - Fixed heroic appnames not saving for non bepinex games
 - Added Gog fallback for plugins.txt locations and My games location for gog versions of bethesda games
 - Added a restore on close option, restores all configured games when the application is closed.
 
 ---
 
-- v1.2.5
+- Amethyst v1.2.5
 - Fixed Heroic detection for gog games
 - Refactored the deploy script, splitting it into each deploy method
 
 ---
 
-- v1.2.4
+- Amethyst v1.2.4
 - Added 7 Days To Die
 - Added a parameter to custom routing rules to handle loose files (Required by 7DTD)
 - Raised the max concurrent downloads for collections from 5 to 8
@@ -618,7 +619,7 @@
 
 ---
 
-- v1.2.3
+- Amethyst v1.2.3
 - Updated Libloot to 0.29.3
 - Added Palworld
 - Added My Summer Car
@@ -639,7 +640,7 @@
 
 ---
 
-- v1.2.2
+- Amethyst v1.2.2
 - Collection installs can now check the downloads folder or any added locations set in the downloads tab for any aleady downloaded mods
 - Plugins in the plugins panel can now be marked as light (ESL)
 - Added a filter button for the plugins panel
@@ -653,7 +654,7 @@
 
 ---
 
-- v1.2.1
+- Amethyst v1.2.1
 - Fixed the right click context menu in the modlist panel instantly closing after installing a mod
 - Mods in the workshop are now displayed in alphabetical order
 - The ignore updates flag is now removed when the mod has a genuine update.
@@ -663,7 +664,7 @@
 
 ---
 
-- v1.2.0
+- Amethyst v1.2.0
 - Added the workshop feature to the collections window
     * This can be used to export a modlist as a .amethyst file containing all of the links needed to redownload it. 
     * It also saves fomod options to the manifest so that on import they do not need to be redone (Note this will only work for fomods installed after this update).
@@ -680,7 +681,7 @@
 
 ---
 
-- v1.1.10
+- Amethyst v1.1.10
 - Collection installs now write a userlist.yaml to handle plugin load order, Including any group and plugin rules included in the collection.
 - Fixed nxm links within flatpaks
 - Added a lock to profile settings menu to prevent accidental deletion of profiles
@@ -689,7 +690,7 @@
 
 ---
 
-- v1.1.9
+- Amethyst v1.1.9
 - Fixed meta.ini getting overwritten if another mod with the same name is installed.
 - The files in the mod files and data tab are now highlighted if they are winning/losing conflicts
 - Added an expand all button in the mod files tab
@@ -706,7 +707,7 @@
 
 ---
 
-- v1.1.8
+- Amethyst v1.1.8
 - Added OpenMW
 - Added Stalker 2
 - Fixed separators not being movable when priority column is reversed
@@ -720,7 +721,7 @@
 
 ---
 
-- v1.1.7
+- Amethyst v1.1.7
 - Added Darktide
 - Witcher 3's script merger can now be setup and run via the Wizard tool window.
 - Most of Skyrim SE's external modding tools can also now be setup and run via the wizard tools menu.
@@ -729,7 +730,7 @@
 
 ---
 
-- v1.1.6
+- Amethyst v1.1.6
 - Free users can now install collections. Each mod will open in the browser, you have to manually download these but the manager will auto detect the archive file and install it. There is also an auto open next mod option so you can just click download as they appear in the browser.
 - Searching for a mod in the modlist now keeps it's separator shown
 - Fixed the open button in profile settings
@@ -742,7 +743,7 @@
 
 ---
 
-- v1.1.5
+- Amethyst v1.1.5
 - The manager can now install Wabbajack modlists
 - Added the ability for Loot to read userlist.yaml files, These can be placed in the profile folder next to plugins.txt as a per profile option or in .config/amethystmodmanager/loot/[gamename] as a global fallback
 - Added a Groups and Plugin rules button to the plugins panel. These can be used to create a userlist.yaml file that goes into the profiles folder
@@ -753,7 +754,7 @@
 
 ---
 
-- v1.1.4
+- Amethyst v1.1.4
 - Fix for users who could not download collection manifests from the main Nexus cdn
 - Fix for collections not enabling all mods after install if the application crashed part way through
 - BepInEx can now be added as a mod, The files will get routed to the correct place
@@ -768,7 +769,7 @@
 
 ---
 
-- v1.1.3
+- Amethyst v1.1.3
 - Added automatic archive invalidation to Bethesda games, Can be disabled in the games configure menu.
 - Added MH world,Rise and Wilds
 - Custom games can now define Frameworks
@@ -778,7 +779,7 @@
 
 ---
 
-- v1.1.2
+- Amethyst v1.1.2
 - Fixed several instances of auto fomod not working during collections install
 - Reworked collection install logic, Mods now begin installing as soon as they are downloaded
 - Optional mod selections in collections are now saved to the collections profile.
@@ -788,7 +789,7 @@
 
 ---
 
-- v1.1.1
+- Amethyst v1.1.1
 - The plugin panel can now be collapsed/hidden
 - The overwrite folder now displays conflicts correctly
 - When selecting a mod with a conflict, the separator the conflicting mod belongs to is only highlighted if it is collapsed
@@ -801,7 +802,7 @@
 
 ---
 
-- v1.1
+- Amethyst v1.1
 - Added Morrowind
 - Added Blade and Sorcery (Custom game handler)
 - Added a collections install progress bar
@@ -816,14 +817,14 @@
 
 ---
 
-- v1.0.15
+- Amethyst v1.0.15
 - Fixed some fomod folders not installing correctly due to case mismatch between the extraced file and what is in the xml file.
 - Manually installing a mod while not logged into nexus now creates the meta.ini correctly
 - The extraction progress bar now disspears before a fomod window opens
 
 ---
 
-- v1.0.14
+- Amethyst v1.0.14
 - Fixed witcher 3 folder name normalising broken by previous update
 - Added a check that stops a user being able to add a game with the game and staging directory on different drives if hard link is selected
 - Removed copy as an option when deploying a game, This can cause issues with the deploy/restore functions and has never been a viable method for deploying.
@@ -835,7 +836,7 @@
 
 ---
 
-- v1.0.13
+- Amethyst v1.0.13
 - The plugins panel can now be resized, The minimum size remains the same but the max size can be changed. Note that this can't be done on the steam deck screen as it is already at it's max and minimum size.
 - The log panel can be made taller.
 - The size of the columns in the modlist panel can be resized.
@@ -847,7 +848,7 @@
 
 ---
 
-- v1.0.12
+- Amethyst v1.0.12
 - The priority column can now be sorted/reversed. Previously this was disabled due to it breaking the entire drag and drop system
 - For root deployed games, if a mod contains a folder that already exists in the game files, the mod folder casing gets adjusted to match the target directory.
 - Added a enable/disable all mods toggle button.
@@ -860,7 +861,7 @@
 
 ---
 
-- v1.0.11
+- Amethyst v1.0.11
 - Fixed files in custom deployment locations not getting backed up
 - Mods under custom deployment separators no longer show up in the data tab
 - Different collection revisions can now be selected, Previously only the latest revision could be installed
@@ -873,7 +874,7 @@
 
 ---
 
-- v1.0.10
+- Amethyst v1.0.10
 - Fix for users whose prefix does not create a pfx folder and uses drive_c at the prefixes root
 - Using set deployment paths now updates the mod files tab to reflect the change
 - Fixed Ue5 game exe's not showing up in the run exe section
@@ -882,14 +883,14 @@
 
 ---
 
-- v1.0.9
+- Amethyst v1.0.9
 - The data tab and ini files tab now only update when the tabs are open and visible. This greatly speeds up filemap generation and stops large modlists feeling sluggish when enabling/disabling/moving mods. 
 - Fixed some flickering widgets when enabling and disabling mods
 - Tweaked the Baldurs Gate 3 handler to use new properties added since it was last updated. Mods that install to the games Data folder now work correctly.
 
 ---
 
-- v1.0.8
+- Amethyst v1.0.8
 - Script extender swap now happens after the root folder has been deployed instead of before meaning script extenders now work with root folder building.
 - Added a basic CLI mode. See the github wiki for documentation
 - Fixed an invalid oauth refresh token crashing the application on startup
@@ -899,7 +900,7 @@
 
 ---
 
-- v1.0.7
+- Amethyst v1.0.7
 - Replaced the remove profile button with a settings button where profiles can be renamed/removed
 - The Vramr wrapper was capped to 2 threads, It is now set to auto.
 - Added a install .net button to the proton window, This brings up a sub menu with a selection of versions.
@@ -918,7 +919,7 @@
 
 ---
 
-- v1.0.6
+- Amethyst v1.0.6
 - Logging into nexus now updates the api key on successful login instead of having to close the nexus settings window first
 - Plugins where the master is loaded after will now be flagged.
 - The separator under the cursor is now highlighted
@@ -929,7 +930,7 @@
 
 ---
 
-- v1.0.5
+- Amethyst v1.0.5
 - Added Resident Evil 2 , 3 , 4 (Remakes) , 7 and Village. These handlers modify the games .pak files to allow the game to load modded files from the natives folder
 - A note about RE 2,3 and 7: Any mods listed as pre RTX may not work. The folder structure for these mods is usually natives/x64. These mods require texture conversion to work with the RTX updates which the manager is not capable of. Mods listed as RTX with the folder structure natives/stm should work
 - Mewgenics now generates a .sh file with a shorter launch command instead of listing every mod in 1 command. This prevents the command being too long for steam.
@@ -937,14 +938,14 @@
 
 ---
 
-- v1.0.4
+- Amethyst v1.0.4
 - Fixed a issue with fomod where the author included 2 or more case sensitive folders within their mod. This could cause the wrong files to be deployed and the mod in game would not reflect the choices made in the Fomod.
 - Fixed some broken elements not scaling correctly with the previous UI scaling feature
 - Fixed the scrollwheel being overly sensitive in some places.
 
 ---
 
-- v1.0.3
+- Amethyst v1.0.3
 - Added UI scaling. Scaling by default is set to automatic but can be changed via the settings button at the bottom right of the application. All UI elements will scale with the chosen value.
 - Added a Generate separators button. This will take any mod that is not already in a separator and create a separator based on that mods category. To get categories for all mods use check updates to generate them while logged into nexus. Mods with conflicts will be moved to a conflicts separator to preserve their order.
 - Cleaned up the mod cards slightly in the nexus window and collections window, The descriptions are now tooltips to allow long descriptions to fit better.
@@ -952,7 +953,7 @@
 
 ---
 
-- v1.0.2
+- Amethyst v1.0.2
 - Added an Ini files tab, This tab can show all of the ini and json files being used in the modlist. You can search by mod name or file name. When clicking one a text editor window will appear where you can edit them.
 - xEdit's behaviour meant any plugins it edited were being deleted completely. When you make a change to a plugin with xEdit. It deletes the original plugin and creates a new one with the changes. This meant the changes were not being reflected in the plugins within the staging folder or were being outright deleted. When running restore on a bethesda game, the manager now detects what plugins have been edited and moves the edited plugin back to the staging folder
 - You can now install collections by clicking add collection on the Nexus site, This will switch to the game the collection belongs to and show the mod list. The add collection button on the nexus site will say it requires Vortex but this just sends an Nxm link our manager can use.
@@ -963,7 +964,7 @@
 
 ---
 
-- v1.0.1
+- Amethyst v1.0.1
 - Added Enderal and Enderal SE
 - Added Slay the Spire 2
 - Reworked the Browse,Endorsed and Tracked tabs. They have been moved to overlay the modlist panel and show up when you press the nexus button. The Nexus sso menu is now in a settings button in this new menu
@@ -976,7 +977,7 @@
 
 ---
 
-- v1.0.0
+- Amethyst v1.0.0
 - You can now login into Nexus mods via SSO, Any personal api key will be cleared and you can now log into Nexus mods via the Nexus button.
 - Overhauled the Resident Evil requiem game handler to support the Natives folder for loose file loading and the Pak_mods folder
 - Adjusted the Cyberpunk and Bethesda game handlers slightly to work with the new collections feature
@@ -985,7 +986,7 @@
 
 ---
 
-- v0.8.3
+- Amethyst v0.8.3
 - When a mod already exists, there is now an option to add the mod with a different name
 - Using a profile with the "Profile specfic mods" will use it's own root folder builder instead of the default one
 - Fixed the scrollwheel not working when hovering over certain elements in the add game menu
@@ -1003,7 +1004,7 @@
 
 ---
 
-- v0.8.2
+- Amethyst v0.8.2
 - Fix for Fomod options not detecting already installed plugins and auto selecting relevant options
 - Added a reset selections to the fomod menu that deletes saved selections and resets them to default
 - Fixed multiple file chooser windows opening when installing a mod
@@ -1012,7 +1013,7 @@
 
 ---
 
-- v0.8.1
+- Amethyst v0.8.1
 - Files sent to custom deployment locations via the separator settings will first backup any files they overwrite in the target location to the profiles staging folder
 - LOOT masterlists now auto update when sorting plugins to make sure the latest masterlist and prelude is being used
 - When manually selecting a proton prefix, "pfx" will be appended to the filepath if you do not select the pfx folder and select the folder above it instead.
@@ -1021,7 +1022,7 @@
 
 ---
 
-- v0.8.0
+- Amethyst v0.8.0
 - Potential fix for web browser not opening
 - Fix for wyrebash not working properly in proton
 - Better detection of nexus meta data in downloaded/installed mods names. The mod name added to the modlist should be more accurate.
@@ -1030,7 +1031,7 @@
 
 ---
 
-- v0.7.8
+- Amethyst v0.7.8
 - Fixed Various fomod issues including:
 - Scrollwheel not working when certain elements are under the cursor
 - Fomod not reading the game's base plugins meaning mods that require dlc couldn't be selected
@@ -1045,7 +1046,7 @@
 
 ---
 
-- v0.7.7
+- Amethyst v0.7.7
 - Most of the window popup modals are now overlays. This keeps everything within the application self contained making it easier to use the application in steam deck gaming mode
 - Added a right click option to separators called Separator settings,
 - Added a separator setting that allows you to choose where you want the mods in a separator to end up, Once defined the mods in the chosen separator will not be sent to the usual target location and instead will be sent to the user defined location.
@@ -1056,7 +1057,7 @@
 
 ---
 
-- v0.7.6
+- Amethyst v0.7.6
 - Overhauled the Witcher 3 handler, This game now uses custom routing rules much like the ue5 games as our standard properties were not enough to handle witcher 3's folder structure and the way mod authors ship their mods
 - Added Witcher 3's Goty appid to the handler so the goty version's prefix shows up when adding a game
 - Resizing the application window is now smoother/faster.
@@ -1067,19 +1068,19 @@
 
 ---
 
-- v0.7.5
+- Amethyst v0.7.5
 - Fixed bethesda related mods installing incorrectly - I stupidly assumed all mod authors did not ship their mods with any redundant top level folders. Turns out they do which means any of these mods would not install correctly. The manager now strips these top level folders. This was a fairly serious issue hence the small update. If anyone has already installed any mods for bethesda games (oblivion remastered excluded) its worth checking in the data tab if they are correct.
 - The add game window is now an overlay
 
 ---
 
-- v0.7.4
+- Amethyst v0.7.4
 - Fixed several major issues with fomod, Images not appearing, pages being skipped and pages showing up that shouldn't
 - Added kdialog as a fallback if zenity is not available, if kdialog tkinter's file browser will be used instead
 
 ---
 
-- v0.7.3
+- Amethyst v0.7.3
 - Potential fix for some issues with Fomod
 - Removing a profile now runs the restore function first so mods don't stay deployed once the profile is removed.
 - If "Data" is a top level folder in a bethesda related mod, it is removed to match what the manager expects
@@ -1089,7 +1090,7 @@
 
 ---
 
-- v0.7.2
+- Amethyst v0.7.2
 - Added a potential fix for users whose "Open mod" and other related buttons not working
 - Added filters to the exe dropdown list for applications that never need to be run in this section.
 - Added game framework detection, Things like Script extenders are detected and shown if they are installed or not at the top of the plugins panel
@@ -1099,7 +1100,7 @@
 
 ---
 
-- v0.7.1
+- Amethyst v0.7.1
 - Added custom game support, A define custom game button has been added to the add game menu, This will allow any game to be added with the same properties the current game handlers use. The settings used for custom games are saved to a .json file in the .config folder and can be shared with anyone. Note that this will not work on games that need specfic deploy logic to function, It also does not currently work on games that require mods to be deployed somewhere in the games wine prefix
 - Added profile specfic mod lists, Added a new option when adding a new profile called Use profile specfic mods. When a profile has this flag, it will create a new empty profile and the mods/overwrite folder for this profile will be separate from other profiles. This can be used to create a fresh modlist within that profile meaning you can have multiple modlists per instance of a game and switch between them.
 - Added zstandard library for some Baldurs gate 3 mods not being parsed correctly
@@ -1117,7 +1118,7 @@
 
 ---
 
-- v0.6.2
+- Amethyst v0.6.2
 - Added Resident Evil Requiem
 - Witcher 3's game path is automatically added to Witcher 3 Script merger: fresh and automated edition's config on runtime.
 - Added an option to the reconfigure game window to remove all hardlinks/symlinks from a games directory, This is used to cleanup a game folder in the event that restore wont work due to missing mods in the staging folder.
@@ -1125,7 +1126,7 @@
 
 ---
 
-- v0.6.1
+- Amethyst v0.6.1
 - Added Hogwarts Legacy
 - winhttp dll override is auto added to the prefix for bepinex games, Required for bepinex to function
 - Added a fallback for 7z files failing to install
@@ -1135,7 +1136,7 @@
 
 ---
 
-- v0.6.0
+- Amethyst v0.6.0
 - Added Oblivion Remastered
 - Added a handler for Ue5's folder structure and any future ue5 game support
 - Added a Menu Filelist updater to The Witcher 3's deploy function. xml files for the next gen update should be sorted on deploy
@@ -1143,7 +1144,7 @@
 
 ---
 
-- v0.5.9
+- Amethyst v0.5.9
 - Fixed font scaling for users who set their global scaling over 100%
 - The mods and overwrite folder no longer get deleted when removing an instance
 - Added additional proton prefix detection
@@ -1151,7 +1152,7 @@
 
 ---
 
-- v0.5.8
+- Amethyst v0.5.8
 - Added a new add game window
 - Added a fallback for rar files failing to install
 - Installing a mod manually no longer deletes the zip file from downloads after installing
@@ -1162,19 +1163,19 @@
 
 ---
 
-- v0.5.7
+- Amethyst v0.5.7
 - Bodyslide and Outfit studio should now be configured correctly, It first needs to be added as a mod and enabled, when deployed it will show up in the Run Exe dropdown menu upon refreshing. When running this will cause it to launch from the Data folder which should launch it properly with all the options in the UI
 - Changed the output selection menu in the configure exe window to a dropdown menu instead of a scrollable list. The separators are also now filtered out of this list.
 
 ---
 
-- v0.5.6
+- Amethyst v0.5.6
 - Added a wizard to stardew valley to aid in installing SMAPI
 - Changed Stardew valley's "exe" name to the actual script steam launches with so that the game can be launched from within the application.
 
 ---
 
-- v0.5.5
+- Amethyst v0.5.5
 - Some mod files were still being moved incorrectly to the overwrite folder when restoring. This should no longer happen. Only runtime created files should appear in overwrite
 - Fixed direct installs in the browse panel (Hopefully, im not a premium member so i cant actually test this)
 - The "Show conflicts" window was blank for some games and displaying incorrect info, This should be fixed.
@@ -1183,28 +1184,28 @@
 
 ---
 
-- v0.5.4
+- Amethyst v0.5.4
 - The games launch exe now shows up in the run exe section, By default it will deploy the current modlist then try to launch via steam. This behaviour can be changed in the config menu next to the run exe button.
 - If the game is on heroic and not steam, it will try to lauch via heroic, Not every game will work however since I need the AppName identifier that heroic uses. Since these are not easy to lookup, theres only a few games configured this way.
 - You can change the launch option to None in the config to stop it trying to launch through Steam or Heroic
 
 ---
 
-- v0.5.3
+- Amethyst v0.5.3
 - Fixed an issue with Fomod reinstalls not working
 - Added a notification when installing or removing a mod
 - Changed some tkinter popup dialogues to customtkinter to match the gui theme
 
 ---
 
-- v0.5.2
+- Amethyst v0.5.2
 - Fixed mod files going into overwrite folder instead of mod created runtime files upon restore
 - Fixed Vramr wrapper logging silently
 - Fixed auto update not working due to the application being open
 
 ---
 
-- v0.5.1
+- Amethyst v0.5.1
 - Fixed a missing import causing the run exe feature to not work
 - Tested and added support for the following
 - xlodgen
@@ -1215,7 +1216,7 @@
 
 ---
 
-- v0.5.0
+- Amethyst v0.5.0
 - Added a right click option to separators to change their color
 - Replaced the mod display in the tracked/endorsed/browse section with a cleaner layout using ctkcards
 - Improved the responsivness of right click menus and sub menus.
@@ -1225,7 +1226,7 @@
 
 ---
 
-- v0.4.3
+- Amethyst v0.4.3
 - Files such as settings or configs that are created by Mods during gameplay/runtime are no longer removed when restoring or redeploying. They are moved to the overwrite folder
 - Fixed the installed date column sorting mods into the wrong date order
 - Check updates now only applies to enabled mods.
@@ -1233,7 +1234,7 @@
 
 ---
 
-- v0.4.2
+- Amethyst v0.4.2
 - Several Performance improvements,
 - Improved speed of filemap creation by 5-10x. The contents of all the mod files are now cached upon refreshing or installing a new mod instead of every mod being read from every time we enabled/disabled a mod
 - The modlist panel is now smoother when scrolling.
@@ -1248,14 +1249,14 @@
 
 ---
 
-- v0.4.1
+- Amethyst v0.4.1
 - Fixed a missing threading import in Endorse/tracked/browse tabs
 - Added flatpak manifest for potential flatpak release
 - added XDG portal browser for flatpak support. Does not work on the appimage but is needed for the flatpak
 
 ---
 
-- v0.4.0
+- Amethyst v0.4.0
 - Refactored the gui code
 - Added app version number to the title bar
 - The nexus window now displays rate limits/usage
@@ -1265,7 +1266,7 @@
 
 ---
 
-- v0.3.4
+- Amethyst v0.3.4
 - Improved logging, Logs now go to a file in the .config folder
 - Fixed some scrollbars still showing the wrong colour
 - Added modlist filters
@@ -1275,7 +1276,7 @@
 
 ---
 
-- v0.3.0
+- Amethyst v0.3.0
 - Added support for Mewgenics, the manager can unpack/repack the games gpak file as well as provide launch arguments to launch the game modded
 - Added KCD2 Support
 - Added starfields loot master list
@@ -1286,12 +1287,12 @@
 
 ---
 
-- v0.2.0
+- Amethyst v0.2.0
 - Added a Set deployment paths to the mods right click menus, Can be used to remove one or more extra top level paths to mods when mod authors ship mods with top level paths not in the filters
 - Removed some ugly white borders in the data tab
 
 ---
 
-- v0.1.2
+- Amethyst v0.1.2
 - Fixed wrong LOOT types and masterlist urls
 - Fixed Fallout 3 downgrader wizard deleting the entire game folder
