@@ -141,6 +141,19 @@ def fomod_has_cross_mod_dependency(config: ModuleConfig) -> bool:
     for step in config.steps:
         if _dependency_has_file_check(step.visible_condition):
             return True
+        # A plugin whose <dependencyType> keys on another mod's file decides
+        # Optional/Recommended/NotUsable from the profile's state, so it has
+        # the same ordering hazard as a step gate: resolved too early it reads
+        # as if the sibling were absent. Without this such a FOMOD installed
+        # immediately and its NotUsable options were evaluated against a
+        # half-built profile.
+        for group in step.groups:
+            for plugin in group.plugins:
+                td = getattr(plugin, "type_descriptor", None)
+                # patterns are (Dependency, type_name) tuples
+                for dep, _type_name in getattr(td, "patterns", None) or ():
+                    if _dependency_has_file_check(dep):
+                        return True
     for pattern in config.conditional_file_installs:
         if _dependency_has_file_check(pattern.dependency):
             return True
@@ -175,8 +188,18 @@ def resolve_plugin_type(plugin: Plugin, flag_state: dict[str, str],
     # No pattern matched. If the default is NotUsable but the pattern set
     # includes a Required outcome, it means this is a version-detection group
     # where we couldn't auto-detect the game version. Let the user choose freely.
+    #
+    # Only when the Required pattern is something we genuinely cannot evaluate,
+    # though. A fileDependency IS evaluable: if it did not match, the file is
+    # really absent and the option really is unusable, so NotUsable must stand.
+    # Downgrading it to Optional let a recorded selection install a plugin
+    # whose master was missing ('Origins Reborn' selecting the Alternate
+    # Perspective patch in a collection that does not ship Alternate
+    # Perspective).
     if td.default_type == "NotUsable" and any(t == "Required" for _, t in td.patterns):
-        return "Optional"
+        if not any(t == "Required" and _dependency_has_file_check(d)
+                   for d, t in td.patterns):
+            return "Optional"
 
     return td.default_type
 
@@ -459,6 +482,20 @@ def resolve_files(config: ModuleConfig,
                                             active_files, loose_files)
                 is_selected = (group.group_type == "SelectAll"
                                or plugin.name in selected_names)
+                if is_selected and ptype == "NotUsable":
+                    # The FOMOD itself declares this option unusable in the
+                    # current state — its <dependencyType> resolved to
+                    # NotUsable because a file it needs is absent. A wizard
+                    # user could not have picked it; replaying a recorded
+                    # selection must not force it in either, or its plugin
+                    # installs with a master that is not there.
+                    #
+                    # Seen with 'Origins Reborn': the collection author
+                    # selected "Alternate Perspective Reborn - Origins", but
+                    # the collection does not ship Alternate Perspective, so
+                    # the option is NotUsable here and its .esp landed with a
+                    # missing master.
+                    continue
                 if is_selected:
                     for fi in plugin.files:
                         options.append((fi.priority, fi.source_path,
