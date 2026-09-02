@@ -287,24 +287,64 @@ def try_auto_strip_top_level(
     file_list: list[tuple[str, str, bool]],
     required: set[str],
     max_strip_depth: int = 20,
+    protected_exts: "set[str] | None" = None,
 ) -> tuple[list[tuple[str, str, bool]], bool]:
     """Strip leading path segments until at least one file's top-level folder is in
-    *required*. Returns (new_list, True) on success, else (original, False)."""
+    *required*. Returns (new_list, True) on success, else (original, False).
+
+    Stripping DISCARDS every file shallower than the strip depth, so a depth is
+    refused when it would drop real game content — a file whose extension is in
+    *protected_exts* (the game's ``mod_required_file_types``), or a folder
+    already named in *required*.
+
+    Without that guard an archive holding both root-level content and a nested
+    Data-shaped folder loses the root half silently. Observed on
+    'Requiem - Dragonborn Patch', whose archive is::
+
+        Fozars_Dragonborn_-_Requiem_Patch.esp            <- root
+        Fozars_Dragonborn_-_Requiem_Patch.bsa            <- root
+        Reqtificator/Data/ActorAssignmentRules_....conf  <- nested tool config
+
+    Depth 1 dropped the .esp and .bsa and kept only the .conf, because
+    ``Reqtificator/Data`` satisfied the required-folder check. The discarded
+    plugin was a master for 24 other plugins, so the visible symptom was 24
+    missing-master errors on mods that had themselves installed perfectly.
+
+    Refusing the strip lets the caller fall through to its
+    ``check_mod_top_level_file_types`` branch, which recognises the root .esp
+    and installs the archive as-is — the correct outcome."""
     required_lower = {r.lower() for r in required}
+    prot = {e.lower() for e in (protected_exts or ())}
     if check_mod_top_level(file_list, required_lower):
         return (file_list, True)
+
+    def _is_protected(parts: "list[str]") -> bool:
+        """True when dropping this entry would lose recognised game content."""
+        name = parts[-1].lower()
+        if prot and any(name.endswith(e) for e in prot):
+            return True
+        return parts[0].lower() in required_lower
+
     for strip_depth in range(1, max_strip_depth + 1):
         new_list: list[tuple[str, str, bool]] = []
         has_required = False
+        would_drop_content = False
         for src_rel, dst_rel, is_folder in file_list:
             parts = dst_rel.replace("\\", "/").strip("/").split("/")
             if len(parts) <= strip_depth:
+                # This entry is shallower than the strip and would be discarded.
+                if not is_folder and _is_protected(parts):
+                    would_drop_content = True
+                    break
                 continue
             new_dst = "/".join(parts[strip_depth:])
             top = parts[strip_depth].lower()
             if top in required_lower:
                 has_required = True
             new_list.append((src_rel, new_dst, is_folder))
+        if would_drop_content:
+            # Deeper strips discard strictly more, so nothing below can work.
+            return (file_list, False)
         if has_required and new_list:
             return (new_list, True)
     return (file_list, False)
@@ -411,7 +451,8 @@ def stage_file_list(game, extract_dir: str, *, is_root_install: bool = False,
 
     if required and not check_mod_top_level(file_list, required):
         if auto_strip:
-            file_list, did_auto_strip = try_auto_strip_top_level(file_list, required)
+            file_list, did_auto_strip = try_auto_strip_top_level(
+                file_list, required, protected_exts=required_file_types)
             if did_auto_strip:
                 log_fn("Auto-stripped top-level folder(s) so mod matches expected structure.")
         if not did_auto_strip and required_file_types:
