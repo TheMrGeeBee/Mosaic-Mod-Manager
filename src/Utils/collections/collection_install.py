@@ -149,6 +149,12 @@ class CollectionSchemaIndex:
     pos_to_name: "dict[int, str]"
     fomod_by_file_id: "dict[int, dict]"
     bain_by_file_id: "dict[int, dict]"
+    # fileId -> [{"path","md5"}, …]. Vortex records a FOMOD author's install
+    # EITHER as replayable ``choices`` OR as ``hashes`` — the resulting file
+    # set — and the two never appear together. Without this the hashes-only
+    # mods fall through to the wizard and the user has to guess the author's
+    # options (Skyland AIO, Lux, SMIM, XP32 … all land here).
+    file_id_to_hashes: "dict[int, list[dict]]"
 
 
 def _build_schema_index(collection_schema: dict) -> CollectionSchemaIndex:
@@ -178,6 +184,7 @@ def _build_schema_index(collection_schema: dict) -> CollectionSchemaIndex:
     schema_file_id_to_arrayidx: dict[int, int] = {}
     fomod_by_file_id: dict[int, dict] = {}
     bain_by_file_id: dict[int, dict] = {}
+    file_id_to_hashes: dict[int, list[dict]] = {}
     _raw_logical: dict[int, str] = {}
     _raw_name: dict[int, str] = {}
     for schema_mod in schema_mods:
@@ -240,6 +247,12 @@ def _build_schema_index(collection_schema: dict) -> CollectionSchemaIndex:
                 fomod_by_file_id[fid] = choices["selections"]
             elif choices.get("type") == "bain_selections":
                 bain_by_file_id[fid] = choices["selections"]
+            # Only entries carrying BOTH a path and an md5 are usable; a
+            # partial list would resolve to a partial install.
+            _hs = [h for h in (schema_mod.get("hashes") or [])
+                   if isinstance(h, dict) and h.get("path") and h.get("md5")]
+            if _hs:
+                file_id_to_hashes[fid] = _hs
 
     schema_file_id_to_suffix: dict[int, str] = _build_collision_suffix_map(
         schema_mods, schema_file_id_to_logical, schema_pos_to_name,
@@ -261,6 +274,7 @@ def _build_schema_index(collection_schema: dict) -> CollectionSchemaIndex:
         pos_to_name=schema_pos_to_name,
         fomod_by_file_id=fomod_by_file_id,
         bain_by_file_id=bain_by_file_id,
+        file_id_to_hashes=file_id_to_hashes,
     )
 
 
@@ -1129,6 +1143,9 @@ def run_collection_install(
         archive_path = str(result.file_path)
         auto_fomod = idx.fomod_by_file_id.get(mod.file_id)
         auto_bain = idx.bain_by_file_id.get(mod.file_id)
+        # Only consulted when the author recorded no replayable choices — see
+        # CollectionSchemaIndex.file_id_to_hashes.
+        auto_hashes = idx.file_id_to_hashes.get(mod.file_id)
         _pmeta = _build_prebuilt_meta(idx, _slug, mod, effective_domain)
         _preferred = _preferred_name(idx, mod)
 
@@ -1146,6 +1163,7 @@ def run_collection_install(
                 progress_fn=lambda d, t, p=None, _f=mod.file_id:
                     cb.on_extract_update(_f, int(d), int(t)),
                 fomod_auto_selections=auto_fomod, bain_auto_selections=auto_bain,
+                fomod_auto_hashes=auto_hashes,
                 prebuilt_meta=_pmeta, preferred_name=_preferred,
                 skip_index_update=True, overwrite_existing=overwrite_existing,
                 # Always True here, not (auto_fomod is None): this caller always
@@ -1567,7 +1585,8 @@ def run_collection_install(
             idx.fomod_by_file_id, idx.bain_by_file_id, state.install_results,
             state.install_counters, state.install_lock, state.archive_use_count,
             state.external_archive_paths, _col_stop, _slug, overwrite_existing,
-            _write_preliminary_plugins_txt, _maybe_delete_archive, cb, log, _set_status)
+            _write_preliminary_plugins_txt, _maybe_delete_archive, cb, log, _set_status,
+            file_id_to_hashes=idx.file_id_to_hashes)
 
     installed += state.install_counters["installed"]
     skipped += state.install_counters["skipped"]
@@ -1843,7 +1862,8 @@ def _process_deferred(
         fomod_by_file_id, bain_by_file_id, _install_results,
         _install_counters, _install_lock, _archive_use_count,
         _external_archive_paths, _col_stop, _slug, overwrite_existing,
-        _write_preliminary_plugins_txt, _maybe_delete_archive, cb, log, _set_status):
+        _write_preliminary_plugins_txt, _maybe_delete_archive, cb, log, _set_status,
+        *, file_id_to_hashes=None):
     from Nexus.nexus_meta import build_meta_from_download
 
     def _mk_meta_and_name(mod, domain):
@@ -1950,6 +1970,11 @@ def _process_deferred(
                     progress_fn=lambda d, t, p=None, _f=_mod.file_id:
                         cb.on_extract_update(_f, int(d), int(t)),
                     fomod_auto_selections=fomod_by_file_id.get(_mod.file_id),
+                    # A hashes-only FOMOD still lands here when it has a
+                    # cross-mod dependency — deferring it is correct, but
+                    # without this it would then open the wizard despite the
+                    # author having recorded the exact file set.
+                    fomod_auto_hashes=(file_id_to_hashes or {}).get(_mod.file_id),
                     bain_auto_selections=bain_by_file_id.get(_mod.file_id),
                     prebuilt_meta=_pmeta, preferred_name=_pref,
                     skip_index_update=True, overwrite_existing=overwrite_existing,
