@@ -228,11 +228,33 @@ def _zip_is_intact(path: Path) -> bool:
     """Return True if *path* is a valid, complete ZIP archive.
 
     Reads only the end-of-central-directory record (last ~22 bytes) so this
-    is effectively instant regardless of archive size.  Returns False for
-    non-ZIP files so callers can skip the check for .7z/.rar/.tar.*
+    is effectively instant regardless of archive size.  Returns True for
+    non-ZIP files so callers skip the check for .7z/.rar/.tar.*
+
+    The "is this a ZIP" test is on CONTENT, not on the filename: Nexus serves
+    archives whose extension does not match their container (a RAR uploaded as
+    ".zip"). Gating on the extension alone made such a file fail the integrity
+    check forever — _find_cached_archive reported it incomplete, the caller
+    deleted it as a partial download and re-fetched it, and the replacement was
+    identical, so it re-downloaded on every single run. 7z reads it fine by
+    content, so the install itself always worked and only the wasted download
+    was visible.
     """
     if not path.name.lower().endswith('.zip'):
         return True  # can't cheaply verify; assume OK
+    try:
+        with open(path, 'rb') as fh:
+            magic = fh.read(4)
+    except OSError:
+        return False
+    # Too short to be any archive at all — a zero-byte or stub file is a
+    # failed download, not "a format we cannot verify".
+    if len(magic) < 4:
+        return False
+    # PK\x03\x04 (normal) / PK\x05\x06 (empty archive) — anything else is
+    # simply not a ZIP, whatever it is called, so there is nothing to verify.
+    if magic[:2] != b'PK':
+        return True
     try:
         if not zipfile.is_zipfile(path):
             return False
