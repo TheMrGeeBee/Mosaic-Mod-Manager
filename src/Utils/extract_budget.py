@@ -117,6 +117,7 @@ class ExtractionMemoryBudget:
         auto_budget = max(0, avail - safety_margin_bytes)
         self._budget = min(auto_budget, max_budget_bytes) if max_budget_bytes else auto_budget
         self._reserved: int = 0
+        self._active: int = 0
         self._lock = threading.Lock()
         self._cv = threading.Condition(self._lock)
         self._semaphore = threading.Semaphore(max(1, max_workers))
@@ -124,6 +125,15 @@ class ExtractionMemoryBudget:
     @property
     def budget(self) -> int:
         return self._budget
+
+    def active_count(self) -> int:
+        """How many extractions are actually in flight right now — the
+        configured ``max_workers`` is a ceiling, not a live count; a caller
+        dividing a fixed resource (e.g. CPU threads) across concurrent
+        extractions should use this instead, so it only throttles as hard as
+        the ceiling when truly at peak concurrency."""
+        with self._lock:
+            return self._active
 
     def acquire(self, estimated_bytes: int) -> None:
         """Reserve *estimated_bytes* (with spike factor) of extraction budget.
@@ -149,11 +159,13 @@ class ExtractionMemoryBudget:
                     break
                 self._cv.wait(timeout=2.0)  # re-check periodically
             self._reserved += cost
+            self._active += 1
 
     def release(self, estimated_bytes: int) -> None:
         """Return *estimated_bytes* (with spike factor) to the budget pool."""
         cost = int(estimated_bytes * self.SPIKE_FACTOR)
         with self._cv:
             self._reserved = max(0, self._reserved - cost)
+            self._active = max(0, self._active - 1)
             self._cv.notify_all()
         self._semaphore.release()

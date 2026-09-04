@@ -510,12 +510,44 @@ class Fallout_3(BaseGame):
         return self._profile_ini_files
 
     def set_profile_ini_files(self, value: bool) -> None:
+        if not value and self._profile_ini_files:
+            # Turning the feature off must not leave My Games permanently
+            # symlinked to whichever profile happened to be deployed last —
+            # _symlink_profile_ini_files/_remove_profile_ini_symlinks both
+            # early-return once the flag is off, so nothing would ever
+            # notice or fix a stale link again otherwise.
+            self._unlink_all_profile_ini_symlinks(log_fn=lambda *_a: None)
         self._profile_ini_files = value
         self.save_paths()
         if value:
             # Create the (empty) "ini files" folder in every profile so the
             # user has an obvious place to drop their per-profile INIs.
             self._ensure_profile_ini_dirs()
+
+    def _unlink_all_profile_ini_symlinks(self, log_fn) -> None:
+        """Convert every live profile-INI symlink under My Games back into a
+        real file in place (copying through whatever it currently points
+        at), regardless of which profile it points to. Used when the
+        per-profile INI feature is turned off, so My Games doesn't stay
+        silently linked to one profile's copy forever."""
+        _log = log_fn
+        for mygames in self._mygames_paths():
+            if not mygames.is_dir():
+                continue
+            for target in mygames.glob("*.ini"):
+                if not target.is_symlink():
+                    continue
+                try:
+                    real = target.resolve()
+                    content = real.read_bytes() if real.is_file() else None
+                except OSError:
+                    content = None
+                target.unlink()
+                if content is not None:
+                    target.write_bytes(content)
+                    _log(f"  Converted profile INI symlink back to a real file: {target.name}")
+                else:
+                    _log(f"  WARN: removed dangling profile INI symlink with no target: {target.name}")
 
     # Name of the subfolder inside each profile that holds the user's INIs.
     _PROFILE_INI_SUBDIR = "ini files"
@@ -862,6 +894,26 @@ class Fallout_3(BaseGame):
             return
         ini_dir = self._profile_ini_dir(profile)
         ini_dir.mkdir(parents=True, exist_ok=True)
+        # A profile whose "ini files" folder has never been populated (a new
+        # profile, or one created via the profile-specific-mods path, which
+        # doesn't seed this folder at all) used to be silently skipped here —
+        # leaving My Games linked to whatever OTHER profile was deployed
+        # last instead of this one. Seed it from whatever's currently live
+        # first, same "carry live state forward" principle as the per-file
+        # branch below, just applied before the first-ever link too.
+        existing_names = {p.name for p in ini_dir.glob("*.ini")}
+        for mygames in mygames_dirs:
+            if not mygames.is_dir():
+                continue
+            for live in mygames.glob("*.ini"):
+                if live.is_symlink() or live.name in existing_names:
+                    continue
+                try:
+                    shutil.copy2(live, ini_dir / live.name)
+                    existing_names.add(live.name)
+                    _log(f"  Seeded '{live.name}' into the profile from the live copy.")
+                except OSError as exc:
+                    _log(f"  WARN: could not seed '{live.name}': {exc}")
         ini_files = list(ini_dir.glob("*.ini"))
         if not ini_files:
             _log(f"  No *.ini files found in '{ini_dir.name}' folder — skipping.")

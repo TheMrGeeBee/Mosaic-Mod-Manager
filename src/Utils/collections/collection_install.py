@@ -1184,7 +1184,10 @@ def run_collection_install(
                 defer_interactive_bain=(auto_bain is None),
                 resolve_fomod=cb.resolve_fomod, resolve_bain=cb.resolve_bain,
                 on_installed=_capture_fomod, cancel=_col_stop,
-                concurrent_workers=_INSTALL_WORKERS)
+                # Live count, not the configured ceiling — divides CPU threads
+                # only as hard as the pipeline is ACTUALLY saturated right now,
+                # instead of always assuming worst-case peak concurrency.
+                concurrent_workers=_mem_budget.active_count())
         finally:
             _mem_budget.release(_extract_est)
             cb.on_extract_remove(mod.file_id)
@@ -2705,23 +2708,32 @@ def _apply_collection_ini_tweaks(archive_root, profile_dir, game, log):
             prefix_ini_dir = None
     game_name = getattr(game, "name", "") or ""
     allowed_targets = GAME_INI_TARGETS.get(game_name)
-    ini_target_dir = profile_dir
-    profile_name = profile_dir.name
-    get_ini_dir = getattr(game, "_profile_ini_dir", None)
-    if callable(get_ini_dir):
-        try:
-            ini_target_dir = get_ini_dir(profile_name)
-            ini_target_dir.mkdir(parents=True, exist_ok=True)
-        except Exception as exc:
-            log(f"Collection INI tweaks: could not resolve profile 'ini files' "
-                f"folder ({exc}) — using profile root")
-            ini_target_dir = profile_dir
-    if not getattr(game, "profile_ini_files", False):
-        try:
-            game.set_profile_ini_files(True)
-            log("Collection INI tweaks: enabled profile-specific INI files")
-        except Exception as exc:
-            log(f"Collection INI tweaks: could not enable profile INI files ({exc})")
+
+    if getattr(game, "profile_ini_files", False):
+        # Already opted into per-profile INI files (Settings > Configure
+        # Game) — apply to this profile's own managed copy, same as always;
+        # the deploy-time symlink step links it into the prefix.
+        ini_target_dir = profile_dir
+        profile_name = profile_dir.name
+        get_ini_dir = getattr(game, "_profile_ini_dir", None)
+        if callable(get_ini_dir):
+            try:
+                ini_target_dir = get_ini_dir(profile_name)
+                ini_target_dir.mkdir(parents=True, exist_ok=True)
+            except Exception as exc:
+                log(f"Collection INI tweaks: could not resolve profile 'ini files' "
+                    f"folder ({exc}) — using profile root")
+                ini_target_dir = profile_dir
+    elif prefix_ini_dir is not None:
+        # Not using per-profile INI files — apply straight to the one live
+        # INI every profile already shares. Whether to manage INIs per
+        # profile is the user's call (Settings), not something a collection
+        # should flip on as a side effect of shipping an INI Tweaks folder.
+        ini_target_dir = prefix_ini_dir
+    else:
+        log("Collection INI tweaks: prefix path not available — skipped")
+        return
+
     result = apply_collection_ini_tweaks(
         archive_root=archive_root, profile_dir=ini_target_dir,
         prefix_ini_dir=prefix_ini_dir, set_ini_key=_set_ini_key,
