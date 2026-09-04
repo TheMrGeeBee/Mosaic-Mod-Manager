@@ -34,6 +34,7 @@ class FomodWizardView(QWidget):
     def __init__(self, config, mod_base: Path, mod_name: str,
                  on_finish, on_cancel, parent=None, *,
                  saved_selections=None, selections_path=None,
+                 profile_selections_path=None,
                  installed_files=None, active_files=None, loose_files=None):
         super().__init__(parent)
         self._config = config
@@ -57,6 +58,11 @@ class FomodWizardView(QWidget):
         # (new) and step-name-keyed (old on-disk JSON) formats.
         self._saved_selections: dict = saved_selections or {}
         self._selections_path = selections_path   # Path|None — Reset button
+        # The profile-scoped mirror (<profile>/fomod/<mod>.json). Reset must
+        # clear this too: _read_saved_fomod_selections falls back to it, so
+        # deleting only the global copy leaves selections that silently come
+        # back on the next install.
+        self._profile_selections_path = profile_selections_path
         self._visible_steps = []
         self._cur = 0
         # Live widget state for the current step: group_name → controls info.
@@ -80,6 +86,18 @@ class FomodWizardView(QWidget):
         title = QLabel(self._config.name or self._mod_name)
         title.setStyleSheet("font-size:15px; font-weight:600;")
         hb.addWidget(title)
+        # Say so when the wizard was pre-filled from a previous run. Without
+        # this the restore is invisible and a stale choice looks like the
+        # collection author's — the log line alone is not something anyone
+        # reads mid-install.
+        self._restored_lbl = QLabel(self.tr("Restored your previous selections"))
+        self._restored_lbl.setStyleSheet(
+            f"color:{self._c('TEXT_DIM')}; font-style:italic; margin-left:10px;")
+        self._restored_lbl.setToolTip(self.tr(
+            "These options come from the last time you installed this mod, not "
+            "from the mod's defaults. Use Reset Selections to start fresh."))
+        self._restored_lbl.setVisible(bool(self._saved_selections))
+        hb.addWidget(self._restored_lbl)
         hb.addStretch(1)
         self._step_lbl = QLabel("")
         self._step_lbl.setStyleSheet(f"color:{self._c('TEXT_DIM')};")
@@ -508,13 +526,17 @@ class FomodWizardView(QWidget):
     def _on_reset(self):
         """Delete the saved-selections file and restart the wizard from step 0
         with the FOMOD's own defaults (Tk parity)."""
-        if self._selections_path is not None:
+        import os
+        for _path in (self._selections_path, self._profile_selections_path):
+            if _path is None:
+                continue
             try:
-                import os
-                os.remove(self._selections_path)
+                os.remove(_path)
             except OSError:
                 pass
         self._saved_selections = {}
+        if getattr(self, "_restored_lbl", None) is not None:
+            self._restored_lbl.setVisible(False)
         self._all_selections = {}
         self._flag_state = {}
         self._err.setText("")

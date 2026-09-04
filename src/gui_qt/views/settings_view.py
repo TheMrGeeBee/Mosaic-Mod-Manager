@@ -506,6 +506,95 @@ class SettingsView(QWidget):
         except Exception:
             pass
 
+    def _build_clear_fomod_selections(self, g):
+        """Row for forgetting every saved FOMOD selection for this game.
+
+        Mosaic remembers the options picked in a FOMOD wizard and restores them
+        on the next install of that mod. That is a convenience on a repeat
+        install, but a stale choice can quietly diverge from what a collection
+        author intended, so it needs to be clearable in bulk rather than only
+        one mod at a time from inside the wizard."""
+        row = self._next_row(g)
+        g.addWidget(QLabel(self.tr("Saved FOMOD selections")), row, 0)
+        self._fomod_clear_btn = QPushButton(self.tr("Clear saved selections"))
+        self._fomod_clear_btn.setCursor(Qt.PointingHandCursor)
+        self._fomod_clear_btn.setToolTip(self.tr(
+            "Forget the FOMOD options remembered from previous installs, for "
+            "this game and for every profile. Installed mods are not touched; "
+            "the next FOMOD wizard starts from the mod's own defaults."))
+        self._fomod_clear_btn.clicked.connect(self._on_clear_fomod_selections)
+        self._fomod_clear_lbl = QLabel("")
+        self._fomod_clear_lbl.setStyleSheet("font-style:italic;")
+        wrap = QHBoxLayout()
+        wrap.setContentsMargins(0, 0, 0, 0)
+        wrap.addWidget(self._fomod_clear_btn)
+        wrap.addWidget(self._fomod_clear_lbl)
+        wrap.addStretch(1)
+        holder = QWidget(); holder.setLayout(wrap)
+        g.addWidget(holder, row, 1)
+        self._refresh_fomod_selection_count()
+
+    def _saved_fomod_selection_files(self):
+        """Every saved-selection file: the per-game store plus the
+        ``<profile>/fomod/`` mirrors. Both matter — the reader falls back to
+        the mirror, so clearing only the global store lets selections come
+        back."""
+        from pathlib import Path as _P
+        out = []
+        game = getattr(getattr(self._window, "_gs", None), "game", None)
+        name = getattr(game, "name", "") or ""
+        if not name:
+            return out
+        try:
+            from Utils.config_paths import get_config_dir
+            gdir = _P(get_config_dir()) / "games" / name / "fomod_selections"
+            if gdir.is_dir():
+                out += sorted(gdir.glob("*.json"))
+        except Exception:
+            pass
+        try:
+            # get_profile_root() is the folder CONTAINING profiles/ — it honours
+            # a custom staging path, so don't rebuild this from the staging dir.
+            profiles = _P(game.get_profile_root()) / "profiles"
+            if profiles.is_dir():
+                for pdir in profiles.iterdir():
+                    fdir = pdir / "fomod"
+                    if fdir.is_dir():
+                        out += sorted(fdir.glob("*.json"))
+        except Exception:
+            pass
+        return out
+
+    def _refresh_fomod_selection_count(self):
+        try:
+            n = len(self._saved_fomod_selection_files())
+        except Exception:
+            n = 0
+        self._fomod_clear_btn.setEnabled(n > 0)
+        self._fomod_clear_lbl.setText(
+            self.tr("none saved") if n == 0
+            else self.tr("{0} saved").format(n))
+
+    def _on_clear_fomod_selections(self):
+        files = self._saved_fomod_selection_files()
+        if not files:
+            self._refresh_fomod_selection_count()
+            return
+        removed = 0
+        for f in files:
+            try:
+                f.unlink()
+                removed += 1
+            except OSError:
+                pass
+        self._refresh_fomod_selection_count()
+        try:
+            self._window._notify(
+                self.tr("Forgot {0} saved FOMOD selection(s).").format(removed),
+                "success")
+        except Exception:
+            pass
+
     def _build_downloads(self):
         g = self._section(self.tr("Downloads & Collections"))
         try:
@@ -518,6 +607,8 @@ class SettingsView(QWidget):
             "check_download_locations": bool(cs.get("check_download_locations", True)),
             "clear_archive_after_install": bool(cs.get("clear_archive_after_install", False)),
         }
+
+        self._build_clear_fomod_selections(g)
 
         self._checkbox(
             g, self.tr("Clear archive after install"),
