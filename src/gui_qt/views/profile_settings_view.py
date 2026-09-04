@@ -421,7 +421,12 @@ class ProfileSettingsView(QWidget):
         ConfirmOverlay.show_over(
             self._overlay_host(), "Remove Profile",
             f"Are you sure you want to remove the '{profile}' profile?\n\n"
-            "The game will be restored first if this profile is deployed.",
+            "This permanently deletes:\n"
+            "• Profile settings (ini, load order, plugin list)\n"
+            "• Optional-mod selections for any installed Collection\n"
+            "• This profile's remembered FOMOD/BAIN wizard choices\n\n"
+            "If this is the currently deployed profile, its files are removed "
+            "from the game folder first.",
             on_done=after_first, confirm_label=self.tr("Remove"))
 
     def _start_remove_worker(self, profile: str, is_deployed: bool):
