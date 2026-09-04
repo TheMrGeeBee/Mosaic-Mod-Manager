@@ -427,7 +427,7 @@ class ProfileSettingsView(QWidget):
             "• This profile's remembered FOMOD/BAIN wizard choices\n\n"
             "If this is the currently deployed profile, its files are removed "
             "from the game folder first.",
-            on_done=after_first, confirm_label=self.tr("Remove"))
+            on_done=after_first, confirm_label=self.tr("Remove"), card_h=360)
 
     def _start_remove_worker(self, profile: str, is_deployed: bool):
         win = self._window

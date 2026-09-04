@@ -323,6 +323,7 @@ class MainWindow(QMainWindow):
     _col_progress = Signal(object)             # float | None
     _col_agg = Signal("qlonglong", "qlonglong", float)  # bytes cur, total, MB/s (64-bit: >2GB)
     _col_display_total = Signal("qlonglong")   # true collection size (bytes, 64-bit)
+    _col_cache_progress = Signal(int, int)     # cache_hit_done, dl_done
     _col_dl = Signal(str, object)              # ("start"|"update"|"finish", payload)
     _col_extract = Signal(str, object)         # ("queue"|"add"|"update"|"remove", payload)
     _col_row = Signal(int)                     # file_id installed
@@ -512,6 +513,7 @@ class MainWindow(QMainWindow):
         self._log_view.setReadOnly(True)
         self._log_view.setObjectName("LogView")
         self._log_view.setMinimumHeight(0)   # can collapse fully
+        self._log_view.setMaximumBlockCount(20000)   # bound the document too
 
         self._vsplit = QSplitter(Qt.Vertical)
         self._vsplit.addWidget(self._tabs)
@@ -612,6 +614,7 @@ class MainWindow(QMainWindow):
         self._col_progress.connect(self._on_col_progress)
         self._col_agg.connect(self._on_col_agg)
         self._col_display_total.connect(self._on_col_display_total)
+        self._col_cache_progress.connect(self._on_col_cache_progress)
         self._col_dl.connect(self._on_col_dl)
         self._col_extract.connect(self._on_col_extract)
         self._col_row.connect(self._on_col_row)
@@ -3900,6 +3903,7 @@ class MainWindow(QMainWindow):
             on_progress=lambda v: self._col_progress.emit(v),
             on_agg_download=lambda c, t, s: self._col_agg.emit(int(c), int(t), float(s)),
             on_display_total=lambda n: self._col_display_total.emit(int(n)),
+            on_cache_progress=lambda h, d: self._col_cache_progress.emit(int(h), int(d)),
             on_dl_mod_start=lambda f, n, s: self._col_dl.emit("start", (f, n, s)),
             on_dl_mod_update=lambda f, c, t: self._col_dl.emit("update", (f, c, t)),
             on_dl_mod_finish=lambda f: self._col_dl.emit("finish", f),
@@ -3932,6 +3936,10 @@ class MainWindow(QMainWindow):
     def _on_col_display_total(self, n):
         if self._col_install_overlay is not None:
             self._col_install_overlay.set_display_total(n)
+
+    def _on_col_cache_progress(self, cache_hit_done, dl_done):
+        if self._col_install_overlay is not None:
+            self._col_install_overlay.set_cache_progress(cache_hit_done, dl_done)
 
     def _on_col_dl(self, verb, payload):
         ov = self._col_install_overlay
@@ -13571,7 +13579,10 @@ class MainWindow(QMainWindow):
         from datetime import datetime
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         if not hasattr(self, "_log_lines"):
-            self._log_lines = []
+            from collections import deque
+            # Bounded so a very long-running session (e.g. a multi-thousand-mod
+            # collection install) can't grow this list forever.
+            self._log_lines = deque(maxlen=20000)
         self._log_lines.append((line, severity, timestamp))
         # Persist to the session log file (before the display filter, so the file
         # captures everything — Tk status_bar parity).
@@ -13664,6 +13675,7 @@ class MainWindow(QMainWindow):
         view = QPlainTextEdit()
         view.setReadOnly(True)
         view.setObjectName("LogView")
+        view.setMaximumBlockCount(20000)   # bound the document too
         self._log_tab_view = view
         # Seed with the existing (filtered, colour-tinted) log contents.
         for text, sev, ts in getattr(self, "_log_lines", []):

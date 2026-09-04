@@ -126,6 +126,11 @@ class CollectionInstallOverlay(QWidget):
         # True collection size (installed/uncompressed) for the aggregate label;
         # the progress bar itself still tracks compressed download bytes.
         self._display_total = 0
+        # True once every mod processed so far was found in the download cache
+        # (nothing actually fetched over the network) — set_agg then stays quiet
+        # instead of showing a byte total that's meaningless with no real
+        # download happening.
+        self._all_cached = False
 
         self.setObjectName("OverlayBackdrop")
         self.setStyleSheet("#OverlayBackdrop { background: rgba(0,0,0,150); }")
@@ -198,6 +203,7 @@ class CollectionInstallOverlay(QWidget):
 
         # RED — a FIXED pool of download-row widgets (built once, parented now).
         dl_frame, dl_v = self._panel(self.tr("Downloading"), "#c86464")
+        self._dl_frame = dl_frame
         self._dl_rows: list[_DownloadRow] = []
         for _ in range(_DL_SLOTS):
             row = _DownloadRow(dl_frame)
@@ -281,6 +287,11 @@ class CollectionInstallOverlay(QWidget):
         self._display_total = max(0, int(n or 0))
 
     def set_agg(self, cur: int, tot: int, mbps: float):
+        if self._all_cached:
+            # set_cache_progress already shows the honest "found in cache"
+            # message — a compressed-vs-installed-size byte total is not just
+            # unhelpful here, it's actively wrong (nothing is downloading).
+            return
         if tot > 0:
             # Total download bytes can be under- or over-estimated (a mod's
             # size is often unknown → 0, yet its real bytes still accumulate),
@@ -301,6 +312,24 @@ class CollectionInstallOverlay(QWidget):
         else:
             self._agg_bar.setRange(0, 0)
             self._agg_lbl.setText(self.tr("Downloading…"))
+
+    def set_cache_progress(self, cache_hit_done: int, dl_done: int):
+        """Flip between the normal byte-progress display and a plain "nothing
+        to download" state once every mod processed so far turned out to
+        already be in the download cache. Reverts the moment a real download
+        is seen (dl_done keeps counting cache hits too, so this only ever
+        holds true while EVERY processed mod was a hit)."""
+        all_cached = dl_done > 0 and cache_hit_done >= dl_done
+        if all_cached == self._all_cached:
+            return
+        self._all_cached = all_cached
+        self._dl_frame.setVisible(not all_cached)
+        if all_cached:
+            self._agg_bar.setRange(0, 1000)
+            self._agg_bar.setValue(1000)
+            self._agg_lbl.setText(
+                self.tr("All {0} mod(s) found in the download cache — "
+                        "nothing to download").format(dl_done))
 
     # RED — assign a pool slot per download; overflow is a count, not widgets.
     def dl_start(self, file_id: int, name: str, size: int):

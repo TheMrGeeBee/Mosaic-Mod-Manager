@@ -421,6 +421,7 @@ class _PipelineState:
     dl_done: int = 0
     dl_bytes_done: int = 0
     total_bytes: int = 0
+    cache_hit_done: int = 0   # of dl_done, how many were already-cached (dl_lock)
     # --- locks ---
     dl_lock: threading.Lock = field(default_factory=threading.Lock)
     install_lock: threading.Lock = field(default_factory=threading.Lock)
@@ -454,6 +455,7 @@ class CollectionInstallCallbacks:
     on_progress: Callable[["float | None"], None] = _noop  # 0..1 or None=hide
     on_agg_download: Callable[[int, int, float], None] = _noop  # bytes cur,total,MB/s
     on_display_total: Callable[[int], None] = _noop     # true collection size (bytes)
+    on_cache_progress: Callable[[int, int], None] = _noop  # cache_hit_done, dl_done — lets the UI tell "already cached" from "downloading"
     # RED — active downloads
     on_dl_mod_start: Callable[[int, str, int], None] = _noop   # file_id,name,size
     on_dl_mod_update: Callable[[int, int, int], None] = _noop  # file_id,cur,tot
@@ -994,12 +996,15 @@ def run_collection_install(
         with state.dl_lock:
             agg = state.dl_bytes_done
             total = state.total_bytes
+            dl_done = state.dl_done
+            cache_hit_done = state.cache_hit_done
         dt = now - state.agg_state["prev_time"]
         if dt >= 0.5:
             state.agg_state["speed"] = (agg - state.agg_state["prev_bytes"]) / dt
             state.agg_state["prev_bytes"] = agg
             state.agg_state["prev_time"] = now
         cb.on_agg_download(agg, total, state.agg_state["speed"] / (1024 * 1024))
+        cb.on_cache_progress(cache_hit_done, dl_done)
 
     # ---- download producer -------------------------------------------
     def _download_one(mod):
@@ -1063,7 +1068,7 @@ def run_collection_install(
                 result = DownloadResult(
                     success=True, file_path=_ext_found, file_name=_ext_found.name,
                     bytes_downloaded=_ext_found.stat().st_size, game_domain=mod_domain,
-                    mod_id=mod.mod_id, file_id=mod.file_id)
+                    mod_id=mod.mod_id, file_id=mod.file_id, from_cache=True)
                 with state.install_lock:
                     state.external_archive_paths.add(str(_ext_found))
                 break
@@ -1087,6 +1092,8 @@ def run_collection_install(
 
         with state.dl_lock:
             state.dl_done += 1
+            if result and result.from_cache:
+                state.cache_hit_done += 1
             state.dl_results[mod.file_id] = (result, effective_domain)
             done = state.dl_done
         with state.install_lock:
@@ -1176,7 +1183,8 @@ def run_collection_install(
                 defer_interactive_fomod=True,
                 defer_interactive_bain=(auto_bain is None),
                 resolve_fomod=cb.resolve_fomod, resolve_bain=cb.resolve_bain,
-                on_installed=_capture_fomod, cancel=_col_stop)
+                on_installed=_capture_fomod, cancel=_col_stop,
+                concurrent_workers=_INSTALL_WORKERS)
         finally:
             _mem_budget.release(_extract_est)
             cb.on_extract_remove(mod.file_id)

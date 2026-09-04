@@ -433,6 +433,7 @@ class DownloadResult:
     game_domain: str = ""
     mod_id: int = 0
     file_id: int = 0
+    from_cache: bool = False   # True when found already on disk, not fetched over the network
 
 
 class DownloadCancelled(Exception):
@@ -647,6 +648,7 @@ class NexusDownloader:
                     game_domain=game_domain,
                     mod_id=mod_id,
                     file_id=file_id,
+                    from_cache=True,
                 )
             else:
                 app_log(

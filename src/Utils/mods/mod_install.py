@@ -705,7 +705,8 @@ def _fix_nonutf8_names_extracted_tree(extract_dir: str, log_fn: LogFn) -> int:
 
 def _extract_archive(archive_path: str, dest_dir: str, log_fn: LogFn,
                      cancel=None, error_sink: "list[str] | None" = None,
-                     progress_cb: "Callable[[int], None] | None" = None) -> bool:
+                     progress_cb: "Callable[[int], None] | None" = None,
+                     concurrent_workers: int = 1) -> bool:
     """Extract *archive_path* into *dest_dir*. Native 7z → bsdtar → py7zr →
     Python zipfile/tarfile, mirroring gui.install_mod's fallback chain. After a
     successful native/zip extraction, backslash-named members are normalised
@@ -722,7 +723,14 @@ def _extract_archive(archive_path: str, dest_dir: str, log_fn: LogFn,
     *progress_cb* — optional ``cb(percent)`` with real extraction progress.
     Only the 7z (``-bsp1``) and zipfile paths report; the rare fallbacks
     (bsdtar/py7zr/tarfile) never fire it, leaving the caller's indeterminate
-    bar in place."""
+    bar in place.
+
+    *concurrent_workers* — how many extractions the caller may be running at
+    once (1 for a plain single-mod install). When the "Extraction CPU
+    threads" setting is "All", 7z's ``-mmt=on`` would otherwise let EVERY
+    concurrent extraction claim every core; this divides the core count
+    across them instead so N concurrent extractions don't each try to claim
+    the whole machine."""
     ext = Path(archive_path).suffix.lower()
 
     def _note(err) -> None:
@@ -768,7 +776,14 @@ def _extract_archive(archive_path: str, dest_dir: str, log_fn: LogFn,
         _limits = {}
     _threads = int(_limits.get("cpu_threads", 0) or 0)
     _low_prio = bool(_limits.get("low_priority", False))
-    _mmt = f"-mmt={_threads}" if _threads > 0 else "-mmt=on"
+    if _threads > 0:
+        _mmt = f"-mmt={_threads}"          # explicit user choice — never overridden
+    elif concurrent_workers > 1:
+        # "All" threads × N concurrent extractions would let each one claim
+        # every core at once — divide fairly instead of oversubscribing.
+        _mmt = f"-mmt={max(1, (os.cpu_count() or 1) // concurrent_workers)}"
+    else:
+        _mmt = "-mmt=on"
 
     _7z = (shutil.which("7zzs") or shutil.which("7zz")
            or shutil.which("7z") or shutil.which("7za"))
@@ -1053,14 +1068,17 @@ class PreparedInstall:
 def prepare_archive(archive_path: str, game, profile_dir: Path, *,
                     log_fn: LogFn, progress_fn: Optional[ProgressFn] = None,
                     preferred_name: str = "", prebuilt_meta=None,
-                    on_need_prefix=None, cancel=None) -> PreparedInstall | None:
+                    on_need_prefix=None, cancel=None,
+                    concurrent_workers: int = 1) -> PreparedInstall | None:
     """Extract *archive_path* to a kept temp dir and detect FOMOD. The caller
     either runs the wizard (is_fomod) then `finish_install(prepared, selections)`,
     or just calls `finish_install(prepared, None)` for a plain/default install.
     Returns None on failure (and cleans up).
 
     *cancel* — optional ``threading.Event``; when set the extraction is aborted
-    and the partial temp dir removed (returns None)."""
+    and the partial temp dir removed (returns None).
+
+    *concurrent_workers* — see ``_extract_archive``; passed straight through."""
     archive = Path(archive_path)
     if not archive.is_file():
         log_fn(f"Install: archive not found: {archive_path}")
@@ -1115,7 +1133,8 @@ def prepare_archive(archive_path: str, game, profile_dir: Path, *,
     extract_errors: list[str] = []
     extracted = _extract_archive(str(archive), str(extract_dir), log_fn,
                                  cancel=cancel, error_sink=extract_errors,
-                                 progress_cb=_extract_progress)
+                                 progress_cb=_extract_progress,
+                                 concurrent_workers=concurrent_workers)
     if not extracted and (cancel is None or not cancel.is_set()):
         # The size estimate can undershoot (a solid .7z with no `7z` binary to
         # probe falls back to 15× compressed — extreme texture packs reach 30×),
@@ -1142,7 +1161,8 @@ def prepare_archive(archive_path: str, game, profile_dir: Path, *,
                 extracted = _extract_archive(str(archive), str(extract_dir),
                                              log_fn, cancel=cancel,
                                              error_sink=extract_errors,
-                                             progress_cb=_extract_progress)
+                                             progress_cb=_extract_progress,
+                                             concurrent_workers=concurrent_workers)
     if not extracted:
         if cancel is not None and cancel.is_set():
             log_fn("Install: extraction cancelled — removing temp files.")
@@ -1170,7 +1190,8 @@ def prepare_archive(archive_path: str, game, profile_dir: Path, *,
                                           dir=str(extract_dir.parent)))
         _p(0, 0, "Extracting")   # back to indeterminate for the second pass
         if _extract_archive(str(fomod_wrapper), str(inner_dir), log_fn,
-                            cancel=cancel, progress_cb=_extract_progress):
+                            cancel=cancel, progress_cb=_extract_progress,
+                            concurrent_workers=concurrent_workers):
             shutil.rmtree(extract_dir, ignore_errors=True)
             extract_dir = inner_dir
         else:
@@ -1729,7 +1750,8 @@ def install_collection_archive(
         resolve_fomod=None,
         resolve_bain=None,
         on_installed=None,
-        cancel=None) -> "str | None":
+        cancel=None,
+        concurrent_workers: int = 1) -> "str | None":
     """Install ONE collection mod from a downloaded archive — the tkinter-free
     equivalent of ``gui/install_mod.py:install_mod_from_archive`` for the paths a
     collection install exercises (FOMOD with author selections or deferred, BAIN,
@@ -1747,6 +1769,12 @@ def install_collection_archive(
     resolve_bain(subpackages, mod_root, mod_name) -> {"selected":[...]}|None
         (return None to cancel that mod). ``on_installed(is_fomod: bool)`` fires
         after a successful stage so the orchestrator's archive-keep logic works.
+
+    *concurrent_workers* — how many of these can be running at once (the
+    orchestrator's "Max extractions" setting); passed through to
+    ``prepare_archive``/``_extract_archive`` so "All" CPU threads gets
+    divided fairly instead of every concurrent extraction claiming every
+    core.
     """
     archive = Path(archive_path)
     if not archive.is_file():
@@ -1774,7 +1802,8 @@ def install_collection_archive(
     # Extract + FOMOD-detect via the shared prepare step (kept temp dir).
     prepared = prepare_archive(
         str(archive), game, profile_dir, log_fn=log_fn, progress_fn=progress_fn,
-        preferred_name=preferred_name, prebuilt_meta=prebuilt_meta, cancel=cancel)
+        preferred_name=preferred_name, prebuilt_meta=prebuilt_meta, cancel=cancel,
+        concurrent_workers=concurrent_workers)
     if prepared is None:
         return None
 
