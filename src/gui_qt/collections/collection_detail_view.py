@@ -669,14 +669,23 @@ class CollectionDetailView(QWidget):
             return
         # Selections saved by the last install of this collection (Tk parity:
         # pre_skipped_fids) — only consulted for boxes not shown this session.
-        saved_skipped = self._saved_skipped_fids()
+        # A collection with no prior profile has no such history — a bare
+        # empty saved_skipped set can't tell "never installed" apart from
+        # "installed, everything kept", so check has_history explicitly and
+        # default a genuinely first-time view to unchecked (opt-in, not
+        # opt-out) rather than mistaking "no history" for "nothing skipped".
+        _pname, pdir = self._collection_profile()
+        has_history = pdir is not None and pdir.is_dir()
+        saved_skipped = self._saved_skipped_fids() if has_history else set()
         for i, m in enumerate(optionals):
             name = self._display_name(m)
             cb = QCheckBox(name)
             if m.file_id in prior_fids:
                 cb.setChecked(m.file_id not in prior_unticked)
-            else:
+            elif has_history:
                 cb.setChecked(m.file_id not in saved_skipped)
+            else:
+                cb.setChecked(False)
             cb.setToolTip(name)
             self._opt_layout.insertWidget(i, cb)
             self._opt_boxes.append((cb, m.file_id))
