@@ -20,6 +20,18 @@ class SkyrimSE(Fallout_3):
     # SSE auto-loads plugin-matched BSAs — it is NOT a FO3/FNV-style engine that
     # only reads archives listed in the INI. Override the Fallout_3 default.
     _archive_list_needs_mod_bsas = False
+    # The engine's own hardcoded filename is capital-P "Plugins.txt" (matches
+    # Oblivion/Starfield's override below) — Fallout_3's lowercase default is
+    # wrong here. On a case-sensitive Linux host this isn't cosmetic: Wine
+    # resolves the game's own read/write of "Plugins.txt" to a *different*
+    # file than whatever we deploy under the wrong casing, so our deploy
+    # silently writes a file the game never looks at. Confirmed live
+    # 2026-09-05 — the game creates its own fresh "Plugins.txt" mid-session
+    # (just the two header comments, no plugins), orphaning our deploy and
+    # crashing any SKSE plugin that resolves a form via a plugin+FormID
+    # lookup (e.g. BladeAndBlunt's LoadFormPointerFromIni) against a plugin
+    # list the engine now considers empty.
+    _PLUGINS_TXT_FILENAME = "Plugins.txt"
     plugins_use_star_prefix = True
     plugins_include_vanilla = False
     # Vanilla incl. Skyrim.ccc content (and _ResourcePack.esl, which is listed

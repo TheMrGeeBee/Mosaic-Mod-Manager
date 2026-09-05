@@ -7950,6 +7950,9 @@ class MainWindow(QMainWindow):
                 def _run(run_path=run_path):
                     # Worker-thread exceptions otherwise vanish to stderr.
                     try:
+                        if hasattr(game, "verify_and_repair_plugins_txt"):
+                            game.verify_and_repair_plugins_txt(
+                                self._gs.profile, log_fn=self._append_log)
                         target(run_path, game, log_fn=self._append_log)
                     except Exception as exc:
                         self._append_log(f"Run EXE error: {exc!r}")
@@ -7987,6 +7990,9 @@ class MainWindow(QMainWindow):
             def _run():
                 # Worker-thread exceptions otherwise vanish to stderr.
                 try:
+                    if hasattr(game, "verify_and_repair_plugins_txt"):
+                        game.verify_and_repair_plugins_txt(
+                            self._gs.profile, log_fn=self._append_log)
                     exe_launch.launch_game(game, log_fn=self._append_log)
                 except Exception as exc:
                     self._append_log(f"Play error: {exc!r}")

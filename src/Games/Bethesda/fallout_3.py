@@ -467,9 +467,18 @@ class Fallout_3(BaseGame):
         # Only treat a stored value as an override when it differs from the
         # game's class default, so a value equal to the default (which we now
         # always persist — see _save_paths_extra) doesn't masquerade as one.
+        # Compared case-insensitively: the filesystem this matters on (the
+        # Windows/Wine prefix) is itself case-insensitive for this file, so a
+        # stored value differing only in case is never a real override — it's
+        # either the same filename or, as happened when SkyrimSE's class
+        # default was corrected from "plugins.txt" to "Plugins.txt", a value
+        # persisted under the old default before the fix. A case-sensitive
+        # comparison would have silently resurrected the old (wrong) filename
+        # for every existing install via this exact path.
         pfname = str(raw_pfname) if raw_pfname else ""
         self._plugins_txt_filename_override = (
-            pfname if pfname and pfname != self._PLUGINS_TXT_FILENAME else None)
+            pfname if pfname and pfname.lower() != self._PLUGINS_TXT_FILENAME.lower()
+            else None)
 
     def _save_paths_extra(self) -> dict:
         # Always emit the effective filename (never omit it): omitting it left a
@@ -777,6 +786,56 @@ class Fallout_3(BaseGame):
         _log = log_fn
         for target in self._plugins_txt_targets():
             remove_plugins_copy(target.parent, target.name, _log)
+
+    def verify_and_repair_plugins_txt(self, profile: str, log_fn=None) -> bool:
+        """Re-check the live Plugins.txt against the deployed profile right
+        before launch, repairing it if the two have drifted apart.
+
+        Confirmed root cause (2026-09-05, Gate To Sovngarde on Skyrim SE):
+        Skyrim/SKSE rewrites Plugins.txt during its own boot — a clean
+        launch's copy ends up with an mtime *after* our deploy-time write —
+        and on a hung/failed boot that rewrite has been observed to strip
+        every enabled flag. Any SKSE plugin that then resolves a form via an
+        ini-driven FormID/plugin lookup (e.g. BladeAndBlunt's
+        LoadFormPointerFromIni) gets a null form for a plugin the engine now
+        considers inactive, and crashes dereferencing it. Deploying again
+        "fixed" it only because deploy rewrites Plugins.txt as a side
+        effect — this does the same targeted rewrite without a full
+        redeploy.
+
+        Cheap by design: compares a couple of small text files, no Data/
+        rescan. Returns True when a repair was applied.
+        """
+        _log = log_fn or (lambda *_a: None)
+        if not self.get_deploy_active() or self.get_last_deployed_profile() != profile:
+            return False
+        targets = self._plugins_txt_targets()
+        if not targets:
+            return False
+        source = self.get_profile_root() / "profiles" / profile / "plugins.txt"
+        if not source.is_file():
+            return False
+        try:
+            expected = source.read_text(encoding="utf-8")
+        except OSError:
+            return False
+        drifted = False
+        for target in targets:
+            try:
+                actual = target.read_text(encoding="utf-8")
+            except OSError:
+                drifted = True
+                break
+            if actual != expected:
+                drifted = True
+                break
+        if not drifted:
+            return False
+        _log("Pre-launch check: Plugins.txt no longer matches the deployed "
+             "profile (likely rewritten by a previous boot) — repairing "
+             "before launch.")
+        self._symlink_plugins_txt(profile, _log)
+        return True
 
     # -----------------------------------------------------------------------
     # Timestamp load order (Oblivion/FO3/FNV)
