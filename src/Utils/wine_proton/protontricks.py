@@ -648,12 +648,15 @@ def install_vcredist(
             _log("Using cached VC++ Redistributable installer.")
         _log("Installing VC++ Redistributable in game prefix (silent) — please wait …")
         from Utils.wine_proton.steam_finder import proton_run_command
-        proc = subprocess.run(
+        from Utils.exe_launch.exe_launch import _apply_run_host_shim
+        cmd = _apply_run_host_shim(
             proton_run_command(proton_script, "runinprefix",
              str(cache_path), "/install", "/quiet", "/norestart",
              env=env),
-            env=env, cwd=cache_path.parent,
+            Path(prefix_path) if prefix_path else None,
+            "VC++ Redistributable", _log,
         )
+        proc = subprocess.run(cmd, env=env, cwd=cache_path.parent)
         # 0 = success, 1638 = already installed, 3010 = reboot required, 1641 = reboot initiated
         if proc.returncode in {0, 1638, 3010, 1641}:
             _log(f"VC++ Redistributable installed (exit {proc.returncode}).")
