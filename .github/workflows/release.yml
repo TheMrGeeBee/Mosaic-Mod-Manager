@@ -135,7 +135,7 @@ jobs:
           awk -v v="- $base" '
             $0 == v { capture = 1; next }
             # Also stop at a pre-rename "- Amethyst vX.Y.Z" header: that block
-            # keeps Amethyst Mod Manager's own numbering, which overlaps ours.
+            # keeps the original Amethyst Mod Manager numbering, which overlaps ours.
             capture && (/^- v[0-9]/ || /^- Amethyst v[0-9]/) { exit }
             capture { print }
           ' Changelog.txt | sed -e :a -e '/^$/{$d;N;ba' -e '}' > raw-notes.md
@@ -268,7 +268,7 @@ jobs:
           awk -v v="- $tag" '
             $0 == v { capture = 1; next }
             # Also stop at a pre-rename "- Amethyst vX.Y.Z" header: that block
-            # keeps Amethyst Mod Manager's own numbering, which overlaps ours.
+            # keeps the original Amethyst Mod Manager numbering, which overlaps ours.
             capture && (/^- v[0-9]/ || /^- Amethyst v[0-9]/) { exit }
             capture { print }
           ' Changelog.txt | sed -e :a -e '/^$/{$d;N;ba' -e '}' > nexus-changelog.md
