@@ -4,6 +4,12 @@ reset to v1.0.0; they keep Amethyst Mod Manager's original numbering, which
 overlaps the numbers above, and the prefix is what keeps the two apart (and
 keeps release tooling from matching the wrong section).
 
+- v1.0.13
+### Bug Fixes
+- Fixed Mosaic's own "Install VC++ Redistributable" step — run automatically the first time a game's Proton prefix is set up, and available any time after via Proton Tools — silently failing on every real Steam-managed prefix, with nothing in the log beyond a bare exit code. A prefix that's only ever been touched by a real Steam launch has its Wine DLLs symlinked through a path that only exists inside Steam's own sandbox; Mosaic ran the installer directly, outside that sandbox, so it hit a dangling symlink and Wine couldn't even start. The practical effect on a modded Bethesda game: any SKSE-style plugin that depends on the real Visual C++ runtime could fail to load with a DLL error, because Wine's old placeholder DLLs were all that was ever actually installed. The installer now runs through the same sandbox-compatible wrapper Mosaic already uses elsewhere for this exact problem
+
+---
+
 - v1.0.12
 ### Additions
 - Added a "Clear saved FOMOD selections" button (Settings ▸ Downloads & Collections) for wiping a profile's remembered wizard choices in one step, and a banner in the FOMOD wizard itself ("Restored your previous selections") when it reopens with a choice already remembered for this profile. Reset Selections in the wizard now also clears that remembered choice, not just the current run
