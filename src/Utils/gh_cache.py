@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import shutil
 import time
 import urllib.error
@@ -41,6 +42,20 @@ from Utils.config_paths import get_config_dir
 
 
 _USER_AGENT = "Mosaic-Mod-Manager"
+
+
+def _auth_headers() -> dict:
+    """Optional ``Authorization`` header from a locally-set token.
+
+    Reads ``GITHUB_TOKEN`` or ``GH_TOKEN`` (matching the `gh` CLI's own
+    convention) from the environment — never embed a token in source. This
+    only ever picks up a token the user has set in their own shell/session,
+    raising GitHub's unauthenticated 60/hour-per-IP limit to 5000/hour for
+    their own machine. Absent (and this is a no-op) for every user who
+    hasn't set one.
+    """
+    token = os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN")
+    return {"Authorization": f"Bearer {token}"} if token else {}
 
 _ssl_ctx = None
 
@@ -159,6 +174,7 @@ def fetch(
     headers = {
         "Accept": accept,
         "User-Agent": _USER_AGENT,
+        **_auth_headers(),
     }
     etag = meta.get("etag")
     if etag and cached_body is not None:
