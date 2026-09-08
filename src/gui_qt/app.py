@@ -9782,12 +9782,22 @@ class MainWindow(QMainWindow):
         of them are confirmed idle; any one still running holds the shared
         game object, and releasing early would re-open the exact
         wrong-profile race this queue exists to prevent. Called from every
-        handler that clears one of those flags."""
+        handler that clears one of those flags.
+
+        _pending_install_batches also gates this: _on_install_done clears
+        _install_running and calls here SYNCHRONOUSLY, but only DEFERS the
+        next queued batch to the next event-loop tick (QTimer.singleShot).
+        Without this check, a Deploy queued behind several near-simultaneous
+        mod updates (e.g. updating multiple outdated mods) would release
+        right after the FIRST update finishes — capturing on-disk state
+        before the rest have installed — instead of waiting for the whole
+        queue to drain."""
         if (getattr(self, "_install_running", False)
                 or getattr(self, "_deploy_running", False)
                 or getattr(self, "_staged_finish_running", False)
                 or self._staged_finish_queue
-                or getattr(self, "_col_install_running", False)):
+                or getattr(self, "_col_install_running", False)
+                or self._pending_install_batches):
             return
         pending, self._pending_after_staged = self._pending_after_staged, []
         for cb in pending:
