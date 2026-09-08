@@ -27,8 +27,10 @@ on:
         description: >-
           Upload the AppImage and Flatpak bundle to Nexus Mods as new file
           versions. Stable tags/refs only (a hyphenated ref, e.g. a beta tag,
-          is refused even if selected). Manual opt-in only for now — not
-          wired into the automatic tag-push release yet.
+          is refused even if selected). A stable tag PUSH now does this
+          automatically in the same run as the GitHub Release — this input
+          only matters for a manual dispatch, e.g. retrying a failed Nexus
+          upload from the existing tag ref without re-pushing it.
         type: boolean
         default: false
       nexus_changelog_and_archive:
@@ -199,10 +201,14 @@ jobs:
   # Upload the AppImage and Flatpak bundle to Nexus Mods as new file
   # versions on their existing, pre-created file slots (this action can only
   # add a version to a slot a human already created on the Nexus website —
-  # it can't create a slot itself). Manual opt-in only (publish_nexus:
-  # true) — not wired into the automatic tag-push release yet. Stable
-  # (non-hyphenated) refs only, matching the hyphen-means-prerelease
-  # convention used everywhere else in this pipeline.
+  # it can't create a slot itself). Runs automatically on a stable tag push
+  # (same run as the GitHub Release + Pages, no redundant rebuild), or via
+  # a manual publish_nexus: true dispatch — the latter still matters for a
+  # partial retry (skip_appimage_nexus_upload / skip_flatpak_nexus_upload)
+  # after a failure, dispatched from the existing tag ref rather than
+  # re-pushing it. Stable (non-hyphenated) refs only, matching the
+  # hyphen-means-prerelease convention used everywhere else in this
+  # pipeline.
   #
   # Also handles what used to be three manual post-upload steps on the
   # Nexus website: attaching this version's changelog (same Changelog.txt
@@ -217,8 +223,9 @@ jobs:
     name: Publish to Nexus Mods
     if: |
       needs.build.result == 'success'
-      && inputs.publish_nexus == true
       && !contains(github.ref_name, '-')
+      && (inputs.publish_nexus == true
+          || (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')))
     needs: build
     runs-on: ubuntu-latest
     steps:
@@ -316,7 +323,16 @@ jobs:
           update_mod_version: true
           # Moves the previous Main-files version into the Files tab's
           # "Archived files" section — was a manual step before this.
-          archive_existing_version: ${{ inputs.nexus_changelog_and_archive }}
+          #
+          # "!= false" (not a bare truthy check) because this input's own
+          # declared default (true) is only actually applied by a real
+          # workflow_dispatch invocation — a plain tag push has no `inputs`
+          # context at all, so a bare `inputs.nexus_changelog_and_archive`
+          # would silently resolve to nothing (falsy) and skip both the
+          # changelog and the archive step for every automatic release.
+          # This treats "absent" the same as "true", and only an explicit
+          # dispatch-time `false` opts out.
+          archive_existing_version: ${{ inputs.nexus_changelog_and_archive != false }}
           # changelog requires mod_id. AppImage and Flatpak share ONE Nexus
           # mod page — the changelog is a mod-level entry, not a per-file one,
           # so only this step (not the Flatpak step below) attaches it; doing
@@ -345,8 +361,8 @@ jobs:
           #     -H 'Content-Type: application/json' \
           #     -d '{"query":"query M($ids:[CompositeDomainWithIdInput!]!){legacyModsByDomain(ids:$ids){nodes{uid}}}","variables":{"ids":[{"gameDomain":"site","modId":2139}]}}'
           # File-slot ids (file_id above) are v3-native and need NO conversion.
-          mod_id: ${{ inputs.nexus_changelog_and_archive && vars.NEXUS_MOD_ID || '' }}
-          changelog: ${{ inputs.nexus_changelog_and_archive && steps.changelog.outputs.text || '' }}
+          mod_id: ${{ (inputs.nexus_changelog_and_archive != false) && vars.NEXUS_MOD_ID || '' }}
+          changelog: ${{ (inputs.nexus_changelog_and_archive != false) && steps.changelog.outputs.text || '' }}
 
       - name: Upload Flatpak to Nexus
         if: ${{ !inputs.skip_flatpak_nexus_upload }}
@@ -366,9 +382,10 @@ jobs:
           # step itself was skipped this run (e.g. a Flatpak-only retry that
           # still wants the automated changelog), so a changelog is never
           # silently dropped, but is still never posted twice.
-          archive_existing_version: ${{ inputs.nexus_changelog_and_archive }}
-          mod_id: ${{ (inputs.nexus_changelog_and_archive && inputs.skip_appimage_nexus_upload) && vars.NEXUS_MOD_ID || '' }}
-          changelog: ${{ (inputs.nexus_changelog_and_archive && inputs.skip_appimage_nexus_upload) && steps.changelog.outputs.text || '' }}
+          # Same "!= false" reasoning as the AppImage step above.
+          archive_existing_version: ${{ inputs.nexus_changelog_and_archive != false }}
+          mod_id: ${{ (inputs.nexus_changelog_and_archive != false) && inputs.skip_appimage_nexus_upload && vars.NEXUS_MOD_ID || '' }}
+          changelog: ${{ (inputs.nexus_changelog_and_archive != false) && inputs.skip_appimage_nexus_upload && steps.changelog.outputs.text || '' }}
 
   # ────────────────────────────────────────────────────────────────────
   # Publish the OSTree repo to GitHub Pages (the hosted Flatpak remote).
