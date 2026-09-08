@@ -4,6 +4,13 @@ reset to v1.0.0; they keep Amethyst Mod Manager's original numbering, which
 overlaps the numbers above, and the prefix is what keeps the two apart (and
 keeps release tooling from matching the wrong section).
 
+- v1.0.14
+### Bug Fixes
+- Fixed "Change Version" (and a Collection install pinning an older file) failing to download a mod's archived or old-version files, with no way to get them except manually pressing "View" and downloading by hand. Nexus's direct download-link API can refuse to serve a file once it's no longer the current upload, even though the file's own page on the website still works — Mosaic now automatically falls back to opening that page and installing the file once the download completes, the same mechanism already used for non-premium accounts, except when the failure is a rate limit or an invalid API key, since a browser retry doesn't fix either of those
+- Fixed a race that could require running Deploy twice after updating several mods close together. A Deploy queued behind one mod's update could be released before the next queued update had actually started installing, capturing the game's files with only the first update applied; a second Deploy, run once everything had settled, then picked up the rest. Deploy now correctly waits for the entire update queue to finish first
+
+---
+
 - v1.0.13
 ### Bug Fixes
 - Fixed Mosaic's own "Install VC++ Redistributable" step — run automatically the first time a game's Proton prefix is set up, and available any time after via Proton Tools — silently failing on every real Steam-managed prefix, with nothing in the log beyond a bare exit code. A prefix that's only ever been touched by a real Steam launch has its Wine DLLs symlinked through a path that only exists inside Steam's own sandbox; Mosaic ran the installer directly, outside that sandbox, so it hit a dangling symlink and Wine couldn't even start. The practical effect on a modded Bethesda game: any SKSE-style plugin that depends on the real Visual C++ runtime could fail to load with a DLL error, because Wine's old placeholder DLLs were all that was ever actually installed. The installer now runs through the same sandbox-compatible wrapper Mosaic already uses elsewhere for this exact problem
