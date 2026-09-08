@@ -131,6 +131,10 @@ class ChangeVersionView(QWidget):
     _download_done = Signal(object, object)
     # (file, is_premium) from the premium-check worker → UI thread.
     _premium_checked = Signal(object, object)
+    # (file, btn) from the API-download worker → UI thread, when the premium
+    # download_link call fails in a way worth retrying via the browser (e.g.
+    # an archived/old-version file) — routes into the manual watch flow.
+    _api_download_fallback = Signal(object, object)
     # Browser-download watch progress (bytes; 64-bit: >2GB files).
     _watch_progress = Signal("qlonglong", "qlonglong")
     # Premium API-download progress → shared popup card (key, name, done, total).
@@ -176,6 +180,7 @@ class ChangeVersionView(QWidget):
         self._files_ready.connect(self._on_files_ready)
         self._download_done.connect(self._on_download_done)
         self._premium_checked.connect(self._on_premium_checked)
+        self._api_download_fallback.connect(self._start_manual_flow)
         self._watch_progress.connect(self._on_watch_progress)
         self._api_progress.connect(
             lambda k, n, d, t: self._progress_fn(k, n, int(d), int(t)))
@@ -405,11 +410,11 @@ class ChangeVersionView(QWidget):
     def _on_premium_checked(self, f, is_premium):
         btn, self._pending_btn = self._pending_btn, None
         if is_premium:
-            self._start_api_download(f)
+            self._start_api_download(f, btn)
         else:
             self._start_manual_flow(f, btn)
 
-    def _start_api_download(self, f):
+    def _start_api_download(self, f, btn=None):
         domain, mod_id = self._domain_and_mod_id()
         dl_label = f.file_name or f.name or self._mod_name
         self._log(f"Nexus: downloading {dl_label}…")
@@ -459,6 +464,17 @@ class ChangeVersionView(QWidget):
                     except Exception:
                         meta = None
                 else:
+                    from Nexus.manual_download_watch import should_fallback_to_browser
+                    if should_fallback_to_browser(result):
+                        self._log(
+                            f"Nexus: API download unavailable for '{dl_label}' "
+                            f"(likely an archived/old version) — falling back "
+                            f"to a browser download…")
+                        # Close this popup card — _start_manual_flow opens its
+                        # own under a different key ("chv-man-…" vs "chv-api-…").
+                        safe_emit(self._api_progress, dl_key, "", 0, -1)
+                        safe_emit(self._api_download_fallback, f, btn)
+                        return
                     self._log(f"Nexus: download failed: "
                               f"{result.error or 'unknown error'}")
             except Exception as exc:

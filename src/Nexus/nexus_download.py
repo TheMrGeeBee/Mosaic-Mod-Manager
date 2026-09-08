@@ -434,6 +434,11 @@ class DownloadResult:
     mod_id: int = 0
     file_id: int = 0
     from_cache: bool = False   # True when found already on disk, not fetched over the network
+    # HTTP status behind a failed download_link call (0 = no HTTP status
+    # involved, e.g. an empty-links response or a local error). 401/429 mean
+    # a browser retry won't help (bad key / rate limit) — see
+    # manual_download_watch.should_fallback_to_browser.
+    status_code: int = 0
 
 
 class DownloadCancelled(Exception):
@@ -515,6 +520,7 @@ class NexusDownloader:
                 success=False, error=str(exc),
                 game_domain=link.game_domain,
                 mod_id=link.mod_id, file_id=link.file_id,
+                status_code=getattr(exc, "status_code", 0),
             )
 
         if not links:
@@ -672,6 +678,7 @@ class NexusDownloader:
                 success=False, error=str(exc),
                 game_domain=game_domain,
                 mod_id=mod_id, file_id=file_id,
+                status_code=getattr(exc, "status_code", 0),
             )
 
         if not links:

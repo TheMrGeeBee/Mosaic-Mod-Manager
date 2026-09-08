@@ -51,6 +51,8 @@ from Nexus.nexus_download import (
     DownloadResult, _find_cached_archive, delete_archive_and_sidecar,
     _get_downloads_dir, _md5_matches)
 from Nexus.nexus_meta import build_meta_from_download
+from Nexus.manual_download_watch import start_manual_install, should_fallback_to_browser
+from Utils.xdg import open_url as _open_browser_url
 
 
 # ---------------------------------------------------------------------------
@@ -1085,6 +1087,65 @@ def run_collection_install(
             import traceback as _tb
             log(f"Collection install: download exception for '{mod.mod_name}' "
                 f"(mod_id={mod.mod_id}, file_id={mod.file_id}): {exc}\n{_tb.format_exc()}")
+
+        # The download API can refuse a file it considers not currently
+        # API-distributable (archived/old-version — collections routinely pin
+        # exactly these) even though the plain website still serves it. Fall
+        # back to the same browser + Downloads-folder watch used elsewhere
+        # (Change Version, the Nexus browser tab) — this only blocks the one
+        # download-worker thread handling this mod, not the whole batch.
+        if (result is not None and not result.success
+                and not _col_stop.is_set()
+                and should_fallback_to_browser(result)):
+            log(f"Collection install: '{mod.mod_name}' file appears "
+                f"archived/unavailable via the download API — opening "
+                f"browser for a manual download (up to 15 min)…")
+
+            class _FileStub:
+                pass
+            _stub = _FileStub()
+            _stub.file_id = mod.file_id
+            _stub.file_name = mod.file_name or ""
+            _stub.name = mod.mod_name or ""
+            _stub.size_in_bytes = _exp_size
+            _stub.size_kb = 0
+
+            _mf_event = threading.Event()
+            _mf_found: dict = {}
+
+            def _mf_archive(path, _meta, _file):
+                # Meta is discarded — the collection installer builds its own
+                # meta from the schema/manifest (_build_prebuilt_meta),
+                # independent of how the archive was obtained.
+                _mf_found["path"] = path
+                _mf_event.set()
+
+            def _mf_timeout():
+                _mf_event.set()
+
+            watcher, _already = start_manual_install(
+                api=None, game_domain=mod_domain, mod_id=mod.mod_id,
+                files=[_stub], open_url_fn=_open_browser_url, log_fn=log,
+                log_label=mod.mod_name or mod.file_name or "",
+                on_archive=_mf_archive, on_progress=_progress_cb,
+                on_timeout=_mf_timeout)
+            while not _mf_event.wait(timeout=1.0):
+                if _col_stop.is_set():
+                    watcher.stop()
+                    break
+            _found_path = _mf_found.get("path")
+            if _found_path is not None:
+                try:
+                    _found_size = Path(_found_path).stat().st_size
+                except OSError:
+                    _found_size = 0
+                result = DownloadResult(
+                    success=True, file_path=Path(_found_path),
+                    file_name=Path(_found_path).name,
+                    bytes_downloaded=_found_size, game_domain=mod_domain,
+                    mod_id=mod.mod_id, file_id=mod.file_id)
+                log(f"Collection install: '{mod.mod_name}' — manual browser "
+                    f"download completed, continuing install.")
 
         mod_size = getattr(mod, "size_bytes", 0) or 0
         if mod_size > 0 and state.per_mod_prev.get(mod.file_id, 0) == 0:

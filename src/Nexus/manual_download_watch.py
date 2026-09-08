@@ -65,6 +65,17 @@ def scan_download_dirs() -> "list[Path]":
     return dirs
 
 
+def should_fallback_to_browser(result) -> bool:
+    """True when a failed premium (API) download is worth retrying via this
+    module's browser + Downloads-folder watch — e.g. Nexus's download_link
+    endpoint refusing an archived/old-version file that the plain website
+    still serves. False for a rate limit (429) or an invalid/expired API key
+    (401): neither is fixed by opening a browser, and for a bad key in
+    particular, falling back anyway would replace one clear, actionable
+    error with a browser tab (or a whole collection's worth of them)."""
+    return (not result.success) and result.status_code not in (401, 429)
+
+
 def _expected_size(f) -> int:
     """Expected archive bytes for a NexusModFile (same fallback the premium
     download path uses)."""
