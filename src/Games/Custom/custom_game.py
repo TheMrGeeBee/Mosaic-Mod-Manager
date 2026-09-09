@@ -251,7 +251,7 @@ BUILTIN_GAME_TEMPLATES: list[dict] = [
         "restore_before_deploy": True,
         "normalize_folder_case": True,
         "filemap_casing": "upper",
-        "wine_dll_overrides": {"dwmpapi": "native,builtin"},
+        "wine_dll_overrides": {"dwmapi": "native,builtin"},
         "custom_routing_rules": [
             {"dest": "Content/Splash", "filenames": ["Splash.bmp"], "flatten": True},
             {"dest": "Content/Movies", "extensions": [".mp4"], "include_siblings": True},

@@ -77,8 +77,42 @@ def _write_bytes_if_changed(dest, data: bytes) -> bool:
     return True
 
 
+def _merge_local_only_keys(remote_raw: str, local_path) -> str:
+    """Preserve local-only top-level keys when refreshing a synced custom
+    game handler from the Resources branch.
+
+    Users sometimes need to patch a repo-provided handler locally (e.g. add
+    ``filemap_casing_pins`` to work around a casing bug) before the fix
+    lands upstream. A plain overwrite silently discards that patch on the
+    very next sync. Any key that exists in the remote copy always takes the
+    remote value — the repo owns everything it actually defines — but a key
+    that exists ONLY in the local file is carried over untouched.
+
+    Falls back to returning *remote_raw* unchanged on any parse error, or
+    when the local file doesn't exist yet (nothing to preserve).
+    """
+    try:
+        remote_data = json.loads(remote_raw)
+        if not local_path.is_file():
+            return remote_raw
+        local_data = json.loads(local_path.read_text(encoding="utf-8"))
+        if not isinstance(remote_data, dict) or not isinstance(local_data, dict):
+            return remote_raw
+        local_only = {k: v for k, v in local_data.items() if k not in remote_data}
+        if not local_only:
+            return remote_raw
+        merged = dict(remote_data)
+        merged.update(local_only)
+        return json.dumps(merged, indent=2, ensure_ascii=False)
+    except Exception:
+        return remote_raw
+
+
 def sync_custom_handlers(on_changed: Optional[Callable[[], None]] = None) -> None:
     """Background-download every custom handler .json, overwriting stale copies.
+
+    Local-only top-level keys (see :func:`_merge_local_only_keys`) are kept
+    across the refresh instead of being clobbered.
 
     Skips entirely in dev mode so a developer's in-place edits are never
     clobbered by the repo copy.
@@ -112,7 +146,9 @@ def sync_custom_handlers(on_changed: Optional[Callable[[], None]] = None) -> Non
                     if raw is None:
                         continue
                     json.loads(raw)  # validate
-                    if _write_if_changed(dest_dir / filename, raw):
+                    dest = dest_dir / filename
+                    raw = _merge_local_only_keys(raw, dest)
+                    if _write_if_changed(dest, raw):
                         changed = True
                 except Exception:
                     pass
@@ -173,6 +209,7 @@ def force_update_handler(candidates,
                         # syncs keep updating the same file.
                         matched = next(c for c in candidates if by_name.get(c))
                         dest = get_custom_games_dir() / matched
+                        raw = _merge_local_only_keys(raw, dest)
                         status = ("updated" if _write_if_changed(dest, raw)
                                   else "unchanged")
         except Exception:
