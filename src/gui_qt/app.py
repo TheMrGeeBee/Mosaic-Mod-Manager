@@ -6546,13 +6546,19 @@ class MainWindow(QMainWindow):
 
     def _fetch_nexus_name(self, mod_name: str, overlay) -> None:
         """Populate *overlay*'s text field with *mod_name*'s real Nexus
-        mod-page title ("Fetch name from Nexus" button). Uses the cached
-        ``nexus_name`` already stored in meta.ini when present — set there at
-        install time by the same Nexus lookup that names the folder from the
-        file's per-file label instead (see ``_nexus_file_display_name`` in
-        mod_install.py) — so this is usually instant with no network call.
-        Falls back to a live ``get_mod`` lookup (background thread) only when
-        that field is empty, e.g. an older install."""
+        mod-page title ("Fetch name from Nexus" button) via a live ``get_mod``
+        lookup on a background thread.
+
+        Deliberately does NOT trust meta.ini's cached ``nexus_name`` field,
+        even though install-time resolution usually sets it correctly — a
+        user hit a real case where the field was present but this button
+        still showed a stale/wrong name, and meta.ini gets rewritten by
+        several other background passes after install (endorsement/
+        requirements checks), so treating the cache as authoritative here
+        risks quietly reproducing whatever wrote it wrong. This is an
+        explicit, occasional user action, not something hit on every
+        render, so the cost of one extra API call to guarantee a correct
+        answer is worth it."""
         staging = self._gs.staging_dir()
         if staging is None:
             return
@@ -6566,9 +6572,6 @@ class MainWindow(QMainWindow):
             return
         if not meta.mod_id:
             return  # button shouldn't be visible in this case — safety net
-        if meta.nexus_name:
-            overlay.set_text(meta.nexus_name)
-            return
         api = self._ensure_nexus_api()
         if api is None:
             self._notify(self.tr("Log in first: Nexus ▸ Login to Nexus ▸ Login via SSO."),
