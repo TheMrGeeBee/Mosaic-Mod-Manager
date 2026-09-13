@@ -286,6 +286,10 @@ class MainWindow(QMainWindow):
     _mosaic_endorse_done = Signal(object)
     # mod.io Like/Unlike worker → UI thread ({"ok": n, "like": bool, "names": [...]}).
     _modio_like_done = Signal(object)
+    # "Fetch name from Nexus" worker → UI thread (overlay, fetched_name, error).
+    # The overlay instance rides along so a slow fetch can't land in the wrong
+    # rename dialog if the user closed it and opened another in the meantime.
+    _nexus_name_fetch_done = Signal(object, str, str)
     # Track worker → UI thread ({"ok": n}).
     _track_done = Signal(object)
     # ui_hooks.warn from any backend thread → OK-only popup on the UI thread
@@ -584,6 +588,7 @@ class MainWindow(QMainWindow):
         self._reinstall_manual_found.connect(self._on_reinstall_manual_found)
         self._endorse_done.connect(self._on_endorse_done)
         self._mosaic_endorse_done.connect(self._on_mosaic_endorse_done)
+        self._nexus_name_fetch_done.connect(self._on_nexus_name_fetch_done)
         self._modio_like_done.connect(self._on_modio_like_done)
         self._track_done.connect(self._on_track_done)
         self._copy_done.connect(self._on_copy_done)
@@ -6522,6 +6527,85 @@ class MainWindow(QMainWindow):
             self._notify(self.tr("No mods were updated (already in that state or no "
                          "Nexus id)."), "info")
 
+    def _mod_has_nexus_id(self, mod_name: str) -> bool:
+        """Whether *mod_name* has a linked Nexus mod ID in its meta.ini — the
+        gate for showing the "Fetch name from Nexus" rename-dialog button.
+        False for mods never matched to a Nexus page (installed offline, or
+        from a non-Nexus source)."""
+        staging = self._gs.staging_dir()
+        if staging is None:
+            return False
+        meta_path = staging / mod_name / "meta.ini"
+        if not meta_path.is_file():
+            return False
+        try:
+            from Nexus.nexus_meta import read_meta
+            return read_meta(meta_path).mod_id > 0
+        except Exception:
+            return False
+
+    def _fetch_nexus_name(self, mod_name: str, overlay) -> None:
+        """Populate *overlay*'s text field with *mod_name*'s real Nexus
+        mod-page title ("Fetch name from Nexus" button). Uses the cached
+        ``nexus_name`` already stored in meta.ini when present — set there at
+        install time by the same Nexus lookup that names the folder from the
+        file's per-file label instead (see ``_nexus_file_display_name`` in
+        mod_install.py) — so this is usually instant with no network call.
+        Falls back to a live ``get_mod`` lookup (background thread) only when
+        that field is empty, e.g. an older install."""
+        staging = self._gs.staging_dir()
+        if staging is None:
+            return
+        meta_path = staging / mod_name / "meta.ini"
+        try:
+            from Nexus.nexus_meta import read_meta
+            meta = read_meta(meta_path)
+        except Exception:
+            self._notify(self.tr("Could not read this mod's Nexus metadata."),
+                        "warning")
+            return
+        if not meta.mod_id:
+            return  # button shouldn't be visible in this case — safety net
+        if meta.nexus_name:
+            overlay.set_text(meta.nexus_name)
+            return
+        api = self._ensure_nexus_api()
+        if api is None:
+            self._notify(self.tr("Log in first: Nexus ▸ Login to Nexus ▸ Login via SSO."),
+                        "warning")
+            return
+        domain = meta.game_domain or getattr(self._gs.game, "nexus_game_domain", "") or ""
+        mod_id = meta.mod_id
+
+        def _worker():
+            try:
+                info = api.get_mod(domain, mod_id)
+                name = getattr(info, "name", "") or ""
+                if name:
+                    self._nexus_name_fetch_done.emit(overlay, name, "")
+                else:
+                    self._nexus_name_fetch_done.emit(
+                        overlay, "", self.tr("Nexus returned no name for this mod."))
+            except Exception as exc:
+                self._nexus_name_fetch_done.emit(
+                    overlay, "", self.tr("Fetch failed: {0}").format(exc))
+
+        import threading
+        threading.Thread(target=_worker, daemon=True, name="fetch-nexus-name").start()
+
+    def _on_nexus_name_fetch_done(self, overlay, name: str, error: str) -> None:
+        """UI thread: apply a successful "Fetch name from Nexus" result, or
+        report the error. The overlay may already be closed (Cancel/Esc/
+        confirmed) by the time a slow fetch returns — set_text on a deleted
+        Qt widget raises RuntimeError, which is expected and harmless here."""
+        if error:
+            self._notify(error, "warning")
+            return
+        try:
+            overlay.set_text(name)
+        except RuntimeError:
+            pass
+
     def _ensure_modio_oauth(self):
         """Return a stored mod.io OAuth access token, or None (not logged
         in via Wizard ▸ mod.io API Key ▸ Log in with email). Mirrors the guard shape
@@ -10024,9 +10108,18 @@ class MainWindow(QMainWindow):
             on_done(renamed or name)
 
         from gui_qt.overlays.text_input_overlay import TextInputOverlay
-        TextInputOverlay.show_over(
+        extra_kw = {}
+        overlay_holder: list = []
+        if self._mod_has_nexus_id(name):
+            def _do_fetch(_name=name):
+                if overlay_holder:
+                    self._fetch_nexus_name(_name, overlay_holder[0])
+            extra_kw["extra_label"] = self.tr("Fetch name from Nexus")
+            extra_kw["on_extra"] = _do_fetch
+        overlay = TextInputOverlay.show_over(
             self, "Rename mod", "New name for the installed mod:", _named,
-            initial=name, ok_label=self.tr("Rename"))
+            initial=name, ok_label=self.tr("Rename"), **extra_kw)
+        overlay_holder.append(overlay)
 
     def _rename_mod_on_disk(self, old_name: str, new_name: str) -> str | None:
         """Rename a mod: staging folder → new, modindex entry, modlist entry,
@@ -11488,6 +11581,9 @@ class MainWindow(QMainWindow):
         self._modlist_view.on_copy_separators_to_profile = self._copy_separators_to_profile
         # Rename (context menu): folder + modindex + per-mod state migration.
         self._modlist_view.on_rename_mod = self._rename_mod_on_disk
+        # "Fetch name from Nexus" button inside the rename dialog.
+        self._modlist_view.mod_has_nexus_id = self._mod_has_nexus_id
+        self._modlist_view.on_fetch_nexus_name = self._fetch_nexus_name
         # Separator settings (colour + deploy override): open the scoped tab;
         # rename/remove migrate/drop the stored colour + deploy entries.
         self._modlist_view.on_separator_settings = self._open_sep_settings_tab

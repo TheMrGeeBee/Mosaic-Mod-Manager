@@ -1390,8 +1390,22 @@ def _rename(view, model, row):
         if callable(cb):
             cb(e.name, new.strip())
 
-    TextInputOverlay.show_over(view, _mt("Rename"), _mt("New name:"), _named,
-                               initial=e.display_name, ok_label=_mt("Rename"))
+    extra_kw = {}
+    overlay_holder: list = []
+    if not e.is_separator:
+        has_id = getattr(view, "mod_has_nexus_id", None)
+        fetch_cb = getattr(view, "on_fetch_nexus_name", None)
+        if callable(has_id) and callable(fetch_cb) and has_id(e.name):
+            def _do_fetch(_name=e.name, _fetch=fetch_cb):
+                if overlay_holder:
+                    _fetch(_name, overlay_holder[0])
+            extra_kw["extra_label"] = _mt("Fetch name from Nexus")
+            extra_kw["on_extra"] = _do_fetch
+
+    overlay = TextInputOverlay.show_over(
+        view, _mt("Rename"), _mt("New name:"), _named,
+        initial=e.display_name, ok_label=_mt("Rename"), **extra_kw)
+    overlay_holder.append(overlay)
 
 
 def _set_priority(view, model, row):

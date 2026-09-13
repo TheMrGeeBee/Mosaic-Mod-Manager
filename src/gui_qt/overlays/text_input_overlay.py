@@ -22,7 +22,13 @@ class TextInputOverlay(OverlayBase):
     CLICK_OUTSIDE_CANCELS = True
 
     def __init__(self, host: QWidget, title: str, prompt: str, on_done,
-                 initial: str = "", ok_label: str = "OK", validator=None):
+                 initial: str = "", ok_label: str = "OK", validator=None,
+                 extra_label: str = "", on_extra=None):
+        """*extra_label*/*on_extra* — an optional secondary action button
+        (e.g. "Fetch name from Nexus") shown left-aligned in the button bar,
+        separate from Cancel/OK. ``on_extra`` is a no-arg callback invoked on
+        click; it does not close the overlay — use ``set_text()`` to update
+        the field in place once it has a result."""
         super().__init__(host, on_done=on_done)
         p = active_palette()
 
@@ -48,6 +54,12 @@ class TextInputOverlay(OverlayBase):
         v.addStretch(1)
 
         bar = QHBoxLayout()
+        if extra_label and on_extra is not None:
+            extra = QPushButton(extra_label)
+            extra.setObjectName("FormButton")
+            extra.setCursor(Qt.PointingHandCursor)
+            extra.clicked.connect(on_extra)
+            bar.addWidget(extra)
         bar.addStretch(1)
         cancel = QPushButton(self.tr("Cancel"))
         cancel.setObjectName("FormButton")
@@ -68,6 +80,12 @@ class TextInputOverlay(OverlayBase):
     def show_over(cls, host, title, prompt, on_done, **kw):
         top = host.window() if host is not None else None
         return cls(top or host, title, prompt, on_done, **kw)
+
+    def set_text(self, value: str) -> None:
+        """Replace the field's current contents (e.g. after an async fetch)."""
+        self._edit.setText(value)
+        self._edit.selectAll()
+        self._edit.setFocus()
 
     # -- internals ----------------------------------------------------------
     def _confirm(self):
