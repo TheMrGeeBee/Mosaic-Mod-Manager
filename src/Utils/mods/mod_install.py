@@ -1108,6 +1108,27 @@ def prepare_archive(archive_path: str, game, profile_dir: Path, *,
                 if prebuilt_meta is None:
                     prebuilt_meta = resolved
                 nexus_name = _nexus_file_display_name(resolved, game)
+
+        # A MAIN/UPDATE file for a mod that's ALREADY installed (e.g. a hotfix
+        # downloaded via "Mod Manager Download" for a mod you already have)
+        # would otherwise get its own per-file label here (e.g. "CET 1.37.1 -
+        # Scripting fixes") and land in a brand-new folder alongside the
+        # existing one ("Cyber Engine Tweaks") — a silent duplicate, not an
+        # update: finish_install's collision check only ever sees the NEW
+        # name, so it never recognizes this as the same mod, never prompts
+        # Replace, and the existing entry's modlist position is untouched
+        # while a second copy appears wherever new mods land. Nexus itself
+        # categorizes each file (MAIN/UPDATE/OPTIONAL/OLD_VERSION/...), so
+        # only auto-merge those two categories — an OPTIONAL file (e.g. "HD
+        # Textures" alongside "Main File") is legitimately meant to coexist
+        # as its own separate mod, not replace the existing install.
+        existing_name = _existing_install_for_same_mod(staging_root, prebuilt_meta)
+        if existing_name and existing_name != nexus_name:
+            log_fn(f"'{nexus_name or archive.stem}' is a MAIN/UPDATE file for "
+                   f"already-installed mod '{existing_name}' — naming the "
+                   f"folder after the existing install instead.")
+            nexus_name = existing_name
+
         mod_name = nexus_name or _clean_mod_name(archive.stem, game)
         if nexus_name:
             log_fn(f"Naming mod folder from Nexus: '{mod_name}'.")
@@ -2422,6 +2443,37 @@ def _resolve_nexus_meta_for_naming(archive: Path, game, log_fn: LogFn):
     except Exception as exc:
         log_fn(f"Nexus name lookup skipped ({exc}).")
         return None
+
+
+def _existing_install_for_same_mod(staging_root, meta) -> str | None:
+    """If *meta* is a MAIN/UPDATE file for a Nexus mod that's already
+    installed under a (possibly differently-named) existing folder, return
+    that folder's name — so the caller can name a new install after it
+    instead of this file's own per-file label, collapsing what would
+    otherwise become a second, separate folder for the same Nexus mod into
+    an update of the existing one.
+
+    OPTIONAL/MISCELLANEOUS/OLD_VERSION files are left alone (returns None):
+    those are meant to install as their own entry alongside the main one,
+    not replace it — Nexus's own file categories are the signal for which is
+    which, since there's no other reliable way to distinguish "a hotfix for
+    the mod I have" from "an alternate variant I want side-by-side."
+    """
+    if meta is None:
+        return None
+    mod_id = getattr(meta, "mod_id", 0) or 0
+    if mod_id <= 0:
+        return None
+    if getattr(meta, "file_category", "") not in ("MAIN", "UPDATE"):
+        return None
+    try:
+        from Nexus.nexus_meta import scan_installed_mods
+        for installed in scan_installed_mods(Path(staging_root)):
+            if installed.mod_id == mod_id:
+                return installed.mod_name
+    except Exception:
+        pass
+    return None
 
 
 def _clean_mod_name(stem: str, game) -> str:
