@@ -1295,6 +1295,30 @@ def prepare_archive(archive_path: str, game, profile_dir: Path, *,
     return prepared
 
 
+def _find_existing_mod_folder(staging_root: Path, mod_name: str) -> Path | None:
+    """Case-insensitive lookup of an existing mod folder under *staging_root*.
+
+    A plain ``(staging_root / mod_name).exists()`` misses an already-installed
+    folder whose name differs only in case (e.g. Nexus file-display-name
+    casing drifting between an author's file uploads) — on a case-sensitive
+    filesystem that makes a genuine update look like a brand-new install: the
+    Replace/Rename/Cancel prompt never fires, and the mod falls through to
+    ``prepend_mod`` instead of ``ensure_mod_preserving_position``, silently
+    losing its modlist position (the same class of bug already fixed
+    case-insensitively on the modlist.txt side — see
+    ``modlist.ensure_mod_preserving_position``'s docstring). Returns the
+    matching folder's actual path, or None if no folder matches.
+    """
+    target = mod_name.casefold()
+    try:
+        for child in staging_root.iterdir():
+            if child.is_dir() and child.name.casefold() == target:
+                return child
+    except OSError:
+        pass
+    return None
+
+
 def finish_install(prepared: "PreparedInstall", fomod_selections, *,
                    log_fn: LogFn, progress_fn: Optional[ProgressFn] = None,
                    on_exists=None, bain_selections=None) -> str | None:
@@ -1315,7 +1339,8 @@ def finish_install(prepared: "PreparedInstall", fomod_selections, *,
     p = prepared
     staging_root = Path(p.game.get_effective_mod_staging_path())
     staging_root.mkdir(parents=True, exist_ok=True)
-    dest_root = staging_root / p.mod_name
+    dest_root = (_find_existing_mod_folder(staging_root, p.mod_name)
+                or staging_root / p.mod_name)
 
     def _pp(done, total, phase=None):
         if progress_fn is not None:
@@ -1352,6 +1377,10 @@ def finish_install(prepared: "PreparedInstall", fomod_selections, *,
                 old_bundle_spec = _read_old_bundle_spec(dest_root)
             log_fn(f"Replacing existing mod folder: {p.mod_name}")
             shutil.rmtree(dest_root, ignore_errors=True)
+            # Recreate under the new (canonical) casing, not whatever casing
+            # the old on-disk folder happened to have — dest_root may have
+            # resolved to a case-insensitive match above.
+            dest_root = staging_root / p.mod_name
             p._preserve_position = True
         else:
             conflict = False
@@ -1376,6 +1405,9 @@ def finish_install(prepared: "PreparedInstall", fomod_selections, *,
                         old_bundle_spec = _read_old_bundle_spec(dest_root)
                     log_fn(f"Replacing existing mod folder: {p.mod_name}")
                     shutil.rmtree(dest_root, ignore_errors=True)
+                    # Recreate under the new (canonical) casing — see the
+                    # matching comment in the silent-replace branch above.
+                    dest_root = staging_root / p.mod_name
                     p._preserve_position = True
                     break
                 if action.startswith("rename:"):
@@ -1384,7 +1416,8 @@ def finish_install(prepared: "PreparedInstall", fomod_selections, *,
                         conflict = True
                         continue
                     p.mod_name = new_name
-                    dest_root = staging_root / p.mod_name
+                    dest_root = (_find_existing_mod_folder(staging_root, p.mod_name)
+                                or staging_root / p.mod_name)
                     # Loop: if the new name is ALSO taken, re-prompt (conflict).
                     conflict = dest_root.exists()
                     # rename installs as a NEW mod (no position preserve).
