@@ -1838,7 +1838,19 @@ def run_collection_install(
     # / cancelled run legitimately leaves mods un-installed).
     if not _col_cancel.is_set() and not _col_pause.is_set():
         try:
-            _final_staging = game.get_effective_mod_staging_path()
+            # Reuse the staging path actually used during THIS install
+            # (captured near the top of the function), not a fresh
+            # game.get_effective_mod_staging_path() call — the active profile
+            # was already restored to old_profile_dir a few lines above, so a
+            # fresh call here resolves the PREVIOUS profile's staging dir
+            # (or the shared one) instead of where these mods actually landed.
+            # That mismatch made every successfully-installed mod look
+            # "missing" (real bug hit 2026-09-13: 283/283 mods genuinely
+            # installed and deployed fine, but this check reported 280 of
+            # them as failed, each already correctly recorded as
+            # status="installed" in mod_outcomes — the check just looked in
+            # the wrong directory).
+            _final_staging = staging_path
             _missing: list = []
             for mod in ordered_mods:
                 fid = getattr(mod, "file_id", 0) or 0
