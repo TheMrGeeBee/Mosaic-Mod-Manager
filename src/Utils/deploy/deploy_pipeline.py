@@ -26,6 +26,7 @@ from Utils.filemap import build_filemap
 from Utils.profile.profile_backup import create_backup
 from Utils.profile.profile_state import read_excluded_mod_files
 from Utils.ui_config import load_normalize_folder_case
+from Utils.wine_proton.protontricks import ensure_prefix_deps
 from Utils.wine_proton.wine_dll_config import deploy_game_wine_dll_overrides
 
 
@@ -627,6 +628,21 @@ def run_deploy_pipeline(
             deploy_game_wine_dll_overrides(
                 game.name, pfx, game.wine_dll_overrides, log_fn=log_fn
             )
+            # Same "reapply, no-op if already correct" treatment as the DLL
+            # overrides just above — a Proton prefix recreated after the game
+            # was first configured in Mosaic (a fresh Steam prefix, "Clear
+            # local Proton data", a manually deleted compatdata folder)
+            # otherwise silently loses vcredist with no prompt to reinstall
+            # it, since ensure_prefix_deps used to only run once, at
+            # configure-game-save time. Surfaced as RED4ext/Cyber Engine
+            # Tweaks crashing deep inside a ~6-year-old msvcp140.dll that
+            # Proton's own fresh-prefix defaults ship, with no obvious link
+            # back to "reinstall vcredist" — see ensure_prefix_deps's own
+            # docstring for the full story.
+            try:
+                ensure_prefix_deps(game, pfx, log_fn=log_fn)
+            except Exception as exc:
+                log_fn(f"Prefix dependency check failed: {exc}")
 
         game.save_last_deployed_profile(profile, deploy_mode=deploy_mode.name)
 

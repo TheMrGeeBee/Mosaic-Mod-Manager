@@ -611,6 +611,85 @@ def build_proton_env_for_game(game) -> "tuple[Path, dict] | tuple[None, None]":
     return proton_script, env
 
 
+def ensure_prefix_deps(game, prefix: "Path", log_fn: Callable[[str], None] | None = None
+                       ) -> dict[str, list[str]]:
+    """Install this game's declared prefix dependencies (``auto_install_deps``
+    — vcredist / d3dcompiler_47 — and legacy ``winetricks_components``) if
+    they aren't already present, mirroring the Proton Tools menu's own
+    installers. Each dep is skipped (cheaply, via ``is_dep_installed``) once
+    already installed, so this is safe to call on every deploy — the same
+    "reapply, no-op if already correct" pattern already used for Wine DLL
+    overrides (see ``deploy_game_wine_dll_overrides``).
+
+    Originally only ran once, at game-configuration-save time
+    (``configure_game_view._install_prefix_deps``) — which meant a prefix
+    recreated afterward (a fresh Steam Proton prefix, "Clear local Proton
+    data", a manually deleted compatdata folder) silently lost vcredist with
+    no prompt to reinstall it, surfacing later as a native DLL crashing deep
+    inside msvcp140 with no obvious connection to "reinstall vcredist" (hit
+    firsthand: RED4ext/Cyber Engine Tweaks on Cyberpunk 2077, both crashing
+    identically with EXCEPTION_ACCESS_VIOLATION inside a ~6-year-old
+    Nov-2020-dated msvcp140.dll that Proton's own fresh-prefix defaults ship,
+    fixed only by manually finding and re-running this same installer).
+    Called automatically on every deploy now (see deploy_pipeline.py) so a
+    freshly recreated prefix is never silently missing this again.
+
+    Returns ``{"installed": [...], "skipped": [...], "failed": [...]}``.
+    """
+    _log = log_fn or (lambda _m: None)
+    result: dict[str, list[str]] = {"installed": [], "skipped": [], "failed": []}
+
+    deps = list(getattr(game, "auto_install_deps", []))
+    components = list(getattr(game, "winetricks_components", []))
+    if not deps and not components:
+        return result
+
+    from Utils.wine_proton.steam_finder import game_steam_id
+
+    _proton: tuple = ()
+
+    def _ensure_proton():
+        nonlocal _proton
+        if not _proton:
+            _proton = build_proton_env_for_game(game)
+        return _proton
+
+    for dep in deps:
+        if dep == "vcredist":
+            if is_dep_installed(prefix, VCREDIST_DEP_KEY):
+                result["skipped"].append("vcredist")
+                continue
+            proton_script, env = _ensure_proton()
+            if proton_script is None:
+                _log(f"{game.name}: skipping vcredist — no Proton prefix available.")
+                result["skipped"].append("vcredist")
+                continue
+            _log(f"{game.name}: auto-installing VC++ Redistributable …")
+            ok = install_vcredist(proton_script, env, log_fn=_log, prefix_path=prefix)
+            (result["installed"] if ok else result["failed"]).append("vcredist")
+        elif dep == "d3dcompiler_47":
+            if is_dep_installed(prefix, D3D_DEP_KEY):
+                result["skipped"].append("d3dcompiler_47")
+                continue
+            _log(f"{game.name}: auto-installing d3dcompiler_47 …")
+            ok = install_d3dcompiler_47(
+                game_steam_id(game), log_fn=_log, prefix_path=prefix)
+            (result["installed"] if ok else result["failed"]).append("d3dcompiler_47")
+        else:
+            _log(f"{game.name}: unknown auto_install dep '{dep}' — skipping.")
+            result["skipped"].append(dep)
+
+    for comp in components:
+        _log(f"{game.name}: installing {comp} via winetricks …")
+        if _install_via_winetricks(prefix, comp, _log):
+            result["installed"].append(comp)
+        else:
+            _log(f"{game.name}: {comp} install failed (see log above).")
+            result["failed"].append(comp)
+
+    return result
+
+
 def install_vcredist(
     proton_script: "Path",
     env: dict,
