@@ -58,7 +58,16 @@ class TextInputOverlay(OverlayBase):
             extra = QPushButton(extra_label)
             extra.setObjectName("FormButton")
             extra.setCursor(Qt.PointingHandCursor)
-            extra.clicked.connect(on_extra)
+            # QPushButton.clicked emits a bool `checked` arg. on_extra is
+            # documented as a no-arg callback, but a caller's closure often
+            # declares a same-named DEFAULTED parameter for its own capture
+            # purposes (e.g. `def _do_fetch(_name=mod_name): ...`) - Qt sees
+            # that parameter slot is acceptable and passes `checked`
+            # positionally into it, silently clobbering the intended default
+            # (observed: mod_name ended up as the bool False, crashing on
+            # `staging / mod_name`). The lambda absorbs the bool so on_extra
+            # is always actually called with zero arguments.
+            extra.clicked.connect(lambda _checked=False: on_extra())
             bar.addWidget(extra)
         bar.addStretch(1)
         cancel = QPushButton(self.tr("Cancel"))
