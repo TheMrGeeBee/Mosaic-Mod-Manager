@@ -5246,11 +5246,28 @@ class MainWindow(QMainWindow):
             return
         api = self._ensure_nexus_api()
         game = self._gs.game
-        is_premium = False
+        # validate() is rate-limited, and _ensure_nexus_api() above may have
+        # just fired its own validate() call seconds ago (it always does one
+        # off-thread when building the api) — a second call here can easily
+        # get rate-limited itself. A bare exception must not silently demote
+        # a premium user to "not premium": fall back to the last
+        # successfully-validated status instead, same fix already applied to
+        # the collection-install premium gate for this exact failure mode
+        # (GH#278) — Quick Update just never got it, so every mod silently
+        # skipped with a misleading "Premium required" even for a genuinely
+        # premium account whenever this collided with the api-build validate().
+        from Utils.ui_config import load_nexus_last_premium, save_nexus_last_premium
         try:
             is_premium = bool(api.validate().is_premium)
-        except Exception:
-            pass
+            try:
+                save_nexus_last_premium(is_premium)
+            except Exception:
+                pass
+        except Exception as exc:
+            is_premium = bool(load_nexus_last_premium())
+            self._append_log(
+                f"[nexus] Quick Update premium check failed: {exc} — using "
+                f"last-known status ({'premium' if is_premium else 'not premium'})")
         if not is_premium:
             self._append_log("[nexus] Premium required for Quick Update direct "
                              "downloads.")
