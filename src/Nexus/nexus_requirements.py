@@ -199,6 +199,60 @@ def _merge_reqs(
     return mod_level + [r for r in file_level if r.mod_id not in seen]
 
 
+def _expand_transitive_missing(
+    api: NexusAPI,
+    game_domain: str,
+    missing: list[NexusModRequirement],
+    installed_mod_ids: set[int],
+    external_set: set[tuple[GameScope, int]],
+    alternatives_dict: dict[tuple[GameScope, int], set[int]],
+    *,
+    log: ProgressCallback,
+    max_depth: int = 3,
+) -> list[NexusModRequirement]:
+    """Walk each missing requirement's OWN requirements and fold in any that
+    are themselves missing — flat, deduped by mod_id, depth- and
+    cycle-guarded (via *seen_ids*, which also blocks a requirement from
+    being re-added once already found at a shallower depth).
+
+    A missing mod isn't installed, so there is no local meta.ini to read its
+    own requirements from — this queries Nexus directly by mod_id (known
+    from the requirement entry itself even though the mod isn't installed).
+    Without this, a chain like "Lune's Idle Expressions" -> BG3SX -> BG3AF
+    only ever surfaces the first hop; the second hop is only discovered
+    after installing BG3SX and re-checking, one frustrating step at a time.
+    """
+    result = list(missing)
+    seen_ids = {r.mod_id for r in missing}
+    frontier = list(missing)
+    depth = 0
+    while frontier and depth < max_depth:
+        depth += 1
+        next_frontier: list[NexusModRequirement] = []
+        for req in frontier:
+            try:
+                sub_reqs = api.get_mod_requirements(game_domain, req.mod_id)
+            except Exception as exc:
+                log(f"    could not fetch requirements for {req.mod_name} "
+                    f"({exc})")
+                continue
+            for sub in sub_reqs:
+                if sub.is_external or sub.mod_id <= 0:
+                    continue
+                if sub.mod_id in seen_ids or sub.mod_id in installed_mod_ids:
+                    continue
+                if _is_external_for_game(game_domain, sub.mod_id, external_set):
+                    continue
+                if _alternative_satisfied_for_game(
+                        game_domain, sub.mod_id, installed_mod_ids, alternatives_dict):
+                    continue
+                seen_ids.add(sub.mod_id)
+                result.append(sub)
+                next_frontier.append(sub)
+        frontier = next_frontier
+    return result
+
+
 def check_missing_requirements(
     api: NexusAPI,
     staging_root: Path,
@@ -311,6 +365,15 @@ def check_missing_requirements(
 
         # Merge in file-level (v3) missing requirements for this mod
         missing = _merge_reqs(missing, file_missing.get(mod_id, []))
+
+        # A missing requirement can itself require something else that's
+        # also missing (e.g. an addon needs a framework mod, which itself
+        # needs an animation framework) — walk that chain now rather than
+        # only surfacing it one hop at a time across repeated checks.
+        if missing:
+            missing = _expand_transitive_missing(
+                api, game_domain, missing, installed_mod_ids,
+                external_set, alternatives_dict, log=_log)
 
         # 5. Record results for each local mod entry under this mod_id
         for meta in metas:
@@ -452,6 +515,15 @@ def check_requirements_from_gql(
                 continue
             if req.mod_id not in installed_mod_ids:
                 missing.append(req)
+
+        # A missing requirement can itself require something else that's
+        # also missing — walk that chain now (needs a live API client;
+        # skipped, same as file-level requirements above, when none was
+        # given).
+        if missing and api is not None:
+            missing = _expand_transitive_missing(
+                api, game_domain, missing, installed_mod_ids,
+                external_set, alternatives_dict, log=_log)
 
         # Full requirements list (installed or not) — powers View Requirements.
         # ';' in names would corrupt the pair format, swap for ','.
