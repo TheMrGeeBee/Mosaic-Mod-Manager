@@ -1008,7 +1008,22 @@ class NexusBrowserView(QWidget):
         self._log(f"Nexus: preparing install for {name}…")
 
         def _check_premium():
-            premium = bool(self._api.validate().is_premium)
+            from Utils.ui_config import load_nexus_last_premium, save_nexus_last_premium
+            try:
+                premium = bool(self._api.validate().is_premium)
+                try:
+                    save_nexus_last_premium(premium)
+                except Exception:
+                    pass
+            except Exception as exc:
+                # GH#278: a transient validate() failure (network hiccup, rate
+                # limit — most likely to hit the very first Nexus call of a
+                # session, racing _ensure_nexus_api()'s own startup validate())
+                # must not silently demote a premium user to manual mode —
+                # fall back to the last successfully-validated status.
+                premium = bool(load_nexus_last_premium())
+                self._log(f"Nexus: premium check failed: {exc} — using "
+                          f"last-known status ({'premium' if premium else 'not premium'})")
             if premium:
                 # [dev] force_manual_install = true → exercise the manual
                 # browser-download flow (same switch the collections use).

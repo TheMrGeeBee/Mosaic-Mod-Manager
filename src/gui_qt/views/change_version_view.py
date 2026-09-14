@@ -390,18 +390,27 @@ class ChangeVersionView(QWidget):
         # the browser/collections): free accounts can't use the download API,
         # so they get the browser-download watch flow instead.
         def check():
-            premium = False
+            from Utils.ui_config import load_nexus_last_premium, save_nexus_last_premium
             try:
                 premium = bool(self._api.validate().is_premium)
-                if premium:
-                    from Utils.ui_config import load_force_manual_install
-                    if load_force_manual_install():
-                        self._log("Nexus: [dev] force_manual_install — using "
-                                  "the manual browser-download flow.")
-                        premium = False
+                try:
+                    save_nexus_last_premium(premium)
+                except Exception:
+                    pass
             except Exception as exc:
-                self._log(f"Nexus: premium check failed ({exc}) — using the "
-                          "manual browser-download flow.")
+                # GH#278: a transient validate() failure (network hiccup, rate
+                # limit) must not silently demote a premium user to manual
+                # mode — fall back to the last successfully-validated status.
+                premium = bool(load_nexus_last_premium())
+                self._log(f"Nexus: premium check failed ({exc}) — using "
+                          f"last-known status "
+                          f"({'premium' if premium else 'not premium'})")
+            if premium:
+                from Utils.ui_config import load_force_manual_install
+                if load_force_manual_install():
+                    self._log("Nexus: [dev] force_manual_install — using "
+                              "the manual browser-download flow.")
+                    premium = False
             safe_emit(self._premium_checked, f, premium)
 
         threading.Thread(target=check, daemon=True,

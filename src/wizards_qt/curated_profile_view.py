@@ -216,11 +216,20 @@ class CuratedProfileView(WizardViewBase):
             return
 
         def worker():
+            from Utils.ui_config import load_nexus_last_premium, save_nexus_last_premium
             try:
-                if api.validate().is_premium:
-                    safe_emit(self._premium_sig, True)
+                premium = bool(api.validate().is_premium)
+                try:
+                    save_nexus_last_premium(premium)
+                except Exception:
+                    pass
             except Exception:
-                pass
+                # GH#278: a transient validate() failure (network hiccup,
+                # rate limit) must not silently demote a premium user —
+                # fall back to the last successfully-validated status.
+                premium = bool(load_nexus_last_premium())
+            if premium:
+                safe_emit(self._premium_sig, True)
 
         threading.Thread(target=worker, daemon=True,
                          name="curated-profile-premium").start()

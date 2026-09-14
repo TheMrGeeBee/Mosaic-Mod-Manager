@@ -4874,20 +4874,30 @@ class MainWindow(QMainWindow):
                 "warning")
             return
         game = self._gs.game
-        is_premium = False
+        from Utils.ui_config import load_nexus_last_premium, save_nexus_last_premium
         try:
             is_premium = bool(api.validate().is_premium)
-            if is_premium:
-                # [dev] force_manual_install = true → exercise the manual
-                # browser-download flow even on a premium account (same switch
-                # the browser / Change Version tabs honour).
-                from Utils.ui_config import load_force_manual_install
-                if load_force_manual_install():
-                    self._append_log("[reinstall] [dev] force_manual_install — "
-                                     "using the manual browser-download flow.")
-                    is_premium = False
-        except Exception:
-            pass
+            try:
+                save_nexus_last_premium(is_premium)
+            except Exception:
+                pass
+        except Exception as exc:
+            # GH#278: a transient validate() failure (network hiccup, rate
+            # limit) must not silently demote a premium user to manual mode
+            # — fall back to the last successfully-validated status.
+            is_premium = bool(load_nexus_last_premium())
+            self._append_log(f"[reinstall] premium check failed: {exc} — "
+                             f"using last-known status "
+                             f"({'premium' if is_premium else 'not premium'})")
+        if is_premium:
+            # [dev] force_manual_install = true → exercise the manual
+            # browser-download flow even on a premium account (same switch
+            # the browser / Change Version tabs honour).
+            from Utils.ui_config import load_force_manual_install
+            if load_force_manual_install():
+                self._append_log("[reinstall] [dev] force_manual_install — "
+                                 "using the manual browser-download flow.")
+                is_premium = False
 
         if not is_premium:
             # Non-premium: same manual browser-download flow as the Nexus browser
@@ -7080,19 +7090,35 @@ class MainWindow(QMainWindow):
 
         def worker():
             files = None
-            premium = False
+            from Utils.ui_config import load_nexus_last_premium, save_nexus_last_premium
             try:
                 user = api.validate()
                 premium = bool(getattr(user, "is_premium", False))
-                if premium:
-                    # [dev] force_manual_install = true → exercise the manual
-                    # browser-download flow even on a premium account (same
-                    # switch as the browser / Change Version / reinstall).
-                    from Utils.ui_config import load_force_manual_install
-                    if load_force_manual_install():
-                        self._append_log("[nexus] [dev] force_manual_install — "
-                                         "using the manual browser-download flow.")
-                        premium = False
+                try:
+                    save_nexus_last_premium(premium)
+                except Exception:
+                    pass
+            except Exception as exc:
+                # GH#278: a transient validate() failure (network hiccup, rate
+                # limit — most likely to hit the very first Nexus call of a
+                # session, racing _ensure_nexus_api()'s own startup validate())
+                # must not silently demote a premium user to manual mode, nor
+                # abort the install outright — fall back to the last
+                # successfully-validated status and keep going.
+                premium = bool(load_nexus_last_premium())
+                self._append_log(f"[nexus] premium check failed: {exc} — using "
+                                 f"last-known status "
+                                 f"({'premium' if premium else 'not premium'})")
+            if premium:
+                # [dev] force_manual_install = true → exercise the manual
+                # browser-download flow even on a premium account (same
+                # switch as the browser / Change Version / reinstall).
+                from Utils.ui_config import load_force_manual_install
+                if load_force_manual_install():
+                    self._append_log("[nexus] [dev] force_manual_install — "
+                                     "using the manual browser-download flow.")
+                    premium = False
+            try:
                 # Fetch the file list for BOTH tiers: the chooser needs it, and
                 # the non-premium folder watcher needs real names + sizes.
                 resp = api.get_mod_files(domain, mod_id)
@@ -7149,10 +7175,10 @@ class MainWindow(QMainWindow):
 
         class _Info:
             pass
-        info = _Info()
-        info.mod_id = mod_id
-        info.domain_name = domain
-        info.name = name
+        info_fallback = _Info()
+        info_fallback.mod_id = mod_id
+        info_fallback.domain_name = domain
+        info_fallback.name = name
         import threading
 
         def worker():
@@ -7174,9 +7200,23 @@ class MainWindow(QMainWindow):
                 if result.success and result.file_path is not None:
                     archive = str(result.file_path)
                     try:
+                        # The bare fallback stub only carries mod_id/domain/name —
+                        # fetch the real mod info (author, category, description,
+                        # uploader) so this Missing-Requirements install writes a
+                        # complete meta.ini, same as a direct Nexus/nxm install
+                        # does, instead of leaving it to a later Check Updates
+                        # pass to backfill.
+                        mod_info = info_fallback
+                        try:
+                            fetched, _fi = self._nexus_api.get_mod_and_file_info_graphql(
+                                domain, mod_id, f.file_id)
+                            if fetched is not None:
+                                mod_info = fetched
+                        except Exception:
+                            pass
                         meta = build_meta_from_download(
                             game_domain=domain, mod_id=mod_id, file_id=f.file_id,
-                            archive_name=result.file_name, mod_info=info,
+                            archive_name=result.file_name, mod_info=mod_info,
                             file_info=f)
                     except Exception:
                         meta = None

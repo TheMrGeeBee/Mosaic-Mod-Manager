@@ -72,10 +72,21 @@ def start_auto_fetch(
     def worker():
         premium = False
         if api is not None:
+            from Utils.ui_config import load_nexus_last_premium, save_nexus_last_premium
             try:
                 premium = bool(api.validate().is_premium)
+                try:
+                    save_nexus_last_premium(premium)
+                except Exception:
+                    pass
             except Exception as exc:
-                log_fn(f"could not check Nexus membership: {exc}")
+                # GH#278: a transient validate() failure (network hiccup,
+                # rate limit) must not silently demote a premium user to
+                # manual mode — fall back to the last successfully-
+                # validated status.
+                premium = bool(load_nexus_last_premium())
+                log_fn(f"premium check failed: {exc} — using last-known "
+                      f"status ({'premium' if premium else 'not premium'})")
 
         if premium and not cancel.is_set():
             on_download_started()
