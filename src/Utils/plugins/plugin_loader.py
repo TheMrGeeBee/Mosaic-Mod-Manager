@@ -99,6 +99,16 @@ BUILTIN_WIZARD_TOOLS: list[dict] = [
         "category": "Load Order and Config",
     },
     {
+        "id": "bg3_sort_load_order",
+        "label": "Sort Load Order (Dependencies)",
+        "description": ("Reorder enabled mods so each mod's declared "
+                        "dependencies load before it."),
+        "game_ids": ["baldurs_gate_3"],
+        "all_games": False,
+        "dialog_class": "wizards.bg3_sort.BG3SortWizard",
+        "category": "Load Order and Config",
+    },
+    {
         "id": "sdv_smapi",
         "label": "Install SMAPI",
         "description": "Download and install SMAPI (mod loader) for Stardew Valley.",

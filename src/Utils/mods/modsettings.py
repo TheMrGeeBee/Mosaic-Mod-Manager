@@ -473,6 +473,7 @@ def scan_game_data_uuids(game_data_path: Path) -> set[str]:
 def resolve_load_order(
     enabled_mods: list[ModEntry],
     mod_infos: dict[str, BG3ModInfo],
+    cycles: list[tuple[str, str]] | None = None,
 ) -> list[BG3ModInfo]:
     """Return BG3ModInfo entries in dependency-correct load order.
 
@@ -482,6 +483,12 @@ def resolve_load_order(
     Algorithm (mirrors BG3 Mod Manager):
       For each mod in the user's order, recursively insert its dependencies
       first, then insert the mod itself.  A visited set prevents duplicates.
+
+    *cycles* — optional list; when a mod's dependency chain loops back on
+    itself (A depends on B depends on A), the back-edge is recorded here as
+    (uuid, name) and NOT followed further, instead of recursing forever.
+    Mirrors BG3 Mod Manager Redux's stance of leaving cyclic mods in their
+    existing relative order rather than crashing or guessing a resolution.
     """
     # Build a lookup: source_mod name → list of BG3ModInfo.
     # A single staging folder can contain many .pak files (e.g. load-order
@@ -493,16 +500,25 @@ def resolve_load_order(
             by_source.setdefault(info.source_mod, []).append(info)
 
     added: set[str] = set()
+    visiting: set[str] = set()
     result: list[BG3ModInfo] = []
 
     def _insert(info: BG3ModInfo) -> None:
         if info.uuid in added:
             return
+        if info.uuid in visiting:
+            # Circular dependency — stop recursing into this back-edge
+            # rather than looping forever.
+            if cycles is not None:
+                cycles.append((info.uuid, info.name))
+            return
+        visiting.add(info.uuid)
         # Recursively insert dependencies first
         for dep_uuid in info.dependencies:
             dep = mod_infos.get(dep_uuid)
             if dep is not None:
                 _insert(dep)
+        visiting.discard(info.uuid)
         added.add(info.uuid)
         result.append(info)
 
@@ -832,7 +848,12 @@ def write_modsettings(
         ordered = _apply_manifest_pak_order(enabled, eligible, manifest_load_order, _log)
     else:
         _log("Resolving load order with dependency sorting ...")
-        ordered = resolve_load_order(enabled, eligible)
+        cycles: list[tuple[str, str]] = []
+        ordered = resolve_load_order(enabled, eligible, cycles=cycles)
+        if cycles:
+            names = ", ".join(sorted({name for _uuid, name in cycles}))
+            _log(f"  WARNING: circular dependency detected — could not fully "
+                 f"order: {names}")
 
     # Adventure (custom campaign) mods replace the stock campaign entry at
     # the top of modsettings rather than appearing as regular mod entries.
