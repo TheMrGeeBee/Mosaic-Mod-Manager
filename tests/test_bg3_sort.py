@@ -14,7 +14,7 @@ dependency in modlist.txt, not below. That's the direction these tests check.
 """
 from __future__ import annotations
 
-from Utils.mods.bg3_sort import compute_sort_plan
+from Utils.mods.bg3_sort import compute_sort_plan, compute_sort_plan_for_modlist
 from Utils.mods.modlist import ModEntry, write_modlist
 from Utils.mods.modsettings import BG3ModInfo, resolve_load_order
 
@@ -99,6 +99,29 @@ def test_sort_moves_dependent_above_its_dependency(tmp_path, monkeypatch):
     assert plan.changed
     assert not plan.unresolved
     assert {m.name for m in plan.moves} == {"Needs B", "Provides B"}
+
+
+def test_compute_sort_plan_for_modlist_works_with_explicit_path(tmp_path, monkeypatch):
+    # deploy() knows its own modlist.txt path from its `profile` argument —
+    # it must not depend on _active_profile_dir (can be stale) or
+    # get_last_active_profile(), unlike the wizard's compute_sort_plan().
+    modlist_path = _seed_modlist(tmp_path, [
+        ModEntry(name="Provides B", enabled=True, locked=False),
+        ModEntry(name="Needs B", enabled=True, locked=False),
+    ])
+    game = _FakeGame(tmp_path / "unrelated-active-profile-dir")
+
+    needs_b = _info("uuid-needs", "Needs B", deps=("uuid-provides",))
+    provides_b = _info("uuid-provides", "Provides B")
+    monkeypatch.setattr(
+        "Utils.mods.bg3_sort.scan_mod_paks",
+        lambda *a, **kw: {"uuid-needs": needs_b, "uuid-provides": provides_b})
+
+    plan = compute_sort_plan_for_modlist(game, modlist_path)
+
+    assert [e.name for e in plan.new_entries] == ["Needs B", "Provides B"]
+    assert plan.changed
+    assert plan.modlist_path == modlist_path
 
 
 def test_already_correct_order_produces_no_moves(tmp_path, monkeypatch):

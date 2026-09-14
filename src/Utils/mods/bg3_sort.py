@@ -77,11 +77,22 @@ def compute_sort_plan(game, profile_name: str = "") -> SortPlan:
     Raises on error (undeterminable profile). Returns a SortPlan whose
     ``new_entries`` equals the current modlist.txt entries, unchanged, when
     there's nothing to reorder (no mods, or already in dependency order).
+
+    Resolves the profile's modlist.txt via ``resolve_profile_modlist`` (the
+    active profile, or *profile_name*/last-active as fallbacks) — for a
+    caller that already knows the exact modlist.txt path (e.g. deploy(),
+    which is passed an explicit *profile* argument rather than relying on
+    possibly-stale active-profile state), use
+    ``compute_sort_plan_for_modlist`` directly instead.
     """
     modlist_path = resolve_profile_modlist(game, profile_name)
     if modlist_path is None:
         raise RuntimeError("Could not determine the active profile.")
+    return compute_sort_plan_for_modlist(game, modlist_path)
 
+
+def compute_sort_plan_for_modlist(game, modlist_path: Path) -> SortPlan:
+    """Same as ``compute_sort_plan``, but for an already-known modlist.txt path."""
     entries = read_modlist(modlist_path)
     enabled = [e for e in entries if e.enabled and not e.is_separator]
     if not enabled:

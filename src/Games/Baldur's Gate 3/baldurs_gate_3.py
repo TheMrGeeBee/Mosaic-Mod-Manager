@@ -326,6 +326,28 @@ class BaldursGate3(BaseGame):
         _log(f"  Staging:          {staging}")
         _log(f"  Deploy mode:      {mode.name}")
 
+        # Keep modlist.txt's order in sync with declared meta.lsx
+        # dependencies before anything else reads it. write_modsettings
+        # below already computes this order internally for modsettings.lsx
+        # regardless — this additionally writes it back to modlist.txt so
+        # the Mods tab (and file-conflict priority on the next Build
+        # Filemap) reflect it too, instead of the reorder only ever
+        # happening invisibly inside modsettings.lsx generation. Never
+        # fatal: a failure here just means this deploy proceeds without the
+        # auto-sort, exactly as before this existed.
+        try:
+            from Utils.mods.bg3_sort import apply_plan, compute_sort_plan_for_modlist
+            sort_plan = compute_sort_plan_for_modlist(self, modlist)
+            if sort_plan.changed:
+                _log(f"Load order: reordering {len(sort_plan.moves)} mod(s) "
+                     "to satisfy dependencies ...")
+                for m in sorted(sort_plan.moves, key=lambda mv: mv.new_index):
+                    _log(f"  {m.name}: position {m.old_index + 1} -> "
+                        f"{m.new_index + 1} ({m.reason})")
+                apply_plan(sort_plan)
+        except Exception as exc:
+            _log(f"Load order auto-sort skipped: {exc}")
+
         mods_dir.mkdir(parents=True, exist_ok=True)
 
         if not filemap.is_file():
