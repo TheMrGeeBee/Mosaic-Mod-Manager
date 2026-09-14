@@ -52,6 +52,19 @@ TIME_RANGES = [
     ("Year", 365),
 ]
 SECTIONS = ["Browse", "Tracked", "Endorsed", "Trending"]
+# Language Support filter — matches Nexus's own site search sidebar. There is
+# no API to fetch this list (unlike categories, which come from
+# get_game_categories); languageName's valid values were confirmed by
+# querying the live search API directly (each of these returns real
+# results), so this is a fixed list rather than a dynamic per-game one.
+LANGUAGE_NAMES = [
+    "Arabic", "Bulgarian", "Czech", "Danish", "Dutch", "English", "Finnish",
+    "French", "German", "Greek", "Hungarian", "Italian", "Japanese",
+    "Korean", "Norwegian", "Polish", "Portuguese (Brazil)",
+    "Portuguese (Portugal)", "Romanian", "Russian", "Simplified Chinese",
+    "Spanish", "Swedish", "Thai", "Traditional Chinese", "Turkish",
+    "Ukrainian", "Vietnamese",
+]
 # Default "shown per page"; overridden by the footer dropdown (persisted).
 PAGE_SIZE_BROWSE = 30
 # User-selectable "shown per page" counts (footer dropdown).
@@ -100,6 +113,7 @@ class NexusBrowserView(QWidget):
         # name. Non-zero id here → the Author-mode worker uses the id path.
         self._uploader_id = 0
         self._selected_categories: list[str] = []
+        self._selected_languages: list[str] = []
         self._show_adult = self._load_show_adult()
         self._page_size_choice = self._load_page_size()
         self._entries = []
@@ -282,6 +296,38 @@ class NexusBrowserView(QWidget):
         self._cat_status = QLabel(self.tr("Loading…"))
         self._cat_status.setObjectName("FilterEmpty")
         self._cat_layout.addWidget(self._cat_status)
+
+        # --- Languages section (same panel, stacked below Categories) ------
+        # Fixed list (see LANGUAGE_NAMES) — no per-game reload needed, unlike
+        # categories, so it's built once here rather than from a worker.
+        lang_header = QWidget()
+        lang_header.setObjectName("FilterHeader")
+        lhl = QHBoxLayout(lang_header)
+        lhl.setContentsMargins(10, 6, 8, 6)
+        lang_hdr = QLabel(self.tr("Languages"))
+        lang_hdr.setObjectName("FilterTitle")
+        lhl.addWidget(lang_hdr)
+        lhl.addStretch(1)
+        cv.addWidget(lang_header)
+        lang_rule = QFrame()
+        lang_rule.setObjectName("FilterRule")
+        lang_rule.setFixedHeight(1)
+        cv.addWidget(lang_rule)
+        self._lang_scroll = QScrollArea()
+        self._lang_scroll.setWidgetResizable(True)
+        self._lang_scroll.setFrameShape(QFrame.NoFrame)
+        self._lang_host = QWidget()
+        self._lang_host.setObjectName("FilterBody")
+        self._lang_layout = QVBoxLayout(self._lang_host)
+        self._lang_layout.setContentsMargins(10, 8, 10, 12)
+        self._lang_layout.setSpacing(3)
+        self._lang_layout.setAlignment(Qt.AlignTop)
+        self._lang_scroll.setWidget(self._lang_host)
+        cv.addWidget(self._lang_scroll, 1)
+        self._lang_checks: list[QCheckBox] = []
+        for name in LANGUAGE_NAMES:
+            self._add_lang_check(name)
+
         self._cat_panel.setStyleSheet(self._filter_qss(p))
         self._body_split.addWidget(self._cat_panel)
 
@@ -485,6 +531,21 @@ class NexusBrowserView(QWidget):
         self._page = 0
         self._reload()
 
+    def _add_lang_check(self, name: str):
+        from gui_qt.tri_state_checkbox import TriStateCheckBox
+        cb = TriStateCheckBox(name, two_state=True)
+        cb.setToolTip(name)
+        cb.stateChanged.connect(lambda _s: self._on_language_toggled())
+        cb._lang_name = name
+        self._lang_layout.addWidget(cb)
+        self._lang_checks.append(cb)
+
+    def _on_language_toggled(self):
+        self._selected_languages = [
+            cb._lang_name for cb in self._lang_checks if cb.state()]
+        self._page = 0
+        self._reload()
+
     # -- toolbar handlers ---------------------------------------------------
     def _on_sort_changed(self, label: str):
         self._sort_key = dict(SORT_KEYS).get(label, "downloads")
@@ -671,6 +732,13 @@ class NexusBrowserView(QWidget):
         self._page = 0
         self._query = ""
         self._selected_categories = []
+        # Languages aren't per-game (fixed list, no reload needed) but the
+        # selection itself resets with everything else on a game switch.
+        # set_state's emit defaults to False, so this doesn't trigger a
+        # reload per checkbox — _reload() below covers it once.
+        self._selected_languages = []
+        for cb in self._lang_checks:
+            cb.set_state(0)
         self._time_days = None
         # Drop any custom "Since <date>" range and restore the preset list.
         if self._custom_time_label:
@@ -715,6 +783,7 @@ class NexusBrowserView(QWidget):
         mode = self._search_mode
         uploader_id = self._uploader_id
         cats = list(self._selected_categories) or None
+        langs = list(self._selected_languages) or None
         domain = self._domain
 
         def worker():
@@ -728,12 +797,13 @@ class NexusBrowserView(QWidget):
                             entries = self._api.search_mods_by_uploader_id(
                                 domain, uploader_id, count=size,
                                 offset=page * size, category_names=cats,
-                                sort_key=sort_key)
+                                language_names=langs, sort_key=sort_key)
                         else:
                             # Typed author search: match uploader by name.
                             entries = self._api.search_mods_by_author(
                                 domain, query, count=size, offset=page * size,
-                                category_names=cats, sort_key=sort_key)
+                                category_names=cats, language_names=langs,
+                                sort_key=sort_key)
                         status = f"Mods by '{query}': page {page + 1} ({len(entries)} result(s))"
                     elif query.isdigit():
                         entries = self._api.search_mod_by_id(domain, int(query))
@@ -741,18 +811,20 @@ class NexusBrowserView(QWidget):
                     else:
                         entries = self._api.search_mods(
                             domain, query, count=size, offset=page * size,
-                            category_names=cats, sort_key=sort_key)
+                            category_names=cats, language_names=langs,
+                            sort_key=sort_key)
                         status = f"Search '{query}': page {page + 1} ({len(entries)} result(s))"
                 elif section == "Browse":
                     entries = self._api.get_top_mods(
                         domain, count=size, offset=page * size,
-                        category_names=cats, created_since_days=time_days,
+                        category_names=cats, language_names=langs,
+                        created_since_days=time_days,
                         sort_key=sort_key)
                     status = f"Browse: page {page + 1}"
                 elif section == "Trending":
                     entries = self._api.get_trending_mods_graphql(
                         domain, count=size, offset=page * size,
-                        category_names=cats)
+                        category_names=cats, language_names=langs)
                     status = f"Trending (7 days): page {page + 1}"
                 elif section == "Tracked":
                     entries = self._fetch_user_mods(domain, self._api.get_tracked_mods)

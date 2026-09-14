@@ -882,26 +882,28 @@ class NexusAPI:
 
     @staticmethod
     def _build_mods_filter(
-        game_domain: str, category_names: list[str] | None = None
+        game_domain: str, category_names: list[str] | None = None,
+        language_names: list[str] | None = None,
     ) -> dict:
-        """Build a ModsFilter dict, optionally restricting to specific category names."""
-        base: dict = {"gameDomainName": {"value": game_domain}}
-        if not category_names:
-            return base
-        if len(category_names) == 1:
-            base["categoryName"] = {"value": category_names[0]}
-            return base
-        # Multiple categories: AND(domain, OR(cat1, cat2, ...))
-        return {
-            "op": "AND",
-            "filter": [
-                {"gameDomainName": {"value": game_domain}},
-                {
+        """Build a ModsFilter dict, optionally restricting to specific
+        category and/or language names — each group OR-combined among
+        itself, then AND-ed together with the domain filter (and with each
+        other, when both are given)."""
+        clauses: list[dict] = [{"gameDomainName": {"value": game_domain}}]
+        for filter_field, names in (("categoryName", category_names),
+                                    ("languageName", language_names)):
+            if not names:
+                continue
+            if len(names) == 1:
+                clauses.append({filter_field: {"value": names[0]}})
+            else:
+                clauses.append({
                     "op": "OR",
-                    "filter": [{"categoryName": {"value": n}} for n in category_names],
-                },
-            ],
-        }
+                    "filter": [{filter_field: {"value": n}} for n in names],
+                })
+        if len(clauses) == 1:
+            return clauses[0]
+        return {"op": "AND", "filter": clauses}
 
     # -- Mods ---------------------------------------------------------------
 
@@ -970,13 +972,14 @@ class NexusAPI:
         count: int = 20,
         offset: int = 0,
         category_names: list[str] | None = None,
+        language_names: list[str] | None = None,
     ) -> list[NexusModInfo]:
         """
         Fetch trending mods via GraphQL: mods published in the last 7 days,
         sorted by endorsements (highest first).
         """
         seven_days_ago = int(time.time()) - (7 * 24 * 60 * 60)
-        base_filter = self._build_mods_filter(game_domain, category_names)
+        base_filter = self._build_mods_filter(game_domain, category_names, language_names)
         if "filter" in base_filter:
             base_filter["filter"].append({
                 "createdAt": [{"value": str(seven_days_ago), "op": "GTE"}],
@@ -2062,6 +2065,7 @@ class NexusAPI:
     def get_top_mods(
         self, game_domain: str, count: int = 10, offset: int = 0,
         category_names: list[str] | None = None,
+        language_names: list[str] | None = None,
         created_since_days: int | None = None,
         sort_key: str = "downloads",
     ) -> list[NexusModInfo]:
@@ -2070,13 +2074,14 @@ class NexusAPI:
 
         Results are sorted by `sort_key` descending. Valid sort_key values:
         "downloads" (default), "endorsements", "createdAt", "updatedAt".
-        Pass category_names to restrict results to specific categories.
+        Pass category_names/language_names to restrict results to specific
+        categories/languages.
         Pass created_since_days to restrict to mods uploaded within the last N days
         (None = all time).
         """
         if sort_key not in self._TOP_MODS_SORT_KEYS:
             sort_key = "downloads"
-        base_filter = self._build_mods_filter(game_domain, category_names)
+        base_filter = self._build_mods_filter(game_domain, category_names, language_names)
         if created_since_days is not None and created_since_days > 0:
             cutoff = int(time.time()) - (created_since_days * 24 * 60 * 60)
             date_clause = {"createdAt": [{"value": str(cutoff), "op": "GTE"}]}
@@ -2170,21 +2175,25 @@ class NexusAPI:
     def search_mods(
         self, game_domain: str, query_text: str, count: int = 10, offset: int = 0,
         category_names: list[str] | None = None,
+        language_names: list[str] | None = None,
         sort_key: str = "downloads",
     ) -> list[NexusModInfo]:
         """
         Search mods by name for a game via the GraphQL v2 API.
-        Pass category_names to restrict results to specific categories.
+        Pass category_names/language_names to restrict results to specific
+        categories/languages.
         Results are sorted by `sort_key` descending (see get_top_mods for the
         valid values); invalid keys fall back to "downloads".
         """
         return self._search_mods_by_field(
             "name", game_domain, query_text, count=count, offset=offset,
-            category_names=category_names, sort_key=sort_key)
+            category_names=category_names, language_names=language_names,
+            sort_key=sort_key)
 
     def search_mods_by_uploader_id(
         self, game_domain: str, uploader_id: int, count: int = 10, offset: int = 0,
         category_names: list[str] | None = None,
+        language_names: list[str] | None = None,
         sort_key: str = "downloads",
     ) -> list[NexusModInfo]:
         """
@@ -2203,11 +2212,13 @@ class NexusAPI:
         cond = {"uploaderId": [{"value": str(uploader_id)}]}
         return self._search_mods_filtered(
             game_domain, cond, count=count, offset=offset,
-            category_names=category_names, sort_key=sort_key)
+            category_names=category_names, language_names=language_names,
+            sort_key=sort_key)
 
     def search_mods_by_author(
         self, game_domain: str, author: str, count: int = 10, offset: int = 0,
         category_names: list[str] | None = None,
+        language_names: list[str] | None = None,
         sort_key: str = "downloads",
     ) -> list[NexusModInfo]:
         """
@@ -2224,11 +2235,13 @@ class NexusAPI:
         cond = {"uploader": [{"value": author}]}
         return self._search_mods_filtered(
             game_domain, cond, count=count, offset=offset,
-            category_names=category_names, sort_key=sort_key)
+            category_names=category_names, language_names=language_names,
+            sort_key=sort_key)
 
     def _search_mods_by_field(
         self, field: str, game_domain: str, value: str, count: int = 10,
         offset: int = 0, category_names: list[str] | None = None,
+        language_names: list[str] | None = None,
         sort_key: str = "downloads",
     ) -> list[NexusModInfo]:
         """
@@ -2246,11 +2259,12 @@ class NexusAPI:
         return self._search_mods_filtered(
             game_domain, {field: {"value": value, "op": "WILDCARD"}},
             count=count, offset=offset, category_names=category_names,
-            sort_key=sort_key)
+            language_names=language_names, sort_key=sort_key)
 
     def _search_mods_filtered(
         self, game_domain: str, cond: dict, count: int = 10,
         offset: int = 0, category_names: list[str] | None = None,
+        language_names: list[str] | None = None,
         sort_key: str = "downloads",
     ) -> list[NexusModInfo]:
         """
@@ -2260,7 +2274,7 @@ class NexusAPI:
         """
         if sort_key not in self._TOP_MODS_SORT_KEYS:
             sort_key = "downloads"
-        base_filter = self._build_mods_filter(game_domain, category_names)
+        base_filter = self._build_mods_filter(game_domain, category_names, language_names)
         if "filter" in base_filter:
             # nested AND structure — append the condition
             base_filter["filter"].append(cond)
