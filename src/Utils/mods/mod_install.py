@@ -1068,7 +1068,7 @@ class PreparedInstall:
 def prepare_archive(archive_path: str, game, profile_dir: Path, *,
                     log_fn: LogFn, progress_fn: Optional[ProgressFn] = None,
                     preferred_name: str = "", prebuilt_meta=None,
-                    on_need_prefix=None, cancel=None,
+                    on_need_prefix=None, on_variant_choice=None, cancel=None,
                     concurrent_workers: int = 1) -> PreparedInstall | None:
     """Extract *archive_path* to a kept temp dir and detect FOMOD. The caller
     either runs the wizard (is_fomod) then `finish_install(prepared, selections)`,
@@ -1077,6 +1077,20 @@ def prepare_archive(archive_path: str, game, profile_dir: Path, *,
 
     *cancel* — optional ``threading.Event``; when set the extraction is aborted
     and the partial temp dir removed (returns None).
+
+    *on_variant_choice* — optional ``(existing_name, new_name) -> str``
+    callback, consulted when this file would otherwise silently merge into an
+    already-installed mod with the same Nexus mod_id (see
+    ``_existing_install_for_same_mod``). There is no reliable local signal
+    that distinguishes a genuine hotfix/version-bump update (should merge)
+    from an unrelated alternate file on the same mod page — e.g. a "Male"
+    and "Female" variant of the same mod, both MAIN category, both then
+    silently coerced into ONE folder even though they are different content
+    (real report). Return "replace" to merge as before, "cancel" to abort,
+    or anything else (typically "rename:<name>") to keep *new_name* — or a
+    caller-supplied override — as its own separate install. None (the
+    default, used by every non-interactive caller) preserves the old
+    always-merge behaviour.
 
     *concurrent_workers* — see ``_extract_archive``; passed straight through."""
     archive = Path(archive_path)
@@ -1124,10 +1138,27 @@ def prepare_archive(archive_path: str, game, profile_dir: Path, *,
         # as its own separate mod, not replace the existing install.
         existing_name = _existing_install_for_same_mod(staging_root, prebuilt_meta)
         if existing_name and existing_name != nexus_name:
-            log_fn(f"'{nexus_name or archive.stem}' is a MAIN/UPDATE file for "
-                   f"already-installed mod '{existing_name}' — naming the "
-                   f"folder after the existing install instead.")
-            nexus_name = existing_name
+            new_name = nexus_name or archive.stem
+            if on_variant_choice is not None:
+                choice = on_variant_choice(existing_name, new_name) or "cancel"
+                if choice == "cancel":
+                    log_fn("Install cancelled.")
+                    return None
+                if choice == "replace":
+                    log_fn(f"'{new_name}' is a MAIN/UPDATE file for "
+                           f"already-installed mod '{existing_name}' — "
+                           f"merging into the existing install.")
+                    nexus_name = existing_name
+                elif choice.startswith("rename:"):
+                    nexus_name = choice[len("rename:"):].strip() or new_name
+                    log_fn(f"'{new_name}' kept as a separate install "
+                           f"('{nexus_name}') from '{existing_name}'.")
+                # else: keep nexus_name as new_name — installs separately.
+            else:
+                log_fn(f"'{new_name}' is a MAIN/UPDATE file for "
+                       f"already-installed mod '{existing_name}' — naming "
+                       f"the folder after the existing install instead.")
+                nexus_name = existing_name
 
         mod_name = nexus_name or _clean_mod_name(archive.stem, game)
         if nexus_name:

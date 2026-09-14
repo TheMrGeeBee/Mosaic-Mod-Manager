@@ -26,18 +26,33 @@ class ModExistsOverlay(OverlayBase):
     MIN_H = 180
     ESC_RESULT = "cancel"
 
-    def __init__(self, host: QWidget, mod_name: str, conflict: bool, on_done):
+    def __init__(self, host: QWidget, mod_name: str, conflict: bool, on_done,
+                variant_of: "str | None" = None):
         super().__init__(host, on_done=on_done)
         p = active_palette()
 
         _card, v = self._make_card("ExistsCard")
 
-        title = QLabel(self.tr("Mod Already Exists"))
+        if variant_of:
+            title_text = self.tr("Same Nexus Mod Page, Different File")
+        else:
+            title_text = self.tr("Mod Already Exists")
+        title = QLabel(title_text)
         title.setStyleSheet(
             f"color:{_c(p,'TEXT_MAIN')}; font-weight:600; font-size:16px;")
         v.addWidget(title)
 
-        if conflict:
+        if variant_of:
+            # There's no reliable way to tell "this is an update for the
+            # installed file" apart from "this is an unrelated alternate
+            # file from the same mod page" (e.g. a Male/Female variant) —
+            # so always ask rather than silently merging either way.
+            body_text = self.tr(
+                "'{0}' comes from the same Nexus mod page as your "
+                "already-installed '{1}', but is a different file.\n\n"
+                "Replace '{1}' with it, or keep them as two separate "
+                "mods?").format(mod_name, variant_of)
+        elif conflict:
             body_text = self.tr(
                 "'{0}' is also already installed.\n"
                 "Pick a different name, or choose another option.").format(mod_name)
@@ -76,7 +91,8 @@ class ModExistsOverlay(OverlayBase):
         cancel.setCursor(Qt.PointingHandCursor)
         cancel.clicked.connect(lambda: self._finish("cancel"))
         bar.addWidget(cancel)
-        rename = QPushButton(self.tr("Rename…"))
+        rename = QPushButton(self.tr("Keep Separate…") if variant_of
+                            else self.tr("Rename…"))
         rename.setObjectName("FormButton")
         rename.setCursor(Qt.PointingHandCursor)
         rename.clicked.connect(self._show_rename)
@@ -91,9 +107,9 @@ class ModExistsOverlay(OverlayBase):
         self._present()
 
     @classmethod
-    def show_over(cls, host, mod_name, conflict, on_done):
+    def show_over(cls, host, mod_name, conflict, on_done, variant_of=None):
         top = host.window() if host is not None else None
-        return cls(top or host, mod_name, conflict, on_done)
+        return cls(top or host, mod_name, conflict, on_done, variant_of=variant_of)
 
     # -- internals ----------------------------------------------------------
     def _show_rename(self):

@@ -248,6 +248,9 @@ class MainWindow(QMainWindow):
     # Worker asks the UI to show the Mod-Already-Exists overlay (same blocking
     # holder+Event handshake as _need_prefix).
     _mod_exists = Signal(object)               # (dict with mod_name/conflict/holder/event)
+    # Worker asks the UI to show the Same-Mod-Page-Different-File overlay
+    # (same blocking holder+Event handshake as _mod_exists).
+    _mod_variant_choice = Signal(object)       # (dict with new_name/existing_name/holder/event)
     # Deploy worker asks the UI to show the Cyberpunk CET symlink warning
     # (same blocking holder+Event handshake as _need_prefix).
     _confirm_cet = Signal(object)              # (dict with holder/event)
@@ -429,6 +432,7 @@ class MainWindow(QMainWindow):
         self._install_batch_stage_done.connect(self._on_install_batch_stage_done)
         self._need_prefix.connect(self._on_need_prefix_ui)
         self._mod_exists.connect(self._on_mod_exists_ui)
+        self._mod_variant_choice.connect(self._on_mod_variant_choice_ui)
         self._confirm_cet.connect(self._on_confirm_cet_ui)
         self._proton_busy = False
         self._proton_done.connect(self._on_proton_done)
@@ -9430,6 +9434,44 @@ class MainWindow(QMainWindow):
         ModExistsOverlay.show_over(
             self, payload["mod_name"], payload["conflict"], _done)
 
+    def _make_variant_choice_cb(self):
+        """Return an on_variant_choice(existing_name, new_name) callback for
+        prepare_archive. Runs on the WORKER thread → shows the Same-Mod-Page-
+        Different-File overlay on the UI thread and BLOCKS until the user
+        picks (replace / rename:<n> / cancel), mirroring _make_exists_cb.
+        There is no reliable local signal that distinguishes a genuine
+        hotfix/version-bump update (should merge into the existing folder)
+        from an unrelated alternate file on the same Nexus mod page (should
+        install separately — e.g. a Male/Female variant pair, real report),
+        so this always asks rather than silently guessing either way."""
+        import threading
+
+        def _cb(existing_name, new_name):
+            holder = {"result": "cancel"}
+            ev = threading.Event()
+            self._mod_variant_choice.emit({
+                "existing_name": existing_name, "new_name": new_name,
+                "holder": holder, "event": ev})
+            ev.wait()
+            return holder["result"]
+
+        return _cb
+
+    def _on_mod_variant_choice_ui(self, payload):
+        """UI thread: show the Same-Mod-Page-Different-File overlay; unblock
+        the worker."""
+        if self._progress_popup is not None:
+            self._progress_popup.clear()
+        from gui_qt.overlays.mod_exists_overlay import ModExistsOverlay
+
+        def _done(result):
+            payload["holder"]["result"] = result or "cancel"
+            payload["event"].set()
+
+        ModExistsOverlay.show_over(
+            self, payload["new_name"], False, _done,
+            variant_of=payload["existing_name"])
+
     def _make_confirm_cet_cb(self, game):
         """Return a confirm_cet() callback for run_deploy_pipeline. Runs on the
         deploy WORKER thread: if Cyberpunk 2077 is being deployed in symlink mode
@@ -9508,7 +9550,8 @@ class MainWindow(QMainWindow):
                     progress_fn=lambda d, t, ph=None: self._op_progress.emit(d, t, ph),
                     prebuilt_meta=meta,
                     preferred_name=forced_name,
-                    on_need_prefix=self._make_need_prefix_cb())
+                    on_need_prefix=self._make_need_prefix_cb(),
+                    on_variant_choice=self._make_variant_choice_cb())
             except Exception as exc:
                 self._op_log.emit(f"Prepare error ({Path(path).name}): {exc}")
                 prepared = None
@@ -9533,6 +9576,7 @@ class MainWindow(QMainWindow):
         ui_lock = threading.Lock()
         raw_prefix_cb = self._make_need_prefix_cb()
         raw_exists_cb = self._make_exists_cb()
+        raw_variant_cb = self._make_variant_choice_cb()
 
         def _serialized(cb):
             def inner(*a, **k):
@@ -9542,6 +9586,7 @@ class MainWindow(QMainWindow):
 
         prefix_cb = _serialized(raw_prefix_cb)
         exists_cb = _serialized(raw_exists_cb)
+        variant_cb = _serialized(raw_variant_cb)
 
         def driver():
             from concurrent.futures import ThreadPoolExecutor
@@ -9587,7 +9632,8 @@ class MainWindow(QMainWindow):
                         path, self._install_game, self._install_profile_dir,
                         log_fn=lambda m: self._op_log.emit(str(m)),
                         prebuilt_meta=meta, preferred_name=forced,
-                        on_need_prefix=prefix_cb)
+                        on_need_prefix=prefix_cb,
+                        on_variant_choice=None if forced else variant_cb)
                     if prepared is None:
                         return
                     if (prepared.is_fomod() and prepared.fomod_has_steps()) \
