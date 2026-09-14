@@ -2870,13 +2870,39 @@ class MainWindow(QMainWindow):
                 self._append_log(f"[nexus] Mosaic endorsement check failed: {error}")
             return
         self._mosaic_endorsed = bool(payload.get("endorsed"))
-        if hasattr(self, "_endorse_mosaic_btn"):
-            self._endorse_mosaic_btn.setText(
-                self.tr("Endorsed ✓") if self._mosaic_endorsed else self.tr("Endorse"))
+        self._refresh_endorse_mosaic_style()
         if notify:
             msg = (self.tr("Endorsed Mosaic Mod Manager on Nexus — thank you!")
                    if self._mosaic_endorsed else self.tr("Endorsement removed."))
             self._notify(msg, "success")
+
+    def _refresh_endorse_mosaic_style(self):
+        """Style _endorse_mosaic_btn from self._mosaic_endorsed: a colored
+        call-to-action ("♥ Endorse") when not yet endorsed, or the same flat
+        chrome as the neighboring Log/Changelog/Github buttons — plus a
+        green checkmark emoji, which renders in its own fixed color
+        regardless of the button's (now-neutral) text color — once it is.
+        Endorsing is a toggle (clicking again abstains), so this re-derives
+        the look from state every time rather than setting it once."""
+        btn = getattr(self, "_endorse_mosaic_btn", None)
+        if btn is None:
+            return
+        if getattr(self, "_mosaic_endorsed", False):
+            btn.setText(self.tr("✅ Endorsed"))
+            btn.setStyleSheet("")
+            btn.setObjectName("FooterButton")
+        else:
+            btn.setText(self.tr("♥ Endorse"))
+            color = _c(active_palette(), "BTN_SUCCESS")
+            fg = contrast_text(color)
+            btn.setObjectName("")
+            btn.setStyleSheet(
+                f"QPushButton{{background:{color}; color:{fg}; border:none;"
+                f" padding:4px 10px; border-radius:4px; font-size:12px;"
+                f" font-weight:600;}}"
+                f"QPushButton:hover{{background:{color};}}")
+        btn.style().unpolish(btn)
+        btn.style().polish(btn)
 
     def _open_onboarding_tab(self):
         """Open first-run onboarding as a fullscreen detachable tab (like the
@@ -13658,9 +13684,19 @@ class MainWindow(QMainWindow):
 
         # Endorse Mosaic's own Nexus listing (site/2139) — the Mosaic-era
         # equivalent of the pre-rename "Endorse AMM" button, which pointed at
-        # the original Amethyst Mod Manager's Nexus page.
-        self._endorse_mosaic_btn = self._text_button(self.tr("Endorse"), compact=True)
+        # the original Amethyst Mod Manager's Nexus page. A colored call-to-
+        # action rather than a flat text button (previously identical to
+        # "Log"/"Changelog"/"Github" and easy to miss) — muted back to a
+        # plain text button once already endorsed (see
+        # _refresh_endorse_mosaic_style), matching how it toggles off the
+        # "here's something to do" affordance rather than continuing to
+        # compete for attention. Endorsing is itself a toggle (clicking an
+        # already-endorsed button abstains), so the style is re-derived from
+        # state on every change, not set once at creation.
+        self._endorse_mosaic_btn = QPushButton()
+        self._endorse_mosaic_btn.setCursor(Qt.PointingHandCursor)
         self._endorse_mosaic_btn.clicked.connect(self._on_endorse_mosaic)
+        self._refresh_endorse_mosaic_style()
         h.addWidget(self._endorse_mosaic_btn)
 
         # Nexus username at the far right; hover shows API rate-limit usage.
