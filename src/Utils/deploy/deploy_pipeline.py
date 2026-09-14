@@ -109,6 +109,119 @@ def _safe(fn, default=None):
         return default
 
 
+def _missing_req_pairs(raw: str) -> "list[tuple[int, str]]":
+    """(modId, name) pairs from a meta.ini `missing_requirements` value
+    (semicolon-separated `modId:name` entries — the name half may be blank
+    for locally-seeded requirements, e.g. the TTW installer)."""
+    pairs: list[tuple[int, str]] = []
+    for part in (raw or "").split(";"):
+        raw_id, _, name = part.partition(":")
+        raw_id = raw_id.strip()
+        if not raw_id:
+            continue
+        try:
+            pairs.append((int(raw_id), name.strip()))
+        except ValueError:
+            pass
+    return pairs
+
+
+def _warn_missing_requirements(game, profile_dir: Path, *, log_fn: LogFn) -> None:
+    """Queue a deploy warning for every enabled mod with an un-ignored Nexus
+    "missing requirement" that is STILL actually missing — the same
+    yellow-exclamation flag already shown in the Mods tab (FLAG_MISSING_REQS),
+    but previously only a passive icon: deploy proceeded silently even when a
+    mod's declared framework/requirement isn't installed and the mod likely
+    won't work at all. Game-agnostic — every game shares the same meta.ini
+    field and the same add_deploy_warning()/toast mechanism.
+
+    The stored `missing_requirements` string is a snapshot from whenever it
+    was last checked (install time / Check Updates) — it goes stale, so it is
+    NOT trusted verbatim. Two live cross-checks first rule out anything no
+    longer actually missing:
+      1. Another currently-enabled mod's own recorded Nexus mod_id matches —
+         the requirement was installed later and the cached flag just never
+         got refreshed.
+      2. The requirement names a native framework (Script Extender, Native
+         Mod Loader, ...) that this game handler verifies itself via
+         `game.frameworks` (the same check driving the green/red Plugins-tab
+         banner) — Nexus's site-side "requirements" list still names these
+         even though they are never installed as a staged mod with their own
+         meta.ini, so the mod_id check above can never satisfy them.
+    """
+    if not hasattr(game, "add_deploy_warning"):
+        return
+    try:
+        from Nexus.nexus_meta import read_meta
+        from Utils.mods.modlist import read_modlist
+        from Utils.profile.profile_state import read_ignored_missing_requirements
+        staging = game.get_effective_mod_staging_path()
+        entries = read_modlist(profile_dir / "modlist.txt")
+        ignored = read_ignored_missing_requirements(profile_dir)
+    except Exception as exc:
+        log_fn(f"  Missing-requirements check skipped: {exc}")
+        return
+
+    enabled_entries = [e for e in entries if e.enabled and not e.is_separator]
+
+    metas_by_name = {}
+    installed_mod_ids: set[int] = set()
+    for e in enabled_entries:
+        meta_path = staging / e.name / "meta.ini"
+        if not meta_path.is_file():
+            continue
+        try:
+            meta = read_meta(meta_path)
+        except Exception:
+            continue
+        metas_by_name[e.name] = meta
+        mod_id = getattr(meta, "mod_id", 0) or 0
+        if mod_id:
+            installed_mod_ids.add(mod_id)
+
+    present_frameworks: list[str] = []
+    frameworks = getattr(game, "frameworks", None) or {}
+    if frameworks:
+        game_root = _safe(game.get_game_path)
+        if game_root:
+            game_root = Path(game_root)
+            for fw_name, rel_exe in frameworks.items():
+                if (game_root / rel_exe).is_file():
+                    present_frameworks.append(fw_name.lower())
+
+    affected: "list[tuple[str, list[str]]]" = []
+    for e in enabled_entries:
+        if e.name in ignored:
+            continue
+        meta = metas_by_name.get(e.name)
+        if meta is None:
+            continue
+        raw = getattr(meta, "missing_requirements", "") or ""
+        if not raw:
+            continue
+        still_missing: list[str] = []
+        for mod_id, name in _missing_req_pairs(raw):
+            if mod_id and mod_id in installed_mod_ids:
+                continue    # satisfied by another currently-enabled mod
+            if any(fw in (name or "").lower() for fw in present_frameworks):
+                continue    # a native framework, already verified present
+            still_missing.append(name or str(mod_id))
+        if still_missing:
+            affected.append((e.name, still_missing))
+
+    for name, names in affected:
+        log_fn(f"  WARNING: {name} is missing required mod(s): "
+               f"{', '.join(names)}")
+    if len(affected) == 1:
+        name, names = affected[0]
+        game.add_deploy_warning(
+            f"{name} is missing required mod(s): {', '.join(names)}")
+    elif affected:
+        game.add_deploy_warning(
+            f"{len(affected)} mod(s) have missing requirements: "
+            f"{', '.join(name for name, _ in affected)}")
+
+
 def _log_deploy_context(game, profile: str, profile_dir: Path,
                         deploy_mode: "LinkMode", *, log_fn: LogFn) -> None:
     """Emit a diagnostic header describing the full deploy environment.
@@ -530,6 +643,10 @@ def run_deploy_pipeline(
         # Reload so the deploy uses the target profile's path overrides.
         game.load_paths()
         game_root = game.get_game_path()
+
+        _warn_missing_requirements(
+            game, game.get_profile_root() / "profiles" / profile,
+            log_fn=log_fn)
 
         if on_pre_filemap is not None:
             on_pre_filemap()
