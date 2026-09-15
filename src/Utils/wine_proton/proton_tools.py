@@ -91,14 +91,28 @@ def install_dotnet_runtime(
     else:
         log_fn(f"using cached .NET {version} installer.")
 
+    # Flatpak without the Compat.i386 extension: wine would die with the
+    # cryptic "/lib/ld-linux.so.2: could not open" — fail with the fix instead.
+    from Utils.wine_proton.flatpak_i386 import preflight_i386_error
+    i386_err = preflight_i386_error(proton_script)
+    if i386_err:
+        log_fn(f".NET {version}: {i386_err}")
+        return False
+
     _status(f"Installing .NET {version} (silent)…\n(this may take a few minutes)")
     log_fn(f"installing .NET {version} in prefix (silent) …")
-    proc = subprocess.run(
+    from Utils.exe_launch.exe_launch import _apply_run_host_shim
+    cmd = _apply_run_host_shim(
         # runinprefix: no steam.exe shim, so the silent install doesn't show
         # the game as "Running" in Steam (the prefix already exists here).
         proton_run_command(proton_script, "runinprefix",
                            str(cache_path), "/quiet", "/norestart",
                            env=env),
+        Path(prefix_path) if prefix_path else None,
+        f".NET {version}", log_fn,
+    )
+    proc = subprocess.run(
+        cmd,
         env=env, cwd=str(cache_path.parent),
     )
     if proc.returncode not in DOTNET_OK_CODES:

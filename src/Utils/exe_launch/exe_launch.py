@@ -1388,8 +1388,12 @@ def shutdown_prefix_wineserver(proton_script: Path, compat_data: Path,
         pfx = Path(compat_data) / "pfx"
         env["WINEPREFIX"] = str(pfx if pfx.exists() else Path(compat_data))
         env["PATH"] = str(bin_dir) + os.pathsep + env.get("PATH", "")
+        cmd = _apply_run_host_shim(
+            [str(bin_dir / "wineserver"), "-k"], pfx,
+            "wineserver shutdown", log_fn or _noop_log,
+        )
         subprocess.run(
-            [str(bin_dir / "wineserver"), "-k"],
+            cmd,
             env=env, timeout=15,
             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
         )
@@ -1608,6 +1612,31 @@ def _apply_run_host_shim(cmd: list, prefix_dir: "Path | None",
     return shim + cmd
 
 
+def _wine_process_alive(exe_name: str) -> bool:
+    """True if some process's argv[0] ends with *exe_name* (case-insensitive).
+
+    Wine-hosted GUI exes show up with their whole wine-style path as argv[0]
+    (e.g. ``Z:\\...\\WitcherScriptMerger.exe``) in a process distinct from the
+    ``proton runinprefix`` launcher chain that spawned it — see
+    :func:`run_tool_logged`. Matches only argv[0]'s suffix, not the full
+    cmdline blob, so an unrelated process that merely *mentions* the name
+    (a shell history line, an editor argument, this very diagnostic) can't
+    false-positive.
+    """
+    import glob
+    needle = exe_name.lower()
+    for cmdline_path in glob.glob("/proc/[0-9]*/cmdline"):
+        try:
+            with open(cmdline_path, "rb") as f:
+                data = f.read()
+        except OSError:
+            continue
+        argv0 = data.split(b"\x00", 1)[0].decode("utf-8", "replace")
+        if argv0.lower().endswith(needle):
+            return True
+    return False
+
+
 def run_tool_logged(
     proton_script: Path,
     exe: Path,
@@ -1664,7 +1693,7 @@ def run_tool_logged(
         cmd = cmd + list(extra_args)
     compat_data = env.get("STEAM_COMPAT_DATA_PATH")
     cmd = _apply_run_host_shim(
-        cmd, Path(compat_data) if compat_data else None, label, log_fn)
+        cmd, Path(compat_data) / "pfx" if compat_data else None, label, log_fn)
 
     try:
         proc = subprocess.Popen(
@@ -1688,6 +1717,32 @@ def run_tool_logged(
     rc = proc.wait()
     if rc != 0:
         log_fn(f"{label}: exited with code {rc}")
+
+    # The tracked process above is the launcher chain, not necessarily the
+    # real GUI: some .NET/WinForms apps under wine detach from their
+    # inherited stdout pipe once their window is up, so the launcher's
+    # stdout EOFs and proc.wait() returns while the actual tool is still
+    # open (observed with WitcherScriptMerger's "Fresh & Automated Edition"
+    # build). Callers run wineserver -k / restore-on-close right after this
+    # returns, which would tear down a still-open session — so poll for the
+    # real exe to actually be gone first. No timeout on the "still open"
+    # wait: a wizard tool can legitimately stay open for a long user
+    # session. But the real process can take a moment to actually appear in
+    # /proc after the launcher exits, so a single immediate check races and
+    # can miss it (observed: the checked-once version still hit the bug) —
+    # grace-poll for a few seconds before concluding it never spawned one.
+    import time
+    seen_alive = False
+    for _ in range(80):  # ~20s grace period, 0.25s steps
+        if _wine_process_alive(exe.name):
+            seen_alive = True
+            break
+        time.sleep(0.25)
+    if seen_alive:
+        log_fn(f"{label}: launcher exited but the tool is still running — "
+               "waiting for the real window to close.")
+        while _wine_process_alive(exe.name):
+            time.sleep(1)
     return rc
 
 
@@ -1786,6 +1841,32 @@ WINEPREFIX + Proton's bin on PATH, ``wine start.exe <exe>``), with only two
     rc = proc.wait()
     if rc != 0:
         log_fn(f"{label}: exited with code {rc}")
+
+    # The tracked process above is the launcher chain, not necessarily the
+    # real GUI: some .NET/WinForms apps under wine detach from their
+    # inherited stdout pipe once their window is up, so the launcher's
+    # stdout EOFs and proc.wait() returns while the actual tool is still
+    # open (observed with WitcherScriptMerger's "Fresh & Automated Edition"
+    # build). Callers run wineserver -k / restore-on-close right after this
+    # returns, which would tear down a still-open session — so poll for the
+    # real exe to actually be gone first. No timeout on the "still open"
+    # wait: a wizard tool can legitimately stay open for a long user
+    # session. But the real process can take a moment to actually appear in
+    # /proc after the launcher exits, so a single immediate check races and
+    # can miss it (observed: the checked-once version still hit the bug) —
+    # grace-poll for a few seconds before concluding it never spawned one.
+    import time
+    seen_alive = False
+    for _ in range(80):  # ~20s grace period, 0.25s steps
+        if _wine_process_alive(exe.name):
+            seen_alive = True
+            break
+        time.sleep(0.25)
+    if seen_alive:
+        log_fn(f"{label}: launcher exited but the tool is still running — "
+               "waiting for the real window to close.")
+        while _wine_process_alive(exe.name):
+            time.sleep(1)
     return rc
 
 
