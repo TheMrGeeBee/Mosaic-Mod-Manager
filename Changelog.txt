@@ -4,6 +4,13 @@ reset to v1.0.0; they keep Amethyst Mod Manager's original numbering, which
 overlaps the numbers above, and the prefix is what keeps the two apart (and
 keeps release tooling from matching the wrong section).
 
+- v1.2.1
+### Bug Fixes
+- Fixed a wizard tool (most visibly Script Merger for The Witcher 3, but any Proton-launched tool run against a game's own real Steam prefix could hit this) sometimes appearing to close itself seconds after opening — its window would still be sitting open and in active use on screen, but Mosaic had already decided the tool had exited and moved on. The practical effect could be severe: Mosaic restores the game's deployed mods back to vanilla as soon as it believes a wizard tool has closed, so this could silently wipe every deployed mod out from under a tool the user was still actively working in, with no action on their part. The underlying cause was a process-tracking assumption that didn't hold for every tool build — some detach internally once their window is up, in a way Mosaic wasn't watching for. Mosaic now confirms the tool's actual window/process is gone before doing any cleanup, however long that takes
+- Fixed the automatic .NET runtime installer (used during setup by Script Merger, Pandora, and PGPatcher) silently failing on a game's real Steam-managed Proton prefix, with nothing in the log beyond a bare exit code — the same sandbox-path issue already fixed for the VC++ Redistributable installer in v1.0.13, but never carried over to the .NET installer, so any of those wizards' first-time setup step could fail to leave the tool in a runnable state
+
+---
+
 - v1.2.0
 ### Additions
 - Added a "Sort Load Order (Dependencies)" wizard for Baldur's Gate 3 (Wizard ▸ Load Order and Config), looking at how BG3ModManager-Redux's own load-order advisor works: it computes the same dependency-correct order Mosaic already worked out internally for modsettings.lsx, but shows it first as a reviewable list of moves instead of the reorder only ever happening invisibly. Deploy itself now also runs this automatically — if the current load order doesn't satisfy a mod's declared meta.lsx dependencies, deploy corrects modlist.txt on its own and logs exactly what moved and why, instead of requiring a manual trip to the wizard every time a new dependency mod is installed
