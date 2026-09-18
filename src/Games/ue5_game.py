@@ -622,14 +622,35 @@ class UE5Game(BaseGame):
     ) -> tuple[str, str] | None:
         """Return ``(container_path, container_name)`` for a matched entry.
 
-        Container = topmost folder containing the matched file. See
-        ``deploy_custom_rules._sibling_container`` for the rationale.
+        Container = the folder that directly contains the matched folder
+        (e.g. "Scripts"/"dlls"), NOT necessarily the topmost folder of the
+        whole relative path — a mod may wrap its real per-mod folder in an
+        extra packaging layer, e.g. "Data/CombatCamera/Scripts/main.lua":
+        the real container is "CombatCamera", not "Data". Deploying the
+        wrapper folder along with it (the old behaviour here) nests every
+        such mod one directory level too deep, breaking anything that
+        expects the standard ``ue4ss/Mods/<ModName>/`` layout.
+
+        For a folder-anywhere match with the matched folder nested below the
+        mod root, ``_match_rule`` already computes this exact immediate-
+        parent path and passes it as ``dyn_strip[0]`` — use it directly
+        instead of re-deriving (and getting wrong) a container from
+        ``norm_rel`` alone. When there's no such dynamic prefix (the matched
+        folder sits at the mod's own archive root, or this is a filename/
+        extension-only match with nothing to anchor a subfolder to), fall
+        back to ``mod_name`` so the whole mod is dragged as one unit — the
+        ``cont == ""`` / ``is_whole`` branch in ``_resolve_filemap_entries``
+        was already built to handle exactly this case.
         """
-        del dyn_strip, is_folder_match, mod_name  # unused
-        if "/" not in norm_rel:
+        del is_folder_match  # only dyn_strip carries the info we need
+        if dyn_strip:
+            container_path = dyn_strip[0]
+            if container_path:
+                container_name = container_path.rsplit("/", 1)[-1]
+                return (container_path, container_name)
+        if not mod_name:
             return None
-        container = norm_rel.split("/", 1)[0]
-        return (container, container)
+        return ("", mod_name)
 
     def _apply_strip(self, rel_str: str, strips: list[str]) -> str:
         """Strip the longest matching prefix from rel_str (case-insensitive)."""

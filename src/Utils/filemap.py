@@ -66,11 +66,16 @@ OVERWRITE_NAME   = "[Overwrite]"
 ROOT_FOLDER_NAME = "[Root_Folder]"
 
 # Not real game files: MO2 meta.ini, the manager's restore-sweep log
-# (deploy_shared.OVERWRITE_LOG_NAME), and the Script Merger inventory
-# snapshot (script_merger_inventory.SNAPSHOT_NAME) — must never reach
-# the filemap.
+# (deploy_shared.OVERWRITE_LOG_NAME), the Script Merger inventory snapshot
+# (script_merger_inventory.SNAPSHOT_NAME), and vortex_override_instructions.json
+# (Vortex's own per-mod installer-instructions format — pre-baked
+# attribute/setmodtype directives its generic installer consumes at install
+# time; never read by any game or mod loader, and never copied into a real
+# Vortex deploy). Confirmed generic/cross-game, not tied to one game's
+# extension — must never reach the filemap.
 _EXCLUDE_NAMES = frozenset({"meta.ini", ".mm_overwrite_log.txt",
-                            ".mm_merge_inventory.xml"})
+                            ".mm_merge_inventory.xml",
+                            "vortex_override_instructions.json"})
 
 
 def _is_macos_junk(name: str) -> bool:
