@@ -310,6 +310,20 @@ class AddGameView(QWidget):
         self._loading_overlay.hide_overlay()
         self._relayout()
 
+    def _is_effectively_installed(self, name: str) -> bool:
+        """True if the Steam/Heroic/Lutris scan found this game, OR it's
+        already configured in Mosaic (a valid, existing game_path).
+
+        A game the user configured manually — e.g. a GOG copy placed outside
+        Heroic, which the scan has no way to see — must not be shown in the
+        "Not Installed" section with a "Select" button; that combination
+        reads as broken even though Select itself works fine.
+        """
+        if name in self._installed_game_names:
+            return True
+        game = self._games.get(name)
+        return bool(game and game.is_configured())
+
     def _cols_for_width(self) -> int:
         vp_w = self._scroll.viewport().width()
         slot = CARD_W + self._grid.spacing()
@@ -355,9 +369,10 @@ class AddGameView(QWidget):
             # Scan not finished yet — render everything flat (no headers).
             row = self._add_card_run(matching, cols, 0)
         else:
-            installed = [c for c in matching if c._name in self._installed_game_names]
+            installed = [c for c in matching
+                        if self._is_effectively_installed(c._name)]
             not_installed = [c for c in matching
-                             if c._name not in self._installed_game_names]
+                             if not self._is_effectively_installed(c._name)]
             row = 0
             # Only show the "Installed" header when the other section is present
             # too (otherwise a lone header is just noise).
