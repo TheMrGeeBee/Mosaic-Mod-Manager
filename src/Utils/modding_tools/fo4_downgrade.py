@@ -70,6 +70,47 @@ def read_game_version(game_root: "str | Path") -> Version | None:
     return read_file_version(Path(game_root) / VERSION_TARGET)
 
 
+# BA2 versions the Old-Gen exe can read by itself (only v1). Steam's Anniversary
+# Edition / Next-Gen data ships most of its archives as v7/v8, which the Old-Gen
+# exe cannot open without the Backported Archive2 Support System plugin.
+OLDGEN_BA2_VERSIONS = frozenset({1})
+
+# The two mods an Old-Gen install on Anniversary/Next-Gen data cannot run
+# without (Nexus mod ids, checked against a working install's meta.ini).
+BACKPORTED_BA2_MOD = ("Backported Archive2 Support System", 81859)
+ADDRESS_LIBRARY_MOD = ("Address Library for F4SE Plugins", 47327)
+
+
+def count_newer_format_archives(game_root: "str | Path") -> int:
+    """How many ``Data/*.ba2`` archives the Old-Gen exe cannot read on its own.
+
+    Reads only each archive's 8-byte header (``BTDX`` + version). Anything that
+    is not a BA2, or cannot be read, is not counted. On an unmodified Steam
+    install this is most of the game's own archives, which is why the game
+    shows a black screen and exits after a downgrade until the Backported
+    Archive2 Support plugin is installed.
+    """
+    data = Path(game_root) / "Data"
+    count = 0
+    try:
+        entries = list(data.iterdir())
+    except OSError:
+        return 0
+    for entry in entries:
+        if entry.suffix.lower() != ".ba2":
+            continue
+        try:
+            with open(entry, "rb") as fh:
+                header = fh.read(8)
+        except OSError:
+            continue
+        if len(header) == 8 and header[:4] == b"BTDX":
+            version = int.from_bytes(header[4:8], "little")
+            if version not in OLDGEN_BA2_VERSIONS:
+                count += 1
+    return count
+
+
 def launcher_swapped(game_root: "str | Path") -> bool:
     """True while Mosaic's deploy has swapped in the script extender launcher."""
     return (Path(game_root) / _LAUNCHER_BACKUP).exists()

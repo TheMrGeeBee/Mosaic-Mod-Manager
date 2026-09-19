@@ -370,3 +370,42 @@ def test_assess_blocks_when_a_root_file_is_missing(game_root, state_dir):
     (game_root / "steam_api64.dll").unlink()
     a = _assess(game_root, state_dir)
     assert not a.can_downgrade and any("steam_api64.dll" in b for b in a.blockers)
+
+
+# ---- newer-format archives (why an Old-Gen game on Steam data needs Backported BA2) ----
+
+def _ba2(path: Path, version: int, kind: bytes = b"GNRL") -> None:
+    path.write_bytes(b"BTDX" + version.to_bytes(4, "little") + kind + b"\x00" * 16)
+
+
+def test_newer_format_archives_counts_only_what_the_oldgen_exe_cannot_read(tmp_path):
+    """The real Steam install: `Fallout4 - Sounds.ba2` is v8 and `Fallout4 -
+    Textures3.ba2` v7, while `Fallout4 - Animations.ba2` is still v1."""
+    data = tmp_path / "Data"
+    data.mkdir()
+    _ba2(data / "Fallout4 - Animations.ba2", 1)
+    _ba2(data / "Fallout4 - Sounds.ba2", 8)
+    _ba2(data / "Fallout4 - Textures3.ba2", 7, b"DX10")
+    _ba2(data / "ccBGSFO4001-PipBoy(Black) - Main.BA2", 8)        # extension case must not matter
+    assert fo4.count_newer_format_archives(tmp_path) == 3
+
+
+def test_newer_format_archives_ignores_non_archives_and_broken_files(tmp_path):
+    data = tmp_path / "Data"
+    data.mkdir()
+    (data / "Fallout4.esm").write_bytes(b"TES4" + b"\x00" * 20)
+    (data / "not-really.ba2").write_bytes(b"BTDX")                # truncated header
+    (data / "wrong-magic.ba2").write_bytes(b"XXXX" + (8).to_bytes(4, "little"))
+    (data / "dangling.ba2").symlink_to(tmp_path / "nowhere.ba2")
+    (data / "Fallout4 - Meshes.ba2").mkdir()                       # a directory, not a file
+    assert fo4.count_newer_format_archives(tmp_path) == 0
+
+
+def test_newer_format_archives_is_zero_without_a_data_folder(tmp_path):
+    assert fo4.count_newer_format_archives(tmp_path) == 0
+
+
+def test_the_two_required_mods_are_the_ones_a_working_install_uses():
+    """Ids taken from a working install's meta.ini (Mosaic 2026-09-19)."""
+    assert fo4.BACKPORTED_BA2_MOD == ("Backported Archive2 Support System", 81859)
+    assert fo4.ADDRESS_LIBRARY_MOD == ("Address Library for F4SE Plugins", 47327)

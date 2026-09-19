@@ -259,12 +259,25 @@ class Fallout4DowngradeView(WizardViewBase):
                     self._game_root, patches, self._state_dir,
                     xdelta3=fo4.find_xdelta3(),
                     log_fn=lambda m: self._log(f"Downgrade Wizard: {m}"))
-            safe_emit(self._run_status_sig, self.tr(
+            newer = fo4.count_newer_format_archives(self._game_root)
+            text = self.tr(
                 "Fallout 4 is now 1.10.163.\n\n"
                 "Next: install the Old-Gen script extender (F4SE 0.6.23 — the "
-                "collection's own file), then Deploy.\n"
-                "If Steam updates Fallout 4 it will replace these files; run this "
-                "wizard again afterwards.\n\nClick Done to close."), GREEN)
+                "collection's own file), then Deploy.\n")
+            if newer:
+                text += self.tr(
+                    "\nImportant: {0} of this install's game archives are in the newer "
+                    "Anniversary/Next-Gen format, which Old-Gen Fallout 4 cannot read "
+                    "by itself. Also install \u201c{1}\u201d (Nexus mod {2}) and "
+                    "\u201c{3}\u201d (Nexus mod {4} — the 1.10.163 file) next to "
+                    "F4SE 0.6.23. Without them the game shows a black screen and exits "
+                    "with no error.\n").format(
+                        newer, fo4.BACKPORTED_BA2_MOD[0], fo4.BACKPORTED_BA2_MOD[1],
+                        fo4.ADDRESS_LIBRARY_MOD[0], fo4.ADDRESS_LIBRARY_MOD[1])
+            text += self.tr(
+                "\nIf Steam updates Fallout 4 it will replace these files; run this "
+                "wizard again afterwards.\n\nClick Done to close.")
+            safe_emit(self._run_status_sig, text, GREEN)
         except fo4.DowngradeError as exc:
             self._fail(str(exc))
         except Exception as exc:                       # noqa: BLE001 — surface, don't crash the worker
