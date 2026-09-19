@@ -586,12 +586,61 @@ def game_steam_id(game) -> str:
     return str(getattr(game, "steam_id", "") or "")
 
 
+def _strip_run_host(path: str) -> str:
+    """Drop SteamLinuxRuntime's sandbox-only ``/run/host`` prefix from *path*.
+
+    Steam records the Proton tool that built a prefix in ``compatdata/<id>/
+    config_info`` as seen from INSIDE the runtime container, where the host
+    filesystem is mounted at ``/run/host`` — e.g. ``/run/host/usr/share/steam/
+    compatibilitytools.d/proton-cachyos-slr/...``. That path doesn't exist
+    outside the sandbox; the same file lives at the path with the prefix
+    removed.
+    """
+    if path == "/run/host":
+        return "/"
+    if path.startswith("/run/host/"):
+        return path[len("/run/host"):]
+    return path
+
+
+def _compat_mapping_block(text: str) -> str:
+    """The ``"CompatToolMapping" { ... }`` block of a config.vdf, or ``""``.
+
+    Scoping matters because the default tool is stored under the bare key
+    ``"0"``, which could otherwise match an unrelated section of the file.
+    Falls back to everything after the key if the braces don't balance
+    (Steam rewrites config.vdf atomically, so a .tmp variant can be cut off).
+    """
+    start = text.find("CompatToolMapping")
+    if start < 0:
+        return ""
+    open_idx = text.find("{", start)
+    if open_idx < 0:
+        return text[start:]
+    depth = 0
+    for i in range(open_idx, len(text)):
+        ch = text[i]
+        if ch == "{":
+            depth += 1
+        elif ch == "}":
+            depth -= 1
+            if depth == 0:
+                return text[start:i + 1]
+    return text[start:]
+
+
 def find_proton_for_game(steam_id: str) -> Path | None:
     """
     Find the Proton launcher script assigned to a Steam game.
 
-    Reads CompatToolMapping from Steam's config files to determine which Proton
-    version the game uses, then locates the 'proton' script in steamapps/common/.
+    Looks, in order, at:
+
+    1. the game's own CompatToolMapping entry in Steam's config files;
+    2. ``compatdata/<id>/config_info``, which records the tool that actually
+       built the prefix (including paths seen from inside SteamLinuxRuntime,
+       see :func:`_strip_run_host`);
+    3. Steam's default-tool mapping (key ``"0"``), which applies to every game
+       without an explicit choice.
 
     Steam rewrites config.vdf atomically, so the live file may temporarily lack
     CompatToolMapping — we also check .bak and .tmp variants of the file.
@@ -616,71 +665,78 @@ def find_proton_for_game(steam_id: str) -> Path | None:
         "proton_7":            "Proton 7.0",
     }
 
-    _ID_PATTERN = _re.compile(
-        r'"' + _re.escape(steam_id) + r'"\s*\{[^}]*?"name"\s*"([^"]+)"',
-        _re.DOTALL,
-    )
-
     if not steam_id:
         return None
 
-    for steam_root in _STEAM_CANDIDATES:
-        config_dir = steam_root / "config"
-        if not config_dir.is_dir():
-            continue
-
-        # Collect all config.vdf variants: live, .bak, and any .tmp files.
-        # Steam writes atomically so the live file may be mid-swap.
-        candidates_vdf: list[Path] = []
-        for pattern in ("config.vdf", "config.vdf.bak", "config.vdf.*.tmp"):
-            candidates_vdf.extend(
-                Path(p) for p in _glob.glob(str(config_dir / pattern))
-            )
-
-        tool_name: str | None = None
-        for vdf_path in candidates_vdf:
-            try:
-                text = vdf_path.read_text(encoding="utf-8", errors="replace")
-            except OSError:
+    def _from_mapping(map_id: str) -> Path | None:
+        """Resolve the tool CompatToolMapping assigns to *map_id* (an app id,
+        or "0" for Steam's default) to its installed 'proton' script."""
+        id_pattern = _re.compile(
+            r'"' + _re.escape(map_id) + r'"\s*\{[^}]*?"name"\s*"([^"]+)"',
+            _re.DOTALL,
+        )
+        for steam_root in _STEAM_CANDIDATES:
+            config_dir = steam_root / "config"
+            if not config_dir.is_dir():
                 continue
-            # Only search inside the CompatToolMapping block
-            compat_idx = text.find("CompatToolMapping")
-            if compat_idx < 0:
+
+            # Collect all config.vdf variants: live, .bak, and any .tmp files.
+            # Steam writes atomically so the live file may be mid-swap.
+            candidates_vdf: list[Path] = []
+            for pattern in ("config.vdf", "config.vdf.bak", "config.vdf.*.tmp"):
+                candidates_vdf.extend(
+                    Path(p) for p in _glob.glob(str(config_dir / pattern))
+                )
+
+            tool_name: str | None = None
+            for vdf_path in candidates_vdf:
+                try:
+                    text = vdf_path.read_text(encoding="utf-8", errors="replace")
+                except OSError:
+                    continue
+                # Only search inside the CompatToolMapping block
+                block = _compat_mapping_block(text)
+                if not block:
+                    continue
+                m = id_pattern.search(block)
+                if m:
+                    tool_name = m.group(1)
+                    break
+
+            if tool_name is None:
                 continue
-            m = _ID_PATTERN.search(text, compat_idx)
-            if m:
-                tool_name = m.group(1)
-                break
 
-        if tool_name is None:
-            continue
+            # Map internal short names to steamapps/common directory names
+            dir_name = _COMPAT_TOOL_NAMES.get(tool_name, tool_name)
 
-        # Map internal short names to steamapps/common directory names
-        dir_name = _COMPAT_TOOL_NAMES.get(tool_name, tool_name)
+            # Search steamapps/common/ and compatibilitytools.d/ (GE-Proton, etc.)
+            # across every Steam root AND secondary library — Proton tools live
+            # alongside games, so the mapped tool may sit on an SD card / second
+            # drive even though config.vdf only exists in the main Steam root.
+            search_dirs: list[Path] = []
+            for root in _all_proton_search_roots():
+                search_dirs.append(root / "steamapps" / "common")
+                search_dirs.append(root / "compatibilitytools.d")
 
-        # Search steamapps/common/ and compatibilitytools.d/ (GE-Proton, etc.)
-        # across every Steam root AND secondary library — Proton tools live
-        # alongside games, so the mapped tool may sit on an SD card / second
-        # drive even though config.vdf only exists in the main Steam root.
-        search_dirs: list[Path] = []
-        for root in _all_proton_search_roots():
-            search_dirs.append(root / "steamapps" / "common")
-            search_dirs.append(root / "compatibilitytools.d")
+            for search_dir in search_dirs:
+                # Exact match first
+                candidate = search_dir / dir_name / "proton"
+                if candidate.is_file():
+                    return candidate
 
-        for search_dir in search_dirs:
-            # Exact match first
-            candidate = search_dir / dir_name / "proton"
-            if candidate.is_file():
-                return candidate
+                # Case-insensitive match (handles minor name variations)
+                if search_dir.is_dir():
+                    dir_lower = dir_name.lower()
+                    for entry in search_dir.iterdir():
+                        if entry.name.lower() == dir_lower:
+                            p = entry / "proton"
+                            if p.is_file():
+                                return p
+        return None
 
-            # Case-insensitive match (handles minor name variations)
-            if search_dir.is_dir():
-                dir_lower = dir_name.lower()
-                for entry in search_dir.iterdir():
-                    if entry.name.lower() == dir_lower:
-                        p = entry / "proton"
-                        if p.is_file():
-                            return p
+    found = _from_mapping(steam_id)
+    if found is not None:
+        return found
 
     # --- Fallback: read compatdata/<steam_id>/config_info ----------------
     # When Steam uses the default Proton for a game it may not write an
@@ -714,12 +770,22 @@ def find_proton_for_game(steam_id: str) -> Path | None:
                 if not proton_dir_name.lower().startswith(("proton", "ge-proton")):
                     continue
                 # Reconstruct the parent directory from the marker
-                parent_dir = Path(line[:idx + len(marker)].rstrip("/"))
+                parent_dir = Path(_strip_run_host(
+                    line[:idx + len(marker)].rstrip("/")))
                 candidate = parent_dir / proton_dir_name / "proton"
                 if candidate.is_file():
                     return candidate
+                # The recorded location may not exist on this host (or only
+                # ever did inside the sandbox) while the same tool is
+                # installed elsewhere, e.g. under the user's Steam
+                # compatibilitytools.d — match it by directory name.
+                for installed in list_installed_proton():
+                    if installed.parent.name == proton_dir_name:
+                        return installed
 
-    return None
+    # Last resort: Steam's default tool, used for every game with no explicit
+    # choice (and therefore no per-game mapping entry).
+    return _from_mapping("0")
 
 
 def _parse_acf_installdir(acf_path: Path) -> str | None:
