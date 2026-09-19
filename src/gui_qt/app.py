@@ -7955,7 +7955,14 @@ class MainWindow(QMainWindow):
         if path is None or game is None:
             return
         from Utils.exe_launch.exe_launch import add_custom_exe
-        add_custom_exe(game, path)
+        # The list is stored on the active profile, so make sure the game object
+        # still points at the profile the dropdown shows (a background worker can
+        # leave it out of sync) — otherwise the add is silently dropped.
+        self._gs.reassert_active_profile()
+        if not add_custom_exe(game, path):
+            self._notify(self.tr("Couldn't add {0}: no active profile to save it to.")
+                         .format(path.name), "warning")
+            return
         self._refresh_play_selector()
         if path.name in self._play_exe_paths:
             self._play_exe_selector.set_current(path.name)
@@ -8045,8 +8052,11 @@ class MainWindow(QMainWindow):
         if not paths or game is None:
             return
         from Utils.exe_launch.exe_launch import add_custom_exe
-        for path in paths:
-            add_custom_exe(game, path)
+        self._gs.reassert_active_profile()      # see _on_custom_exe_picked
+        failed = [p.name for p in paths if not add_custom_exe(game, p)]
+        if failed:
+            self._notify(self.tr("Couldn't add {0}: no active profile to save it to.")
+                         .format(", ".join(failed)), "warning")
         self._refresh_play_selector()
         # Select the single added exe (mirror the custom-exe picker); leave the
         # current selection alone when several were added at once.

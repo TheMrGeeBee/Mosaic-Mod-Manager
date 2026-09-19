@@ -132,19 +132,25 @@ def load_custom_exes(game) -> list[Path]:
     return [Path(s) for s in raw if Path(s).is_file()]
 
 
-def save_custom_exes(game, paths: list[Path]) -> None:
+def save_custom_exes(game, paths: list[Path]) -> bool:
+    """Persist the custom exe list on the active profile. Returns False (nothing
+    written) when the game has no active profile dir — the list lives in that
+    profile's state file, so there's nowhere to put it."""
     pdir = _active_profile_dir(game)
     if pdir is None:
-        return
+        return False
     from Utils.profile.profile_state import write_custom_exes
     write_custom_exes(pdir, [str(x) for x in paths])
+    return True
 
 
-def add_custom_exe(game, path: Path) -> None:
+def add_custom_exe(game, path: Path) -> bool:
+    """Add *path* to the active profile's custom exes. False if it couldn't be saved."""
     existing = load_custom_exes(game)
-    if path not in existing:
-        existing.append(path)
-        save_custom_exes(game, existing)
+    if path in existing:
+        return True
+    existing.append(path)
+    return save_custom_exes(game, existing)
 
 
 def remove_custom_exe(game, path: Path) -> None:
