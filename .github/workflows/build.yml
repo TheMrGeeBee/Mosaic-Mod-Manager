@@ -244,6 +244,8 @@ jobs:
           # blank. quick-sharun only deploys imageformats/*.so that exist
           # on disk, so the plugin must be installed here to be bundled.
           # libarchive: bsdtar + libarchive.so.13 for fast extraction.
+          # xdelta3: staged by make-appimage.sh like bsdtar; the Downgrade
+          # Fallout 4 wizard applies its patches with it.
           # sudo: needed for `sudo -u builder` makepkg invocation.
           # (base-devel is already pulled in by the container-prep step.)
           # zenity is bundled from zenity-rs-bin (static) by the PKGBUILD;
@@ -254,6 +256,7 @@ jobs:
               qt6-imageformats \
               python-pip \
               libarchive \
+              xdelta3 \
               wget \
               sudo
 

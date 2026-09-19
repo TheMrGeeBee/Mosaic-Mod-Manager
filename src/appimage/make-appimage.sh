@@ -59,6 +59,17 @@ if [ -n "$BSDTAR_BIN" ]; then
     chmod +x "$AUX_DIR/bin/bsdtar"
 fi
 
+# xdelta3 applies the Downgrade Fallout 4 wizard's patches. Same staging as
+# bsdtar; quick-sharun traces its liblzma dependency.
+echo "=== Bundling xdelta3 ==="
+XDELTA3_BIN="$(command -v xdelta3 2>/dev/null || true)"
+if [ -n "$XDELTA3_BIN" ]; then
+    cp "$XDELTA3_BIN" "$AUX_DIR/bin/xdelta3"
+    chmod +x "$AUX_DIR/bin/xdelta3"
+else
+    echo "WARN: xdelta3 not found — the AppImage will lack it (Downgrade Fallout 4 wizard)" >&2
+fi
+
 # Desktop / icon — quick-sharun reads these via env vars.
 ASSETS_DIR="${WORK_DIR}/assets"
 mkdir -p "$ASSETS_DIR"
@@ -219,6 +230,12 @@ case "$_seen_names" in *libpyside6.*) : ;; *)
 echo "  PySide6 runtime libs deployed:"
 printf '    %s\n' "${_pyside_libs[@]}"
 
+# Host binaries staged above, passed to quick-sharun only if they exist.
+_aux_bins=()
+for _aux in bsdtar xdelta3; do
+    if [ -f "$AUX_DIR/bin/$_aux" ]; then _aux_bins+=("$AUX_DIR/bin/$_aux"); fi
+done
+
 echo "=== Running quick-sharun ==="
 # Stdlib extension modules in lib-dynload are dlopened at runtime, so
 # quick-sharun's per-binary ldd trace never sees their DT_NEEDED entries
@@ -240,7 +257,7 @@ quick-sharun \
     /usr/lib/libmpdec.so*              \
     "${_qt_args[@]}"                   \
     "${_pyside_libs[@]}"               \
-    $( [ -f "$AUX_DIR/bin/bsdtar" ] && printf %s "$AUX_DIR/bin/bsdtar" )
+    "${_aux_bins[@]}"
 
 # Rewrite the wrapper's /usr/share path to "$APPDIR"/share — quick-sharun's
 # built-in /usr → "$APPDIR" rewrite only fires for dotnet scripts, so plain
