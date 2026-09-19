@@ -146,6 +146,14 @@ class Fallout_4(Fallout_3):
     _ini_override_keys = (("Bethesda.net", "bEnablePlatform", "0"),)
     # The AE launcher rewrites plugins.txt on launch — mark it read-only.
     _lock_plugins_txt = True
+    # The engine's own filename is capital-P "Plugins.txt" (same as
+    # SkyrimSE/Oblivion/Starfield) — Fallout_3's lowercase default is wrong
+    # here. On a case-sensitive host Wine hands the game its own exact-case
+    # "Plugins.txt" (the two-line "downloaded content" stub it creates on first
+    # launch), never the lowercase file we'd deploy beside it, so the game
+    # loads only the official masters and every F4SE plugin that resolves a
+    # form by plugin name reports it "not found". Confirmed live 2026-09-19.
+    _PLUGINS_TXT_FILENAME = "Plugins.txt"
     # BA2-based — no dummy BSA, only the bInvalidateOlderFiles INI key.
     _invalidation_bsa_name = None
     _invalidation_bsa_version = None
