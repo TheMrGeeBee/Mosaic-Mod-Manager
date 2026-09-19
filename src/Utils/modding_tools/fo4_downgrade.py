@@ -19,6 +19,7 @@ import os
 import re
 import shutil
 import subprocess
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable
@@ -81,6 +82,64 @@ def load_state(state_dir: "str | Path") -> dict | None:
     except (OSError, ValueError):
         return None
     return data if isinstance(data, dict) else None
+
+
+@dataclass(frozen=True)
+class Assessment:
+    """What the wizard's Check page shows about the current install."""
+    version: Version | None
+    build: str                      # "anniversary" | "oldgen" | "unsupported"
+    downgraded: bool                # a Mosaic-recorded downgrade is still in place
+    blockers: list[str]             # why a downgrade can't run right now
+    revert_blockers: list[str]      # why a revert can't run right now
+
+    @property
+    def can_downgrade(self) -> bool:
+        return self.build == "anniversary" and not self.blockers
+
+    @property
+    def can_revert(self) -> bool:
+        return self.downgraded and not self.revert_blockers
+
+
+def assess(
+    game_root: "str | Path",
+    state_dir: "str | Path",
+    *,
+    xdelta3: str | None,
+    game_running: bool,
+) -> Assessment:
+    """Inspect the install: which build it is, whether a Mosaic downgrade is in
+    place, and what (if anything) currently blocks a downgrade or a revert.
+
+    A recorded downgrade only counts while Fallout4.exe still reads as
+    Old-Gen — if Steam has since re-downloaded the Anniversary exe, the record
+    is stale and the game is simply patchable again.
+    """
+    game_root = Path(game_root)
+    version = read_game_version(game_root)
+    if version == FROM_VERSION:
+        build = "anniversary"
+    elif version == TO_VERSION:
+        build = "oldgen"
+    else:
+        build = "unsupported"
+    state = load_state(state_dir)
+    downgraded = bool(state and state.get("downgraded")) and build == "oldgen"
+
+    shared: list[str] = []
+    if game_running:
+        shared.append("Fallout 4 is running — close it first.")
+    if launcher_swapped(game_root):
+        shared.append("Mosaic's mods are deployed — restore the game first.")
+
+    blockers = list(shared)
+    missing = [t for t in TARGETS if not (game_root / t).is_file()]
+    if missing:
+        blockers.append(f"Missing from the game folder: {', '.join(missing)}.")
+    if not xdelta3:
+        blockers.append("xdelta3 isn't installed.")
+    return Assessment(version, build, downgraded, blockers, shared)
 
 
 def find_patches(root: "str | Path") -> dict[str, Path]:

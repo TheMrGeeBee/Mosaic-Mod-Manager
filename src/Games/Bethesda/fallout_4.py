@@ -53,6 +53,15 @@ class Fallout_4(Fallout_3):
             ))
         return self._base_wizard_tools() + bodyslide_tools + [
             WizardTool(
+                id="downgrade_fo4",
+                label="Downgrade Fallout 4",
+                description=(
+                    "Downgrade the Anniversary Edition (1.11.240) to Old-Gen "
+                    "(1.10.163) so Old-Gen collections and F4SE 0.6.23 work."
+                ),
+                dialog_class_path="wizards.fallout4_downgrade.Fallout4DowngradeWizard",
+            ),
+            WizardTool(
                 id="install_se_fo4",
                 label="Install Script Extender (F4SE)",
                 description="Download and install F4SE into the game folder.",

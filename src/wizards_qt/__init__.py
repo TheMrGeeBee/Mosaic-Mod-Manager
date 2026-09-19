@@ -46,7 +46,9 @@ class QtWizardContext:
     run_deploy(on_done) starts a deploy through the app's deploy machinery
     (mutex/coalesce + progress popup); on_done(ok: bool) fires on the UI
     thread when the final deploy completes. Returns False if a deploy could
-    not be started. refresh_modlist() re-syncs the mods folder + reloads the
+    not be started. run_restore(on_done) is the same for Restore (undeploy) —
+    for wizards that must edit game files Mosaic's deploy has replaced.
+    refresh_modlist() re-syncs the mods folder + reloads the
     panels (footer Refresh).  refresh_plugins() re-runs LOOT to refresh plugin
     metadata WITHOUT reordering the load order (footer Refresh Plugins) — used by
     the xEdit wizards after a clean/edit session so dirty/message flags update.
@@ -61,6 +63,7 @@ class QtWizardContext:
     """
     profile_name: str = "default"
     run_deploy: Callable | None = None
+    run_restore: Callable | None = None
     refresh_modlist: Callable | None = None
     refresh_plugins: Callable | None = None
     import_manifest: Callable | None = None
@@ -178,6 +181,8 @@ REGISTRY: dict[str, QtWizardSpec] = {
         QtWizardSpec(_simple("wizards_qt.fnv_4gb_view", "Fnv4GbView")),
     "wizards.fallout_downgrade.FalloutDowngradeWizard":
         QtWizardSpec(_simple("wizards_qt.fallout_downgrade_view", "FalloutDowngradeView")),
+    "wizards.fallout4_downgrade.Fallout4DowngradeWizard":
+        QtWizardSpec(_simple("wizards_qt.fallout4_downgrade_view", "Fallout4DowngradeView")),
     "wizards.wrye_bash.WryeBashWizard":
         QtWizardSpec(_simple("wizards_qt.wrye_bash_view", "WryeBashView")),
     "wizards.bethini.BethINIWizard":

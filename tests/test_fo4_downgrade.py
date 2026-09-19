@@ -289,3 +289,59 @@ def test_launcher_swapped_detects_the_bak(game_root):
     assert fo4.launcher_swapped(game_root) is False
     (game_root / "Fallout4Launcher.bak").write_bytes(b"x")
     assert fo4.launcher_swapped(game_root) is True
+
+
+# ---- assess (what the wizard's Check page shows) --------------------------------
+
+def _assess(game_root, state_dir, **kw):
+    kw.setdefault("xdelta3", "/usr/bin/xdelta3")
+    kw.setdefault("game_running", False)
+    return fo4.assess(game_root, state_dir, **kw)
+
+
+def test_assess_ready_to_downgrade(game_root, state_dir):
+    a = _assess(game_root, state_dir)
+    assert a.build == "anniversary" and not a.downgraded
+    assert a.blockers == [] and a.can_downgrade
+
+
+def test_assess_lists_every_blocker(game_root, state_dir):
+    (game_root / "Fallout4Launcher.bak").write_bytes(b"x")
+    a = _assess(game_root, state_dir, xdelta3=None, game_running=True)
+    assert not a.can_downgrade
+    text = " | ".join(a.blockers)
+    assert "xdelta3" in text and "running" in text and "deployed" in text
+
+
+def test_assess_recognises_a_recorded_downgrade(game_root, patches, state_dir):
+    _apply(game_root, patches, state_dir)
+    a = _assess(game_root, state_dir)
+    assert a.build == "oldgen" and a.downgraded and a.can_revert
+    assert not a.can_downgrade
+
+
+def test_assess_oldgen_without_a_record_cannot_be_reverted(game_root, state_dir):
+    (game_root / "Fallout4.exe").write_bytes(build_pe(fo4.TO_VERSION) + b"x")
+    a = _assess(game_root, state_dir)
+    assert a.build == "oldgen" and not a.downgraded and not a.can_revert
+
+
+def test_assess_stale_record_after_a_steam_update_is_not_a_downgrade(game_root, patches, state_dir):
+    _apply(game_root, patches, state_dir)
+    (game_root / "Fallout4.exe").write_bytes(ORIG["Fallout4.exe"])   # Steam re-downloaded the AE exe
+    a = _assess(game_root, state_dir)
+    assert a.build == "anniversary" and not a.downgraded and a.can_downgrade
+
+
+def test_assess_unsupported_or_unreadable_build(game_root, state_dir):
+    (game_root / "Fallout4.exe").write_bytes(build_pe((1, 10, 984, 0)) + b"x")
+    assert _assess(game_root, state_dir).build == "unsupported"
+    (game_root / "Fallout4.exe").write_bytes(b"not a pe")
+    a = _assess(game_root, state_dir)
+    assert a.build == "unsupported" and not a.can_downgrade
+
+
+def test_assess_blocks_when_a_root_file_is_missing(game_root, state_dir):
+    (game_root / "steam_api64.dll").unlink()
+    a = _assess(game_root, state_dir)
+    assert not a.can_downgrade and any("steam_api64.dll" in b for b in a.blockers)
