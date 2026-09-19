@@ -36,6 +36,36 @@ def _needs_run_host_shim(prefix_dir: "Path | None") -> bool:
     return target.startswith("/run/host/")
 
 
+def _resolver_binds(resolv_conf: str = "/etc/resolv.conf",
+                    run_root: str = "/run") -> "list[str]":
+    """bwrap args that keep name resolution working under the shim's ``/run`` tmpfs.
+
+    Most distros make ``/etc/resolv.conf`` a symlink into ``/run``
+    (systemd-resolved's ``/run/systemd/resolve/stub-resolv.conf``,
+    NetworkManager's, resolvconf's). The shim has to replace ``/run`` with an
+    empty tmpfs to create ``/run/host``, which leaves that symlink dangling:
+    every lookup inside the sandbox then fails (curl exit 6). Anything that
+    downloads inside Wine — a Windows installer, a wizard fetching a runtime —
+    silently gets nothing. Found 2026-09-19 running MulderLoad's Fallout 4
+    downgrader, whose every download reported "Failed:".
+
+    Re-exposes the directory holding the link's real target (or the file
+    itself when it sits directly in *run_root*, since binding ``/run`` would
+    undo the tmpfs). Empty when resolv.conf is an ordinary file, or points
+    somewhere that doesn't exist.
+    """
+    try:
+        target = os.path.realpath(resolv_conf)
+    except OSError:
+        return []
+    root = run_root.rstrip("/") + "/"
+    if not target.startswith(root) or not os.path.exists(target):
+        return []
+    parent = os.path.dirname(target)
+    src = target if parent.rstrip("/") == run_root.rstrip("/") else parent
+    return ["--ro-bind", src, src]
+
+
 def _run_host_shim_prefix() -> "list[str] | None":
     """``bwrap`` argv prefix that re-creates SteamLinuxRuntime's ``/run/host``
     view for a bare Proton/wine invocation, or None if bwrap isn't available.
@@ -56,6 +86,7 @@ def _run_host_shim_prefix() -> "list[str] | None":
         "--bind", "/", "/",
         "--tmpfs", "/run",
         "--bind", runtime_dir, runtime_dir,
+        *_resolver_binds(),
         "--bind", "/", "/run/host",
         "--dev-bind", "/dev", "/dev",
         "--proc", "/proc",
