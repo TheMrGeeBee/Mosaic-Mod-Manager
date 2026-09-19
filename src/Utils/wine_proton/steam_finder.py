@@ -12,6 +12,9 @@ import shutil
 import threading
 from pathlib import Path
 
+from Utils.app_log import app_log
+from Utils.wine_proton.run_host_shim import _apply_run_host_shim
+
 # ---------------------------------------------------------------------------
 # Known Steam base directories for different install methods
 # ---------------------------------------------------------------------------
@@ -111,6 +114,17 @@ def _host_python() -> str:
     return "python3"
 
 
+def _shim_for_env(cmd: list[str], env: "dict | None") -> list[str]:
+    """Wrap *cmd* in the ``/run/host`` bwrap shim when the Steam prefix named
+    by ``env["STEAM_COMPAT_DATA_PATH"]`` needs it (see
+    ``run_host_shim._needs_run_host_shim``); otherwise return it unchanged.
+    """
+    compat = (env or {}).get("STEAM_COMPAT_DATA_PATH")
+    if not compat:
+        return cmd
+    return _apply_run_host_shim(cmd, Path(compat) / "pfx", "Proton", app_log)
+
+
 def proton_run_command(
     proton_script: "Path", *args: str, env: "dict | None" = None,
 ) -> list[str]:
@@ -140,6 +154,13 @@ def proton_run_command(
     takes the payload directly — Proton's verbs (run / runinprefix /
     waitforexitandrun) have no wine equivalent and are dropped — and there is
     no python interpreter in front of the command.
+
+    On the plain-host path, when *env* names a ``STEAM_COMPAT_DATA_PATH``
+    whose prefix was populated by a real Steam launch (Wine DLLs symlinked
+    through the sandbox-only ``/run/host``), the command is wrapped in a bwrap
+    shim that recreates that view — otherwise Proton dies with "could not load
+    kernel32.dll". Doing it here means no caller can forget it; the flatpak and
+    plain-wine branches are left as they were.
     """
     script = Path(proton_script)
     if script.name in ("wine", "wine64"):
@@ -164,7 +185,7 @@ def proton_run_command(
                 if os.environ.get(k) != v
             ]
             return ["flatpak-spawn", "--host", "--directory=/", *fwd, *base]
-        return base
+        return _shim_for_env(base, env)
     # Steam-flatpak Proton runs INSIDE the sandbox, so --command=python3 uses
     # the sandbox's own interpreter (not our host resolver) — that's correct.
     # --filesystem=host so the sandbox can reach the staging/game/tool paths

@@ -65,7 +65,14 @@ def _run_host_shim_prefix() -> "list[str] | None":
 
 def _apply_run_host_shim(cmd: list, prefix_dir: "Path | None",
                          label: str, log_fn) -> list:
-    """Prepend the ``/run/host`` bwrap shim to *cmd* when *prefix_dir* needs it."""
+    """Prepend the ``/run/host`` bwrap shim to *cmd* when *prefix_dir* needs it.
+
+    Idempotent: ``proton_run_command`` applies the shim itself, so call sites
+    that still run this on its output get *cmd* back unchanged rather than a
+    second (nested) bwrap.
+    """
+    if cmd and Path(str(cmd[0])).name == "bwrap" and "/run/host" in cmd:
+        return cmd
     if not _needs_run_host_shim(prefix_dir):
         return cmd
     shim = _run_host_shim_prefix()
