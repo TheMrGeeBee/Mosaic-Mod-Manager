@@ -57,6 +57,15 @@ _DOC_EXTS = {
     ".url",
 }
 
+# Loose executables/libraries at an archive's root. BAIN installs only the
+# chosen sub-packages and drops every loose root file, so an archive carrying
+# one of these can't be a complex package without losing its payload: it's
+# meant to be extracted into the game folder. The motivating case is a script
+# extender — f4se_0_06_23/{Data/, src/, f4se_loader.exe, f4se_1_10_163.dll,
+# ...}: ``Data`` (holds Scripts) and ``src`` (holds ``f4se``, which is also a
+# recognised data-dir name) both looked like sub-packages, so only the scripts
+# were installed and the loader was lost.
+_ROOT_PAYLOAD_EXTS = {".exe", ".dll"}
 # Folders/files Wrye Bash silently skips when classifying a package. Lower-case.
 _SKIP_DIR_NAMES = {"bash", "omod conversion data", "wizard images"}
 _SKIP_PREFIXES = ("--",)
@@ -185,13 +194,16 @@ def detect_bain(extract_dir: str,
     # If the root itself holds loose data files or recognised data dirs, it's a
     # *simple* package (type 1), not a complex one — don't show a picker. Note:
     # doc files at the root (e.g. a Wrye Bash package.txt) do NOT count, matching
-    # Wrye Bash's _re_top_extensions (which excludes docExts).
+    # Wrye Bash's _re_top_extensions (which excludes docExts). Loose executables
+    # or libraries also make it simple (see _ROOT_PAYLOAD_EXTS): BAIN would drop
+    # them.
     for e in entries:
         if e.is_dir():
             if e.name.lower() in _DATA_DIRS:
                 return None
         else:
-            if os.path.splitext(e.name)[1].lower() in data_exts:
+            ext = os.path.splitext(e.name)[1].lower()
+            if ext in data_exts or ext in _ROOT_PAYLOAD_EXTS:
                 return None
 
     subpackages: list[BainSubPackage] = []
