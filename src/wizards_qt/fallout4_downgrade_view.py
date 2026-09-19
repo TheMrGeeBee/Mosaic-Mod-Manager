@@ -29,6 +29,8 @@ if TYPE_CHECKING:
     from Games.base_game import BaseGame
 
 _NEXUS_URL = "https://www.nexusmods.com/fallout4/mods/98059?tab=files"
+_NEXUS_MOD_ID = 98059
+_NEXUS_FILE_ID = 407852         # the patch's main file (zip: Fallout4exe/Fallout4Launcherexe/SteamAPI64 .xdelta)
 # The mod id is in every Nexus-named download of this mod, whatever the file is called.
 _ARCHIVE_KEYWORDS = ["98059"]
 
@@ -48,6 +50,9 @@ class Fallout4DowngradeView(WizardViewBase):
         self._game_root = game.get_game_path()
         self._state_dir = get_game_config_dir(game.name)
         self._assessment = None
+        # An nxm download is fetched by Mosaic into its cache, not ~/Downloads.
+        from Utils.config_paths import list_all_cache_dirs
+        self._locate_extra_dirs = list_all_cache_dirs(game.name)
 
         self._done_enable_sig.connect(self._guard(
             lambda: self._done_btn.setEnabled(True)))
@@ -55,9 +60,11 @@ class Fallout4DowngradeView(WizardViewBase):
         self._stack.addWidget(self._build_check_page())
         self._stack.addWidget(self._build_manual_download_page(
             self.tr("Step 2: Download the patch"),
-            self.tr("Open the Nexus page and download the main file of\n"
-                    "“AnniversaryEdition(1.11.240) to LastGen(1.10.163)\n"
-                    "downgrade patch”, then press Next."),
+            self.tr("Premium accounts download the patch automatically — just wait.\n\n"
+                    "Otherwise open the Nexus page and use MANUAL download on the main\n"
+                    "file of “AnniversaryEdition(1.11.240) to LastGen(1.10.163)\n"
+                    "downgrade patch”, then press Next. Don't use “Mod Manager\n"
+                    "Download” — Mosaic would install the patch as a mod."),
             _NEXUS_URL,
             lambda: self._goto(_PG_LOCATE),
             button_text=self.tr("Open Nexus Mods Page")))
@@ -184,6 +191,22 @@ class Fallout4DowngradeView(WizardViewBase):
         self._stack.setCurrentIndex(idx)
         if idx == _PG_CHECK:
             self._refresh_check()
+        elif idx == _PG_DOWNLOAD:
+            cached = self._find_cached_patch()
+            if cached is not None:
+                # Already on disk (e.g. Mosaic's nxm handler fetched it) — no
+                # second download, no waiting.
+                self._log(f"Downgrade Wizard: using the patch already downloaded: {cached.name}")
+                self._archive_path = cached
+                self._goto(_PG_APPLY)
+                return
+            # Premium: API download, no browser and no mod install.
+            # Everyone else: the download folders are watched for the archive.
+            self._nexus_auto_fetch(
+                url=_NEXUS_URL, file_id=_NEXUS_FILE_ID,
+                keywords=_ARCHIVE_KEYWORDS, label=self.tr("the downgrade patch"),
+                pages=(_PG_DOWNLOAD, _PG_LOCATE),
+                on_archive=lambda _p: self._goto(_PG_APPLY))
         elif idx == _PG_LOCATE:
             self._enter_locate(
                 _ARCHIVE_KEYWORDS,
@@ -194,6 +217,20 @@ class Fallout4DowngradeView(WizardViewBase):
                 lambda _p: self._goto(_PG_APPLY))
         elif idx == _PG_APPLY:
             self._start_worker(self._apply_worker, self.tr("Extracting the patch…"))
+
+    def _find_cached_patch(self) -> Path | None:
+        """The patch archive if it's already on disk, matched exactly by its
+        ``.fileid`` sidecar (not by name) in Mosaic's download cache — where an
+        nxm download lands, and which the premium fetch doesn't look in — or in
+        Downloads. Returns None if there's no complete copy."""
+        from Nexus.nexus_download import _find_cached_archive
+        from Utils.wizard_support.wizard_archives import get_downloads_dir
+        for directory in (*self._locate_extra_dirs, get_downloads_dir()):
+            found, complete = _find_cached_archive(
+                directory, "", 0, _NEXUS_MOD_ID, _NEXUS_FILE_ID)
+            if found is not None and complete:
+                return found
+        return None
 
     def _on_revert_clicked(self):
         self._stack.setCurrentIndex(_PG_APPLY)

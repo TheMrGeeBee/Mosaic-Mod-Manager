@@ -107,6 +107,31 @@ def test_find_patches_matches_each_target_and_keeps_launcher_separate(tmp_path):
     }
 
 
+def test_find_patches_matches_the_real_nexus_archive_names(tmp_path):
+    """Mod 98059's real download ships these three files, flat, with the dot
+    dropped from ".exe" and the underscore dropped from "steam_api64" — the
+    naming the first version of find_patches guessed wrong."""
+    for name in ("Fallout4exe.xdelta", "Fallout4Launcherexe.xdelta", "SteamAPI64.xdelta"):
+        (tmp_path / name).write_bytes(b"x")
+    found = fo4.find_patches(tmp_path)
+    assert {t: p.name for t, p in found.items()} == {
+        "Fallout4.exe": "Fallout4exe.xdelta",
+        "Fallout4Launcher.exe": "Fallout4Launcherexe.xdelta",
+        "steam_api64.dll": "SteamAPI64.xdelta",
+    }
+
+
+def test_an_archive_with_no_patches_is_reported_as_the_wrong_file(tmp_path):
+    """Picking an unrelated archive (it happened: a UI mod from the collection)
+    should say so plainly, not just list three unidentified targets."""
+    (tmp_path / "Interface").mkdir()
+    (tmp_path / "Interface" / "fonts.swf").write_bytes(b"x")
+    with pytest.raises(fo4.DowngradeError) as exc:
+        fo4.find_patches(tmp_path)
+    msg = str(exc.value)
+    assert "doesn't contain" in msg and "98059" in msg
+
+
 def test_find_patches_tolerates_other_naming_styles(tmp_path):
     for name in ("FALLOUT4 (1.11.240 to 1.10.163).vcdiff",
                  "fallout4launcher_ae_to_lastgen.xdelta",

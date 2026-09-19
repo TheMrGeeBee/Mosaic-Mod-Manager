@@ -165,6 +165,10 @@ class WizardViewBase(QWidget):
         self._auto_fetch_on_archive = None
         self._dl_status: QLabel | None = None
         self._dl_next_btn: QPushButton | None = None
+        # Folders scanned after Downloads by the locate page. A wizard whose
+        # archive tends to land in Mosaic's own download cache (an nxm link is
+        # handled by Mosaic, not the browser) sets this.
+        self._locate_extra_dirs: list[Path] = []
 
         self._locate_status_sig.connect(self._guard(
             lambda t, c: self._set_status(self._locate_status, t, c)))
@@ -403,7 +407,11 @@ class WizardViewBase(QWidget):
 
     def _locate_rescan(self):
         from Utils.wizard_support.wizard_archives import find_archive, get_downloads_dir
-        found = find_archive(get_downloads_dir(), self._locate_keywords)
+        found = None
+        for directory in (get_downloads_dir(), *self._locate_extra_dirs):
+            found = find_archive(directory, self._locate_keywords)
+            if found:
+                break
         if found:
             self._archive_found(found, self.tr("Found: {0}").format(found.name))
         else:

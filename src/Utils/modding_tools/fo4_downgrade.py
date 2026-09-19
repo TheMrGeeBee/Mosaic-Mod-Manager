@@ -36,6 +36,9 @@ TARGETS = ("Fallout4.exe", "Fallout4Launcher.exe", "steam_api64.dll")
 VERSION_TARGET = "Fallout4.exe"
 
 PATCH_SUFFIXES = frozenset({".xdelta", ".vcdiff", ".delta", ".patch"})
+# Where the patch comes from, for messages shown to the user.
+PATCH_SOURCE = ("Nexus mod 98059, \u201cAnniversaryEdition(1.11.240) to "
+                "LastGen(1.10.163) downgrade patch\u201d")
 STATE_FILENAME = "downgrade_state.json"
 BACKUP_DIRNAME = "downgrade_backup"
 
@@ -142,28 +145,53 @@ def assess(
     return Assessment(version, build, downgraded, blockers, shared)
 
 
+def _squash(text: str) -> str:
+    """Lowercase, letters and digits only. The real download drops the dot from
+    ".exe" and the underscore from "steam_api64" ("Fallout4exe.xdelta",
+    "SteamAPI64.xdelta"), so names are compared with all punctuation removed."""
+    return re.sub(r"[^a-z0-9]", "", text.lower())
+
+
+def _target_keys(target: str) -> list[str]:
+    """Squashed names a patch file may carry for *target*, most specific first
+    ("fallout4exe" before "fallout4")."""
+    path = Path(target)
+    return sorted({_squash(path.name), _squash(path.stem)}, key=len, reverse=True)
+
+
 def find_patches(root: "str | Path") -> dict[str, Path]:
     """Map each of :data:`TARGETS` to its patch file somewhere under *root*.
 
-    Matched by file name, tolerant of naming style ("Fallout4.exe.xdelta",
-    "Fallout4 (AE to LastGen).vcdiff", ...): the target's stem must appear as a
-    whole word, so Fallout4Launcher's patch is never taken for Fallout4's.
-    Raises :class:`DowngradeError` if any target has no patch or more than one.
+    Matched by file name, ignoring case and punctuation ("Fallout4exe.xdelta",
+    "Fallout4.exe.xdelta", "Fallout4 (AE to LastGen).vcdiff" all identify
+    Fallout4.exe). Each patch goes to the target with the longest matching name,
+    so Fallout4Launcher's patch is never taken for Fallout4's. Raises
+    :class:`DowngradeError` if any target has no patch or more than one.
     """
     root = Path(root)
     patch_files = sorted(
         p for p in root.rglob("*")
         if p.is_file() and p.suffix.lower() in PATCH_SUFFIXES
     )
+    if not patch_files:
+        raise DowngradeError(
+            "This archive doesn't contain any .xdelta patch files, so it isn't the "
+            f"downgrade patch. You need the main file of {PATCH_SOURCE}.")
+
     found: dict[str, list[Path]] = {t: [] for t in TARGETS}
     for patch in patch_files:
-        base = patch.name[:-len(patch.suffix)].lower()
+        name = _squash(patch.name[:-len(patch.suffix)])
+        best_len, best_target = 0, None
         for target in TARGETS:
-            stem = re.escape(Path(target).stem.lower())
-            if re.search(rf"(?<![a-z0-9]){stem}(?![a-z0-9])", base):
-                found[target].append(patch)
+            for key in _target_keys(target):
+                if key in name:
+                    if len(key) > best_len:
+                        best_len, best_target = len(key), target
+                    break                     # keys are longest-first: this is the target's best
+        if best_target is not None:
+            found[best_target].append(patch)
 
-    listing = ", ".join(p.name for p in patch_files) or "none"
+    listing = ", ".join(p.name for p in patch_files)
     ambiguous = [t for t, ps in found.items() if len(ps) > 1]
     if ambiguous:
         raise DowngradeError(
