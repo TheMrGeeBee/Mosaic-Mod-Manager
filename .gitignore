@@ -29,3 +29,6 @@ src/appimage/dist/
 # v1.0.0 made them collide with new release tags. None were ever pushed.
 # Recreate any with: git tag <name> <sha>
 stale-local-tags-backup.txt
+
+# Personal drafts (Nexus articles, notes, etc.) — not project docs, never committed
+/docs/
