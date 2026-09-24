@@ -1668,6 +1668,7 @@ def undeploy_mod_files(
     index_path: Path,
     log_fn=None,
     staging_root: "Path | None" = None,
+    removed_out: "list | None" = None,
 ) -> int:
     """Remove any files belonging to the given mods from the game's deploy
     directory and/or game root, using the modindex.bin to find them.
@@ -1692,6 +1693,12 @@ def undeploy_mod_files(
                  name (e.g. a patched FalloutNV.esm) would delete the REAL
                  game file whenever the mod isn't the one deployed at that
                  path — vanilla after a restore, or another mod's winner.
+
+    removed_out — optional list; for every file actually removed, a
+                 ``(path, rel_key, area, link_kind)`` tuple is appended
+                 (area "n" = deploy dir, "r" = game root; link_kind
+                 "symlink" / "hardlink" / "copy") so the caller can re-link
+                 another enabled mod's copy of the same file.
 
     Returns the total number of files removed.
     """
@@ -1741,7 +1748,7 @@ def undeploy_mod_files(
     # deployed path may have merged into an existing folder's casing, and a
     # raw-cased unlink would miss it (leaving a leftover that a later restore
     # would mis-rescue to overwrite/).
-    targets: list[tuple[Path, str]] = []
+    targets: list[tuple[Path, str, str, str]] = []   # path, mod, rel_key, area
     _dir_listing_cache: dict[str, dict[str, str]] = {}
     _resolved_dir_cache: dict[str, str] = {}
     _deploy_dir_str = str(deploy_dir) if deploy_dir is not None else None
@@ -1754,7 +1761,7 @@ def undeploy_mod_files(
         normal_files, root_files = entry
 
         if deploy_dir is not None and normal_files:
-            for rel_str in normal_files.values():
+            for rel_key, rel_str in normal_files.items():
                 target = deploy_dir / rel_str
                 if not _path_under_root(target, deploy_dir):
                     _log(f"  SKIP (path traversal): {rel_str}")
@@ -1762,10 +1769,10 @@ def undeploy_mod_files(
                 targets.append((Path(_resolve_root_path_str(
                     _deploy_dir_str, rel_str.replace("\\", "/"),
                     _dir_listing_cache, resolved_dir_cache=_resolved_dir_cache,
-                )), mod_name))
+                )), mod_name, rel_key, "n"))
 
         if game_root is not None and root_files:
-            for rel_str in root_files.values():
+            for rel_key, rel_str in root_files.items():
                 target = game_root / rel_str
                 if not _path_under_root(target, game_root):
                     _log(f"  SKIP (path traversal): {rel_str}")
@@ -1773,7 +1780,7 @@ def undeploy_mod_files(
                 targets.append((Path(_resolve_root_path_str(
                     _game_root_str, rel_str.replace("\\", "/"),
                     _dir_listing_cache, resolved_dir_cache=_resolved_dir_cache,
-                )), mod_name))
+                )), mod_name, rel_key, "r"))
 
     def _belongs_to_mod(p: Path, st, ident) -> bool:
         """True when the on-disk file is verifiably the mod's deployed copy."""
@@ -1800,32 +1807,41 @@ def undeploy_mod_files(
                 return True
         return False
 
-    def _unlink_one(item: "tuple[Path, str]") -> tuple[int, int, Path | None, str | None]:
-        p, mod_name = item
+    def _unlink_one(item: "tuple[Path, str, str, str]"
+                    ) -> tuple[int, int, Path | None, str | None, tuple | None]:
+        p, mod_name, rel_key, area = item
         try:
             st = os.lstat(p)
         except OSError:
-            return 0, 0, None, None
+            return 0, 0, None, None, None
         if not (_stat.S_ISLNK(st.st_mode) or _stat.S_ISREG(st.st_mode)):
-            return 0, 0, None, None
+            return 0, 0, None, None, None
         if identities is not None:
             ident = identities.get(mod_name)
             if ident is not None and not _belongs_to_mod(p, st, ident):
                 # Vanilla file or another mod's winner at this path — keep.
-                return 0, 1, None, None
+                return 0, 1, None, None, None
+        if _stat.S_ISLNK(st.st_mode):
+            kind = "symlink"
+        elif st.st_nlink > 1:
+            kind = "hardlink"
+        else:
+            kind = "copy"
         try:
             os.unlink(p)
-            return 1, 0, p.parent, None
+            return 1, 0, p.parent, None, (p, rel_key, area, kind)
         except OSError as exc:
-            return 0, 0, None, f"  WARN: could not remove deployed file {p}: {exc}"
+            return 0, 0, None, f"  WARN: could not remove deployed file {p}: {exc}", None
 
     if targets:
         import concurrent.futures
         from Utils.deploy.deploy_shared import _deploy_workers
         with concurrent.futures.ThreadPoolExecutor(max_workers=_deploy_workers()) as pool:
-            for n, k, parent, warn in pool.map(_unlink_one, targets):
+            for n, k, parent, warn, info in pool.map(_unlink_one, targets):
                 removed += n
                 kept += k
+                if info is not None and removed_out is not None:
+                    removed_out.append(info)
                 if parent is not None:
                     dirs_to_prune.add(parent)
                 if warn is not None:

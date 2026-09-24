@@ -9,6 +9,7 @@ and its files stay deployed). Pure stdlib + Utils.* — no GUI toolkit.
 
 from __future__ import annotations
 
+import os
 import shutil
 from pathlib import Path
 
@@ -17,7 +18,8 @@ def remove_mods(game, profile_dir: Path, mod_names: list[str], log_fn=None) -> N
     """Fully remove *mod_names* for *game* / *profile_dir*:
 
       1. undeploy their files from the game dir (before deleting staging, so
-         leftover hardlinks/copies aren't misclassified as runtime files),
+         leftover hardlinks/copies aren't misclassified as runtime files) and
+         re-link any of those files that another enabled mod also provides,
       2. drop their plugins from plugins.txt + loadorder.txt,
       3. delete the staging folders,
       4. drop them from modindex.bin + bsa_index.bin.
@@ -45,6 +47,7 @@ def remove_mods(game, profile_dir: Path, mod_names: list[str], log_fn=None) -> N
     except Exception:
         deploy_active = True
     if deploy_active:
+        removed: list = []
         try:
             from Utils.deploy.deploy import undeploy_mod_files
             undeploy_mod_files(
@@ -54,9 +57,16 @@ def remove_mods(game, profile_dir: Path, mod_names: list[str], log_fn=None) -> N
                 index_path,
                 log_fn=log,
                 staging_root=staging_root,
+                removed_out=removed,
             )
         except Exception as exc:
             log(f"undeploy during remove failed: {exc}")
+        if removed:
+            try:
+                relink_from_other_mods(profile_dir, staging_root, index_path,
+                                       removed, mod_names, log)
+            except Exception as exc:
+                log(f"re-linking replacement files failed: {exc}")
     else:
         log("no deployment is active — skipping undeploy of removed mod(s).")
 
@@ -86,6 +96,62 @@ def remove_mods(game, profile_dir: Path, mod_names: list[str], log_fn=None) -> N
         remove_from_bsa_index(index_path.parent / "bsa_index.bin", mod_names)
     except Exception:
         pass
+
+
+def relink_from_other_mods(profile_dir: Path, staging_root: Path,
+                           index_path: Path, removed: list,
+                           removed_mods: list[str], log) -> int:
+    """Fill the gaps a removal left in the game folder.
+
+    *removed* holds ``(path, rel_key, area, link_kind)`` for every file just
+    undeployed.  When another enabled mod ships the same file (same path
+    inside the mod), its copy is linked at the same spot, the same way —
+    so e.g. removing an old copy of a reinstalled mod doesn't leave the game
+    without the file until the next Deploy.  The highest-priority enabled
+    mod wins, as it would at deploy.  Returns how many files were linked.
+    """
+    from Utils.filemap import read_mod_index
+    from Utils.mods.modlist import read_modlist
+
+    index = read_mod_index(index_path) or {}
+    gone = set(removed_mods)
+    candidates = [e.name for e in read_modlist(profile_dir / "modlist.txt")
+                  if e.enabled and not e.is_separator and e.name not in gone]
+    linked = 0
+    for path, rel_key, area, kind in removed:
+        path = Path(path)
+        if os.path.lexists(path):
+            continue
+        for mod in candidates:
+            entry = index.get(mod)
+            if entry is None:
+                continue
+            files = entry[1] if area == "r" else entry[0]
+            rel_str = files.get(rel_key)
+            if rel_str is None:
+                continue
+            src = staging_root / mod / rel_str
+            if not src.is_file():
+                continue
+            try:
+                path.parent.mkdir(parents=True, exist_ok=True)
+                if kind == "symlink":
+                    os.symlink(src, path)
+                elif kind == "hardlink":
+                    try:
+                        os.link(src, path)
+                    except OSError:
+                        shutil.copy2(src, path)
+                else:
+                    shutil.copy2(src, path)
+                linked += 1
+            except OSError as exc:
+                log(f"  could not link {mod}'s copy of {path.name}: {exc}")
+            break
+    if linked:
+        log(f"  Re-linked {linked} file(s) from other enabled mod(s) that "
+            "provide them, so the game keeps them until the next Deploy.")
+    return linked
 
 
 def _remove_plugins_for_mods(game, profile_dir: Path, staging_root: Path,
