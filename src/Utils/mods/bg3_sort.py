@@ -21,6 +21,7 @@ from Utils.mods.bg3_import import resolve_profile_modlist
 from Utils.mods.modlist import ModEntry, read_modlist, write_modlist
 from Utils.mods.modsettings import (
     BG3ModInfo,
+    load_order_eligible,
     resolve_load_order,
     scan_game_data_uuids,
     scan_mod_paks,
@@ -107,7 +108,7 @@ def compute_sort_plan_for_modlist(game, modlist_path: Path) -> SortPlan:
         excluded = {}
 
     mod_infos = scan_mod_paks(staging, enabled, excluded=excluded)
-    eligible = {u: i for u, i in mod_infos.items() if not i.is_override_only}
+    eligible = load_order_eligible(mod_infos)
 
     # resolve_load_order expects lowest-priority-first input (modsettings.lsx
     # convention); modlist.txt is highest-priority-first.

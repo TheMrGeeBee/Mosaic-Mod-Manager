@@ -10,7 +10,8 @@ Workflow:
 
 The campaign entry is always written first: GustavX by default, or an
 installed Adventure (custom campaign) mod in its place.  Pure override paks
-(only touching base-game module folders) are left out of the load order.
+(only touching base-game module folders) are left out of the load order, and so
+are empty meta.lsx-only paks (load-order dividers) nothing depends on.
 """
 
 from __future__ import annotations
@@ -232,6 +233,11 @@ class BG3ModInfo:
     # True when the pak only overrides base-game module folders — the game
     # loads it automatically; it must not get a load-order entry.
     is_override_only: bool = False
+    # True when the pak contains nothing but its meta.lsx — a load-order
+    # divider for BG3MM / volo's curated sorting (e.g. Astra's Load Order
+    # Dividers).  Kept out of modsettings.lsx: listing them only makes the
+    # game report them as new mods.
+    is_meta_only: bool = False
     # True when the pak ships a ScriptExtender/Config.json with RequiredVersion.
     requires_script_extender: bool = False
 
@@ -341,6 +347,26 @@ def _classify_pak_files(file_names: list[str]) -> tuple[bool, bool]:
     return overrides_builtin, has_own_data
 
 
+def _is_meta_only_pak(file_names: list[str]) -> bool:
+    """True when every file in the pak is a meta.lsx (no actual content)."""
+    return bool(file_names) and all(
+        n.replace("\\", "/").lower().endswith("meta.lsx") for n in file_names)
+
+
+def load_order_eligible(mod_infos: dict[str, BG3ModInfo]
+                        ) -> dict[str, BG3ModInfo]:
+    """The subset of *mod_infos* that belongs in modsettings.lsx.
+
+    Drops pure override paks (the game loads them anyway) and meta.lsx-only
+    divider paks — unless some other scanned mod declares a divider as a
+    dependency, in which case it must stay listed so that dependency resolves.
+    """
+    depended_on = {d for i in mod_infos.values() for d in i.dependencies}
+    return {u: i for u, i in mod_infos.items()
+            if not i.is_override_only
+            and not (i.is_meta_only and u not in depended_on)}
+
+
 def _se_config_requires_extender(se_config: str | None) -> bool:
     """True when a pak's ScriptExtender/Config.json declares RequiredVersion."""
     if not se_config:
@@ -418,6 +444,7 @@ def scan_mod_paks(
                 continue
             overrides_builtin, has_own_data = _classify_pak_files(pak_info.file_names)
             info.is_override_only = overrides_builtin and not has_own_data
+            info.is_meta_only = _is_meta_only_pak(pak_info.file_names)
             info.requires_script_extender = _se_config_requires_extender(pak_info.se_config)
             info.source_mod = entry.name
             existing = by_uuid.get(info.uuid)
@@ -836,12 +863,21 @@ def write_modsettings(
     # BG3 Mod Manager's "Overrides" section.
     override_only = sorted((i for i in mod_infos.values() if i.is_override_only),
                            key=lambda i: i.name)
-    eligible = {u: i for u, i in mod_infos.items() if not i.is_override_only}
+    eligible = load_order_eligible(mod_infos)
     if override_only:
         _log(f"  {len(override_only)} pak(s) only override base-game files — "
              "loaded automatically, left out of the load order:")
         for i in override_only:
             _log(f"    - {i.name} ({i.source_mod})")
+    dividers = [i for u, i in mod_infos.items()
+                if i.is_meta_only and u not in eligible]
+    if dividers:
+        by_mod: dict[str, int] = {}
+        for i in dividers:
+            by_mod[i.source_mod] = by_mod.get(i.source_mod, 0) + 1
+        _log(f"  {len(dividers)} empty pak(s) (meta.lsx only — load-order "
+             "dividers) left out of the load order: "
+             + ", ".join(f"{m} ({n})" for m, n in by_mod.items()))
 
     if manifest_load_order:
         _log(f"Resolving load order from collection manifest ({len(manifest_load_order)} entries) ...")
