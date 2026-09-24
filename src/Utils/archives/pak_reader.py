@@ -317,6 +317,9 @@ def iter_pak_entries(pak_path: Path | str, want=None):
     decompressed only for entries it accepts (None for the rest, and for
     entries stored in a secondary archive part), so walking the file list of
     a large pak stays cheap.  Supports LSPK v15, v16, and v18.
+
+    An entry that fails to decompress (seen in the wild: a KaiLimeUI xaml
+    flagged zlib that isn't) yields None instead of aborting the whole pak.
     """
     _require_lz4()
     pak_path = Path(pak_path)
@@ -324,7 +327,11 @@ def iter_pak_entries(pak_path: Path | str, want=None):
         for entry in _read_entries(f, pak_path):
             name = entry[0]
             if want is not None and entry[5] == 0 and want(name.lower()):
-                yield name, _read_entry_content(f, entry)
+                try:
+                    content = _read_entry_content(f, entry)
+                except Exception:
+                    content = None
+                yield name, content
             else:
                 yield name, None
 
