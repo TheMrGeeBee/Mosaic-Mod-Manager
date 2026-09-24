@@ -93,12 +93,14 @@ def test_replacing_treasure_table_is_a_conflict(tmp_path):
     assert f.kind == "treasure_table"
 
 
-def test_gui_state_finding_claims_no_winner(tmp_path):
-    enabled = _entries("CPCCE", "ACS")
-    index = {"CPCCE": [_rec("u1", "CPCCE", gui=["Keyboard:CompanionsPanel"])],
-             "ACS": [_rec("u2", "ACS", gui=["Keyboard:CompanionsPanel"])]}
+def test_gui_state_winner_is_the_later_loaded_mod(tmp_path):
+    # Confirmed in-game: ACS's inventory (with its Camp Chest button) shows
+    # only while ACS loads after BCPP, which replaces the same screen.
+    enabled = _entries("ACS", "BCPP")
+    index = {"ACS": [_rec("u1", "ACS", gui=["Keyboard:CharacterPanel"])],
+             "BCPP": [_rec("u2", "BCPP", gui=["Keyboard:CharacterPanel"])]}
     [f] = bx.analyse(enabled, index, tmp_path)[0]
-    assert f.kind == "gui_state" and f.winner is None
+    assert f.kind == "gui_state" and f.winner == "ACS"
 
 
 def test_variant_group_from_info_json(tmp_path):
@@ -256,3 +258,45 @@ def test_transitive_dependent_loser_is_refused(tmp_path):
     except bx.RuleConflict:
         return
     raise AssertionError("expected RuleConflict")
+
+
+# ---- broken decisions / re-apply / tidy -------------------------------------
+
+class _Game:
+    def __init__(self, staging):
+        self._staging = staging
+
+    def get_effective_mod_staging_path(self):
+        return self._staging
+
+
+def _rules_profile(tmp_path, monkeypatch, order, index, rules):
+    prof = _profile(tmp_path, order)
+    bx.write_rules(prof, {"rules": rules, "ignored": []})
+    monkeypatch.setattr(bx, "build_index", lambda *a, **k: index)
+    return prof
+
+
+def test_broken_rules_reports_an_imported_order_that_undoes_a_decision(tmp_path, monkeypatch):
+    index = {"ACS": [_rec("u1", "ACS")], "BCPP": [_rec("u2", "BCPP")]}
+    rule = {"winner": "ACS", "loser": "BCPP", "reason": "gui_state"}
+    prof = _rules_profile(tmp_path, monkeypatch, ["ACS", "BCPP"], index, [rule])
+    game = _Game(tmp_path / "mods")
+    assert bx.broken_rules(game, prof) == []
+    imported = _entries("BCPP", "ACS")          # BCPP now on top = loads last
+    assert bx.broken_rules(game, prof, imported) == [rule]
+
+
+def test_reapply_rules_restores_every_decision(tmp_path, monkeypatch):
+    index = {"ACS": [_rec("u1", "ACS")], "BCPP": [_rec("u2", "BCPP")],
+             "Other": [_rec("u3", "Other")]}
+    rules = [{"winner": "ACS", "loser": "BCPP", "reason": "gui_state"}]
+    prof = _rules_profile(tmp_path, monkeypatch, ["BCPP", "Other", "ACS"],
+                          index, rules)
+    game = _Game(tmp_path / "mods")
+    monkeypatch.setattr(bx, "settle_modlist", lambda *a, **k: 0)
+    applied, problems = bx.reapply_rules(game, prof)
+    assert applied == 1 and problems == []
+    assert bx.broken_rules(game, prof) == []
+    assert [e.name for e in read_modlist(prof / "modlist.txt")] == \
+        ["ACS", "BCPP", "Other"]

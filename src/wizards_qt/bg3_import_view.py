@@ -39,6 +39,7 @@ class BG3ImportView(WizardViewBase):
     _pick_status_sig = Signal(str, str)
     _preview_ready_sig = Signal(str, str)     # summary, detail
     _preview_error_sig = Signal(str)
+    _reapply_done_sig = Signal(str, str)      # status text, colour
 
     def __init__(self, game: "BaseGame", log_fn=None, on_close=None, ctx=None,
                  **_extra):
@@ -46,12 +47,14 @@ class BG3ImportView(WizardViewBase):
                          title=self.tr("Import BG3MM Load Order — {0}").format(game.name))
         self._json_path: Path | None = None
         self._plan = None
+        self._broken: list[dict] = []
 
         self._pick_status_sig.connect(self._guard(
             lambda t, c: self._set_status(self._pick_status, t, c)))
         self._preview_ready_sig.connect(self._guard(self._on_preview_ready))
         self._preview_error_sig.connect(self._guard(
             lambda t: self._set_status(self._preview_summary, t, RED)))
+        self._reapply_done_sig.connect(self._guard(self._on_reapply_done))
         # route the base portal picker signal to our handler
         self._picked_sig.disconnect()
         self._picked_sig.connect(self._guard(self._on_json_picked))
@@ -141,6 +144,24 @@ class BG3ImportView(WizardViewBase):
             plan = compute_import_plan(self._game, self._json_path, profile)
             self._plan = plan
             summary, detail = format_preview(plan)
+            # Saved Load Order Insights decisions this order would break —
+            # an import silently undoing them is how a working setup broke.
+            self._broken = []
+            try:
+                from Utils.mods.bg3_pak_index import broken_rules
+                self._broken = broken_rules(self._game, plan.modlist_path.parent,
+                                            plan.new_entries)
+            except Exception as exc:
+                self._log(f"BG3 Import: could not check saved decisions: {exc}")
+            if self._broken:
+                summary += "   " + self.tr(
+                    "Breaks {0} of your Load Order Insights decision(s) — see "
+                    "below; you can re-apply them after importing.").format(
+                        len(self._broken))
+                detail = ("=== YOUR LOAD ORDER INSIGHTS DECISIONS THIS ORDER "
+                          "BREAKS ===\n" + "\n".join(
+                              f"   {r['winner']}  should load after  {r['loser']}"
+                              for r in self._broken) + "\n\n" + detail)
             safe_emit(self._preview_ready_sig, summary, detail)
         except Exception as exc:
             self._log(f"BG3 Import: preview error: {exc}")
@@ -160,6 +181,10 @@ class BG3ImportView(WizardViewBase):
             path = apply_plan(self._plan)
             self._log(f"BG3 Import: wrote new load order to {path}")
             self._ran = True     # refresh_modlist on _finish
+            self._reapply_btn.setVisible(bool(self._broken))
+            self._set_status(self._done_status, self.tr(
+                "This order broke {0} of your Load Order Insights decision(s)."
+            ).format(len(self._broken)) if self._broken else "")
             self._stack.setCurrentIndex(_PG_DONE)
         except Exception as exc:
             self._log(f"BG3 Import: apply error: {exc}")
@@ -171,8 +196,45 @@ class BG3ImportView(WizardViewBase):
         self._make_note(lay,
                         self.tr("The modlist has been reordered to match the BG3MM order.\n"
                         "Deploy to push the new load order to the game."))
+        self._done_status = self._make_status(lay)
+        self._reapply_btn = self._accent_btn(self.tr("Re-apply my decisions"))
+        self._reapply_btn.setToolTip(self.tr(
+            "Move mods so every Load Order Insights decision holds again, "
+            "keeping the rest of the imported order"))
+        self._reapply_btn.clicked.connect(lambda _c=False: self._reapply())
+        self._reapply_btn.setVisible(False)
+        lay.addWidget(self._reapply_btn, 0, Qt.AlignHCenter)
         lay.addStretch(1)
         done = self._green_btn(self.tr("Done"))
         done.clicked.connect(self._finish)
         lay.addWidget(done, 0, Qt.AlignHCenter)
         return page
+
+    def _reapply(self):
+        self._reapply_btn.setEnabled(False)
+        self._set_status(self._done_status, self.tr("Re-applying decisions…"))
+        threading.Thread(target=self._reapply_worker, daemon=True,
+                         name="bg3-reapply").start()
+
+    def _reapply_worker(self):
+        from Utils.mods.bg3_pak_index import reapply_rules
+        try:
+            n, problems = reapply_rules(self._game, self._plan.modlist_path.parent)
+            self._log(f"BG3 Import: re-applied {n} Load Order Insights decision(s)")
+            for msg in problems:
+                self._log(f"BG3 Import: {msg}")
+            if problems:
+                safe_emit(self._reapply_done_sig, self.tr(
+                    "Re-applied {0}; {1} could not be (see the log).").format(
+                        n, len(problems)), RED)
+            else:
+                safe_emit(self._reapply_done_sig, self.tr(
+                    "All your decisions hold again ({0} re-applied).").format(n),
+                    GREEN)
+        except Exception as exc:
+            self._log(f"BG3 Import: re-apply error: {exc}")
+            safe_emit(self._reapply_done_sig,
+                      self.tr("Error: {0}").format(exc), RED)
+
+    def _on_reapply_done(self, text: str, colour: str):
+        self._set_status(self._done_status, text, colour)

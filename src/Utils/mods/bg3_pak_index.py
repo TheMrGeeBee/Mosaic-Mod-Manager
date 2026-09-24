@@ -413,18 +413,12 @@ def analyse(enabled: list[ModEntry], index: dict[str, list[dict]],
     for key, mods in files.items():
         add("same_file", mods, key)
 
-    findings = []
-    for (k, m), keys in groups.items():
-        f = Finding(kind=k, mods=list(m), keys=sorted(keys),
-                    winner=_winner(list(m), rank))
-        if k == "gui_state":
-            # Not simply "later wins": ImpUI-based UI mods can coexist on one
-            # state (CPCCE worked in-game while ACS, overriding the same
-            # CompanionsPanel state, loaded later).  Don't claim a winner.
-            f.winner = None
-            f.note = ("Both replace this UI screen. Which one you see can "
-                      "depend on the UI framework (ImpUI), so check in-game.")
-        findings.append(f)
+    # UI screens follow the same "loads later wins" rule — confirmed in-game:
+    # Advanced Character Sheet's inventory (and its Camp Chest button) only
+    # showed while ACS loaded after BCPP UW, which replaces the same screen.
+    findings = [Finding(kind=k, mods=list(m), keys=sorted(keys),
+                        winner=_winner(list(m), rank))
+                for (k, m), keys in groups.items()]
 
     for mod, conflict_uuid in declared:
         other = uuid_owner.get(conflict_uuid)
@@ -639,6 +633,72 @@ def accept_patch(profile_dir: Path, patch: str, findings: list[Finding],
     for f in todo:
         apply_winner(profile_dir, f, patch, index_deps)
     return len(todo)
+
+
+def settle_modlist(game, profile_dir: Path) -> int:
+    """Run the dependency sort deploy would run, right away.
+
+    "Make it win" moves as few mods as possible, which can leave modlist.txt
+    out of step with the real load order (a mod others depend on loads
+    earlier than its list position).  The next deploy then renumbers many
+    entries and logs a long "reordering" block.  Doing it here keeps the
+    list tidy; it never changes the load order itself.  Returns the moves."""
+    from Utils.mods.bg3_sort import apply_plan, compute_sort_plan_for_modlist
+    plan = compute_sort_plan_for_modlist(game, profile_dir / "modlist.txt")
+    if plan.changed:
+        apply_plan(plan)
+    return len(plan.moves)
+
+
+def broken_rules(game, profile_dir: Path,
+                 entries: list[ModEntry] | None = None) -> list[dict]:
+    """Saved decisions the given modlist order (default: the current one)
+    breaks — the winner would load before the loser."""
+    if entries is None:
+        entries = read_modlist(profile_dir / "modlist.txt")
+    enabled = [e for e in entries if e.enabled and not e.is_separator]
+    rules = read_rules(profile_dir)["rules"]
+    if not rules or not enabled:
+        return []
+    index = build_index(game.get_effective_mod_staging_path(),
+                        [e.name for e in enabled], profile_dir / INDEX_FILENAME)
+    rank = compute_load_rank(enabled, index)
+    return [r for r in rules
+            if r.get("winner") in rank and r.get("loser") in rank
+            and rank[r["winner"]] < rank[r["loser"]]]
+
+
+def reapply_rules(game, profile_dir: Path, max_passes: int = 5
+                  ) -> tuple[int, list[str]]:
+    """Make every saved decision hold again (e.g. after importing a BG3MM
+    or volo order).  Returns (decisions re-applied, problems).  A few passes
+    are allowed because fixing one decision can move a mod another one
+    involves; anything still broken after that is reported, not forced."""
+    applied = 0
+    problems: list[str] = []
+    for _ in range(max_passes):
+        broken = broken_rules(game, profile_dir)
+        if not broken:
+            break
+        index = build_index(game.get_effective_mod_staging_path(),
+                            [e.name for e in read_modlist(profile_dir / "modlist.txt")
+                             if e.enabled and not e.is_separator],
+                            profile_dir / INDEX_FILENAME)
+        deps = dependents_map(index)
+        for r in broken:
+            f = Finding(kind=r.get("reason", "stats_override"),
+                        mods=[r["winner"], r["loser"]], keys=[], winner=None)
+            try:
+                apply_winner(profile_dir, f, r["winner"], deps)
+                applied += 1
+            except RuleConflict as exc:
+                problems.append(str(exc))
+    else:
+        still = broken_rules(game, profile_dir)
+        problems += [f"{r['winner']} could not be made to load after {r['loser']}"
+                     for r in still]
+    settle_modlist(game, profile_dir)
+    return applied, sorted(set(problems))
 
 
 def ignore_finding(profile_dir: Path, finding: Finding) -> None:

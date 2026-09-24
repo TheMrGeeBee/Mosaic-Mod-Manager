@@ -203,7 +203,7 @@ class BG3InsightsView(WizardViewBase):
             item = QTreeWidgetItem([
                 "  ⟶  ".join(f.mods),
                 str(len(f.keys)),
-                f.winner or ("—" if f.kind != "gui_state" else self.tr("check in-game")),
+                f.winner or "—",
                 self._status_text(f, ignored),
             ])
             item.setData(0, Qt.UserRole, (f, ignored))
@@ -263,6 +263,7 @@ class BG3InsightsView(WizardViewBase):
             return
         try:
             apply_winner(self._profile_dir, f, winner, self._insights.depends_on)
+            self._settle()
         except RuleConflict as exc:
             self._set_status(self._summary, str(exc), RED)
             return
@@ -283,6 +284,7 @@ class BG3InsightsView(WizardViewBase):
         try:
             n = accept_patch(self._profile_dir, f.suggested_patch,
                              self._insights.findings, self._insights.depends_on)
+            self._settle()
         except RuleConflict as exc:
             self._set_status(self._summary, str(exc), RED)
             return
@@ -294,6 +296,18 @@ class BG3InsightsView(WizardViewBase):
                   f"({n} finding(s))")
         self._ran = True
         self._rescan()
+
+    def _settle(self):
+        """Tidy modlist.txt to the real load order now, so the next deploy
+        doesn't log a long reordering block.  Never changes the load order."""
+        from Utils.mods.bg3_pak_index import settle_modlist
+        try:
+            moved = settle_modlist(self._game, self._profile_dir)
+            if moved:
+                self._log(f"BG3 Insights: tidied {moved} modlist position(s) "
+                          "to match the load order")
+        except Exception as exc:
+            self._log(f"BG3 Insights: could not tidy the modlist: {exc}")
 
     def _ignore(self):
         from Utils.mods.bg3_pak_index import ignore_finding
