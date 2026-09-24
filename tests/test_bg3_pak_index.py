@@ -300,3 +300,66 @@ def test_reapply_rules_restores_every_decision(tmp_path, monkeypatch):
     assert bx.broken_rules(game, prof) == []
     assert [e.name for e in read_modlist(prof / "modlist.txt")] == \
         ["ACS", "BCPP", "Other"]
+
+
+def test_ui_template_overlap_is_a_finding(tmp_path):
+    # Better Inventory UI, ACS and BCPP all define CharacterInventoryTemplate
+    # in GUI/Library; the later one draws the inventory (and the addon's
+    # item-type badges only show when Better Inventory UI's version wins).
+    def rec(uuid, name):
+        r = _rec(uuid, name)
+        r["gui_templates"] = ["Keyboard:CharacterInventoryTemplate"]
+        return r
+    enabled = _entries("ACS", "Better Inventory UI")
+    index = {"ACS": [rec("u1", "ACS")], "Better Inventory UI": [rec("u2", "BIU")]}
+    [f] = bx.analyse(enabled, index, tmp_path)[0]
+    assert f.kind == "ui_template" and f.winner == "ACS"
+    assert f.keys == ["Keyboard:CharacterInventoryTemplate"]
+
+
+def test_gui_file_kind():
+    assert bx._gui_file_kind("mods/x/gui/library/lib_controller.xaml") == "Controller"
+    assert bx._gui_file_kind("mods/x/gui/library/bettersplit_c.xaml") == "Controller"
+    assert bx._gui_file_kind("mods/x/gui/library/lib_keyboard.xaml") == "Keyboard"
+
+
+def test_template_filter_ignores_plain_values():
+    xaml = ('<ResourceDictionary>'
+            '<ControlTemplate x:Key="CharacterInventoryTemplate"/>'
+            '<Style x:Key="EquipmentSlotStyle" TargetType="Control"/>'
+            '<sys:Double x:Key="EquipmentSlotSize">64</sys:Double>'
+            '<SolidColorBrush x:Key="RowBG_d" Color="#000"/>'
+            '<BitmapImage x:Key="Icon" UriSource="a.png"/>'
+            '</ResourceDictionary>')
+    keys = {k for el, k in bx._XAML_KEYED_EL_RE.findall(xaml)
+            if el.rsplit(":", 1)[-1] in bx._TEMPLATE_ELEMENTS}
+    assert keys == {"CharacterInventoryTemplate", "EquipmentSlotStyle"}
+
+
+def test_keep_current_order_saves_winner_without_moving(tmp_path):
+    prof = _profile(tmp_path, ["Better Context Menu", "Other", "ACS"])
+    f = bx.Finding(kind="ui_template", mods=["Better Context Menu", "ACS"],
+                   keys=["k"], winner="Better Context Menu")
+    assert bx.keep_current_order(prof, f) == "Better Context Menu"
+    assert [e.name for e in read_modlist(prof / "modlist.txt")] == \
+        ["Better Context Menu", "Other", "ACS"]
+    assert bx.read_rules(prof)["rules"] == [
+        {"winner": "Better Context Menu", "loser": "ACS", "reason": "ui_template"}]
+
+
+def test_keep_current_order_needs_a_known_winner(tmp_path):
+    prof = _profile(tmp_path, ["A", "B"])
+    f = bx.Finding(kind="ui_template", mods=["A", "B"], keys=["k"], winner=None)
+    try:
+        bx.keep_current_order(prof, f)
+    except bx.RuleConflict:
+        return
+    raise AssertionError("expected RuleConflict")
+
+
+def test_load_after_add_and_clear(tmp_path):
+    prof = _profile(tmp_path, ["Addon", "BIU"])
+    bx.add_load_after(prof, "Addon", "BIU")
+    assert bx.load_after_of(prof, "Addon") == ["BIU"]
+    assert bx.clear_load_after(prof, "Addon") == 1
+    assert bx.load_after_of(prof, "Addon") == []

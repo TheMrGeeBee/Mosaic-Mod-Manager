@@ -37,7 +37,7 @@ from Utils.mods.modsettings import (
 )
 
 INDEX_FILENAME = "bg3_pak_index.json"
-_INDEX_VERSION = 2
+_INDEX_VERSION = 5
 _STATE_KEY = "bg3_load_insights"
 
 # Files that say nothing about what a mod overrides.
@@ -55,6 +55,15 @@ MERGE_PREFIX = "merge:"
 # game-version mention like "(Patch 8)" / "Patch 7-8".
 _PATCH_NAME_RE = re.compile(
     r"(?<![a-z])(patch|patches|compat|compatibility)(?![a-z])(?!\s*\d)", re.I)
+# Named resources in GUI/Library xaml (item templates, styles…).  When two UI
+# mods define the same key, the one loading later replaces the other's — e.g.
+# Better Inventory UI's CharacterInventoryTemplate vs ACS's / BCPP's.
+# Only real templates/styles count: sizes, colours, brushes and image
+# sources are routinely copied between UI mods and don't replace anything
+# visible — flagging them made most UI findings noise.
+_XAML_KEYED_EL_RE = re.compile(r'<([\w:.]+)\b[^>]*?\bx:Key="([^"]+)"', re.S)
+_TEMPLATE_ELEMENTS = {"ControlTemplate", "DataTemplate", "Style",
+                      "HierarchicalDataTemplate", "ItemsPanelTemplate"}
 _GUI_STATE_RE = re.compile(
     r'<ls:State\s+Name="([^"]+)"[^>]*ModType="Override"', re.I)
 
@@ -134,19 +143,33 @@ def _parse_conflicts(meta_xml: str) -> list[str]:
     return out
 
 
+_TAGS_RE = re.compile(r'id="Tags"[^>]*?value="([^"]*)"')
+
+
+def _parse_tags(meta_xml: str) -> list[str]:
+    """meta.lsx ModuleInfo ``Tags`` (semicolon-separated), e.g. Library;UI."""
+    m = _TAGS_RE.search(meta_xml)
+    if not m:
+        return []
+    return [t.strip() for t in re.split(r"[;,]", m.group(1)) if t.strip()]
+
+
 def _decode(data: bytes) -> str:
     return data.decode("utf-8-sig", "ignore")
 
 
 def _gui_file_kind(name_lower: str) -> str:
-    return "Controller" if name_lower.endswith("controller.xaml") else "Keyboard"
+    base = name_lower.rsplit("/", 1)[-1]
+    if "controller" in base or base.endswith("_c.xaml"):
+        return "Controller"
+    return "Keyboard"
 
 
 def scan_pak(pak: Path) -> dict:
     """Extract everything the insights need from one pak (JSON-serialisable)."""
     info = read_pak_info(pak)
     rec: dict = {"meta": None, "files": [], "stats": {}, "treasure": {},
-                 "gui": [], "conflicts": []}
+                 "gui": [], "gui_templates": [], "conflicts": []}
 
     files = [n for n in info.file_names
              if not n.lower().endswith(_IGNORED_SUFFIXES)
@@ -166,13 +189,15 @@ def scan_pak(pak: Path) -> dict:
                 "dependency_names": mi.dependency_names,
                 "is_override_only": ovr and not own,
                 "is_meta_only": _is_meta_only_pak(info.file_names),
+                "tags": _parse_tags(info.meta_xml),
             }
             rec["conflicts"] = _parse_conflicts(info.meta_xml)
 
     def want(nl: str) -> bool:
         return (("/stats/generated/data/" in nl and nl.endswith(".txt"))
                 or nl.endswith("/stats/generated/treasuretable.txt")
-                or ("/gui/statemachines/" in nl and nl.endswith(".xaml")))
+                or ("/gui/statemachines/" in nl and nl.endswith(".xaml"))
+                or ("/gui/library/" in nl and nl.endswith(".xaml")))
 
     for name, data in iter_pak_entries(pak, want):
         if data is None:
@@ -183,6 +208,11 @@ def scan_pak(pak: Path) -> dict:
             rec["treasure"].update(_parse_treasure(text))
         elif nl.endswith(".txt"):
             rec["stats"].update(_parse_stats(text))
+        elif "/gui/library/" in nl:
+            kind = _gui_file_kind(nl)
+            rec["gui_templates"].extend(sorted({
+                f"{kind}:{k}" for el, k in _XAML_KEYED_EL_RE.findall(text)
+                if el.rsplit(":", 1)[-1] in _TEMPLATE_ELEMENTS}))
         else:
             kind = _gui_file_kind(nl)
             rec["gui"].extend(f"{kind}:{s}" for s in _GUI_STATE_RE.findall(text))
@@ -253,7 +283,8 @@ def build_index(staging: Path, mod_names: list[str], cache_path: Path | None,
 # ---------------------------------------------------------------------------
 
 # How much each kind matters, for sorting the report.
-SEVERITY = {"declared_conflict": 3, "gui_state": 2, "stats_override": 2,
+SEVERITY = {"declared_conflict": 3, "gui_state": 2, "ui_template": 2,
+            "stats_override": 2,
             "treasure_table": 2, "variant_group": 2, "same_file": 1,
             "identical": 0}
 
@@ -261,6 +292,7 @@ KIND_LABELS = {
     "declared_conflict": "Declared incompatible (meta.lsx Conflicts)",
     "variant_group": "Variants of the same mod enabled together",
     "gui_state": "Replace the same UI screen",
+    "ui_template": "Replace the same UI templates",
     "stats_override": "Define the same stats entries",
     "treasure_table": "Define the same treasure tables",
     "same_file": "Ship the same file",
@@ -299,6 +331,8 @@ class Insights:
     findings: list[Finding] = field(default_factory=list)
     load_rank: dict[str, int] = field(default_factory=dict)   # mod -> position
     depends_on: dict[str, set[str]] = field(default_factory=dict)
+    # Mods a collection manifest orders — their order can't be changed here.
+    collection_mods: set[str] = field(default_factory=set)
     ignored: list[Finding] = field(default_factory=list)
     modlist_path: Path | None = None
 
@@ -331,11 +365,39 @@ def _to_info(meta: dict, mod: str) -> BG3ModInfo:
     return info
 
 
+def read_manifest(profile_dir: Path) -> list[dict] | None:
+    """A collection profile's curated load order (collection.json
+    ``loadOrder``), which deploy follows instead of modlist order."""
+    path = profile_dir / "collection.json"
+    if not path.is_file():
+        return None
+    try:
+        lo = json.loads(path.read_text(encoding="utf-8")).get("loadOrder")
+    except (OSError, ValueError, AttributeError):
+        return None
+    return lo if isinstance(lo, list) and lo else None
+
+
+def collection_mods(index: dict[str, list[dict]],
+                    manifest: list[dict] | None) -> set[str]:
+    """Mod folders whose paks the collection manifest orders."""
+    if not manifest:
+        return set()
+    uuids = {((e.get("data") or {}).get("uuid") or "").strip().lower()
+             for e in manifest}
+    uuids.discard("")
+    return {mod for mod, recs in index.items()
+            for r in recs
+            if r.get("meta") and r["meta"]["uuid"].lower() in uuids}
+
+
 def compute_load_rank(enabled: list[ModEntry],
-                      index: dict[str, list[dict]]) -> dict[str, int]:
+                      index: dict[str, list[dict]],
+                      manifest: list[dict] | None = None) -> dict[str, int]:
     """Position of each mod in the modsettings.lsx order write_modsettings
     would produce (higher = loads later = wins).  Mods with no load-order
-    entry (override-only / no meta.lsx) are absent."""
+    entry (override-only / no meta.lsx) are absent.  With a collection
+    *manifest* the order follows it, exactly as deploy does."""
     lowest_first = list(reversed(enabled))
     by_uuid: dict[str, BG3ModInfo] = {}
     for e in lowest_first:
@@ -344,7 +406,13 @@ def compute_load_rank(enabled: list[ModEntry],
             if not meta or meta["uuid"] in _SYSTEM_UUIDS:
                 continue
             by_uuid[meta["uuid"]] = _to_info(meta, e.name)
-    ordered = resolve_load_order(lowest_first, load_order_eligible(by_uuid))
+    eligible = load_order_eligible(by_uuid)
+    if manifest:
+        from Utils.mods.modsettings import _apply_manifest_pak_order
+        ordered = _apply_manifest_pak_order(lowest_first, eligible, manifest,
+                                            lambda _m: None)
+    else:
+        ordered = resolve_load_order(lowest_first, eligible)
     rank: dict[str, int] = {}
     for i, info in enumerate(ordered):
         rank[info.source_mod] = max(rank.get(info.source_mod, -1), i)
@@ -359,9 +427,10 @@ def _winner(mods: list[str], rank: dict[str, int]) -> str | None:
 
 
 def analyse(enabled: list[ModEntry], index: dict[str, list[dict]],
-            staging: Path) -> tuple[list[Finding], dict[str, int]]:
+            staging: Path, manifest: list[dict] | None = None
+            ) -> tuple[list[Finding], dict[str, int]]:
     """Group every overlap between two or more enabled mods into findings."""
-    rank = compute_load_rank(enabled, index)
+    rank = compute_load_rank(enabled, index, manifest)
     priority = {e.name: i for i, e in enumerate(enabled)}   # 0 = top = wins
 
     def order(mods) -> list[str]:
@@ -371,6 +440,7 @@ def analyse(enabled: list[ModEntry], index: dict[str, list[dict]],
     stats: dict[str, dict[str, str]] = defaultdict(dict)
     treasure: dict[str, dict[str, str]] = defaultdict(dict)
     gui: dict[str, set[str]] = defaultdict(set)
+    templates: dict[str, set[str]] = defaultdict(set)
     files: dict[str, set[str]] = defaultdict(set)
     uuid_owner: dict[str, str] = {}
     declared: list[tuple[str, str]] = []
@@ -385,6 +455,8 @@ def analyse(enabled: list[ModEntry], index: dict[str, list[dict]],
                 treasure[k][mod] = d
             for s in rec["gui"]:
                 gui[s].add(mod)
+            for t in rec.get("gui_templates", []):
+                templates[t].add(mod)
             for f in rec["files"]:
                 files[f.lower()].add(mod)
             meta = rec.get("meta")
@@ -410,6 +482,8 @@ def analyse(enabled: list[ModEntry], index: dict[str, list[dict]],
             add("identical" if identical else kind, per_mod, key)
     for key, mods in gui.items():
         add("gui_state", mods, key)
+    for key, mods in templates.items():
+        add("ui_template", mods, key)
     for key, mods in files.items():
         add("same_file", mods, key)
 
@@ -531,7 +605,8 @@ def compute_insights(game, profile_dir: Path, log_fn=None) -> Insights:
     staging = game.get_effective_mod_staging_path()
     index = build_index(staging, [e.name for e in enabled],
                         profile_dir / INDEX_FILENAME, log_fn=log_fn)
-    findings, rank = analyse(enabled, index, staging)
+    manifest = read_manifest(profile_dir)
+    findings, rank = analyse(enabled, index, staging, manifest)
     state = read_rules(profile_dir)
     _apply_rule_status(findings, state["rules"], rank)
     ignored_ids = set(state["ignored"])
@@ -539,6 +614,7 @@ def compute_insights(game, profile_dir: Path, log_fn=None) -> Insights:
         findings=[f for f in findings if f.id not in ignored_ids],
         ignored=[f for f in findings if f.id in ignored_ids],
         load_rank=rank, depends_on=dependents_map(index),
+        collection_mods=collection_mods(index, manifest),
         modlist_path=modlist_path)
 
 
@@ -568,7 +644,8 @@ def _dependents_closure(mod: str, deps: dict[str, set[str]]) -> set[str]:
 
 
 def apply_winner(profile_dir: Path, finding: Finding, winner: str,
-                 index_deps: dict[str, set[str]] | None = None) -> Path:
+                 index_deps: dict[str, set[str]] | None = None,
+                 collection: set[str] | None = None) -> Path:
     """Record "*winner* beats the others in *finding*" and reorder
     modlist.txt (top = wins) so it loads after all of them.
 
@@ -579,6 +656,11 @@ def apply_winner(profile_dir: Path, finding: Finding, winner: str,
     is also moved below the winner and everything that depends on it —
     only then does it really load first.  Nothing else moves."""
     losers = [m for m in finding.mods if m != winner]
+    if collection and winner in collection and all(l in collection for l in losers):
+        raise RuleConflict(
+            f"{winner} and {', '.join(losers)} follow your collection's load "
+            "order, which deploy uses instead of the mod list — reset or edit "
+            "the collection's order to change it.")
     deps = index_deps or {}
     pulls_winner = _dependents_closure(winner, deps)
     for loser in losers:
@@ -614,24 +696,68 @@ def apply_winner(profile_dir: Path, finding: Finding, winner: str,
     if changed:
         write_modlist(modlist_path, entries)
 
+    _save_rules(profile_dir, winner, losers, finding.kind)
+    return modlist_path
+
+
+def _save_rules(profile_dir: Path, winner: str, losers: list[str],
+                reason: str) -> None:
+    """Store "*winner* loads after each of *losers*", replacing any earlier
+    decision about the same pairs (in either direction)."""
     state = read_rules(profile_dir)
     rules = [r for r in state["rules"]
              if not (r.get("winner") in losers and r.get("loser") == winner)
              and not (r.get("winner") == winner and r.get("loser") in losers)]
-    rules += [{"winner": winner, "loser": l, "reason": finding.kind}
-              for l in losers]
+    rules += [{"winner": winner, "loser": l, "reason": reason} for l in losers]
     state["rules"] = rules
     write_rules(profile_dir, state)
-    return modlist_path
+
+
+def keep_current_order(profile_dir: Path, finding: Finding) -> str:
+    """Accept the finding's current winner as the decision.  Nothing moves —
+    for overlaps that already look right in-game.  Returns the winner."""
+    if not finding.winner:
+        raise RuleConflict("Nothing is known to win here yet, so there is no "
+                           "current order to keep.")
+    _save_rules(profile_dir, finding.winner,
+                [m for m in finding.mods if m != finding.winner], finding.kind)
+    return finding.winner
+
+
+LOAD_AFTER = "load_after"
+
+
+def add_load_after(profile_dir: Path, mod: str, after: str) -> None:
+    """User choice from Sort Load Order: *mod* always loads after *after*."""
+    if mod == after:
+        raise RuleConflict("A mod can't load after itself.")
+    _save_rules(profile_dir, mod, [after], LOAD_AFTER)
+
+
+def load_after_of(profile_dir: Path, mod: str) -> list[str]:
+    return [r["loser"] for r in read_rules(profile_dir)["rules"]
+            if r.get("winner") == mod and r.get("reason") == LOAD_AFTER]
+
+
+def clear_load_after(profile_dir: Path, mod: str) -> int:
+    """Remove every "load after" choice made for *mod*; returns how many."""
+    state = read_rules(profile_dir)
+    keep = [r for r in state["rules"]
+            if not (r.get("winner") == mod and r.get("reason") == LOAD_AFTER)]
+    removed = len(state["rules"]) - len(keep)
+    state["rules"] = keep
+    write_rules(profile_dir, state)
+    return removed
 
 
 def accept_patch(profile_dir: Path, patch: str, findings: list[Finding],
-                 index_deps: dict[str, set[str]] | None = None) -> int:
+                 index_deps: dict[str, set[str]] | None = None,
+                 collection: set[str] | None = None) -> int:
     """Make *patch* win every finding it was suggested for (one click
     instead of one decision per finding).  Returns how many were applied."""
     todo = [f for f in findings if f.suggested_patch == patch]
     for f in todo:
-        apply_winner(profile_dir, f, patch, index_deps)
+        apply_winner(profile_dir, f, patch, index_deps, collection)
     return len(todo)
 
 
@@ -662,7 +788,7 @@ def broken_rules(game, profile_dir: Path,
         return []
     index = build_index(game.get_effective_mod_staging_path(),
                         [e.name for e in enabled], profile_dir / INDEX_FILENAME)
-    rank = compute_load_rank(enabled, index)
+    rank = compute_load_rank(enabled, index, read_manifest(profile_dir))
     return [r for r in rules
             if r.get("winner") in rank and r.get("loser") in rank
             and rank[r["winner"]] < rank[r["loser"]]]
@@ -685,11 +811,12 @@ def reapply_rules(game, profile_dir: Path, max_passes: int = 5
                              if e.enabled and not e.is_separator],
                             profile_dir / INDEX_FILENAME)
         deps = dependents_map(index)
+        coll = collection_mods(index, read_manifest(profile_dir))
         for r in broken:
             f = Finding(kind=r.get("reason", "stats_override"),
                         mods=[r["winner"], r["loser"]], keys=[], winner=None)
             try:
-                apply_winner(profile_dir, f, r["winner"], deps)
+                apply_winner(profile_dir, f, r["winner"], deps, coll)
                 applied += 1
             except RuleConflict as exc:
                 problems.append(str(exc))

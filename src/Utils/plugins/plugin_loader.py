@@ -100,9 +100,11 @@ BUILTIN_WIZARD_TOOLS: list[dict] = [
     },
     {
         "id": "bg3_sort_load_order",
-        "label": "Sort Load Order (Dependencies)",
-        "description": ("Reorder enabled mods so each mod's declared "
-                        "dependencies load before it."),
+        "label": "Sort Load Order",
+        "description": ("Sort enabled mods into layers (frameworks & UI, "
+                        "libraries, gameplay, story, items, visuals, patches, "
+                        "late loaders), keeping dependencies, your Load Order "
+                        "Insights decisions and a collection's own order."),
         "game_ids": ["baldurs_gate_3"],
         "all_games": False,
         "dialog_class": "wizards.bg3_sort.BG3SortWizard",

@@ -38,6 +38,7 @@ class SortMove:
     old_index: int
     new_index: int
     reason: str
+    layer: str = ""
 
 
 @dataclass
@@ -46,6 +47,12 @@ class SortPlan:
     moves: list[SortMove] = field(default_factory=list)
     unresolved: list[str] = field(default_factory=list)
     modlist_path: Path | None = None
+    # Layered sort only: {mod: (layer id, reason)}, the resulting load order
+    # (lowest priority first) and how many mods follow a collection's order.
+    layers: dict[str, tuple[str, str]] = field(default_factory=dict)
+    load_order: list[str] = field(default_factory=list)
+    previous_load_order: list[str] = field(default_factory=list)
+    collection_count: int = 0
 
     @property
     def changed(self) -> bool:
@@ -217,3 +224,153 @@ def apply_plan(plan: SortPlan) -> Path:
     """Write the new order to the profile's modlist.txt; return its path."""
     write_modlist(plan.modlist_path, plan.new_entries)
     return plan.modlist_path
+
+
+# ---------------------------------------------------------------------------
+# Layered sort ("Sort Load Order")
+# ---------------------------------------------------------------------------
+
+def compute_layered_plan(game, modlist_path: Path, log_fn=None) -> SortPlan:
+    """Full load-order sort: layers (``Utils.mods.bg3_layers``) ordered first
+    to last, the current order kept inside each layer, and — stronger than
+    layers — dependencies and the user's Load Order Insights decisions.
+
+    A collection profile's manifest-ordered mods are left alone: deploy
+    orders them by the manifest regardless of modlist.txt.  Only mods the
+    user added are sorted (deploy appends those after the collection's).
+
+    Separators, disabled mods and mods without a load-order entry keep
+    their exact modlist slots, like ``compute_sort_plan_for_modlist``.  The
+    result satisfies every dependency, so deploy's own dependency sort
+    moves nothing afterwards.
+    """
+    import heapq
+    from Utils.mods import bg3_layers as L
+    from Utils.mods.bg3_pak_index import (
+        INDEX_FILENAME, _looks_like_patch, build_index, collection_mods,
+        compute_load_rank, dependents_map, read_manifest, read_rules,
+    )
+
+    entries = read_modlist(modlist_path)
+    enabled = [e for e in entries if e.enabled and not e.is_separator]
+    plan = SortPlan(new_entries=list(entries), modlist_path=modlist_path)
+    if not enabled:
+        return plan
+
+    profile_dir = modlist_path.parent
+    staging = game.get_effective_mod_staging_path()
+    index = build_index(staging, [e.name for e in enabled],
+                        profile_dir / INDEX_FILENAME, log_fn=log_fn)
+    manifest = read_manifest(profile_dir)
+    in_collection = collection_mods(index, manifest)
+    rank = compute_load_rank(enabled, index, manifest)
+    plan.previous_load_order = sorted(rank, key=rank.get)
+    modlist_pos = {e.name: i for i, e in enumerate(entries)}
+
+    free = [m for m in rank if m not in in_collection]
+    plan.collection_count = len([m for m in rank if m in in_collection])
+    free_set = set(free)
+
+    deps = dependents_map(index)
+    overrides = L.read_overrides(profile_dir)
+    for mod in free:
+        category, modio_tags = L.read_categories(staging / mod)
+        plan.layers[mod] = L.classify(
+            mod, index.get(mod, []), category, modio_tags,
+            overrides.get(mod), _looks_like_patch)
+
+    # Hard edges (a -> b: a loads before b).  Dependencies first; then saved
+    # decisions (loser before winner), skipped when they'd contradict a
+    # dependency chain.
+    after: dict[str, set[str]] = {m: set() for m in free}
+    before: dict[str, set[str]] = {m: set() for m in free}
+    why: dict[tuple[str, str], str] = {}
+
+    def reaches(a: str, b: str) -> bool:
+        stack, seen = [a], set()
+        while stack:
+            cur = stack.pop()
+            if cur == b:
+                return True
+            if cur in seen:
+                continue
+            seen.add(cur)
+            stack.extend(after[cur])
+        return False
+
+    for mod in free:
+        for d in deps.get(mod, ()):
+            if d in free_set and d != mod:
+                after[d].add(mod); before[mod].add(d)
+                why[(d, mod)] = f"depends on {d}"
+    for r in read_rules(profile_dir)["rules"]:
+        w, l = r.get("winner"), r.get("loser")
+        if w in free_set and l in free_set and w != l and w not in after[l]:
+            if reaches(w, l):
+                plan.unresolved.append(
+                    f"Your decision '{w} wins over {l}' conflicts with a "
+                    "dependency and was skipped")
+                continue
+            after[l].add(w); before[w].add(l)
+            why[(l, w)] = (f"you chose: loads after {l}"
+                           if r.get("reason") == "load_after"
+                           else f"your decision: wins over {l}")
+
+    def key(m: str):
+        return (L.LAYER_INDEX[plan.layers[m][0]], rank[m], modlist_pos.get(m, 0), m)
+
+    indeg = {m: len(before[m]) for m in free}
+    heap = [key(m) for m in free if indeg[m] == 0]
+    heapq.heapify(heap)
+    order: list[str] = []
+    remaining = set(free)
+    while remaining:
+        if not heap:
+            # Circular constraints: emit the lowest-keyed mod anyway.
+            m = min(remaining, key=key)
+            plan.unresolved.append(f"{m}: circular dependency or decisions — "
+                                   "placed by its layer")
+        else:
+            m = heapq.heappop(heap)[-1]
+            if m not in remaining:
+                continue
+        remaining.discard(m)
+        order.append(m)
+        for n in after[m]:
+            if n in remaining:
+                indeg[n] -= 1
+                if indeg[n] == 0:
+                    heapq.heappush(heap, key(n))
+
+    # Collection mods keep their place; the sorted mods load after them.
+    coll_order = [m for m in sorted(rank, key=rank.get) if m in in_collection]
+    plan.load_order = coll_order + order
+
+    # Write back into the free mods' modlist slots (highest priority first).
+    slots = [i for i, e in enumerate(entries)
+             if e.enabled and not e.is_separator and e.name in free_set]
+    by_name = {e.name: e for e in entries}
+    new_entries = list(entries)
+    for slot, name in zip(slots, reversed(order)):
+        new_entries[slot] = by_name[name]
+    plan.new_entries = new_entries
+
+    max_layer_so_far = -1
+    delayed: dict[str, str] = {}
+    for m in order:
+        li = L.LAYER_INDEX[plan.layers[m][0]]
+        if li < max_layer_so_far and before[m]:
+            last = max(before[m], key=order.index)
+            delayed[m] = why.get((last, m), "")
+        max_layer_so_far = max(max_layer_so_far, li)
+    for i, e in enumerate(new_entries):
+        if e.name in free_set and modlist_pos.get(e.name) != i:
+            layer, reason = plan.layers[e.name]
+            text = f"{L.LAYER_LABEL[layer]} ({reason})"
+            if delayed.get(e.name):
+                text += f"; later than its layer: {delayed[e.name]}"
+            plan.moves.append(SortMove(name=e.name,
+                                       old_index=modlist_pos[e.name],
+                                       new_index=i, reason=text, layer=layer))
+    return plan
+

@@ -101,6 +101,12 @@ class BG3InsightsView(WizardViewBase):
         self._win_btn = self._green_btn(self.tr("Make it win"))
         self._win_btn.clicked.connect(lambda _c=False: self._make_win())
         rh.addWidget(self._win_btn)
+        self._keep_btn = self._accent_btn(self.tr("Keep current order"))
+        self._keep_btn.setToolTip(self.tr(
+            "It already looks right in-game: save the current winner as your "
+            "decision. Nothing moves."))
+        self._keep_btn.clicked.connect(lambda _c=False: self._keep_current())
+        rh.addWidget(self._keep_btn)
         self._patch_btn = self._accent_btn(self.tr("Accept as patch"))
         self._patch_btn.setToolTip(self.tr(
             "Make this patch win every overlap it has with the mods it patches"))
@@ -121,7 +127,7 @@ class BG3InsightsView(WizardViewBase):
 
     def _set_actions_enabled(self, on: bool):
         for w in (self._winner_box, self._win_btn, self._ignore_btn,
-                  self._patch_btn):
+                  self._patch_btn, self._keep_btn):
             w.setEnabled(on)
 
     # ---- scanning ---------------------------------------------------------------
@@ -252,6 +258,9 @@ class BG3InsightsView(WizardViewBase):
         can_order = f.kind not in ("identical", "declared_conflict", "variant_group")
         self._winner_box.setEnabled(can_order)
         self._win_btn.setEnabled(can_order)
+        self._keep_btn.setEnabled(
+            can_order and bool(f.winner) and not ignored
+            and (not f.resolved_by_rule or f.rule_violated))
         self._ignore_btn.setEnabled(not ignored)
 
     # ---- actions -----------------------------------------------------------------
@@ -262,7 +271,8 @@ class BG3InsightsView(WizardViewBase):
         if f is None or not winner or self._profile_dir is None:
             return
         try:
-            apply_winner(self._profile_dir, f, winner, self._insights.depends_on)
+            apply_winner(self._profile_dir, f, winner, self._insights.depends_on,
+                         self._insights.collection_mods)
             self._settle()
         except RuleConflict as exc:
             self._set_status(self._summary, str(exc), RED)
@@ -283,7 +293,8 @@ class BG3InsightsView(WizardViewBase):
             return
         try:
             n = accept_patch(self._profile_dir, f.suggested_patch,
-                             self._insights.findings, self._insights.depends_on)
+                             self._insights.findings, self._insights.depends_on,
+                             self._insights.collection_mods)
             self._settle()
         except RuleConflict as exc:
             self._set_status(self._summary, str(exc), RED)
@@ -308,6 +319,20 @@ class BG3InsightsView(WizardViewBase):
                           "to match the load order")
         except Exception as exc:
             self._log(f"BG3 Insights: could not tidy the modlist: {exc}")
+
+    def _keep_current(self):
+        from Utils.mods.bg3_pak_index import RuleConflict, keep_current_order
+        f, _ignored = self._selected()
+        if f is None or self._profile_dir is None:
+            return
+        try:
+            winner = keep_current_order(self._profile_dir, f)
+        except RuleConflict as exc:
+            self._set_status(self._summary, str(exc), RED)
+            return
+        self._log(f"BG3 Insights: kept current order — {winner} wins over "
+                  f"{', '.join(m for m in f.mods if m != winner)}")
+        self._rescan()
 
     def _ignore(self):
         from Utils.mods.bg3_pak_index import ignore_finding
