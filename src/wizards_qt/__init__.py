@@ -246,6 +246,9 @@ REGISTRY: dict[str, QtWizardSpec] = {
         QtWizardSpec(_simple("wizards_qt.bg3_import_view", "BG3ImportView")),
     "wizards.bg3_sort.BG3SortWizard":
         QtWizardSpec(_simple("wizards_qt.bg3_sort_view", "BG3SortView")),
+    "wizards.bg3_insights.BG3InsightsWizard":
+        QtWizardSpec(_simple("wizards_qt.bg3_insights_view", "BG3InsightsView"),
+                     panel="modlist"),
     "wizards.sdv_smapi.SmapiWizard":
         QtWizardSpec(_simple("wizards_qt.smapi_view", "SmapiView")),
     "wizards.sr_srml.SRMLWizard":

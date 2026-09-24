@@ -109,6 +109,17 @@ BUILTIN_WIZARD_TOOLS: list[dict] = [
         "category": "Load Order and Config",
     },
     {
+        "id": "bg3_load_order_insights",
+        "label": "Load Order Insights",
+        "description": ("Show which enabled mods define the same stats, "
+                        "treasure tables, UI screens or files, which one "
+                        "currently wins, and pick the winner."),
+        "game_ids": ["baldurs_gate_3"],
+        "all_games": False,
+        "dialog_class": "wizards.bg3_insights.BG3InsightsWizard",
+        "category": "Load Order and Config",
+    },
+    {
         "id": "sdv_smapi",
         "label": "Install SMAPI",
         "description": "Download and install SMAPI (mod loader) for Stardew Valley.",

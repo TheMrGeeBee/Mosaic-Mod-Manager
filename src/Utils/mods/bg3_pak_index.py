@@ -1,0 +1,628 @@
+"""BG3 load-order insights: what each enabled mod's paks actually override.
+
+Mosaic's dependency sort (``Utils.mods.bg3_sort``) only knows what meta.lsx
+declares.  Most real ordering problems are invisible to it: two mods defining
+the same stats entry, the same treasure table, or overriding the same UI
+state — whichever loads *later* in modsettings.lsx wins.  This module reads
+the paks' text content (cheap: ~0.6 s for ~600 paks, cached per pak by
+size + mtime), groups those overlaps into findings, and tracks the user's
+"this mod should win" decisions as per-profile rules.
+
+No Qt imports — the insights view only renders findings and calls
+``apply_winner`` / ``ignore_finding``.
+"""
+
+from __future__ import annotations
+
+import hashlib
+import json
+import re
+import xml.etree.ElementTree as ET
+from collections import defaultdict
+from dataclasses import dataclass, field
+from pathlib import Path
+
+from Utils.archives.pak_reader import iter_pak_entries, read_pak_info
+from Utils.mods.modlist import ModEntry, read_modlist, write_modlist
+from Utils.mods.modsettings import (
+    _BUILTIN_FOLDERS,
+    _SYSTEM_UUIDS,
+    BG3ModInfo,
+    _classify_pak_files,
+    _is_meta_only_pak,
+    _repair_meta_xml,
+    load_order_eligible,
+    parse_meta_lsx,
+    resolve_load_order,
+)
+
+INDEX_FILENAME = "bg3_pak_index.json"
+_INDEX_VERSION = 2
+_STATE_KEY = "bg3_load_insights"
+
+# Files that say nothing about what a mod overrides.
+_IGNORED_SUFFIXES = ("meta.lsx", "mod_publish_logo.png", "gui/metadata.lsf",
+                     "desktop.ini", "thumbs.db")
+_IGNORED_DIRS = ("/.idea/", "/.vscode/", "/.git/")
+
+_STATS_ENTRY_RE = re.compile(r'^\s*new entry\s+"([^"]+)"', re.M)
+_STATS_TYPE_RE = re.compile(r'^\s*type\s+"([^"]+)"', re.M)
+_TREASURE_RE = re.compile(r'^\s*new treasuretable\s+"([^"]+)"', re.M)
+_CAN_MERGE_RE = re.compile(r'^\s*CanMerge\s+1\b', re.M)
+# Treasure-table value prefix: the table is merged into, not replaced.
+MERGE_PREFIX = "merge:"
+# "Compatibility Patch", "Patches_for_X", "Better UI AiO Patch" — but not a
+# game-version mention like "(Patch 8)" / "Patch 7-8".
+_PATCH_NAME_RE = re.compile(
+    r"(?<![a-z])(patch|patches|compat|compatibility)(?![a-z])(?!\s*\d)", re.I)
+_GUI_STATE_RE = re.compile(
+    r'<ls:State\s+Name="([^"]+)"[^>]*ModType="Override"', re.I)
+
+
+# ---------------------------------------------------------------------------
+# Per-pak extraction
+# ---------------------------------------------------------------------------
+
+def _digest(text: str) -> str:
+    """Short, whitespace-insensitive content hash (identical vs. different)."""
+    norm = "\n".join(ln.strip() for ln in text.splitlines() if ln.strip())
+    return hashlib.blake2b(norm.encode("utf-8", "ignore"), digest_size=8).hexdigest()
+
+
+def _split_blocks(text: str, header_re: re.Pattern) -> list[tuple[str, str]]:
+    """Split a Larian stats-style text file into (name, block_text) pairs."""
+    starts = list(header_re.finditer(text))
+    out = []
+    for i, m in enumerate(starts):
+        end = starts[i + 1].start() if i + 1 < len(starts) else len(text)
+        out.append((m.group(1), text[m.start():end]))
+    return out
+
+
+def _parse_stats(text: str) -> dict[str, str]:
+    """{"Type:Name": digest} for every ``new entry`` in a stats .txt file."""
+    out: dict[str, str] = {}
+    for name, block in _split_blocks(text, _STATS_ENTRY_RE):
+        tm = _STATS_TYPE_RE.search(block)
+        key = f"{tm.group(1) if tm else '?'}:{name}"
+        out[key] = _digest(block)
+    return out
+
+
+def _parse_treasure(text: str) -> dict[str, str]:
+    """{name: digest}; tables marked ``CanMerge 1`` get MERGE_PREFIX — the
+    game adds their items to the existing table instead of replacing it, so
+    two merging mods never conflict."""
+    out = {}
+    for name, block in _split_blocks(text, _TREASURE_RE):
+        prefix = MERGE_PREFIX if _CAN_MERGE_RE.search(block) else ""
+        out[name] = prefix + _digest(block)
+    return out
+
+
+def _can_collide(path: str) -> bool:
+    """Whether another mod could ship the same path.  Files under a mod's
+    own Mods/<Folder>/ or Public/<Folder>/ namespace can't meaningfully
+    collide; only base-game folders (Shared, Gustav, Engine, ...) and paths
+    outside Mods/Public can.  Keeps the index small (~1% of all paths)."""
+    parts = path.replace("\\", "/").lower().split("/")
+    if parts[0] == "generated" and len(parts) > 2:
+        parts = parts[1:]
+    if parts[0] in ("mods", "public") and len(parts) > 2:
+        return parts[1] in _BUILTIN_FOLDERS
+    return True
+
+
+def _parse_conflicts(meta_xml: str) -> list[str]:
+    """UUIDs listed under meta.lsx's <node id="Conflicts">."""
+    try:
+        root = ET.fromstring(meta_xml)
+    except ET.ParseError:
+        try:
+            root = ET.fromstring(_repair_meta_xml(meta_xml))
+        except ET.ParseError:
+            return []
+    out = []
+    for node in root.iter("node"):
+        if node.get("id") != "Conflicts":
+            continue
+        for child in node.iter("node"):
+            if child.get("id") == "ModuleShortDesc":
+                for attr in child.iter("attribute"):
+                    if attr.get("id") == "UUID" and attr.get("value"):
+                        out.append(attr.get("value"))
+    return out
+
+
+def _decode(data: bytes) -> str:
+    return data.decode("utf-8-sig", "ignore")
+
+
+def _gui_file_kind(name_lower: str) -> str:
+    return "Controller" if name_lower.endswith("controller.xaml") else "Keyboard"
+
+
+def scan_pak(pak: Path) -> dict:
+    """Extract everything the insights need from one pak (JSON-serialisable)."""
+    info = read_pak_info(pak)
+    rec: dict = {"meta": None, "files": [], "stats": {}, "treasure": {},
+                 "gui": [], "conflicts": []}
+
+    files = [n for n in info.file_names
+             if not n.lower().endswith(_IGNORED_SUFFIXES)
+             and not any(d in "/" + n.lower() for d in _IGNORED_DIRS)
+             and _can_collide(n)]
+    rec["files"] = files
+
+    if info.meta_xml:
+        mi = parse_meta_lsx(info.meta_xml)
+        if mi is not None:
+            ovr, own = _classify_pak_files(info.file_names)
+            rec["meta"] = {
+                "uuid": mi.uuid, "name": mi.name, "folder": mi.folder,
+                "version64": mi.version64, "version": mi.version,
+                "md5": mi.md5, "publish_handle": mi.publish_handle,
+                "mod_type": mi.mod_type, "dependencies": mi.dependencies,
+                "dependency_names": mi.dependency_names,
+                "is_override_only": ovr and not own,
+                "is_meta_only": _is_meta_only_pak(info.file_names),
+            }
+            rec["conflicts"] = _parse_conflicts(info.meta_xml)
+
+    def want(nl: str) -> bool:
+        return (("/stats/generated/data/" in nl and nl.endswith(".txt"))
+                or nl.endswith("/stats/generated/treasuretable.txt")
+                or ("/gui/statemachines/" in nl and nl.endswith(".xaml")))
+
+    for name, data in iter_pak_entries(pak, want):
+        if data is None:
+            continue
+        nl = name.lower()
+        text = _decode(data)
+        if nl.endswith("treasuretable.txt"):
+            rec["treasure"].update(_parse_treasure(text))
+        elif nl.endswith(".txt"):
+            rec["stats"].update(_parse_stats(text))
+        else:
+            kind = _gui_file_kind(nl)
+            rec["gui"].extend(f"{kind}:{s}" for s in _GUI_STATE_RE.findall(text))
+    return rec
+
+
+# ---------------------------------------------------------------------------
+# Cached index
+# ---------------------------------------------------------------------------
+
+def _load_index(path: Path) -> dict:
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        if data.get("version") == _INDEX_VERSION:
+            return data.get("paks", {})
+    except (OSError, ValueError, AttributeError):
+        pass
+    return {}
+
+
+def build_index(staging: Path, mod_names: list[str], cache_path: Path | None,
+                log_fn=None) -> dict[str, list[dict]]:
+    """{mod_name: [pak record, ...]} for *mod_names*, reusing cached records
+    whose pak size + mtime are unchanged.  Rewrites the cache afterwards."""
+    _log = log_fn or (lambda _m: None)
+    cached = _load_index(cache_path) if cache_path else {}
+    fresh: dict[str, dict] = {}
+    out: dict[str, list[dict]] = {}
+    rescanned = 0
+    for mod in mod_names:
+        mod_dir = staging / mod
+        if not mod_dir.is_dir():
+            continue
+        for pak in sorted(mod_dir.rglob("*.pak")):
+            try:
+                st = pak.stat()
+            except OSError:
+                continue
+            key = str(pak)
+            stamp = [st.st_size, st.st_mtime_ns]
+            hit = cached.get(key)
+            if hit is not None and hit.get("stamp") == stamp:
+                rec = hit
+            else:
+                try:
+                    rec = scan_pak(pak)
+                except Exception as exc:
+                    _log(f"  Could not read {pak.name}: {exc}")
+                    continue
+                rec["stamp"] = stamp
+                rescanned += 1
+            rec["rel"] = pak.relative_to(mod_dir).as_posix()
+            fresh[key] = rec
+            out.setdefault(mod, []).append(rec)
+    if cache_path is not None:
+        try:
+            cache_path.write_text(
+                json.dumps({"version": _INDEX_VERSION, "paks": fresh}),
+                encoding="utf-8")
+        except OSError as exc:
+            _log(f"  Could not write {cache_path.name}: {exc}")
+    _log(f"  Indexed {len(fresh)} pak(s) ({rescanned} rescanned).")
+    return out
+
+
+# ---------------------------------------------------------------------------
+# Findings
+# ---------------------------------------------------------------------------
+
+# How much each kind matters, for sorting the report.
+SEVERITY = {"declared_conflict": 3, "gui_state": 2, "stats_override": 2,
+            "treasure_table": 2, "variant_group": 2, "same_file": 1,
+            "identical": 0}
+
+KIND_LABELS = {
+    "declared_conflict": "Declared incompatible (meta.lsx Conflicts)",
+    "variant_group": "Variants of the same mod enabled together",
+    "gui_state": "Replace the same UI screen",
+    "stats_override": "Define the same stats entries",
+    "treasure_table": "Define the same treasure tables",
+    "same_file": "Ship the same file",
+    "identical": "Identical definitions (order does not matter)",
+}
+
+
+@dataclass
+class Finding:
+    kind: str
+    mods: list[str]              # highest priority (loads last) first
+    keys: list[str]              # e.g. stats entries, UI states, file paths
+    winner: str | None           # mod whose version currently takes effect
+    resolved_by_rule: bool = False
+    rule_violated: bool = False
+    # The winner declares a dependency on every loser: it's a patch built on
+    # top of them, so the current order is the intended one.
+    intended: bool = False
+    # A mod whose name says it's a patch/compat mod and that overlaps these
+    # mods — probably a patch whose author never declared the dependencies.
+    # Only a suggestion: the user confirms with accept_patch().
+    suggested_patch: str | None = None
+    note: str = ""
+
+    @property
+    def id(self) -> str:
+        return f"{self.kind}:" + "|".join(sorted(self.mods))
+
+    @property
+    def severity(self) -> int:
+        return SEVERITY.get(self.kind, 1)
+
+
+@dataclass
+class Insights:
+    findings: list[Finding] = field(default_factory=list)
+    load_rank: dict[str, int] = field(default_factory=dict)   # mod -> position
+    depends_on: dict[str, set[str]] = field(default_factory=dict)
+    ignored: list[Finding] = field(default_factory=list)
+    modlist_path: Path | None = None
+
+
+def _read_group(mod_dir: Path) -> str:
+    """info.json "Group" (shared by alternative files of one mod)."""
+    p = mod_dir / "info.json"
+    if not p.is_file():
+        return ""
+    try:
+        data = json.loads(p.read_text(encoding="utf-8-sig"))
+        mods = data.get("Mods") or []
+        return (mods[0].get("Group") or "") if mods else ""
+    except (OSError, ValueError, AttributeError, IndexError):
+        return ""
+
+
+def _to_info(meta: dict, mod: str) -> BG3ModInfo:
+    info = BG3ModInfo(
+        uuid=meta["uuid"], name=meta["name"], folder=meta["folder"],
+        version64=meta["version64"], md5=meta.get("md5", ""),
+        publish_handle=meta.get("publish_handle", "0"),
+        version=meta.get("version", ""), mod_type=meta.get("mod_type", ""),
+        dependencies=list(meta.get("dependencies", [])),
+        dependency_names=dict(meta.get("dependency_names", {})),
+        source_mod=mod,
+    )
+    info.is_override_only = bool(meta.get("is_override_only"))
+    info.is_meta_only = bool(meta.get("is_meta_only"))
+    return info
+
+
+def compute_load_rank(enabled: list[ModEntry],
+                      index: dict[str, list[dict]]) -> dict[str, int]:
+    """Position of each mod in the modsettings.lsx order write_modsettings
+    would produce (higher = loads later = wins).  Mods with no load-order
+    entry (override-only / no meta.lsx) are absent."""
+    lowest_first = list(reversed(enabled))
+    by_uuid: dict[str, BG3ModInfo] = {}
+    for e in lowest_first:
+        for rec in index.get(e.name, []):
+            meta = rec.get("meta")
+            if not meta or meta["uuid"] in _SYSTEM_UUIDS:
+                continue
+            by_uuid[meta["uuid"]] = _to_info(meta, e.name)
+    ordered = resolve_load_order(lowest_first, load_order_eligible(by_uuid))
+    rank: dict[str, int] = {}
+    for i, info in enumerate(ordered):
+        rank[info.source_mod] = max(rank.get(info.source_mod, -1), i)
+    return rank
+
+
+def _winner(mods: list[str], rank: dict[str, int]) -> str | None:
+    ranked = [m for m in mods if m in rank]
+    if len(ranked) != len(mods):
+        return None     # someone loads outside the load order — unknown
+    return max(ranked, key=lambda m: rank[m])
+
+
+def analyse(enabled: list[ModEntry], index: dict[str, list[dict]],
+            staging: Path) -> tuple[list[Finding], dict[str, int]]:
+    """Group every overlap between two or more enabled mods into findings."""
+    rank = compute_load_rank(enabled, index)
+    priority = {e.name: i for i, e in enumerate(enabled)}   # 0 = top = wins
+
+    def order(mods) -> list[str]:
+        return sorted(set(mods), key=lambda m: priority.get(m, 10**9))
+
+    # key -> {mod: digest}
+    stats: dict[str, dict[str, str]] = defaultdict(dict)
+    treasure: dict[str, dict[str, str]] = defaultdict(dict)
+    gui: dict[str, set[str]] = defaultdict(set)
+    files: dict[str, set[str]] = defaultdict(set)
+    uuid_owner: dict[str, str] = {}
+    declared: list[tuple[str, str]] = []
+
+    for mod, recs in index.items():
+        if mod not in priority:
+            continue
+        for rec in recs:
+            for k, d in rec["stats"].items():
+                stats[k][mod] = d
+            for k, d in rec["treasure"].items():
+                treasure[k][mod] = d
+            for s in rec["gui"]:
+                gui[s].add(mod)
+            for f in rec["files"]:
+                files[f.lower()].add(mod)
+            meta = rec.get("meta")
+            if meta:
+                uuid_owner.setdefault(meta["uuid"], mod)
+                for c in rec.get("conflicts", []):
+                    declared.append((mod, c))
+
+    groups: dict[tuple[str, tuple[str, ...]], list[str]] = defaultdict(list)
+
+    def add(kind: str, mods, key: str):
+        if len(set(mods)) > 1:
+            groups[(kind, tuple(order(mods)))].append(key)
+
+    for table, kind in ((stats, "stats_override"), (treasure, "treasure_table")):
+        for key, per_mod in table.items():
+            if len(per_mod) < 2:
+                continue
+            if kind == "treasure_table" and all(
+                    d.startswith(MERGE_PREFIX) for d in per_mod.values()):
+                continue    # every mod merges into the table — no conflict
+            identical = len(set(per_mod.values())) == 1
+            add("identical" if identical else kind, per_mod, key)
+    for key, mods in gui.items():
+        add("gui_state", mods, key)
+    for key, mods in files.items():
+        add("same_file", mods, key)
+
+    findings = []
+    for (k, m), keys in groups.items():
+        f = Finding(kind=k, mods=list(m), keys=sorted(keys),
+                    winner=_winner(list(m), rank))
+        if k == "gui_state":
+            # Not simply "later wins": ImpUI-based UI mods can coexist on one
+            # state (CPCCE worked in-game while ACS, overriding the same
+            # CompanionsPanel state, loaded later).  Don't claim a winner.
+            f.winner = None
+            f.note = ("Both replace this UI screen. Which one you see can "
+                      "depend on the UI framework (ImpUI), so check in-game.")
+        findings.append(f)
+
+    for mod, conflict_uuid in declared:
+        other = uuid_owner.get(conflict_uuid)
+        if other and other != mod:
+            findings.append(Finding(
+                kind="declared_conflict", mods=order([mod, other]),
+                keys=[conflict_uuid], winner=None,
+                note=f"{mod} declares it is incompatible with {other}."))
+
+    by_group: dict[str, list[str]] = defaultdict(list)
+    for mod in index:
+        if mod in priority:
+            g = _read_group(staging / mod)
+            if g:
+                by_group[g].append(mod)
+    for g, mods in by_group.items():
+        if len(mods) > 1:
+            findings.append(Finding(
+                kind="variant_group", mods=order(mods), keys=[g], winner=None,
+                note="These share one info.json Group, which usually means "
+                     "they are alternative files of the same mod."))
+
+    deps = dependents_map(index)
+    for f in findings:
+        if f.winner:
+            losers = [m for m in f.mods if m != f.winner]
+            f.intended = bool(losers) and all(
+                l in deps.get(f.winner, set()) for l in losers)
+
+    _suggest_patches(findings, index)
+
+    findings.sort(key=lambda f: (f.intended, -f.severity, -len(f.keys), f.mods))
+    return findings, rank
+
+
+def _looks_like_patch(mod: str, recs: list[dict]) -> bool:
+    if any((r.get("meta") or {}).get("is_meta_only") for r in recs):
+        return False    # load-order dividers carry names like "Compat…"
+    names = [mod] + [r["meta"]["name"] for r in recs if r.get("meta")]
+    return any(_PATCH_NAME_RE.search(n) for n in names)
+
+
+def _suggest_patches(findings: list[Finding], index: dict[str, list[dict]]) -> None:
+    """Mark findings where exactly one involved mod looks like a patch."""
+    for f in findings:
+        if f.kind in ("identical", "declared_conflict", "variant_group") \
+                or f.intended:
+            continue
+        patches = [m for m in f.mods if _looks_like_patch(m, index.get(m, []))]
+        if len(patches) == 1:
+            f.suggested_patch = patches[0]
+
+
+# ---------------------------------------------------------------------------
+# Rules (per profile)
+# ---------------------------------------------------------------------------
+
+def read_rules(profile_dir: Path) -> dict:
+    from Utils.profile.profile_state import read_profile_state
+    raw = read_profile_state(profile_dir).get(_STATE_KEY) or {}
+    return {"rules": list(raw.get("rules") or []),
+            "ignored": list(raw.get("ignored") or [])}
+
+
+def write_rules(profile_dir: Path, data: dict) -> None:
+    from Utils.profile.profile_state import _update_key
+    _update_key(profile_dir, _STATE_KEY,
+                {"rules": data.get("rules", []),
+                 "ignored": sorted(set(data.get("ignored", [])))})
+
+
+def _apply_rule_status(findings: list[Finding], rules: list[dict],
+                       rank: dict[str, int]) -> None:
+    direct = {(r["winner"], r["loser"]) for r in rules
+              if r.get("winner") and r.get("loser")}
+    # Transitive: A beats B and B beats C means A beats C.
+    beats: dict[str, set[str]] = defaultdict(set)
+    for w, l in direct:
+        beats[w].add(l)
+    pairs: set[tuple[str, str]] = set()
+    for start in list(beats):
+        seen, stack = set(), list(beats[start])
+        while stack:
+            m = stack.pop()
+            if m in seen or m == start:
+                continue
+            seen.add(m)
+            stack.extend(beats.get(m, ()))
+        pairs |= {(start, m) for m in seen}
+    for f in findings:
+        mine = [(w, l) for (w, l) in pairs if w in f.mods and l in f.mods]
+        if not mine:
+            continue
+        # Decided only when one mod has a rule over every other mod here —
+        # a rule covering two of four mods doesn't settle the finding.
+        f.resolved_by_rule = any(
+            all((w, o) in pairs for o in f.mods if o != w) for w in f.mods)
+        f.rule_violated = any(
+            w in rank and l in rank and rank[w] < rank[l] for w, l in mine)
+
+
+# ---------------------------------------------------------------------------
+# Entry points used by the view
+# ---------------------------------------------------------------------------
+
+def compute_insights(game, profile_dir: Path, log_fn=None) -> Insights:
+    modlist_path = profile_dir / "modlist.txt"
+    entries = read_modlist(modlist_path)
+    enabled = [e for e in entries if e.enabled and not e.is_separator]
+    staging = game.get_effective_mod_staging_path()
+    index = build_index(staging, [e.name for e in enabled],
+                        profile_dir / INDEX_FILENAME, log_fn=log_fn)
+    findings, rank = analyse(enabled, index, staging)
+    state = read_rules(profile_dir)
+    _apply_rule_status(findings, state["rules"], rank)
+    ignored_ids = set(state["ignored"])
+    return Insights(
+        findings=[f for f in findings if f.id not in ignored_ids],
+        ignored=[f for f in findings if f.id in ignored_ids],
+        load_rank=rank, depends_on=dependents_map(index),
+        modlist_path=modlist_path)
+
+
+def unresolved_count(insights: Insights) -> int:
+    """Findings that still need a decision (not identical, no rule yet, or a
+    rule the current order breaks)."""
+    return sum(1 for f in insights.findings
+               if f.kind != "identical" and not f.intended
+               and (not f.resolved_by_rule or f.rule_violated))
+
+
+class RuleConflict(Exception):
+    """Making this mod win would break a declared dependency."""
+
+
+def apply_winner(profile_dir: Path, finding: Finding, winner: str,
+                 index_deps: dict[str, set[str]] | None = None) -> Path:
+    """Record "*winner* beats the others in *finding*" and move *winner*
+    directly above the highest-placed loser in modlist.txt (top = wins), so
+    it loads after all of them.  Nothing else moves."""
+    losers = [m for m in finding.mods if m != winner]
+    if index_deps:
+        for loser in losers:
+            if winner in index_deps.get(loser, set()):
+                raise RuleConflict(
+                    f"{loser} depends on {winner}, so {winner} must load "
+                    f"before it and cannot win.")
+
+    modlist_path = profile_dir / "modlist.txt"
+    entries = read_modlist(modlist_path)
+    names = [e.name for e in entries]
+    if winner in names:
+        loser_idx = [names.index(m) for m in losers if m in names]
+        w_idx = names.index(winner)
+        if loser_idx and w_idx > min(loser_idx):
+            target = min(loser_idx)
+            entry = entries.pop(w_idx)
+            entries.insert(target, entry)
+            write_modlist(modlist_path, entries)
+
+    state = read_rules(profile_dir)
+    rules = [r for r in state["rules"]
+             if not (r.get("winner") in losers and r.get("loser") == winner)
+             and not (r.get("winner") == winner and r.get("loser") in losers)]
+    rules += [{"winner": winner, "loser": l, "reason": finding.kind}
+              for l in losers]
+    state["rules"] = rules
+    write_rules(profile_dir, state)
+    return modlist_path
+
+
+def accept_patch(profile_dir: Path, patch: str, findings: list[Finding],
+                 index_deps: dict[str, set[str]] | None = None) -> int:
+    """Make *patch* win every finding it was suggested for (one click
+    instead of one decision per finding).  Returns how many were applied."""
+    todo = [f for f in findings if f.suggested_patch == patch]
+    for f in todo:
+        apply_winner(profile_dir, f, patch, index_deps)
+    return len(todo)
+
+
+def ignore_finding(profile_dir: Path, finding: Finding) -> None:
+    state = read_rules(profile_dir)
+    state["ignored"] = list(set(state["ignored"]) | {finding.id})
+    write_rules(profile_dir, state)
+
+
+def dependents_map(index: dict[str, list[dict]]) -> dict[str, set[str]]:
+    """{mod: {mods it depends on}} from the indexed meta.lsx dependencies."""
+    owner: dict[str, str] = {}
+    for mod, recs in index.items():
+        for rec in recs:
+            if rec.get("meta"):
+                owner.setdefault(rec["meta"]["uuid"], mod)
+    out: dict[str, set[str]] = defaultdict(set)
+    for mod, recs in index.items():
+        for rec in recs:
+            for dep in (rec.get("meta") or {}).get("dependencies", []):
+                if dep in owner and owner[dep] != mod:
+                    out[mod].add(owner[dep])
+    return out

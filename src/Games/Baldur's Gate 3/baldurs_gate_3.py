@@ -441,6 +441,17 @@ class BaldursGate3(BaseGame):
                                       manifest_load_order=manifest_lo,
                                       script_extender_dll=se_dll)
 
+        # One-line pointer to Load Order Insights (uses the per-pak cache, so
+        # only changed paks are re-read). Never fatal, never a pop-up.
+        try:
+            from Utils.mods.bg3_pak_index import compute_insights, unresolved_count
+            n = unresolved_count(compute_insights(self, profile_dir))
+            if n:
+                _log(f"  {n} load-order conflict(s) between mods need a "
+                     "decision — see Wizard → Load Order Insights.")
+        except Exception as exc:
+            _log(f"  Load-order insights skipped: {exc}")
+
         _suppress_launcher_mod_warnings(larian_root, log_fn=_log)
 
         # Snapshot the game root so restore() can sweep any runtime-generated

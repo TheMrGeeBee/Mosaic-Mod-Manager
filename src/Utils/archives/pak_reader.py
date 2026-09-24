@@ -310,6 +310,25 @@ def read_pak_info(pak_path: Path | str) -> PakInfo:
     return info
 
 
+def iter_pak_entries(pak_path: Path | str, want=None):
+    """Yield ``(name, content_or_None)`` for every entry in a .pak.
+
+    *want* — optional ``predicate(name_lower) -> bool``.  Content is read and
+    decompressed only for entries it accepts (None for the rest, and for
+    entries stored in a secondary archive part), so walking the file list of
+    a large pak stays cheap.  Supports LSPK v15, v16, and v18.
+    """
+    _require_lz4()
+    pak_path = Path(pak_path)
+    with pak_path.open("rb") as f:
+        for entry in _read_entries(f, pak_path):
+            name = entry[0]
+            if want is not None and entry[5] == 0 and want(name.lower()):
+                yield name, _read_entry_content(f, entry)
+            else:
+                yield name, None
+
+
 def extract_meta_lsx(pak_path: Path | str) -> str | None:
     """Open a BG3 .pak and return the contents of meta.lsx as a string.
 
