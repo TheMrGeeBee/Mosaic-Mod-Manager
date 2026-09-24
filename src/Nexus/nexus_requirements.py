@@ -316,6 +316,11 @@ def check_missing_requirements(
     # External tools (never flag) and requirement alternatives; both can be game-scoped
     external_set, alternatives_dict = _load_requirement_filter()
 
+    # BG3 only: requirements met by a pak UUID under a different Nexus id.
+    from Utils.mods.bg3_requirements import LazyPakRequirementCheck
+    pak_satisfied = LazyPakRequirementCheck(
+        game_domain, staging_root, [m.mod_name for m in installed])
+
     # Deduplicate by mod_id
     by_mod_id: dict[int, list[NexusModMeta]] = {}
     for meta in checkable:
@@ -361,6 +366,9 @@ def check_missing_requirements(
                 # e.g. 33746#92109: requirement 33746 satisfied if 92109 (Open Animation Replacer) installed
                 continue
             if req.mod_id not in installed_mod_ids:
+                if pak_satisfied(req.mod_name):
+                    # BG3: a fork under another Nexus id provides the same pak UUID
+                    continue
                 missing.append(req)
 
         # Merge in file-level (v3) missing requirements for this mod
@@ -472,6 +480,13 @@ def check_requirements_from_gql(
 
     external_set, alternatives_dict = _load_requirement_filter()
 
+    # BG3 only: requirements met by a pak UUID under a different Nexus id.
+    # Scans every installed mod, matching installed_mod_ids above (disabled
+    # mods included).
+    from Utils.mods.bg3_requirements import LazyPakRequirementCheck
+    pak_satisfied = LazyPakRequirementCheck(
+        game_domain, staging_root, [m.mod_name for m in all_installed])
+
     # Build by_mod_id only for enabled mods (the ones we actually report on)
     checkable = [
         m for m in all_installed
@@ -514,6 +529,9 @@ def check_requirements_from_gql(
             if _alternative_satisfied_for_game(game_domain, req.mod_id, installed_mod_ids, alternatives_dict):
                 continue
             if req.mod_id not in installed_mod_ids:
+                if pak_satisfied(req.mod_name):
+                    # BG3: a fork under another Nexus id provides the same pak UUID
+                    continue
                 missing.append(req)
 
         # A missing requirement can itself require something else that's

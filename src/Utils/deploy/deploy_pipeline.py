@@ -137,7 +137,7 @@ def _warn_missing_requirements(game, profile_dir: Path, *, log_fn: LogFn) -> Non
 
     The stored `missing_requirements` string is a snapshot from whenever it
     was last checked (install time / Check Updates) — it goes stale, so it is
-    NOT trusted verbatim. Two live cross-checks first rule out anything no
+    NOT trusted verbatim. Three live cross-checks first rule out anything no
     longer actually missing:
       1. Another currently-enabled mod's own recorded Nexus mod_id matches —
          the requirement was installed later and the cached flag just never
@@ -148,6 +148,9 @@ def _warn_missing_requirements(game, profile_dir: Path, *, log_fn: LogFn) -> Non
          banner) — Nexus's site-side "requirements" list still names these
          even though they are never installed as a staged mod with their own
          meta.ini, so the mod_id check above can never satisfy them.
+      3. BG3 only: an enabled mod's pak provides the UUID that the
+         requirement's name maps to (``Utils.mods.bg3_requirements``) — a
+         fork on its own Nexus page, e.g. "ImpUI P8 Fork" for ImpUI.
     """
     if not hasattr(game, "add_deploy_warning"):
         return
@@ -189,6 +192,13 @@ def _warn_missing_requirements(game, profile_dir: Path, *, log_fn: LogFn) -> Non
                 if (game_root / rel_exe).is_file():
                     present_frameworks.append(fw_name.lower())
 
+    # BG3 only: a requirement met by a pak UUID from a mod under a different
+    # Nexus id (e.g. a fork) — scanned lazily, only if something is missing.
+    from Utils.mods.bg3_requirements import LazyPakRequirementCheck
+    pak_satisfied = LazyPakRequirementCheck(
+        _safe(lambda: game.nexus_game_domain, "") or "", staging,
+        [e.name for e in enabled_entries])
+
     affected: "list[tuple[str, list[str]]]" = []
     for e in enabled_entries:
         if e.name in ignored:
@@ -205,6 +215,8 @@ def _warn_missing_requirements(game, profile_dir: Path, *, log_fn: LogFn) -> Non
                 continue    # satisfied by another currently-enabled mod
             if any(fw in (name or "").lower() for fw in present_frameworks):
                 continue    # a native framework, already verified present
+            if pak_satisfied(name):
+                continue    # same pak UUID provided by another enabled mod
             still_missing.append(name or str(mod_id))
         if still_missing:
             affected.append((e.name, still_missing))

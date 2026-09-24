@@ -228,6 +228,9 @@ class BG3ModInfo:
     mod_type: str = ""
     # UUIDs of mods this mod depends on
     dependencies: list[str] = field(default_factory=list)
+    # {dependency UUID: the Name this meta.lsx gives it} — lets a Nexus
+    # requirement (known only by name) be matched to a pak UUID.
+    dependency_names: dict[str, str] = field(default_factory=dict)
     # The mod-list name (staging folder name) this came from
     source_mod: str = ""
     # True when the pak only overrides base-game module folders — the game
@@ -306,6 +309,7 @@ def parse_meta_lsx(xml_text: str) -> BG3ModInfo | None:
 
     # Parse dependencies
     deps: list[str] = []
+    dep_names: dict[str, str] = {}
     for node in root.iter("node"):
         if node.get("id") == "Dependencies":
             for child in node.iter("node"):
@@ -313,6 +317,7 @@ def parse_meta_lsx(xml_text: str) -> BG3ModInfo | None:
                     dep_uuid = _attr_value(child, "UUID")
                     if dep_uuid and dep_uuid not in _SYSTEM_UUIDS:
                         deps.append(dep_uuid)
+                        dep_names[dep_uuid] = _attr_value(child, "Name")
             break
 
     return BG3ModInfo(
@@ -325,6 +330,7 @@ def parse_meta_lsx(xml_text: str) -> BG3ModInfo | None:
         version=version32,
         mod_type=mod_type,
         dependencies=deps,
+        dependency_names=dep_names,
     )
 
 
