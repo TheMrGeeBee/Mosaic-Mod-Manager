@@ -560,30 +560,65 @@ class RuleConflict(Exception):
     """Making this mod win would break a declared dependency."""
 
 
+def _dependents_closure(mod: str, deps: dict[str, set[str]]) -> set[str]:
+    """Every mod that depends on *mod*, directly or through other mods."""
+    out: set[str] = set()
+    stack = [mod]
+    while stack:
+        cur = stack.pop()
+        for m, ds in deps.items():
+            if cur in ds and m not in out:
+                out.add(m)
+                stack.append(m)
+    return out
+
+
 def apply_winner(profile_dir: Path, finding: Finding, winner: str,
                  index_deps: dict[str, set[str]] | None = None) -> Path:
-    """Record "*winner* beats the others in *finding*" and move *winner*
-    directly above the highest-placed loser in modlist.txt (top = wins), so
-    it loads after all of them.  Nothing else moves."""
+    """Record "*winner* beats the others in *finding*" and reorder
+    modlist.txt (top = wins) so it loads after all of them.
+
+    The winner moves directly above the highest-placed loser.  But a mod
+    that others depend on is pulled forward to load before its first
+    dependent (e.g. Goon's Library depends on Interrupted Music Performance
+    Fixer, so the Fixer loads early whatever its own position), so each loser
+    is also moved below the winner and everything that depends on it —
+    only then does it really load first.  Nothing else moves."""
     losers = [m for m in finding.mods if m != winner]
-    if index_deps:
-        for loser in losers:
-            if winner in index_deps.get(loser, set()):
-                raise RuleConflict(
-                    f"{loser} depends on {winner}, so {winner} must load "
-                    f"before it and cannot win.")
+    deps = index_deps or {}
+    pulls_winner = _dependents_closure(winner, deps)
+    for loser in losers:
+        if loser in pulls_winner:
+            raise RuleConflict(
+                f"{loser} depends on {winner}, so {winner} must load "
+                f"before it and cannot win.")
 
     modlist_path = profile_dir / "modlist.txt"
     entries = read_modlist(modlist_path)
     names = [e.name for e in entries]
+    changed = False
     if winner in names:
         loser_idx = [names.index(m) for m in losers if m in names]
         w_idx = names.index(winner)
         if loser_idx and w_idx > min(loser_idx):
-            target = min(loser_idx)
-            entry = entries.pop(w_idx)
-            entries.insert(target, entry)
-            write_modlist(modlist_path, entries)
+            entries.insert(min(loser_idx), entries.pop(w_idx))
+            changed = True
+        # Losers go below the lowest-placed of: the winner and every mod
+        # that (transitively) depends on it.
+        for loser in losers:
+            names = [e.name for e in entries]
+            if loser not in names:
+                continue
+            anchors = [names.index(m) for m in pulls_winner | {winner}
+                       if m in names]
+            floor = max(anchors)
+            l_idx = names.index(loser)
+            if l_idx < floor:
+                entry = entries.pop(l_idx)
+                entries.insert(floor, entry)   # floor shifted up by the pop
+                changed = True
+    if changed:
+        write_modlist(modlist_path, entries)
 
     state = read_rules(profile_dir)
     rules = [r for r in state["rules"]

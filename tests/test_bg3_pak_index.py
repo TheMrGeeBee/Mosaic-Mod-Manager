@@ -228,3 +228,31 @@ def test_rules_chain_transitively():
                                 {"winner": "CX", "loser": "DnD"}],
                           {"Extras": 9, "CX": 5, "DnD": 1})
     assert f.resolved_by_rule and not f.rule_violated
+
+
+def test_loser_moves_below_mods_that_pull_the_winner_forward(tmp_path):
+    # Goon's Library depends on the Fixer, so the Fixer loads just before the
+    # library no matter where it sits; the loser must go below the library.
+    prof = _profile(tmp_path, ["Fixer", "BS Instruments", "Other", "Goon's Library"])
+    f = bx.Finding(kind="stats_override", mods=["Fixer", "BS Instruments"],
+                   keys=["k"], winner="BS Instruments")
+    deps = {"Goon's Library": {"Fixer"}}
+    bx.apply_winner(prof, f, "Fixer", deps)
+    order = [e.name for e in read_modlist(prof / "modlist.txt")]
+    assert order == ["Fixer", "Other", "Goon's Library", "BS Instruments"]
+    enabled = read_modlist(prof / "modlist.txt")
+    index = {"Fixer": [_rec("u-f", "F")], "BS Instruments": [_rec("u-b", "B")],
+             "Other": [_rec("u-o", "O")],
+             "Goon's Library": [_rec("u-g", "G", deps=["u-f"])]}
+    rank = bx.compute_load_rank(enabled, index)
+    assert rank["Fixer"] > rank["BS Instruments"]
+
+
+def test_transitive_dependent_loser_is_refused(tmp_path):
+    prof = _profile(tmp_path, ["A", "Lib", "B"])
+    f = bx.Finding(kind="stats_override", mods=["A", "B"], keys=["k"], winner="B")
+    try:
+        bx.apply_winner(prof, f, "A", {"Lib": {"A"}, "B": {"Lib"}})
+    except bx.RuleConflict:
+        return
+    raise AssertionError("expected RuleConflict")
