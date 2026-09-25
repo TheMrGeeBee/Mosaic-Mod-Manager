@@ -516,19 +516,41 @@ def _all_proton_search_roots() -> list[Path]:
     return roots
 
 
-def find_prefix(steam_id: str) -> Path | None:
+def library_steamapps_for(game_path: "str | Path | None") -> Path | None:
+    """The ``steamapps`` folder of the Steam library that holds *game_path*.
+
+    A game installed at ``<library>/steamapps/common/<Game>`` has its Proton
+    prefix in the SAME library, ``<library>/steamapps/compatdata/<id>``. Returns
+    None when *game_path* isn't inside a Steam library layout (GOG, Heroic, ...).
+    Purely lexical (symlinks are not resolved), so a symlinked library path works.
+    """
+    if not game_path:
+        return None
+    for parent in Path(game_path).parents:
+        if parent.name.lower() == "common" and parent.parent.name.lower() == "steamapps":
+            return parent.parent
+    return None
+
+
+def find_prefix(steam_id: str, game_path: "str | Path | None" = None) -> Path | None:
     """
     Locate the Steam compatibility prefix directory for a given App ID.
 
     Steam stores per-game Proton prefixes under:
         <steam_root>/steamapps/compatdata/<steam_id>/pfx/
 
-    Searches every known Steam root candidate first, then falls back to
-    extra library folders parsed from libraryfolders.vdf (e.g. SD card or
-    secondary drive libraries), since compatdata lives alongside the game.
+    When *game_path* is given and sits in a Steam library, THAT library's
+    compatdata wins: Steam keeps a game's prefix in the library the game is
+    installed in, so a stale prefix left in the default ``~/.local/share/Steam``
+    (from an earlier install location) must not shadow the real one.
+
+    Otherwise (or if that library has no prefix yet) searches every known Steam
+    root candidate, then extra library folders parsed from libraryfolders.vdf
+    (e.g. SD card or secondary drive libraries).
 
     Args:
         steam_id: The Steam App ID as a string, e.g. '377160' for Fallout 4.
+        game_path: The game's install folder, if known.
     """
     if not steam_id:
         return None
@@ -541,6 +563,13 @@ def find_prefix(steam_id: str) -> Path | None:
         if (compatdata / "drive_c").is_dir():
             return compatdata
         return None
+
+    # First choice: the library the game itself is installed in.
+    own_library = library_steamapps_for(game_path)
+    if own_library is not None:
+        result = _check_compatdata(own_library / "compatdata" / steam_id)
+        if result:
+            return result
 
     # Primary: check known Steam root candidates
     for steam_root in _STEAM_CANDIDATES:

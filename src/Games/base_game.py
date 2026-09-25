@@ -1720,7 +1720,7 @@ class BaseGame(ABC):
         for sid in [self.steam_id, *self.alt_steam_ids]:
             if not sid:
                 continue
-            found = _find_steam_prefix(sid)
+            found = _find_steam_prefix(sid, self._game_path)
             if found:
                 return found
         try:
@@ -1772,13 +1772,18 @@ class BaseGame(ABC):
             # respected and never overwritten by the default's auto-detection.
             self._apply_profile_path_overrides(data)
             if not self._prefix_path or not self._prefix_path.is_dir():
+                configured = self._prefix_path
                 found = self._find_prefix_for_load()
                 if found:
                     self._prefix_path = found
                     # The auto-located prefix is a fallback for the default, not a
                     # deliberate per-profile choice, so persist it globally rather
                     # than as a spurious override on a non-default profile.
-                    self._save_global_prefix(found)
+                    # But never overwrite a prefix the user configured that is only
+                    # *momentarily* missing (drive not mounted yet, ...): use the
+                    # fallback for this session and keep their setting on disk.
+                    if not configured:
+                        self._save_global_prefix(found)
             _ensure_lutris_prefix_compat(self._prefix_path)
             return bool(self._game_path)
         except (json.JSONDecodeError, OSError):
