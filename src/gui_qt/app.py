@@ -336,6 +336,7 @@ class MainWindow(QMainWindow):
     _col_row = Signal(int)                     # file_id installed
     _col_manual = Signal(object)               # manual-mode current-mod payload dict
     _col_finished = Signal(str, object)        # ("done"|"paused"|"cancelled", payload)
+    _preflight_ev = Signal(str, object)        # collection preflight worker -> UI (kind, payload)
     _appended_col_removed = Signal(str, bool)  # appended-collection remove worker → UI
     _col_import_done = Signal(object)          # (profile_name, installed, total, skipped)
     _import_file_picked = Signal(object)       # portal picker result (Path|None) → UI thread
@@ -630,6 +631,7 @@ class MainWindow(QMainWindow):
         self._col_row.connect(self._on_col_row)
         self._col_manual.connect(self._on_col_manual)
         self._col_finished.connect(self._on_col_finished)
+        self._preflight_ev.connect(self._on_preflight_ev)
         self._appended_col_removed.connect(self._on_appended_col_removed)
         self._col_import_done.connect(self._on_import_bundle_done)
         self._import_file_picked.connect(self._on_import_file_picked)
@@ -3502,6 +3504,220 @@ class MainWindow(QMainWindow):
         threading.Thread(target=_premium_worker, daemon=True,
                          name="col-premium").start()
 
+    # ---- Collection preflight (before New/Append/Continue) ---------------
+    def _collection_preflight(self, info, proceed):
+        """UI thread. Check the game can support this collection BEFORE any
+        profile is created or anything is downloaded, then call *proceed()*.
+
+        Today: a Skyrim SE collection that lists the SRS runtime-swap mod needs
+        the older runtime SKSE64 supports. Mosaic applies that mod's patches
+        itself (Utils.modding_tools.skyrim_runtime) and so never installs the
+        mod. Nothing to report (the common case) proceeds with no dialog."""
+        import threading
+        from Utils.collections import collection_preflight as pf
+        game = info["game"]
+        all_mods = list(info.get("mods") or [])
+        swap_mod = pf.find_runtime_swap_mod(all_mods) if pf.is_skyrim_se(game) else None
+        if swap_mod is not None:
+            info["runtime_swap_mod"] = swap_mod
+            info["mods"], _left_out = pf.without_runtime_swap_mods(all_mods)
+            self._append_log("[preflight] leaving out the runtime swap mod "
+                             f"({getattr(swap_mod, 'mod_name', '')}) — Mosaic applies its "
+                             "patches itself")
+        ctx = {"info": info, "proceed": proceed, "all_mods": all_mods,
+               "overlay": None, "prepared": None, "hpatchz": None}
+        self._preflight_ctx = ctx
+        threading.Thread(target=self._preflight_check_worker, args=(ctx, False),
+                         daemon=True, name="col-preflight").start()
+
+    def _preflight_dirs(self, game):
+        from Utils.config_paths import get_download_cache_dir_for_game, list_all_cache_dirs
+        from Utils.wizard_support.wizard_archives import get_downloads_dir
+        return ([*list_all_cache_dirs(game.name), get_downloads_dir()],
+                get_download_cache_dir_for_game(game.name))
+
+    def _preflight_gather(self, ctx, transition):
+        from Utils.collections import collection_preflight as pf
+        from Utils.config_paths import get_game_config_dir
+        from Utils.exe_launch.exe_launch import _wine_process_alive
+        info = ctx["info"]; game = info["game"]
+        try:
+            staging = game.get_effective_mod_staging_path()
+        except Exception:
+            staging = None
+        return pf.run_preflight(
+            game=game, mods=ctx["all_mods"], manifest=info.get("local_manifest"),
+            game_root=game.get_game_path(), state_dir=get_game_config_dir(game.name),
+            transition=transition,
+            game_running=_wine_process_alive("SkyrimSE.exe") if pf.is_skyrim_se(game) else False,
+            staging_root=staging, cache_dir=self._preflight_dirs(game)[1],
+            install_size=int(info.get("total_size", 0) or 0))
+
+    def _preflight_check_worker(self, ctx, recheck):
+        """Worker: find (never download) the swap archive, then run the checks."""
+        from Utils.collections import runtime_swap_fix as fix
+        from Utils.collections import collection_preflight as pf
+        from Utils.modding_tools import skyrim_runtime as sr
+        info = ctx["info"]; game = info["game"]
+        try:
+            prepared = ctx.get("prepared")
+            swap_mod = info.get("runtime_swap_mod")
+            if prepared is None and swap_mod is not None:
+                search, dest = self._preflight_dirs(game)
+                if pf.find_swap_archive(swap_mod, search) is not None:
+                    try:
+                        prepared = fix.prepare_swap(
+                            swap_mod, domain=info.get("domain") or "skyrimspecialedition",
+                            search_dirs=search, dest_dir=dest, downloader=None,
+                            log_fn=self._op_log.emit)
+                        ctx["prepared"] = prepared
+                    except sr.RuntimeSwapError as exc:
+                        self._op_log.emit(f"[preflight] cached runtime swap archive unusable: {exc}")
+            checks = self._preflight_gather(ctx, prepared.transition if prepared else None)
+            self._preflight_ev.emit("rechecked" if recheck else "checked", (ctx, checks))
+        except Exception as exc:                         # noqa: BLE001
+            self._preflight_ev.emit("error", (ctx, str(exc)))
+
+    def _on_preflight_ev(self, kind, payload):
+        """UI thread: everything the preflight workers report."""
+        from Utils.collections import collection_preflight as pf
+        ctx, data = payload
+        overlay = ctx.get("overlay")
+        if kind == "checked":
+            checks = data
+            if not (pf.blocking_failures(checks) or pf.warnings(checks)):
+                self._preflight_finish(ctx, True)
+                return
+            from gui_qt.collections.collection_preflight_overlay import PreflightOverlay
+            ctx["overlay"] = PreflightOverlay.show_over(
+                self, checks, lambda ov, c=ctx: self._preflight_fix(c, ov),
+                lambda result, c=ctx: self._preflight_finish(c, result == "continue"))
+        elif kind == "busy":
+            if overlay is not None:
+                overlay.set_busy(data)
+        elif kind == "need-restore":
+            self._preflight_restore_then_apply(ctx)
+        elif kind == "fixed":
+            if overlay is not None:
+                overlay.set_busy(self.tr("Checking the game again…"))
+            import threading
+            threading.Thread(target=self._preflight_check_worker, args=(ctx, True),
+                             daemon=True, name="col-preflight").start()
+        elif kind == "rechecked":
+            checks = data
+            if overlay is None:
+                self._preflight_finish(ctx, not pf.blocking_failures(checks))
+            elif pf.blocking_failures(checks):
+                overlay.set_checks(checks)
+                overlay.set_error(self.tr("The game still isn't ready — see above."))
+            elif pf.warnings(checks):
+                overlay.set_checks(checks)
+                overlay.set_error("")
+            else:
+                overlay.close_ok()
+        elif kind == "fix-failed":
+            self._append_log(f"[preflight] fix failed: {data}")
+            if overlay is not None:
+                overlay.set_error(str(data))
+        elif kind == "error":
+            self._append_log(f"[preflight] check failed unexpectedly: {data}")
+            if ctx["info"].get("runtime_swap_mod") is not None:
+                # This collection depends on the check — don't guess.
+                self._notify(self.tr("Couldn't verify the game version: {0}").format(data),
+                             "error")
+                self._preflight_finish(ctx, False)
+            else:
+                self._preflight_finish(ctx, True)      # nothing else depends on it
+
+    def _preflight_finish(self, ctx, go):
+        """UI thread: preflight is over — continue the install, or abandon it."""
+        prepared = ctx.get("prepared")
+        if prepared is not None:
+            prepared.cleanup()
+            ctx["prepared"] = None
+        ctx["overlay"] = None
+        if go:
+            ctx["proceed"]()
+        else:
+            self._col_install_running = False
+            self._notify(self.tr("Collection install cancelled."), "info")
+
+    def _preflight_fix(self, ctx, overlay):
+        """UI thread: the user pressed 'Fix and continue'."""
+        import threading
+        overlay.set_busy(self.tr("Preparing the Skyrim runtime patch…"))
+        threading.Thread(target=self._preflight_prepare_worker, args=(ctx,),
+                         daemon=True, name="col-preflight-fix").start()
+
+    def _preflight_prepare_worker(self, ctx):
+        """Worker: hpatchz + the verified swap archive; then apply, or ask the UI
+        to Restore first when the game is deployed."""
+        from Utils.collections import runtime_swap_fix as fix
+        from Utils.modding_tools import skyrim_runtime as sr
+        info = ctx["info"]; game = info["game"]
+        try:
+            ctx["hpatchz"] = sr.ensure_hpatchz(log_fn=self._op_log.emit)
+            if ctx.get("prepared") is None:
+                self._preflight_ev.emit("busy", (ctx, self.tr("Getting the runtime patch…")))
+                downloader = None
+                if info.get("ok") and info.get("api") is not None:
+                    from Nexus.nexus_download import NexusDownloader
+                    downloader = NexusDownloader(info["api"])
+                search, dest = self._preflight_dirs(game)
+                domain = info.get("domain") or "skyrimspecialedition"
+                mod = info["runtime_swap_mod"]
+                ctx["prepared"] = fix.prepare_swap(
+                    mod, domain=domain, search_dirs=search, dest_dir=dest,
+                    downloader=downloader,
+                    nexus_url=f"https://www.nexusmods.com/{domain}/mods/{mod.mod_id}?tab=files",
+                    log_fn=self._op_log.emit)
+            if sr.is_deployed(game.get_game_path()):
+                self._preflight_ev.emit("need-restore", (ctx, None))
+                return
+            self._preflight_apply(ctx)
+        except sr.RuntimeSwapError as exc:
+            self._preflight_ev.emit("fix-failed", (ctx, str(exc)))
+        except Exception as exc:                         # noqa: BLE001
+            self._preflight_ev.emit("fix-failed", (ctx, self.tr("Unexpected error: {0}").format(exc)))
+
+    def _preflight_apply(self, ctx):
+        """Worker: apply the verified swap (game must be restored)."""
+        from Utils.config_paths import get_game_config_dir
+        from Utils.modding_tools import skyrim_runtime as sr
+        game = ctx["info"]["game"]
+        try:
+            self._preflight_ev.emit("busy", (ctx, self.tr("Switching the game version…")))
+            sr.apply_transition(
+                game.get_game_path(), ctx["prepared"].transition,
+                get_game_config_dir(game.name), hpatchz=ctx["hpatchz"],
+                log_fn=self._op_log.emit)
+            self._preflight_ev.emit("fixed", (ctx, None))
+        except sr.RuntimeSwapError as exc:
+            self._preflight_ev.emit("fix-failed", (ctx, str(exc)))
+        except Exception as exc:                         # noqa: BLE001
+            self._preflight_ev.emit("fix-failed", (ctx, self.tr("Unexpected error: {0}").format(exc)))
+
+    def _preflight_restore_then_apply(self, ctx):
+        """UI thread: the game is deployed — Restore it (the normal restore path),
+        then apply the swap on a worker."""
+        import threading
+        overlay = ctx.get("overlay")
+        if overlay is not None:
+            overlay.set_busy(self.tr("Restoring the game to vanilla first…"))
+
+        def _restored(ok):
+            if not ok:
+                self._preflight_ev.emit("fix-failed", (ctx, self.tr(
+                    "Restore failed — see the log. Fix that and press Fix again.")))
+                return
+            threading.Thread(target=self._preflight_apply, args=(ctx,),
+                             daemon=True, name="col-preflight-apply").start()
+
+        if not self._wizard_run_restore(_restored):
+            self._preflight_ev.emit("fix-failed", (ctx, self.tr(
+                "Couldn't start Restore right now (a deploy or restore may be running). "
+                "Try again in a moment.")))
+
     def _choose_collection_mode(self, info):
         """UI thread: show the New/Append (or Continue) mode overlay, then start
         the pipeline with the chosen mode. Mirrors Tk _continue_install_collection:
@@ -4196,16 +4412,22 @@ class MainWindow(QMainWindow):
                 # producer replace the automatic download pool.
                 self._notify(self.tr("Nexus Premium not detected — manual download "
                              "mode."), "info")
-            # Route by intent (identical for premium and manual).
+            # Route by intent (identical for premium and manual) — but only
+            # once the preflight is happy with the game (see
+            # _collection_preflight; it can fix the Skyrim runtime itself).
             intent = payload.get("intent", "install")
-            if intent == "update":
-                self._run_collection_update(payload)
-            elif intent == "resume":
-                self._resume_collection_install(payload)
-            else:
-                # Ask the user how to install (New/Append/Continue) BEFORE
-                # creating any profile.
-                self._choose_collection_mode(payload)
+
+            def _route(payload=payload, intent=intent):
+                if intent == "update":
+                    self._run_collection_update(payload)
+                elif intent == "resume":
+                    self._resume_collection_install(payload)
+                else:
+                    # Ask the user how to install (New/Append/Continue) BEFORE
+                    # creating any profile.
+                    self._choose_collection_mode(payload)
+
+            self._collection_preflight(payload, _route)
             return
 
         # Terminal states.
