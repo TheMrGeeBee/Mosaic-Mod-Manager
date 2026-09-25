@@ -111,6 +111,32 @@ def _filter_content_lines(text: str) -> list[str]:
     ]
 
 
+_BUNDLED_FILTER_PATH = Path(__file__).with_name("updatefilter.txt")
+
+
+def _local_filter_text() -> str:
+    """The saved filter cache plus the copy bundled with Mosaic — no network.
+    The bundled copy means a new entry works from the release it ships in,
+    before (or without) the live fetch from GitHub."""
+    parts = []
+    for path in (get_requirement_external_tool_mod_ids_path(), _BUNDLED_FILTER_PATH):
+        try:
+            if path.exists():
+                parts.append(path.read_text(encoding="utf-8"))
+        except OSError:
+            pass
+    return "\n".join(parts)
+
+
+def load_requirement_filter_offline() -> tuple[
+    set[tuple[GameScope, int]],
+    dict[tuple[GameScope, int], set[int]],
+]:
+    """Like ``_load_requirement_filter`` but local files only — safe to call
+    at deploy time."""
+    return _parse_filter_text(_local_filter_text())
+
+
 def _load_requirement_filter() -> tuple[
     set[tuple[GameScope, int]],
     dict[tuple[GameScope, int], set[int]],
@@ -123,12 +149,7 @@ def _load_requirement_filter() -> tuple[
     can be external for Fallout 4 only, not for Skyrim. No prefix = all games.
     """
     cache_path = get_requirement_external_tool_mod_ids_path()
-    cache_text = ""
-    if cache_path.exists():
-        try:
-            cache_text = cache_path.read_text(encoding="utf-8")
-        except OSError:
-            pass
+    cache_text = _local_filter_text()
 
     cache_external, cache_alternatives = _parse_filter_text(cache_text)
     cache_line_set = set(_filter_content_lines(cache_text))

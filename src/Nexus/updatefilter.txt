@@ -26,4 +26,6 @@ subnautica:201
 subnauticabelowzero:344
 subnautica2:34
 baldursgate3:141
+#BG3: KAVT - Kazstra's Virtual Tav (16325) replaces Unique Tav Custom Appearance (2754): "compatible with any Unique Tav enabled mod" (KAVT page; UT's author calls it the modern replacement). So a Unique Tav requirement is met by KAVT - not the reverse, mods requiring KAVT need its extra features.
+baldursgate3:2754#16325
 dragonage:971

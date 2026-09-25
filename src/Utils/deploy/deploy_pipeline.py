@@ -199,6 +199,26 @@ def _warn_missing_requirements(game, profile_dir: Path, *, log_fn: LogFn) -> Non
         _safe(lambda: game.nexus_game_domain, "") or "", staging,
         [e.name for e in enabled_entries])
 
+    # Either/or requirements and external tools from updatefilter.txt (e.g.
+    # Unique Tav *or* KAVT) — local copies only, no network at deploy.
+    game_domain = _safe(lambda: game.nexus_game_domain, "") or ""
+    try:
+        from Nexus.nexus_requirements import (
+            _alternative_satisfied_for_game, _is_external_for_game,
+            load_requirement_filter_offline,
+        )
+        external_set, alternatives = load_requirement_filter_offline()
+    except Exception:
+        external_set, alternatives = set(), {}
+        _alternative_satisfied_for_game = _is_external_for_game = None
+
+    def filtered_out(mod_id: int) -> bool:
+        if not mod_id or _is_external_for_game is None:
+            return False
+        return (_is_external_for_game(game_domain, mod_id, external_set)
+                or _alternative_satisfied_for_game(
+                    game_domain, mod_id, installed_mod_ids, alternatives))
+
     affected: "list[tuple[str, list[str]]]" = []
     for e in enabled_entries:
         if e.name in ignored:
@@ -217,6 +237,8 @@ def _warn_missing_requirements(game, profile_dir: Path, *, log_fn: LogFn) -> Non
                 continue    # a native framework, already verified present
             if pak_satisfied(name):
                 continue    # same pak UUID provided by another enabled mod
+            if filtered_out(mod_id):
+                continue    # either/or alternative installed, or external tool
             still_missing.append(name or str(mod_id))
         if still_missing:
             affected.append((e.name, still_missing))
