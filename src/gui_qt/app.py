@@ -335,7 +335,7 @@ class MainWindow(QMainWindow):
     _col_extract = Signal(str, object)         # ("queue"|"add"|"update"|"remove", payload)
     _col_row = Signal(int)                     # file_id installed
     _col_manual = Signal(object)               # manual-mode current-mod payload dict
-    _col_finished = Signal(str, object)        # ("done"|"paused"|"cancelled", payload)
+    _col_finished = Signal(str, object)        # ("done"|"paused"|"failed"|"cancelled", payload)
     _preflight_ev = Signal(str, object)        # collection preflight worker -> UI (kind, payload)
     _appended_col_removed = Signal(str, bool)  # appended-collection remove worker → UI
     _col_import_done = Signal(object)          # (profile_name, installed, total, skipped)
@@ -4118,7 +4118,11 @@ class MainWindow(QMainWindow):
                 import traceback
                 self._op_log.emit(f"[collection] install error: {exc}\n"
                                   f"{traceback.format_exc()}")
-                self._col_finished.emit("cancelled", {"profile_dir": str(profile_dir)})
+                # An unexpected error is NOT a cancel: keep the profile and the
+                # download cache so the install can be continued, rather than
+                # throwing away hours of progress (see the "failed" branch).
+                self._col_finished.emit("failed", {"profile_dir": str(profile_dir),
+                                                   "error": str(exc)})
 
         threading.Thread(target=_worker, daemon=True, name="col-install").start()
 
@@ -4451,6 +4455,26 @@ class MainWindow(QMainWindow):
         # Release any Deploy/Restore deferred behind this collection install.
         self._drain_pending_after_staged()
         ov = self._col_install_overlay
+
+        if kind == "failed":
+            # Unexpected error in the install worker. Nothing is deleted: the
+            # profile keeps everything installed so far and the downloaded
+            # archives stay in the cache, so Install -> Continue picks up
+            # where this stopped (already-installed mods are skipped by file id).
+            pd = payload.get("profile_dir") if isinstance(payload, dict) else None
+            err = payload.get("error", "") if isinstance(payload, dict) else ""
+            if ov is not None:
+                ov.finish(self.tr("Stopped by an error — your progress was kept."))
+                QTimer.singleShot(4000, self._dismiss_col_overlay)
+            profile_name = Path(pd).name if pd else ""
+            if profile_name and pd and Path(pd).is_dir():
+                self._select_installed_collection_profile(profile_name)
+            self._refresh_open_collection_buttons()
+            self._notify(
+                self.tr("The collection install stopped: {0}. Nothing was deleted — "
+                        "press Install again and choose Continue to resume.").format(err or self.tr("unexpected error")),
+                "error", sticky=True)
+            return
 
         if kind == "cancelled":
             import threading
