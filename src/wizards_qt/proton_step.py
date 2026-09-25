@@ -49,7 +49,7 @@ class ProtonStepWidget(QWidget):
     # With "Always use this configuration" on, the step continues by itself after
     # this many seconds, during which "Change configuration" cancels it — so the
     # option can never lock the user out of changing the setup.
-    AUTO_CONTINUE_SECONDS = 3
+    AUTO_CONTINUE_SECONDS = 10
 
     def __init__(self, game: "BaseGame", exe: Path,
                  tool_exe_name: str, tool_display_name: str,
@@ -261,8 +261,8 @@ class ProtonStepWidget(QWidget):
         v.addWidget(self._always_chk)
         always_note = QLabel(
             self.tr("Skip this step next time and start {0} straight away with these "
-            "settings. You get a few seconds to change your mind when it starts.")
-            .format(tool_display_name))
+            "settings. You get {1} seconds to change your mind when it starts.")
+            .format(tool_display_name, int(self.AUTO_CONTINUE_SECONDS)))
         always_note.setWordWrap(True)
         always_note.setStyleSheet(dim)
         always_note.setContentsMargins(26, 0, 0, 0)

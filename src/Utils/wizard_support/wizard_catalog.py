@@ -48,11 +48,12 @@ _CATEGORY_RULES: list[tuple[tuple[str, ...], str]] = [
     #   "editor"/"credits".  Checked before Patchers so the xEdit family lands
     #   in its own category for every game.
     (("edit_",), "xEdit"),
-    # Patchers and cleanup
+    # Patchers and cleanup (Wrye Bash also touches load order, but its main job
+    # is building the Bashed Patch and cleaning plugins)
     (("pgpatcher", "eslifier", "skygen", "plugin_audit",
-      "script_merger", "gpak"), "Patchers and Cleanup"),
-    # Load order and config
-    (("wrye_bash", "bethini"), "Load Order and Config"),
+      "script_merger", "gpak", "wrye_bash"), "Patchers and Cleanup"),
+    # INI tweaks — BethINI edits the game's INI files
+    (("bethini",), "INI Tweaks"),
     # Setup & installers (script extenders, downgraders, patches, framework installs)
     (("install_se", "install_reshade", "install_bepinex", "install_mgexe",
       "install_mcp", "downgrade", "4gb_patch", "dtkit", "_patch"),
