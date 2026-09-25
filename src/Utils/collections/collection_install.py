@@ -502,6 +502,29 @@ class CollectionInstallControl:
     # ``build_install_report`` failure dicts (name, mod_id, file_id, status,
     # detail). Read by the app to show a dialog instead of a log-only line.
     failed_mods: "list[dict]" = field(default_factory=list)
+    # Post-install warnings about the finished profile (e.g. SKSE64 built for a
+    # different game runtime than the installed exe) — see collection_audit.
+    audit_warnings: "list[str]" = field(default_factory=list)
+
+
+def _audit_profile(game, profile_dir, modlist_path, staging_path, log_fn=_noop) -> "list[str]":
+    """Post-install warnings about the finished profile (never raises)."""
+    warnings: list[str] = []
+    try:
+        from Utils.modding_tools import skyrim_runtime as _sr
+        if str(getattr(game, "steam_id", "")) == str(_sr.STEAM_APP_ID) and staging_path is not None:
+            from Utils.collections import collection_audit as _au
+            from Utils.mods.modlist import read_modlist
+            enabled = [e.name for e in read_modlist(Path(modlist_path))
+                       if e.enabled and not e.is_separator]
+            found = _au.find_skse_runtimes(
+                staging_path, enabled, [Path(profile_dir) / "Root_Folder"])
+            text = _au.check_skse_runtime(_sr.read_runtime_version(game.get_game_path()), found)
+            if text:
+                warnings.append(text)
+    except Exception as exc:                                  # noqa: BLE001 — an audit must never break an install
+        log_fn(f"Collection install: profile audit skipped: {exc}")
+    return warnings
 
 
 INSTALL_REPORT_NAME = "install_report.json"
@@ -529,7 +552,7 @@ def build_install_report(missing, *, total: int, slug: str = "",
             "reason": (str(detail).strip() or _STATUS_TEXT.get(str(status), str(status))),
         })
     return {"collection": slug, "revision": revision, "total": int(total),
-            "failed_count": len(failed), "failed": failed}
+            "failed_count": len(failed), "failed": failed, "warnings": []}
 
 
 def write_install_report(profile_dir: "Path | None", report: dict) -> "Path | None":
@@ -542,7 +565,7 @@ def write_install_report(profile_dir: "Path | None", report: dict) -> "Path | No
     import os
     target = Path(profile_dir) / INSTALL_REPORT_NAME
     try:
-        if not report.get("failed"):
+        if not report.get("failed") and not report.get("warnings"):
             target.unlink(missing_ok=True)
             return None
         tmp = target.with_name(target.name + ".tmp")
@@ -2002,9 +2025,12 @@ def run_collection_install(
             _report = build_install_report(
                 _missing, total=len([m for m in ordered_mods if getattr(m, "file_id", 0)]),
                 slug=collection_slug, revision=revision_number)
+            _report["warnings"] = _audit_profile(game, profile_dir, modlist_path,
+                                                  _final_staging, log)
             write_install_report(profile_dir, _report)
             if control is not None:
                 control.failed_mods = list(_report["failed"])
+                control.audit_warnings = list(_report["warnings"])
             if _missing:
                 log(f"⚠ Collection install: {len(_missing)} mod(s) did NOT install "
                     f"and are missing from the profile:")
