@@ -353,6 +353,44 @@ def assess(
     return Assessment(version, state, swapped, blockers, shared)
 
 
+@dataclass(frozen=True)
+class RuntimeInfo:
+    """What the Skyrim runtime wizard shows: no swap archive needed, just the
+    installed exe and Mosaic's own record."""
+    version: Version | None
+    swapped: bool                   # a Mosaic swap is recorded AND the exe still reads as its target
+    recorded_from: Version | None
+    recorded_to: Version | None
+    revert_blockers: list[str]
+
+    @property
+    def can_revert(self) -> bool:
+        return self.swapped and not self.revert_blockers
+
+
+def describe(game_root: "str | Path", state_dir: "str | Path", *, game_running: bool) -> RuntimeInfo:
+    """The installed runtime and whether a recorded Mosaic swap can be reverted.
+
+    A record only counts while SkyrimSE.exe still reads as the version it
+    produced: if Steam has since re-downloaded another build the record is stale.
+    """
+    game_root = Path(game_root)
+    version = read_runtime_version(game_root)
+    state = load_state(state_dir) or {}
+    try:
+        rec_from = parse_version(state["from"]) if state.get("from") else None
+        rec_to = parse_version(state["to"]) if state.get("to") else None
+    except RuntimeSwapError:
+        rec_from = rec_to = None
+    swapped = bool(state.get("applied")) and rec_to is not None and version == rec_to
+    blockers: list[str] = []
+    if game_running:
+        blockers.append("Skyrim is running — close it first.")
+    if is_deployed(game_root):
+        blockers.append("Mosaic's mods are deployed — restore the game first.")
+    return RuntimeInfo(version, swapped, rec_from, rec_to, blockers)
+
+
 # ---- apply ---------------------------------------------------------------------
 
 def _fmt(version: Version | None) -> str:

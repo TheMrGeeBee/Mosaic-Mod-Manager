@@ -477,3 +477,41 @@ def test_ensure_hpatchz_does_not_download_on_unsupported_platforms(no_system_hpa
 
     with pytest.raises(sr.RuntimeSwapError, match="hpatchz was not found"):
         sr.ensure_hpatchz(fetch=boom)
+
+
+# ---- describe (the wizard's view of the install) ---------------------------------
+
+def test_describe_a_fresh_install_has_nothing_to_revert(game_root, state_dir):
+    info = sr.describe(game_root, state_dir, game_running=False)
+    assert info.version == SRC and not info.swapped and not info.can_revert
+    assert info.recorded_from is None and info.revert_blockers == []
+
+
+def test_describe_after_a_swap_offers_the_revert(game_root, state_dir, transition):
+    _apply(game_root, transition, state_dir)
+    info = sr.describe(game_root, state_dir, game_running=False)
+    assert info.swapped and info.can_revert
+    assert (info.version, info.recorded_from, info.recorded_to) == (DST, SRC, DST)
+
+
+def test_describe_treats_a_stale_record_as_nothing_to_revert(game_root, state_dir, transition):
+    _apply(game_root, transition, state_dir)
+    (game_root / "SkyrimSE.exe").write_bytes(build_pe((1, 7, 200, 0)))       # Steam moved on
+    info = sr.describe(game_root, state_dir, game_running=False)
+    assert not info.swapped and not info.can_revert
+
+
+def test_describe_reports_revert_blockers(game_root, state_dir, transition):
+    _apply(game_root, transition, state_dir)
+    (game_root / "Data" / ".mm_deployed").write_bytes(b"")
+    info = sr.describe(game_root, state_dir, game_running=True)
+    assert info.swapped and not info.can_revert
+    text = " ".join(info.revert_blockers)
+    assert "running" in text and "restore" in text.lower()
+
+
+def test_describe_survives_a_damaged_record(game_root, state_dir):
+    state_dir.mkdir(parents=True)
+    (state_dir / sr.STATE_FILENAME).write_text('{"applied": true, "from": "x.y", "to": "1.6.1170"}')
+    info = sr.describe(game_root, state_dir, game_running=False)
+    assert not info.swapped

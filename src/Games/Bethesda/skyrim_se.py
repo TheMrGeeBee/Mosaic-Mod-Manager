@@ -249,6 +249,15 @@ class SkyrimSE(Fallout_3):
             ))
         return self._base_wizard_tools() + pandora_tools + [
             WizardTool(
+                id="downgrade_skyrimse",
+                label="Skyrim Runtime (game version)",
+                description=(
+                    "See which Skyrim version is installed and undo the switch to "
+                    "the older runtime that SKSE64 collections trigger automatically."
+                ),
+                dialog_class_path="wizards.skyrim_runtime.SkyrimRuntimeWizard",
+            ),
+            WizardTool(
                 id="install_se_skyrimse",
                 label="Install Script Extender (SKSE64)",
                 description="Download and install SKSE64 into the game folder.",
