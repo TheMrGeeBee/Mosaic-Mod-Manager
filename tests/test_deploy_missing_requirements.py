@@ -219,3 +219,39 @@ def test_multiple_affected_mods_combine_into_one_warning(tmp_path):
     # per-mod WARNING line for each.
     assert len(game.warnings) == 1
     assert "Mod A" in game.warnings[0] and "Mod B" in game.warnings[0]
+
+
+def _install_with_ignored(staging_root, folder_name, missing, ignored):
+    mod_dir = staging_root / folder_name
+    mod_dir.mkdir(parents=True)
+    write_meta(mod_dir / "meta.ini",
+               NexusModMeta(mod_name=folder_name, mod_id=18924,
+                            missing_requirements=missing,
+                            ignored_requirements=ignored))
+
+
+def test_per_requirement_ignore_is_not_warned_about(tmp_path):
+    # Auto Wares lists Auto Loot Seller V4; the user dismissed that one
+    # requirement (meta.ini ignoredRequirements) — the Mods-tab flag already
+    # honoured it, deploy kept warning.
+    staging = tmp_path / "mods"
+    _install_with_ignored(staging, "Auto Wares", "2435:Auto Loot Seller V4",
+                          "2435:Auto Loot Seller V4")
+    write_modlist(tmp_path / "modlist.txt",
+                  [ModEntry(name="Auto Wares", enabled=True, locked=False)])
+    game = _FakeGame(staging)
+    _warn_missing_requirements(game, tmp_path, log_fn=lambda _m: None)
+    assert game.warnings == []
+
+
+def test_other_requirements_still_warned_when_one_is_ignored(tmp_path):
+    staging = tmp_path / "mods"
+    _install_with_ignored(staging, "Auto Wares",
+                          "2435:Auto Loot Seller V4;999:Something Else",
+                          "2435:Auto Loot Seller V4")
+    write_modlist(tmp_path / "modlist.txt",
+                  [ModEntry(name="Auto Wares", enabled=True, locked=False)])
+    game = _FakeGame(staging)
+    _warn_missing_requirements(game, tmp_path, log_fn=lambda _m: None)
+    assert game.warnings and "Something Else" in game.warnings[0]
+    assert "Auto Loot Seller" not in game.warnings[0]

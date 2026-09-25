@@ -229,8 +229,14 @@ def _warn_missing_requirements(game, profile_dir: Path, *, log_fn: LogFn) -> Non
         raw = getattr(meta, "missing_requirements", "") or ""
         if not raw:
             continue
+        # Per-requirement ignores (meta.ini ignoredRequirements), the same
+        # ones the Mods-tab flag already honours.
+        ignored_ids = {mid for mid, _n in _missing_req_pairs(
+            getattr(meta, "ignored_requirements", "") or "")}
         still_missing: list[str] = []
         for mod_id, name in _missing_req_pairs(raw):
+            if mod_id and mod_id in ignored_ids:
+                continue    # the user dismissed this requirement
             if mod_id and mod_id in installed_mod_ids:
                 continue    # satisfied by another currently-enabled mod
             if any(fw in (name or "").lower() for fw in present_frameworks):
