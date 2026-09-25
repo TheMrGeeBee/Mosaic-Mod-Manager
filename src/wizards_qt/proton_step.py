@@ -18,7 +18,7 @@ import threading
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QCheckBox, QComboBox, QLineEdit,
@@ -29,9 +29,10 @@ from gui_qt.safe_emit import safe_emit
 from Utils.exe_launch.exe_launch import (
     PREFIX_MODE_GAME, PREFIX_MODE_ISOLATED, PREFIX_MODE_SHARED,
     load_prefix_mode, load_proton_override, load_tool_launch_args,
-    load_tool_launch_env, load_winetricks_style, save_prefix_mode,
-    save_proton_override, save_tool_launch_args, save_tool_launch_env,
-    save_winetricks_style, shared_prefix_dir,
+    load_skip_proton_step, load_tool_launch_env, load_winetricks_style,
+    save_prefix_mode, save_proton_override, save_skip_proton_step,
+    save_tool_launch_args, save_tool_launch_env, save_winetricks_style,
+    shared_prefix_dir,
 )
 
 if TYPE_CHECKING:
@@ -44,6 +45,11 @@ class ProtonStepWidget(QWidget):
 
     # (ok, message) from the delete-prefix worker → UI thread.
     _delete_done = Signal(bool, str)
+
+    # With "Always use this configuration" on, the step continues by itself after
+    # this many seconds, during which "Change configuration" cancels it — so the
+    # option can never lock the user out of changing the setup.
+    AUTO_CONTINUE_SECONDS = 3
 
     def __init__(self, game: "BaseGame", exe: Path,
                  tool_exe_name: str, tool_display_name: str,
@@ -78,6 +84,13 @@ class ProtonStepWidget(QWidget):
             isolated_prefix_dir_fn
             or (lambda name: self._exe.parent / f"prefix_{name}"))
         self._confirm_delete = False
+        self._auto_started = False          # the auto-continue countdown runs once per step
+        self._auto_left = 0
+        self._auto_timer: QTimer | None = None
+        self._auto_banner: QWidget | None = None
+        self._always_chk: QCheckBox | None = None
+        self._game_chk = None
+        self._versions: list[str] = []
 
         self._delete_done.connect(self._on_delete_done)
 
@@ -90,6 +103,23 @@ class ProtonStepWidget(QWidget):
         head.setAlignment(Qt.AlignHCenter)
         head.setStyleSheet(f"color:{_c(p,'TEXT_MAIN')}; font-weight:600;")
         v.addWidget(head)
+
+        # Shown only while an "Always use this configuration" countdown runs.
+        self._auto_banner = QWidget()
+        ab = QHBoxLayout(self._auto_banner)
+        ab.setContentsMargins(0, 4, 0, 4)
+        ab.setSpacing(10)
+        ab.addStretch(1)
+        self._auto_label = QLabel("")
+        self._auto_label.setStyleSheet(f"color:{ok_text()}; font-weight:600;")
+        ab.addWidget(self._auto_label)
+        self._auto_change_btn = QPushButton(self.tr("Change configuration"))
+        self._auto_change_btn.setCursor(Qt.PointingHandCursor)
+        self._auto_change_btn.clicked.connect(self._cancel_auto_continue)
+        ab.addWidget(self._auto_change_btn)
+        ab.addStretch(1)
+        self._auto_banner.setVisible(False)
+        v.addWidget(self._auto_banner)
 
         from Utils.wine_proton.steam_finder import list_installed_proton
         self._versions = [s.parent.name for s in list_installed_proton()]
@@ -225,6 +255,19 @@ class ProtonStepWidget(QWidget):
         self._env_entry.setText(load_tool_launch_env(exe))
         v.addWidget(self._env_entry)
 
+        v.addSpacing(10)
+        self._always_chk = QCheckBox(self.tr("Always use this configuration"))
+        self._always_chk.setChecked(load_skip_proton_step(game, tool_exe_name))
+        v.addWidget(self._always_chk)
+        always_note = QLabel(
+            self.tr("Skip this step next time and start {0} straight away with these "
+            "settings. You get a few seconds to change your mind when it starts.")
+            .format(tool_display_name))
+        always_note.setWordWrap(True)
+        always_note.setStyleSheet(dim)
+        always_note.setContentsMargins(26, 0, 0, 0)
+        v.addWidget(always_note)
+
         v.addStretch(1)
         cont = QPushButton(self.tr("Continue"))
         cont.setCursor(Qt.PointingHandCursor)
@@ -233,6 +276,60 @@ class ProtonStepWidget(QWidget):
         v.addWidget(cont, 0, Qt.AlignHCenter)
 
         self._update_proton_row_state()
+
+    # ---- "Always use this configuration" -------------------------------------
+    def _saved_config_usable(self) -> bool:
+        """True if the saved choices can be used as they are: a Proton override the
+        user saved that is no longer installed would silently become a different
+        version, so that shows the page instead."""
+        if not getattr(self, "_versions", None) or self._always_chk is None:
+            return False
+        if load_prefix_mode(self._game, self._tool_exe_name) == PREFIX_MODE_GAME:
+            return self._game_chk is not None and self._game_chk.isChecked()
+        saved = load_proton_override(self._game, self._tool_exe_name)
+        return not saved or saved in self._versions
+
+    def showEvent(self, event):                                   # noqa: N802 (Qt API)
+        super().showEvent(event)
+        if (not self._auto_started and getattr(self, "_versions", None)
+                and load_skip_proton_step(self._game, self._tool_exe_name)
+                and self._saved_config_usable()):
+            self._auto_started = True
+            self._start_auto_continue()
+
+    def _start_auto_continue(self):
+        self._auto_left = int(self.AUTO_CONTINUE_SECONDS)
+        self._auto_banner.setVisible(True)
+        self._update_auto_label()
+        self._auto_timer = QTimer(self)
+        self._auto_timer.setInterval(1000)
+        self._auto_timer.timeout.connect(self._auto_tick)
+        self._auto_timer.start()
+
+    def _update_auto_label(self):
+        self._auto_label.setText(
+            self.tr("Using your saved configuration — continuing in {0} s…")
+            .format(self._auto_left))
+
+    def _auto_tick(self):
+        self._auto_left -= 1
+        if self._auto_left <= 0:
+            self._stop_auto_timer()
+            self._on_chosen()
+        else:
+            self._update_auto_label()
+
+    def _stop_auto_timer(self):
+        if self._auto_timer is not None:
+            self._auto_timer.stop()
+            self._auto_timer = None
+        if self._auto_banner is not None:
+            self._auto_banner.setVisible(False)
+
+    def _cancel_auto_continue(self):
+        """"Change configuration": stay on the page. The checkbox keeps its state,
+        so the user can untick it, or just adjust and press Continue."""
+        self._stop_auto_timer()
 
     # ---- defaults / state ---------------------------------------------------
     def _initial_version(self) -> str:
@@ -295,8 +392,10 @@ class ProtonStepWidget(QWidget):
     def _on_chosen(self):
         mode = self._current_prefix_mode()
         name = self._proton_combo.currentText()
+        self._stop_auto_timer()
         save_proton_override(self._game, self._tool_exe_name, name)
         save_prefix_mode(self._game, self._tool_exe_name, mode)
+        save_skip_proton_step(self._game, self._tool_exe_name, self._always_chk.isChecked())
         wt = self._winetricks_chk.isChecked()
         save_winetricks_style(self._game, self._tool_exe_name, wt)
         if wt:

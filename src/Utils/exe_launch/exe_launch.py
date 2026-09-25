@@ -1269,6 +1269,17 @@ def save_prefix_mode(game, exe_name: str, mode: str) -> None:
         mode if mode in (PREFIX_MODE_SHARED, PREFIX_MODE_GAME) else None)
 
 
+def load_skip_proton_step(game, exe_name: str) -> bool:
+    """Whether the wizard's "Choose Proton Version" step should continue by itself
+    with the saved configuration ("Always use this configuration"). Off by default."""
+    return bool(_read_launch_mode_data(game).get(f"__skip_proton_step_{exe_name}", False))
+
+
+def save_skip_proton_step(game, exe_name: str, enabled: bool) -> None:
+    """Persist the "always use this configuration" choice (off = remove key)."""
+    _write_launch_mode_key(game, f"__skip_proton_step_{exe_name}", True if enabled else None)
+
+
 def load_winetricks_style(game, exe_name: str) -> bool:
     """Whether exe_name should launch via plain Wine (winetricks-style)
     instead of the proton script. Off by default; opt-in per tool."""
