@@ -36,6 +36,7 @@ class BG3InsightsView(WizardViewBase):
 
     _ready_sig = Signal(object)          # Insights
     _error_sig = Signal(str)
+    _progress_sig = Signal(str)
 
     def __init__(self, game: "BaseGame", log_fn=None, on_close=None, ctx=None,
                  **_extra):
@@ -43,10 +44,13 @@ class BG3InsightsView(WizardViewBase):
                          title=self.tr("Load Order Insights — {0}").format(game.name))
         self._insights = None
         self._profile_dir = None
+        self._api = None
 
         self._ready_sig.connect(self._guard(self._on_ready))
         self._error_sig.connect(self._guard(
             lambda t: self._set_status(self._summary, t, RED)))
+        self._progress_sig.connect(self._guard(
+            lambda t: self._set_status(self._summary, t)))
 
         self._stack.addWidget(self._build_page())
         self._stack.setCurrentIndex(0)
@@ -88,6 +92,29 @@ class BG3InsightsView(WizardViewBase):
         split.setStretchFactor(1, 1)
         lay.addWidget(split, 1)
 
+        # Author notes: sentences from each mod's Nexus page (cached).
+        notes_row = QWidget()
+        nh = QHBoxLayout(notes_row); nh.setContentsMargins(0, 8, 0, 0); nh.setSpacing(8)
+        self._accept_note_btn = self._green_btn(self.tr("Accept author note"))
+        self._accept_note_btn.setToolTip(self.tr(
+            "Do what the mod author's note says: save it as a 'load after' "
+            "choice (an incompatibility note is just acknowledged)"))
+        self._accept_note_btn.clicked.connect(lambda _c=False: self._accept_note())
+        nh.addWidget(self._accept_note_btn)
+        self._copy_rule_btn = self._accent_btn(self.tr("Copy as known-rule suggestion"))
+        self._copy_rule_btn.setToolTip(self.tr(
+            "Copy a ready bg3_known_rules.json entry for this note, to share it"))
+        self._copy_rule_btn.clicked.connect(lambda _c=False: self._copy_rule())
+        nh.addWidget(self._copy_rule_btn)
+        nh.addStretch(1)
+        self._refresh_notes_btn = self._accent_btn(self.tr("Refresh author notes"))
+        self._refresh_notes_btn.setToolTip(self.tr(
+            "Re-read every enabled mod's Nexus page now (otherwise pages are "
+            "re-read after 7 days)"))
+        self._refresh_notes_btn.clicked.connect(lambda _c=False: self._rescan(True))
+        nh.addWidget(self._refresh_notes_btn)
+        lay.addWidget(notes_row)
+
         row = QWidget()
         rh = QHBoxLayout(row); rh.setContentsMargins(0, 8, 0, 0); rh.setSpacing(8)
         self._show_harmless = QCheckBox(self.tr("Show harmless, intended and ignored"))
@@ -127,17 +154,26 @@ class BG3InsightsView(WizardViewBase):
 
     def _set_actions_enabled(self, on: bool):
         for w in (self._winner_box, self._win_btn, self._ignore_btn,
-                  self._patch_btn, self._keep_btn):
+                  self._patch_btn, self._keep_btn, self._accept_note_btn,
+                  self._copy_rule_btn):
             w.setEnabled(on)
 
     # ---- scanning ---------------------------------------------------------------
-    def _rescan(self):
+    def _rescan(self, force_notes: bool = False):
         self._set_status(self._summary, self.tr("Reading mod .pak files…"))
         self._rescan_btn.setEnabled(False)
-        threading.Thread(target=self._worker, daemon=True,
+        self._refresh_notes_btn.setEnabled(False)
+        # The app's shared Nexus client is resolved on the GUI thread; author
+        # notes are public, so without one an anonymous client is used.
+        api_fn = getattr(self._ctx, "nexus_api", None) if self._ctx else None
+        try:
+            self._api = api_fn() if api_fn else None
+        except Exception:
+            self._api = None
+        threading.Thread(target=self._worker, args=(force_notes,), daemon=True,
                          name="bg3-insights").start()
 
-    def _worker(self):
+    def _worker(self, force_notes: bool = False):
         from Utils.mods.bg3_import import resolve_profile_modlist
         from Utils.mods.bg3_pak_index import compute_insights
         try:
@@ -146,6 +182,16 @@ class BG3InsightsView(WizardViewBase):
             if modlist is None:
                 raise RuntimeError("Could not determine the active profile.")
             self._profile_dir = modlist.parent
+            safe_emit(self._progress_sig, self.tr(
+                "Reading author notes from Nexus mod pages…"))
+            try:
+                from Utils.mods.bg3_pak_index import refresh_author_notes
+                refresh_author_notes(self._game, self._profile_dir,
+                                     force=force_notes, api=self._api,
+                                     log_fn=self._log)
+            except Exception as exc:
+                self._log(f"BG3 Insights: author notes unavailable ({exc})")
+            safe_emit(self._progress_sig, self.tr("Reading mod .pak files…"))
             insights = compute_insights(self._game, self._profile_dir,
                                         log_fn=self._log)
             safe_emit(self._ready_sig, insights)
@@ -157,6 +203,7 @@ class BG3InsightsView(WizardViewBase):
         from Utils.mods.bg3_pak_index import unresolved_count
         self._insights = insights
         self._rescan_btn.setEnabled(True)
+        self._refresh_notes_btn.setEnabled(True)
         n = unresolved_count(insights)
         total = len(insights.findings)
         if n:
@@ -179,11 +226,15 @@ class BG3InsightsView(WizardViewBase):
         if f.intended:
             if f.intended_by == "author rule":
                 return self.tr("Intended (author rule)")
+            if f.intended_by == "author note":
+                return self.tr("Author note — already followed")
             return self.tr("Intended (patch for the other)")
         if f.resolved_by_rule:
             return self.tr("Decided")
         if f.suggested_patch:
             return self.tr("Looks like a patch — accept?")
+        if f.kind == "author_note":
+            return self.tr("Author says — accept?")
         return self.tr("Needs a decision")
 
     def _populate(self):
@@ -246,6 +297,9 @@ class BG3InsightsView(WizardViewBase):
         text += "\n\n" + "\n".join(keys)
         if len(f.keys) > _MAX_KEYS_SHOWN:
             text += f"\n… (+{len(f.keys) - _MAX_KEYS_SHOWN} more)"
+        notes = self._author_notes_text(f.mods)
+        if notes:
+            text += "\n\n" + notes
         self._detail.setPlainText(text)
         self._winner_box.addItems(f.mods)
         pending_patch = (f.suggested_patch and not ignored
@@ -259,7 +313,12 @@ class BG3InsightsView(WizardViewBase):
         self._patch_btn.setEnabled(bool(pending_patch))
         can_order = f.kind not in ("identical", "declared_conflict", "variant_group",
                                    "known_incompatible", "outdated_dependency",
-                                   "same_module")
+                                   "same_module", "author_note")
+        is_note = f.kind == "author_note"
+        self._accept_note_btn.setEnabled(
+            is_note and not ignored and not f.intended
+            and (not f.resolved_by_rule or f.rule_violated))
+        self._copy_rule_btn.setEnabled(is_note)
         self._winner_box.setEnabled(can_order)
         self._win_btn.setEnabled(can_order)
         self._keep_btn.setEnabled(
@@ -337,6 +396,53 @@ class BG3InsightsView(WizardViewBase):
         self._log(f"BG3 Insights: kept current order — {winner} wins over "
                   f"{', '.join(m for m in f.mods if m != winner)}")
         self._rescan()
+
+    def _author_notes_text(self, mods) -> str:
+        """The involved mods' own Nexus-page notes about order/compatibility."""
+        if self._insights is None:
+            return ""
+        labels = {"order": self.tr("load order"), "incompatible": self.tr("incompatible"),
+                  "requires": self.tr("requires"), "compatible": self.tr("compatible")}
+        blocks = []
+        for m in mods:
+            notes = [n for n in self._insights.author_notes.get(m, [])
+                     if n.get("kind") in ("order", "incompatible", "requires")]
+            if notes:
+                blocks.append(self.tr("Author notes — {0}:").format(m) + "\n" + "\n".join(
+                    f"   [{labels.get(n['kind'], n['kind'])}] {n['text']}" for n in notes[:8]))
+        return "\n\n".join(blocks)
+
+    def _accept_note(self):
+        from Utils.mods.bg3_pak_index import RuleConflict, accept_author_note
+        f, _ignored = self._selected()
+        if f is None or f.kind != "author_note" or self._profile_dir is None:
+            return
+        try:
+            n = accept_author_note(self._profile_dir, f, self._insights.depends_on)
+        except RuleConflict as exc:
+            self._set_status(self._summary, str(exc), RED)
+            return
+        except Exception as exc:
+            self._log(f"BG3 Insights: could not accept author note: {exc}")
+            self._set_status(self._summary, self.tr("Error: {0}").format(exc), RED)
+            return
+        self._log(f"BG3 Insights: accepted author note from {f.suggestion.mod}'s page"
+                  + (f" ({n} load-after choice(s) saved)" if n else ""))
+        if n:
+            self._ran = True
+            self._settle()
+        self._rescan()
+
+    def _copy_rule(self):
+        from PySide6.QtWidgets import QApplication
+        from Utils.mods.bg3_pak_index import known_rule_suggestion
+        f, _ignored = self._selected()
+        if f is None or f.kind != "author_note":
+            return
+        text = known_rule_suggestion(f, self._insights.mod_uuids)
+        QApplication.clipboard().setText(text)
+        self._set_status(self._summary, self.tr(
+            "Copied a known-rule entry to the clipboard."), GREEN)
 
     def _ignore(self):
         from Utils.mods.bg3_pak_index import ignore_finding

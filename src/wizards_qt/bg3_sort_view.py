@@ -18,7 +18,8 @@ from typing import TYPE_CHECKING
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
-    QComboBox, QHBoxLayout, QLabel, QTreeWidget, QTreeWidgetItem, QWidget,
+    QComboBox, QHBoxLayout, QLabel, QPlainTextEdit, QTreeWidget,
+    QTreeWidgetItem, QWidget,
 )
 
 from gui_qt.safe_emit import safe_emit
@@ -44,6 +45,8 @@ class BG3SortView(WizardViewBase):
         self._plan = None
         self._modlist_path = None
         self._load_after_map: dict[str, list[str]] = {}
+        self._author_notes: dict[str, list[dict]] = {}
+        self._api = None
 
         self._preview_ready_sig.connect(self._guard(self._on_preview_ready))
         self._preview_error_sig.connect(self._guard(
@@ -77,6 +80,18 @@ class BG3SortView(WizardViewBase):
             f" color:{_c(p,'TEXT_MAIN')}; border:1px solid {_c(p,'BORDER')};}}")
         self._tree.currentItemChanged.connect(self._on_select)
         lay.addWidget(self._tree, 1)
+
+        # The selected mod's own Nexus-page notes about load order.
+        self._notes_box = QPlainTextEdit()
+        self._notes_box.setReadOnly(True)
+        self._notes_box.setMaximumHeight(96)
+        self._notes_box.setPlaceholderText(self.tr(
+            "Select a mod to see what its author says about load order "
+            "(from its Nexus page)."))
+        self._notes_box.setStyleSheet(
+            f"QPlainTextEdit{{background:{_c(p,'BG_PANEL')};"
+            f" color:{_c(p,'TEXT_MAIN')}; border:1px solid {_c(p,'BORDER')};}}")
+        lay.addWidget(self._notes_box)
 
         # Row 1: "load after" — the intuitive fix for an add-on or patch that
         # must follow one specific mod (saved like an Insights decision).
@@ -134,6 +149,11 @@ class BG3SortView(WizardViewBase):
         self._apply_btn.setEnabled(False)
         self._set_status(self._preview_summary,
                          self.tr("Reading installed mods…"))
+        api_fn = getattr(self._ctx, "nexus_api", None) if self._ctx else None
+        try:
+            self._api = api_fn() if api_fn else None
+        except Exception:
+            self._api = None
         threading.Thread(target=self._compute_preview_worker, daemon=True,
                          name="bg3-sort-preview").start()
 
@@ -146,6 +166,18 @@ class BG3SortView(WizardViewBase):
             if modlist is None:
                 raise RuntimeError("Could not determine the active profile.")
             self._modlist_path = modlist
+            from Utils.mods.bg3_pak_index import (
+                cached_author_notes, refresh_author_notes)
+            try:        # public, cached for 7 days — usually no network at all
+                refresh_author_notes(self._game, modlist.parent, api=self._api,
+                                     log_fn=self._log)
+            except Exception as exc:
+                self._log(f"BG3 Sort: author notes unavailable ({exc})")
+            from Utils.mods.modlist import read_modlist
+            self._author_notes = cached_author_notes(
+                self._game, [e for e in read_modlist(modlist)
+                             if e.enabled and not e.is_separator],
+                self._game.get_effective_mod_staging_path())
             plan = compute_layered_plan(self._game, modlist, log_fn=self._log)
             from Utils.mods.bg3_pak_index import LOAD_AFTER, read_rules
             la: dict[str, list[str]] = {}
@@ -223,6 +255,14 @@ class BG3SortView(WizardViewBase):
     def _on_select(self, *_a):
         mod = self._selected_mod()
         self._set_mod_actions(mod)
+        notes = [n for n in self._author_notes.get(mod, [])
+                 if n.get("kind") in ("order", "incompatible", "requires")] if mod else []
+        if notes:
+            self._notes_box.setPlainText("\n".join(
+                f"[{n['kind']}] {n['text']}" for n in notes[:8]))
+        else:
+            self._notes_box.setPlainText(
+                self.tr("No load-order notes on this mod's Nexus page.") if mod else "")
         if mod and self._plan and mod in self._plan.layers:
             idx = self._layer_box.findData(self._plan.layers[mod][0])
             if idx >= 0:

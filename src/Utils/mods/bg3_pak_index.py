@@ -338,7 +338,7 @@ def build_index(staging: Path, mod_names: list[str], cache_path: Path | None,
 
 # How much each kind matters, for sorting the report.
 SEVERITY = {"declared_conflict": 3, "known_incompatible": 3,
-            "outdated_dependency": 3, "same_module": 3,
+            "outdated_dependency": 3, "same_module": 3, "author_note": 2,
             "gui_state": 2, "ui_template": 2,
             "stats_override": 2,
             "treasure_table": 2, "variant_group": 2, "same_file": 1,
@@ -349,6 +349,7 @@ KIND_LABELS = {
     "known_incompatible": "Known incompatible (mod author)",
     "outdated_dependency": "Needs a newer version of a dependency",
     "same_module": "Same module — only one of them is used",
+    "author_note": "The mod author says (Nexus page)",
     "variant_group": "Variants of the same mod enabled together",
     "gui_state": "Replace the same UI screen",
     "ui_template": "Replace the same UI templates",
@@ -370,7 +371,9 @@ class Finding:
     # The winner declares a dependency on every loser: it's a patch built on
     # top of them, so the current order is the intended one.
     intended: bool = False
-    intended_by: str = ""        # "patch" | "author rule"
+    intended_by: str = ""        # "patch" | "author rule" | "author note"
+    # author_note findings: the AuthorSuggestion (bg3_author_notes) behind it.
+    suggestion: object = None
     # A mod whose name says it's a patch/compat mod and that overlaps these
     # mods — probably a patch whose author never declared the dependencies.
     # Only a suggestion: the user confirms with accept_patch().
@@ -393,6 +396,10 @@ class Insights:
     depends_on: dict[str, set[str]] = field(default_factory=dict)
     # Mods a collection manifest orders — their order can't be changed here.
     collection_mods: set[str] = field(default_factory=set)
+    # meta.lsx UUIDs per mod (for "Copy as known-rule suggestion") and the
+    # cached Nexus author notes per mod (detail pane).
+    mod_uuids: dict[str, list[str]] = field(default_factory=dict)
+    author_notes: dict[str, list[dict]] = field(default_factory=dict)
     ignored: list[Finding] = field(default_factory=list)
     modlist_path: Path | None = None
 
@@ -488,7 +495,7 @@ def _winner(mods: list[str], rank: dict[str, int]) -> str | None:
 
 def analyse(enabled: list[ModEntry], index: dict[str, list[dict]],
             staging: Path, manifest: list[dict] | None = None,
-            known=None) -> tuple[list[Finding], dict[str, int]]:
+            known=None, author=None) -> tuple[list[Finding], dict[str, int]]:
     """Group every overlap between two or more enabled mods into findings."""
     rank = compute_load_rank(enabled, index, manifest)
     priority = {e.name: i for i, e in enumerate(enabled)}   # 0 = top = wins
@@ -614,11 +621,60 @@ def analyse(enabled: list[ModEntry], index: dict[str, list[dict]],
 
     findings.extend(_outdated_dependencies(index, priority, order))
     findings.extend(_same_modules(index, priority, order))
+    findings.extend(_author_note_findings(author or [], rank, order))
 
     _suggest_patches(findings, index)
 
     findings.sort(key=lambda f: (f.intended, -f.severity, -len(f.keys), f.mods))
     return findings, rank
+
+
+def _author_note_findings(suggestions, rank, order) -> list[Finding]:
+    """Findings for the mod authors' own load-order / compatibility notes
+    (``bg3_author_notes.suggestions``).  An order note the current load
+    order already follows is shown as intended (just information); one it
+    doesn't follow needs a decision (Accept makes it a "load after")."""
+    out = []
+    for sug in suggestions:
+        mods = [sug.mod] + [o for o in sug.others if o != sug.mod]
+        f = Finding(kind="author_note", mods=order(mods), keys=[sug.sentence],
+                    winner=_winner(mods, rank) if all(m in rank for m in mods) else None,
+                    note=f"{sug.mod}'s Nexus page: \"{sug.sentence}\""
+                         + (f" Source: {sug.url}" if sug.url else ""),
+                    suggestion=sug)
+        if sug.kind in ("load_after", "load_before") and \
+                sug.mod in rank and all(o in rank for o in sug.others):
+            if sug.kind == "load_after":
+                ok = all(rank[sug.mod] > rank[o] for o in sug.others)
+            else:
+                ok = all(rank[sug.mod] < rank[o] for o in sug.others)
+            if ok:
+                f.intended, f.intended_by = True, "author note"
+        out.append(f)
+    return out
+
+
+def accept_author_note(profile_dir: Path, finding: Finding,
+                       index_deps: dict[str, set[str]] | None = None) -> int:
+    """Turn an author_note finding into saved "load after" choices (what the
+    author asked for).  Returns how many were saved; incompatibility notes
+    have nothing to save and are just acknowledged (ignored)."""
+    sug = finding.suggestion
+    if sug is None:
+        return 0
+    if sug.kind == "incompatible":
+        ignore_finding(profile_dir, finding)
+        return 0
+    deps = index_deps or {}
+    pairs = ([(sug.mod, o) for o in sug.others] if sug.kind == "load_after"
+             else [(o, sug.mod) for o in sug.others])
+    for later, earlier in pairs:
+        if earlier in _dependents_closure(later, deps):
+            raise RuleConflict(f"{earlier} depends on {later}, so it can't load "
+                               f"after it as the author note asks.")
+    for later, earlier in pairs:
+        add_load_after(profile_dir, later, earlier)
+    return len(pairs)
 
 
 def _same_modules(index, priority, order) -> list[Finding]:
@@ -714,7 +770,7 @@ def _suggest_patches(findings: list[Finding], index: dict[str, list[dict]]) -> N
     for f in findings:
         if f.kind in ("identical", "declared_conflict", "variant_group",
                       "known_incompatible", "outdated_dependency",
-                      "same_module") \
+                      "same_module", "author_note") \
                 or f.intended:
             continue
         patches = [m for m in f.mods if _looks_like_patch(m, index.get(m, []))]
@@ -784,7 +840,9 @@ def compute_insights(game, profile_dir: Path, log_fn=None) -> Insights:
     manifest = read_manifest(profile_dir)
     from Utils.mods import bg3_known_rules as K
     known = K.resolve(K.load_rules(log_fn=log_fn), index, {e.name for e in enabled})
-    findings, rank = analyse(enabled, index, staging, manifest, known)
+    author = author_suggestions(game, index, enabled, staging)
+    notes_by_mod = cached_author_notes(game, enabled, staging)
+    findings, rank = analyse(enabled, index, staging, manifest, known, author)
     state = read_rules(profile_dir)
     _apply_rule_status(findings, state["rules"], rank)
     ignored_ids = set(state["ignored"])
@@ -793,7 +851,74 @@ def compute_insights(game, profile_dir: Path, log_fn=None) -> Insights:
         ignored=[f for f in findings if f.id in ignored_ids],
         load_rank=rank, depends_on=dependents_map(index),
         collection_mods=collection_mods(index, manifest),
+        mod_uuids={m: [r["meta"]["uuid"] for r in recs if r.get("meta")]
+                   for m, recs in index.items()},
+        author_notes=notes_by_mod,
         modlist_path=modlist_path)
+
+
+def author_suggestions(game, index, enabled, staging) -> list:
+    """Suggestions from the *cached* Nexus author notes — never touches the
+    network (views refresh the cache; deploy only reads it)."""
+    try:
+        from Nexus.nexus_author_notes import read_cache
+        from Utils.mods.bg3_author_notes import suggestions
+        domain = getattr(game, "nexus_game_domain", "") or "baldursgate3"
+        return suggestions(index, [e.name for e in enabled], staging,
+                           read_cache(domain), domain)
+    except Exception:
+        return []
+
+
+def cached_author_notes(game, enabled, staging) -> dict[str, list[dict]]:
+    """{mod: its Nexus page's load-order/compatibility sentences} from the
+    local cache only."""
+    try:
+        from Nexus.nexus_author_notes import read_cache
+        from Utils.mods.bg3_author_notes import nexus_ids
+        domain = getattr(game, "nexus_game_domain", "") or "baldursgate3"
+        cache = read_cache(domain)
+        out = {}
+        for mod, mid in nexus_ids(staging, [e.name for e in enabled]).items():
+            entry = cache.get(str(mid)) or {}
+            sentences = list(entry.get("sentences", [])) + list(entry.get("requirement_notes", []))
+            if sentences:
+                out[mod] = sentences
+        return out
+    except Exception:
+        return {}
+
+
+def refresh_author_notes(game, profile_dir: Path, force: bool = False,
+                         api=None, log_fn=None) -> int:
+    """Fetch Nexus author notes for the profile's enabled Nexus mods (stale
+    or missing ones only, unless *force*).  Returns how many mods have
+    notes afterwards.  Network — call from a worker thread."""
+    from Nexus.nexus_author_notes import fetch_notes
+    from Utils.mods.bg3_author_notes import nexus_ids
+    entries = read_modlist(profile_dir / "modlist.txt")
+    names = [e.name for e in entries if e.enabled and not e.is_separator]
+    ids = nexus_ids(game.get_effective_mod_staging_path(), names)
+    domain = getattr(game, "nexus_game_domain", "") or "baldursgate3"
+    cache = fetch_notes(domain, list(ids.values()), force=force, api=api,
+                        log_fn=log_fn)
+    return sum(1 for e in cache.values() if e.get("sentences"))
+
+
+def known_rule_suggestion(finding: Finding, mod_uuids: dict[str, list[str]]) -> str:
+    """A ready-to-paste bg3_known_rules.json entry for an author_note finding."""
+    sug = finding.suggestion
+    if sug is None:
+        return ""
+    def ref(m):
+        return {"name": m, "match": {"uuids": mod_uuids.get(m, [])[:1] or [],
+                                     "names": [m] if not mod_uuids.get(m) else []}}
+    entry = {"name": sug.mod, "match": ref(sug.mod)["match"],
+             "note": sug.sentence, "source": sug.url}
+    key = {"load_after": "after", "load_before": "before",
+           "incompatible": "incompatible"}[sug.kind]
+    entry[key] = [ref(o) for o in sug.others]
+    return json.dumps(entry, ensure_ascii=False, indent=2)
 
 
 def unresolved_count(insights: Insights) -> int:
