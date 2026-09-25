@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import json
 import os
+import time as _time
 import shlex
 import shutil
 import subprocess
@@ -1627,6 +1628,46 @@ def _wine_process_alive(exe_name: str) -> bool:
     return False
 
 
+# A launcher that detaches from a still-open tool (some .NET/WinForms apps drop
+# their inherited stdout pipe once the window is up) does so within seconds of
+# starting. One that ran longer than this ended because the tool was closed.
+_TOOL_DETACH_WINDOW_S = 15.0
+
+
+def await_real_tool_exit(exe_name: str, label: str, log_fn, launched_at: float, *,
+                         alive_fn=None, sleep_fn=None, clock=None,
+                         detach_window_s: float = _TOOL_DETACH_WINDOW_S,
+                         grace_polls: int = 80) -> None:
+    """After the launcher chain exits, wait until the real tool is gone.
+
+    The tracked process is the launcher, not necessarily the GUI. If it exited
+    *quickly* (within *detach_window_s* of starting) the tool may have detached
+    and still be open, and its process can take a moment to show up in /proc — so
+    grace-poll (~20 s) before concluding it never spawned one. If the launcher ran
+    for longer, it ended because the user closed the tool: one immediate check is
+    enough. A fixed 20 s wait in that normal case left the wizard sitting on its
+    "Done" page for 19 s after BethINI had closed, and the cleanup that follows
+    (wineserver -k, modlist refresh) then hit whatever the user had started in the
+    meantime — Play, on 2026-09-26.
+    """
+    alive = alive_fn or _wine_process_alive
+    sleep = sleep_fn or _time.sleep
+    elapsed = (clock or _time.monotonic)() - launched_at
+    polls = grace_polls if elapsed < detach_window_s else 1
+    seen_alive = False
+    for i in range(polls):
+        if alive(exe_name):
+            seen_alive = True
+            break
+        if i < polls - 1:
+            sleep(0.25)
+    if seen_alive:
+        log_fn(f"{label}: launcher exited but the tool is still running — "
+               "waiting for the real window to close.")
+        while alive(exe_name):
+            sleep(1)
+
+
 def run_tool_logged(
     proton_script: Path,
     exe: Path,
@@ -1699,6 +1740,7 @@ def run_tool_logged(
         log_fn(f"{label}: failed to launch — {exc}")
         raise
 
+    launched_at = _time.monotonic()
     assert proc.stdout is not None
     for line in proc.stdout:
         line = line.rstrip("\n")
@@ -1721,18 +1763,7 @@ def run_tool_logged(
     # /proc after the launcher exits, so a single immediate check races and
     # can miss it (observed: the checked-once version still hit the bug) —
     # grace-poll for a few seconds before concluding it never spawned one.
-    import time
-    seen_alive = False
-    for _ in range(80):  # ~20s grace period, 0.25s steps
-        if _wine_process_alive(exe.name):
-            seen_alive = True
-            break
-        time.sleep(0.25)
-    if seen_alive:
-        log_fn(f"{label}: launcher exited but the tool is still running — "
-               "waiting for the real window to close.")
-        while _wine_process_alive(exe.name):
-            time.sleep(1)
+    await_real_tool_exit(exe.name, label, log_fn, launched_at)
     return rc
 
 
@@ -1823,6 +1854,7 @@ WINEPREFIX + Proton's bin on PATH, ``wine start.exe <exe>``), with only two
         log_fn(f"{label}: failed to launch — {exc}")
         raise
 
+    launched_at = _time.monotonic()
     assert proc.stdout is not None
     for line in proc.stdout:
         line = line.rstrip("\n")
@@ -1845,18 +1877,7 @@ WINEPREFIX + Proton's bin on PATH, ``wine start.exe <exe>``), with only two
     # /proc after the launcher exits, so a single immediate check races and
     # can miss it (observed: the checked-once version still hit the bug) —
     # grace-poll for a few seconds before concluding it never spawned one.
-    import time
-    seen_alive = False
-    for _ in range(80):  # ~20s grace period, 0.25s steps
-        if _wine_process_alive(exe.name):
-            seen_alive = True
-            break
-        time.sleep(0.25)
-    if seen_alive:
-        log_fn(f"{label}: launcher exited but the tool is still running — "
-               "waiting for the real window to close.")
-        while _wine_process_alive(exe.name):
-            time.sleep(1)
+    await_real_tool_exit(exe.name, label, log_fn, launched_at)
     return rc
 
 

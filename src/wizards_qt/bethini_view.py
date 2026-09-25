@@ -140,7 +140,7 @@ class BethiniView(WizardViewBase):
                 _wlog(f"launching {exe} via Proton")
                 safe_emit(self._run_status_sig,
                           self.tr("BethINI Pie is running.\nConfigure your INI "
-                          "settings, then close it and click Done."), GREEN)
+                          "settings, then close it — this window closes by itself."), GREEN)
                 safe_emit(self._run_started_sig)
                 run_tool_logged(proton_script, exe, env, log_fn=_wlog,
                                 label="BethINI Pie")

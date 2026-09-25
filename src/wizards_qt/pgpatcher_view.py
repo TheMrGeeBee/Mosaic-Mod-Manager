@@ -399,8 +399,8 @@ class PGPatcherView(WizardViewBase):
 
                 _wlog(f"launching {exe} via Proton")
                 safe_emit(self._run_status_sig,
-                          self.tr("PGPatcher is running.\nWait for it to finish, then "
-                          "click Done."), GREEN)
+                          self.tr("PGPatcher is running.\nWait for it to finish — this "
+                          "window closes by itself."), GREEN)
                 safe_emit(self._run_started_sig)
                 run_tool_logged(proton_script, exe, env, log_fn=_wlog,
                                 extra_args=extra_args, label="PGPatcher")

@@ -142,8 +142,8 @@ class ESLifierView(WizardViewBase):
 
                 _wlog(f"launching {exe} via Proton")
                 safe_emit(self._run_status_sig,
-                          self.tr("ESLifier is running.\nClose it when you are done, "
-                          "then click Done."), GREEN)
+                          self.tr("ESLifier is running.\nClose it when you are done — "
+                          "this window closes by itself."), GREEN)
                 safe_emit(self._run_started_sig)
                 run_tool_logged(proton_script, exe, env, log_fn=_wlog,
                                 label="ESLifier")
@@ -152,8 +152,11 @@ class ESLifierView(WizardViewBase):
                 _wlog("ESLifier closed.")
                 cleanup_scan_mirror(scan_mirror, log_fn=_wlog)
                 scan_mirror = None
-                safe_emit(self._run_status_sig,
-                          self.tr("ESLifier finished. Click Done to close."), GREEN)
+                safe_emit(self._run_status_sig, self.tr("ESLifier finished."), GREEN)
+                # The tool has exited and cleanup is done: close and refresh the
+                # modlist by ourselves instead of leaving a dangling Done page (a
+                # user pressing Play meanwhile hit the cleanup's prefix shutdown).
+                safe_emit(self._run_finished_sig)
             except Exception as exc:
                 cleanup_scan_mirror(scan_mirror, log_fn=_wlog)
                 safe_emit(self._run_status_sig, self.tr("Launch error: {0}").format(exc), RED)

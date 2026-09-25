@@ -231,8 +231,8 @@ class BodySlideView(WizardViewBase):
 
                 _wlog(f"launching {deployed} via Proton (cwd={deployed.parent})")
                 safe_emit(self._run_status_sig,
-                          self.tr("{0} is running.\nClose it when you are done, "
-                          "then click Done.").format(name), GREEN)
+                          self.tr("{0} is running.\nClose it when you are done — "
+                          "this window closes by itself.").format(name), GREEN)
                 safe_emit(self._run_started_sig)
                 if gl_log is not None:
                     # GL trace mode: keep the raw file redirect (verbose OpenGL

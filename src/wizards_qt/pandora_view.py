@@ -46,6 +46,7 @@ class PandoraView(QWidget):
     _run_status_sig = Signal(str, str)
     _goto_step_sig = Signal(int)          # advance the stack from a worker
     _run_started_sig = Signal()           # Pandora launched → enable Done
+    _run_finished_sig = Signal()          # Pandora exited cleanly → close + refresh
 
     def __init__(self, game: "BaseGame", log_fn=None, on_close=None, ctx=None):
         super().__init__()
@@ -78,6 +79,8 @@ class PandoraView(QWidget):
             lambda i: None if self._closing else self._goto_step(i))
         self._run_started_sig.connect(
             lambda: None if self._closing else self._on_run_started())
+        self._run_finished_sig.connect(
+            lambda: None if self._closing else self._finish())
 
         self.setObjectName("PandoraView")
         self._build()
@@ -322,7 +325,8 @@ class PandoraView(QWidget):
                         err_text())
                 else:
                     safe_emit(self._run_status_sig,
-                        self.tr("Pandora finished. Click Done to close."), ok_text())
+                        self.tr("Pandora finished."), ok_text())
+                    safe_emit(self._run_finished_sig)     # no dangling Done page
             except Exception as exc:
                 safe_emit(self._run_status_sig,
                           self.tr("Launch error: {0}").format(exc), err_text())
@@ -337,7 +341,7 @@ class PandoraView(QWidget):
         self._ran = True
         self._set_status(
             self._run_status,
-            self.tr("Pandora is running.\nClose it when you are done, then click Done."),
+            self.tr("Pandora is running.\nClose it when you are done — this window closes by itself."),
             ok_text())
         self._done_btn.setEnabled(True)
 

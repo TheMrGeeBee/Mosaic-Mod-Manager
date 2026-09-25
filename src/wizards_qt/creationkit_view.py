@@ -281,7 +281,7 @@ class CreationKitView(WizardViewBase):
                 _wlog(f"launching {exe} via Proton from {game_path}")
                 safe_emit(self._run_status_sig,
                           self.tr("Creation Kit is running.\nClose it when you are "
-                          "done, then click Done."), GREEN)
+                          "done — this window closes by itself."), GREEN)
                 safe_emit(self._run_started_sig)
                 run_tool_logged(proton_script, exe, env, log_fn=_wlog,
                                 cwd=game_path, label="Creation Kit")

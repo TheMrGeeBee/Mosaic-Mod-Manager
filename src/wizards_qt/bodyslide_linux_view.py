@@ -202,8 +202,8 @@ class BodySlideLinuxView(WizardViewBase):
 
                 _wlog(f"launching {launcher} (cwd={launcher.parent})")
                 safe_emit(self._run_status_sig,
-                          self.tr("{0} is running.\nClose it when you are done, "
-                          "then click Done.").format(name), GREEN)
+                          self.tr("{0} is running.\nClose it when you are done — "
+                          "this window closes by itself.").format(name), GREEN)
                 safe_emit(self._run_started_sig)
 
                 proc = subprocess.Popen([str(launcher)], env=env,

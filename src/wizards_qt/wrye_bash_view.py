@@ -149,7 +149,7 @@ class WryeBashView(WizardViewBase):
                          if game_path else ""))
                 safe_emit(self._run_status_sig,
                           self.tr("Wrye Bash is running.\nClose it when you are "
-                          "done, then click Done."), GREEN)
+                          "done — this window closes by itself."), GREEN)
                 safe_emit(self._run_started_sig)
                 run_tool_logged(proton_script, exe, env, log_fn=_wlog,
                                 extra_args=game_arg, label="Wrye Bash")

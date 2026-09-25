@@ -566,7 +566,7 @@ class DynDOLODView(QWidget):
         self._ran = True
         self._set_status(
             self._run_status,
-            self.tr('{0} is running.\nClose it when you are done, then click Done.').format(self._name),
+            self.tr('{0} is running.\nClose it when you are done — this window closes by itself.').format(self._name),
             ok_text())
         self._done_btn.setEnabled(True)
 
