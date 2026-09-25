@@ -105,6 +105,7 @@ class CollectionDetailView(QWidget):
                         or getattr(collection, "game_domain", "") or "")
         self._mods = []
         self._offsite: list[tuple[str, str]] = []   # (name, url) — manual downloads
+        self._offsite_auto: list[tuple[str, str]] = []   # (name, url) — Mosaic downloads these itself
         self._total_size = 0                        # collection totalSize+assetsSizeBytes
         self._dl_path = ""                          # collection-archive download link
         # Local-manifest import: populate from a parsed manifest dict instead of the
@@ -151,6 +152,7 @@ class CollectionDetailView(QWidget):
         mods = []
         total_size = 0
         offsite: list[tuple[str, str]] = []
+        offsite_auto: list[tuple[str, str]] = []
         for m in schema_mods:
             src = m.get("source") or {}
             src_type = (src.get("type") or "nexus").lower()
@@ -166,7 +168,8 @@ class CollectionDetailView(QWidget):
             if src_type in ("browse", "direct"):
                 url = src.get("url") or src.get("fileUrl") or ""
                 if url:
-                    offsite.append((mod_name, url))
+                    # "direct" is downloaded + installed by Mosaic itself.
+                    (offsite_auto if src_type == "direct" else offsite).append((mod_name, url))
                 continue
             cat = m.get("category") or {}
             mods.append(_NCM(
@@ -184,6 +187,7 @@ class CollectionDetailView(QWidget):
         self._fill_table()
         self._fill_optional()
         # Optional flags already came straight from the manifest — no override.
+        self._offsite_auto = offsite_auto
         self._on_manifest_ready((self._detail_token, offsite, None))
 
     # -- construction -------------------------------------------------------
@@ -734,10 +738,10 @@ class CollectionDetailView(QWidget):
             manifest = {}
             try:
                 from Utils.collections.collection_manifest import (
-                    load_collection_manifest, extract_offsite_mods)
+                    load_collection_manifest, extract_offsite_split)
                 manifest = load_collection_manifest(
                     self._api, game_name, slug, rev, dl_path, log_fn=self._log)
-                offsite = extract_offsite_mods(manifest)
+                offsite = extract_offsite_split(manifest)[0]      # manual ones only
                 if manifest:
                     # Keep for the install worker (Tk _collection_schema_cache
                     # parity) so install never needs a second manifest download.
@@ -822,15 +826,24 @@ class CollectionDetailView(QWidget):
         if token != self._detail_token:
             return                       # a newer revision switch superseded this
         self._offsite = list(offsite or [])
+        if manifest:
+            from Utils.collections.collection_manifest import extract_offsite_split
+            self._offsite_auto = extract_offsite_split(manifest)[1]
         if manifest and self._apply_manifest_overrides(manifest):
             self._fill_table()
             self._fill_optional()
-        if not offsite:
+        auto = list(self._offsite_auto or [])
+        if not offsite and not auto:
             self._offsite_wrap.setVisible(False)
             return
         p = active_palette()
-        self._offsite_title.setText(
-            self.tr("Off-site mods ({0}) — download manually:").format(len(offsite)))
+        if offsite:
+            title = self.tr("Off-site mods ({0}) — download manually:").format(len(offsite))
+            if auto:
+                title += "  " + self.tr("(+{0} downloaded automatically)").format(len(auto))
+        else:
+            title = self.tr("Off-site mods ({0}) — downloaded automatically:").format(len(auto))
+        self._offsite_title.setText(title)
         # Clear prior rows (keep the trailing stretch).
         while self._offsite_layout.count() > 1:
             it = self._offsite_layout.takeAt(0)
@@ -850,6 +863,13 @@ class CollectionDetailView(QWidget):
             openb.clicked.connect(lambda _=False, u=url: self._open_url(u))
             rl.addWidget(openb)
             self._offsite_layout.insertWidget(i, row)
+        for j, (name, url) in enumerate(auto):
+            row = QWidget()
+            rl = QHBoxLayout(row); rl.setContentsMargins(0, 0, 0, 0); rl.setSpacing(6)
+            nl = QLabel("✓ " + (name or url) + "  —  " + self.tr("Mosaic downloads and installs this itself"))
+            nl.setStyleSheet(f"color:{_c(p,'TEXT_DIM')}; font-size:11px;")
+            rl.addWidget(nl, 1)
+            self._offsite_layout.insertWidget(len(offsite) + j, row)
         self._offsite_wrap.setVisible(True)
 
     # -- actions ------------------------------------------------------------

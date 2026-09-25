@@ -113,6 +113,27 @@ def load_collection_manifest(api, game_name: str, slug: str,
         return {}
 
 
+def extract_offsite_split(manifest: dict) -> "tuple[list[tuple[str, str]], list[tuple[str, str]]]":
+    """``(manual, automatic)`` off-site mods from a collection manifest.
+
+    ``source.type == "browse"`` is a web page the user must open and download from
+    by hand. ``"direct"`` is a real file URL with a size and md5: the installer
+    downloads it itself, verifies it and installs it before the rest of the
+    collection, so it never needs the user (calling it "download manually" made a
+    mod that was already installed look missing)."""
+    manual: list[tuple[str, str]] = []
+    automatic: list[tuple[str, str]] = []
+    for m in (manifest or {}).get("mods", []):
+        src = m.get("source") or {}
+        kind = (src.get("type") or "").lower()
+        if kind not in ("browse", "direct"):
+            continue
+        url = src.get("url") or src.get("fileUrl") or ""
+        if url:
+            (automatic if kind == "direct" else manual).append((m.get("name") or "", url))
+    return manual, automatic
+
+
 def extract_offsite_mods(manifest: dict) -> "list[tuple[str, str]]":
     """Return ``[(mod_name, url), …]`` for off-site mods (source.type browse/direct)
     from a collection manifest. Bundled/Nexus entries are skipped."""
