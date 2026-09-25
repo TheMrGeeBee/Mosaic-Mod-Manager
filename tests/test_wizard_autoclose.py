@@ -88,3 +88,15 @@ def test_no_tool_wizard_tells_the_user_to_click_done_when_it_closes_by_itself():
     import wizards_qt.bethini_view as b
     src = inspect.getsource(b)
     assert "click Done" not in src and "closes by itself" in src
+
+
+def test_bethini_closing_does_not_trigger_a_modlist_rescan(app, monkeypatch):
+    """BethINI only edits INI files. Its close used to rescan the whole modlist
+    (~7 s on a 2,000-mod profile) for nothing."""
+    import wizards_qt.bethini_view as m
+    monkeypatch.setattr(m, "tool_exe_path", lambda *_a, **_k: None)
+    closed, ctx = [], Ctx()
+    view = m.BethiniView(FakeGame(), log_fn=lambda _m: None, on_close=lambda: closed.append(1), ctx=ctx)
+    view._on_run_started()
+    view._run_finished_sig.emit()
+    assert closed == [1] and ctx.refreshed == 0

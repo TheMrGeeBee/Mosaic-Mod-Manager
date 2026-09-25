@@ -61,3 +61,56 @@ def test_the_detach_window_boundary():
     fast = Sim([]).run(ran_for=14.9)
     slow = Sim([]).run(ran_for=15.0)
     assert fast.calls == 80 and slow.calls == 1
+
+
+# ---- a tool seen running while its launcher ran is gone the moment the launcher is ----
+# Real case (2026-09-26 01:43): BethINI was closed 7 s after it started. That is under
+# the 15 s "might have detached" window, so it still cost the full 20 s grace poll.
+
+def test_a_tool_seen_running_then_closed_quickly_needs_no_grace_period():
+    sim = Sim([False]).run(ran_for=7.0, seen_during_run=True)
+    assert sim.slept == 0.0 and sim.calls == 1 and not sim.logs
+
+
+def test_a_tool_seen_running_that_is_still_open_after_the_launcher_exits_is_waited_for():
+    sim = Sim([True, True, False]).run(ran_for=2.0, seen_during_run=True)     # detached, still open
+    assert any("still running" in m for m in sim.logs) and sim.calls == 3
+
+
+def test_a_quick_exit_where_the_tool_was_never_seen_still_gets_the_grace_period():
+    sim = Sim([]).run(ran_for=2.0, seen_during_run=False)
+    assert sim.calls == 80
+
+
+class TestPresenceWatcher:
+    def test_records_that_the_tool_appeared(self):
+        import time
+        from Utils.exe_launch.exe_launch import ToolPresenceWatcher
+        script = [False, False, True]
+        w = ToolPresenceWatcher("x.exe", alive_fn=lambda _n: script.pop(0) if script else True, interval=0.01)
+        time.sleep(0.3)
+        assert w.stop() is True
+
+    def test_reports_false_when_the_tool_never_appears_and_stops_promptly(self):
+        import time
+        from Utils.exe_launch.exe_launch import ToolPresenceWatcher
+        w = ToolPresenceWatcher("x.exe", alive_fn=lambda _n: False, interval=0.01)
+        time.sleep(0.1)
+        t0 = time.monotonic()
+        assert w.stop() is False
+        assert time.monotonic() - t0 < 0.5
+
+    def test_a_failing_probe_does_not_kill_the_watcher(self):
+        import time
+        from Utils.exe_launch.exe_launch import ToolPresenceWatcher
+        calls = []
+
+        def flaky(_n):
+            calls.append(1)
+            if len(calls) < 3:
+                raise OSError("proc vanished")
+            return True
+
+        w = ToolPresenceWatcher("x.exe", alive_fn=flaky, interval=0.01)
+        time.sleep(0.3)
+        assert w.stop() is True

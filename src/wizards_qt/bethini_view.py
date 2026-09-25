@@ -156,5 +156,7 @@ class BethiniView(WizardViewBase):
         threading.Thread(target=worker, daemon=True, name="bethini-run").start()
 
     def _on_run_started(self):
-        self._ran = True
+        # BethINI only edits INI files — no mod or plugin changes to refresh, so
+        # _ran stays False: closing must not trigger a modlist rescan (~7 s on a
+        # 2,000-mod profile) that has nothing to pick up.
         self._done_btn.setEnabled(True)

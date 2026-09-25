@@ -1645,10 +1645,44 @@ def _wine_process_alive(exe_name: str) -> bool:
 _TOOL_DETACH_WINDOW_S = 15.0
 
 
+class ToolPresenceWatcher:
+    """Watches, while a tool's launcher runs, whether the tool's real .exe ever
+    appears. If it was seen running and is gone when the launcher exits, the user
+    simply closed it — no grace period needed (a launcher that quit after 7 s
+    used to cost a fixed 20 s wait, 2026-09-26)."""
+
+    def __init__(self, exe_name: str, alive_fn=None, interval: float = 0.5):
+        import threading
+        self._name = exe_name
+        self._alive = alive_fn or _wine_process_alive
+        self._interval = interval
+        self.seen = False
+        self._stop = threading.Event()
+        self._thread = threading.Thread(target=self._run, daemon=True, name="tool-presence")
+        self._thread.start()
+
+    def _run(self) -> None:
+        while not self._stop.is_set() and not self.seen:
+            try:
+                if self._alive(self._name):
+                    self.seen = True
+                    return
+            except Exception:
+                pass
+            self._stop.wait(self._interval)
+
+    def stop(self) -> bool:
+        """Stop watching; True if the tool was seen running."""
+        self._stop.set()
+        self._thread.join(1.0)
+        return self.seen
+
+
 def await_real_tool_exit(exe_name: str, label: str, log_fn, launched_at: float, *,
                          alive_fn=None, sleep_fn=None, clock=None,
                          detach_window_s: float = _TOOL_DETACH_WINDOW_S,
-                         grace_polls: int = 80) -> None:
+                         grace_polls: int = 80,
+                         seen_during_run: bool = False) -> None:
     """After the launcher chain exits, wait until the real tool is gone.
 
     The tracked process is the launcher, not necessarily the GUI. If it exited
@@ -1664,7 +1698,10 @@ def await_real_tool_exit(exe_name: str, label: str, log_fn, launched_at: float, 
     alive = alive_fn or _wine_process_alive
     sleep = sleep_fn or _time.sleep
     elapsed = (clock or _time.monotonic)() - launched_at
-    polls = grace_polls if elapsed < detach_window_s else 1
+    # Seen running while the launcher ran, or the launcher lived long: one check is
+    # enough (if it is still open we wait below). Only a tool never seen, whose
+    # launcher exited quickly, gets the grace period for a late-appearing process.
+    polls = 1 if (seen_during_run or elapsed >= detach_window_s) else grace_polls
     seen_alive = False
     for i in range(polls):
         if alive(exe_name):
@@ -1752,12 +1789,14 @@ def run_tool_logged(
         raise
 
     launched_at = _time.monotonic()
+    watcher = ToolPresenceWatcher(exe.name)
     assert proc.stdout is not None
     for line in proc.stdout:
         line = line.rstrip("\n")
         if line:
             log_fn(f"{label}: {line}")
     rc = proc.wait()
+    seen_running = watcher.stop()
     if rc != 0:
         log_fn(f"{label}: exited with code {rc}")
 
@@ -1774,7 +1813,8 @@ def run_tool_logged(
     # /proc after the launcher exits, so a single immediate check races and
     # can miss it (observed: the checked-once version still hit the bug) —
     # grace-poll for a few seconds before concluding it never spawned one.
-    await_real_tool_exit(exe.name, label, log_fn, launched_at)
+    await_real_tool_exit(exe.name, label, log_fn, launched_at,
+                         seen_during_run=seen_running)
     return rc
 
 
@@ -1866,12 +1906,14 @@ WINEPREFIX + Proton's bin on PATH, ``wine start.exe <exe>``), with only two
         raise
 
     launched_at = _time.monotonic()
+    watcher = ToolPresenceWatcher(exe.name)
     assert proc.stdout is not None
     for line in proc.stdout:
         line = line.rstrip("\n")
         if line:
             log_fn(f"{label}: {line}")
     rc = proc.wait()
+    seen_running = watcher.stop()
     if rc != 0:
         log_fn(f"{label}: exited with code {rc}")
 
@@ -1888,7 +1930,8 @@ WINEPREFIX + Proton's bin on PATH, ``wine start.exe <exe>``), with only two
     # /proc after the launcher exits, so a single immediate check races and
     # can miss it (observed: the checked-once version still hit the bug) —
     # grace-poll for a few seconds before concluding it never spawned one.
-    await_real_tool_exit(exe.name, label, log_fn, launched_at)
+    await_real_tool_exit(exe.name, label, log_fn, launched_at,
+                         seen_during_run=seen_running)
     return rc
 
 
