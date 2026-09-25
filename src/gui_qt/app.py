@@ -3690,7 +3690,7 @@ class MainWindow(QMainWindow):
             sr.apply_transition(
                 game.get_game_path(), ctx["prepared"].transition,
                 get_game_config_dir(game.name), hpatchz=ctx["hpatchz"],
-                log_fn=self._op_log.emit)
+                log_fn=self._op_log.emit, prefix_path=game.get_prefix_path())
             self._preflight_ev.emit("fixed", (ctx, None))
         except sr.RuntimeSwapError as exc:
             self._preflight_ev.emit("fix-failed", (ctx, str(exc)))
@@ -8434,6 +8434,8 @@ class MainWindow(QMainWindow):
                 def _run(run_path=run_path):
                     # Worker-thread exceptions otherwise vanish to stderr.
                     try:
+                        if hasattr(game, "pre_launch_repair"):
+                            game.pre_launch_repair(log_fn=self._append_log)
                         if hasattr(game, "verify_and_repair_plugins_txt"):
                             game.verify_and_repair_plugins_txt(
                                 self._gs.profile, log_fn=self._append_log)
@@ -8474,6 +8476,8 @@ class MainWindow(QMainWindow):
             def _run():
                 # Worker-thread exceptions otherwise vanish to stderr.
                 try:
+                    if hasattr(game, "pre_launch_repair"):
+                        game.pre_launch_repair(log_fn=self._append_log)
                     if hasattr(game, "verify_and_repair_plugins_txt"):
                         game.verify_and_repair_plugins_txt(
                             self._gs.profile, log_fn=self._append_log)

@@ -64,6 +64,9 @@ class FakeGame:
     def get_game_path(self):
         return self.root
 
+    def get_prefix_path(self):
+        return None
+
     def get_effective_mod_staging_path(self):
         return self.root.parent / "staging"
 

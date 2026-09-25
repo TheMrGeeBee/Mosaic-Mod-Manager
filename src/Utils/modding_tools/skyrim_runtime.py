@@ -391,6 +391,117 @@ def describe(game_root: "str | Path", state_dir: "str | Path", *, game_running: 
     return RuntimeInfo(version, swapped, rec_from, rec_to, blockers)
 
 
+# ---- Creation Club content catalog ---------------------------------------------
+#
+# The game keeps ``ContentCatalog.txt`` (a JSON list of installed Creations) in the
+# prefix's AppData. Builds after 1.6.1170 write ids as ``CSV2_<uuid>``; 1.6.1170
+# runs ``stoull`` on the part after the prefix and throws ``std::invalid_argument``
+# ("invalid stoull argument") on the first id that starts with a letter — a crash
+# on the loading screen with nothing wrong in the mod list (seen 2026-09-26: the
+# catalog written by the 1.7.104 first-run crashed 1.6.1170 at its 47th entry, the
+# first uuid starting with 'a'). The game rebuilds the file when it is missing, so
+# a catalog written by a newer runtime is set aside (backed up) after a switch.
+
+CATALOG_NAME = "ContentCatalog.txt"
+CATALOG_BACKUP_DIRNAME = "catalog_backup"
+_CATALOG_ID_PREFIX = "CSV2_"
+
+
+def content_catalog_path(prefix_path: "str | Path | None") -> Path | None:
+    """The prefix's ContentCatalog.txt, or None if there is none (or no prefix)."""
+    if not prefix_path:
+        return None
+    users = Path(prefix_path) / "drive_c" / "users"
+    try:
+        homes = sorted(users.iterdir(), key=lambda p: p.name != "steamuser")
+    except OSError:
+        return None
+    for home in homes:
+        candidate = home / "AppData" / "Local" / "Skyrim Special Edition" / CATALOG_NAME
+        if candidate.is_file():
+            return candidate
+    return None
+
+
+def catalog_has_newer_ids(catalog: "str | Path") -> bool:
+    """True if any entry id is ``CSV2_`` + something not starting with a digit —
+    the shape 1.6.1170 cannot parse. An unreadable file is reported as False (this
+    only ever acts on a catalog it positively understands)."""
+    try:
+        data = json.loads(Path(catalog).read_text(encoding="utf-8-sig"))
+    except (OSError, ValueError):
+        return False
+    if not isinstance(data, dict):
+        return False
+    return any(isinstance(k, str) and k.startswith(_CATALOG_ID_PREFIX)
+               and not k[len(_CATALOG_ID_PREFIX):][:1].isdigit() for k in data)
+
+
+def set_aside_content_catalog(prefix_path: "str | Path | None", state_dir: "str | Path",
+                              *, log_fn: Callable[[str], None] = _noop) -> Path | None:
+    """Move an incompatible ContentCatalog.txt out of the prefix into
+    ``<state_dir>/catalog_backup/`` so the game writes a fresh one. Returns the
+    backup path, or None when there was nothing to do."""
+    catalog = content_catalog_path(prefix_path)
+    if catalog is None or not catalog_has_newer_ids(catalog):
+        return None
+    backup_dir_ = Path(state_dir) / CATALOG_BACKUP_DIRNAME
+    backup_dir_.mkdir(parents=True, exist_ok=True)
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    backup = backup_dir_ / f"{CATALOG_NAME}.{stamp}"
+    try:
+        shutil.copy2(catalog, backup)
+        catalog.unlink()
+    except OSError as exc:
+        backup.unlink(missing_ok=True)
+        log_fn(f"Runtime swap: could not set aside {CATALOG_NAME}: {exc}")
+        return None
+    log_fn(f"Runtime swap: set aside the {CATALOG_NAME} written by another Skyrim version "
+           f"(backup: {backup}); the game will create a fresh one.")
+    return backup
+
+
+def restore_content_catalog(prefix_path: "str | Path | None", state_dir: "str | Path",
+                            *, log_fn: Callable[[str], None] = _noop) -> bool:
+    """After a revert: put the newest set-aside catalog (written by the runtime
+    the game is back on) back in place of whatever the older runtime wrote."""
+    backup_dir_ = Path(state_dir) / CATALOG_BACKUP_DIRNAME
+    try:
+        backups = sorted(backup_dir_.glob(CATALOG_NAME + ".*"))
+    except OSError:
+        return False
+    if not backups or not prefix_path:
+        return False
+    current = content_catalog_path(prefix_path)
+    if current is not None:
+        target = current
+    else:
+        users = Path(prefix_path) / "drive_c" / "users" / "steamuser" / "AppData" / "Local" / "Skyrim Special Edition"
+        users.mkdir(parents=True, exist_ok=True)
+        target = users / CATALOG_NAME
+    try:
+        shutil.copy2(backups[-1], target)
+    except OSError as exc:
+        log_fn(f"Runtime swap: could not restore {CATALOG_NAME}: {exc}")
+        return False
+    for b in backups:
+        b.unlink(missing_ok=True)
+    log_fn(f"Runtime swap: restored the original {CATALOG_NAME}.")
+    return True
+
+
+def repair_content_catalog(game_root: "str | Path", prefix_path: "str | Path | None",
+                           state_dir: "str | Path", *,
+                           log_fn: Callable[[str], None] = _noop) -> bool:
+    """Pre-launch check: while a Mosaic runtime switch is in place, set aside a
+    ContentCatalog.txt the switched-to runtime cannot parse. Returns True if it
+    moved one. Cheap: reads one small JSON file, and only when a switch is recorded."""
+    info = describe(game_root, state_dir, game_running=False)
+    if not info.swapped:
+        return False
+    return set_aside_content_catalog(prefix_path, state_dir, log_fn=log_fn) is not None
+
+
 # ---- apply ---------------------------------------------------------------------
 
 def _fmt(version: Version | None) -> str:
@@ -443,11 +554,14 @@ def apply_transition(
     hpatchz: str | None,
     run: Callable = subprocess.run,
     log_fn: Callable[[str], None] = _noop,
+    prefix_path: "str | Path | None" = None,
 ) -> Version:
     """Patch every file in *transition* from the source to the target runtime,
     transactionally. Returns the resulting version.
 
-    *state_dir* is where the backup and ``runtime_state.json`` are kept.
+    *state_dir* is where the backup and ``runtime_state.json`` are kept. With
+    *prefix_path*, a ContentCatalog.txt the new runtime can't parse is set aside
+    once the switch has succeeded (see :func:`set_aside_content_catalog`).
     """
     game_root, state_dir = Path(game_root), Path(state_dir)
 
@@ -565,6 +679,10 @@ def apply_transition(
         log_fn(f"Runtime swap: warning — couldn't record the swap state ({exc}); "
                f"the originals are backed up in {backup}.")
     log_fn(f"Runtime swap: Skyrim is now {format_version(transition.target)}.")
+    try:
+        set_aside_content_catalog(prefix_path, state_dir, log_fn=log_fn)
+    except Exception as exc:                                  # noqa: BLE001 — the switch itself succeeded
+        log_fn(f"Runtime swap: warning — could not check {CATALOG_NAME}: {exc}")
     return transition.target
 
 
@@ -575,8 +693,10 @@ def revert_transition(
     state_dir: "str | Path",
     *,
     log_fn: Callable[[str], None] = _noop,
+    prefix_path: "str | Path | None" = None,
 ) -> None:
-    """Restore the backed-up original files and clear the recorded state."""
+    """Restore the backed-up original files and clear the recorded state (and
+    put back a ContentCatalog.txt that was set aside, when *prefix_path* is given)."""
     game_root, state_dir = Path(game_root), Path(state_dir)
     state = load_state(state_dir)
     if not state or not state.get("applied"):
@@ -620,3 +740,7 @@ def revert_transition(
     (state_dir / STATE_FILENAME).unlink(missing_ok=True)
     shutil.rmtree(backup, ignore_errors=True)
     log_fn(f"Runtime swap: reverted to {_fmt(read_runtime_version(game_root))}.")
+    try:
+        restore_content_catalog(prefix_path, state_dir, log_fn=log_fn)
+    except Exception as exc:                                  # noqa: BLE001
+        log_fn(f"Runtime swap: warning — could not restore {CATALOG_NAME}: {exc}")

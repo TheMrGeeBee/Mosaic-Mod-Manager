@@ -515,3 +515,133 @@ def test_describe_survives_a_damaged_record(game_root, state_dir):
     (state_dir / sr.STATE_FILENAME).write_text('{"applied": true, "from": "x.y", "to": "1.6.1170"}')
     info = sr.describe(game_root, state_dir, game_running=False)
     assert not info.swapped
+
+
+# ---- ContentCatalog.txt written by another runtime --------------------------------
+#
+# Real crash (2026-09-26, Gate To Sovngarde on 1.6.1170): "invalid stoull argument"
+# on the loading screen. The first-run under 1.7.104 had written ContentCatalog.txt
+# with CSV2_<uuid> ids; 1.6.1170 parses each id with stoull and threw on the first
+# uuid that starts with a letter (entry 47 of 75), not on any mod.
+
+def _catalog(prefix: Path, ids, *, user="steamuser") -> Path:
+    d = prefix / "drive_c" / "users" / user / "AppData" / "Local" / "Skyrim Special Edition"
+    d.mkdir(parents=True, exist_ok=True)
+    body = {"ContentCatalog": {"Description": "x", "Version": "1.1"}}
+    for i in ids:
+        body[i] = {"Title": "t", "Version": "1663173390.7", "Files": []}
+    f = d / sr.CATALOG_NAME
+    f.write_text(__import__("json").dumps(dict(sorted(body.items())), indent=2))
+    return f
+
+
+@pytest.fixture
+def prefix(tmp_path):
+    return tmp_path / "pfx"
+
+
+def test_catalog_detector_matches_the_crash_shape(prefix):
+    assert sr.catalog_has_newer_ids(_catalog(prefix, ["CSV2_016105c0-aaaa", "CSV2_a12aacea-74b0"]))
+    only_digits = _catalog(prefix / "b", ["CSV2_016105c0-aaaa", "CSV2_9999aaaa-bbbb"])
+    assert not sr.catalog_has_newer_ids(only_digits)             # every id starts with a digit: parses
+    assert not sr.catalog_has_newer_ids(_catalog(prefix / "c", ["ccbgssse001-fish", "abcd"]))   # other id style
+
+
+def test_catalog_detector_never_acts_on_a_file_it_cannot_read(tmp_path):
+    bad = tmp_path / "ContentCatalog.txt"
+    bad.write_text("not json {")
+    assert not sr.catalog_has_newer_ids(bad)
+    bad.write_text("[1, 2]")
+    assert not sr.catalog_has_newer_ids(bad)
+    assert not sr.catalog_has_newer_ids(tmp_path / "missing.txt")
+
+
+def test_content_catalog_path_finds_it_and_tolerates_no_prefix(prefix):
+    f = _catalog(prefix, ["CSV2_a"])
+    assert sr.content_catalog_path(prefix) == f
+    assert sr.content_catalog_path(None) is None
+    assert sr.content_catalog_path(prefix / "nowhere") is None
+
+
+def test_set_aside_backs_up_then_removes_only_an_incompatible_catalog(prefix, state_dir):
+    f = _catalog(prefix, ["CSV2_016105c0-aaaa", "CSV2_a12aacea-74b0"])
+    original = f.read_bytes()
+    backup = sr.set_aside_content_catalog(prefix, state_dir)
+    assert backup is not None and backup.read_bytes() == original
+    assert not f.exists()
+    # A compatible or absent catalog is left alone.
+    g = _catalog(prefix / "ok", ["CSV2_1aaa"])
+    assert sr.set_aside_content_catalog(prefix / "ok", state_dir) is None and g.exists()
+    assert sr.set_aside_content_catalog(prefix, state_dir) is None      # already gone
+
+
+def test_apply_sets_the_catalog_aside_and_revert_puts_it_back(game_root, state_dir, transition, prefix):
+    f = _catalog(prefix, ["CSV2_016105c0-aaaa", "CSV2_a12aacea-74b0"])
+    original = f.read_bytes()
+    logs = []
+    sr.apply_transition(game_root, transition, state_dir, hpatchz="x", run=StubHpatchz(),
+                        prefix_path=prefix, log_fn=logs.append)
+    assert not f.exists() and any("set aside" in m for m in logs)
+    sr.revert_transition(game_root, state_dir, prefix_path=prefix)
+    assert f.read_bytes() == original
+    assert not list((state_dir / sr.CATALOG_BACKUP_DIRNAME).glob("ContentCatalog.txt.*"))
+
+
+def test_revert_replaces_the_catalog_the_older_runtime_wrote(game_root, state_dir, transition, prefix):
+    f = _catalog(prefix, ["CSV2_a12aacea-74b0"])
+    original = f.read_bytes()
+    sr.apply_transition(game_root, transition, state_dir, hpatchz="x", run=StubHpatchz(), prefix_path=prefix)
+    _catalog(prefix, ["1234-old-style"])                     # what 1.6.1170 wrote meanwhile
+    sr.revert_transition(game_root, state_dir, prefix_path=prefix)
+    assert sr.content_catalog_path(prefix).read_bytes() == original
+
+
+def test_apply_without_a_prefix_is_unchanged(game_root, state_dir, transition):
+    sr.apply_transition(game_root, transition, state_dir, hpatchz="x", run=StubHpatchz())
+    assert sr.read_runtime_version(game_root) == DST
+
+
+def test_a_catalog_problem_never_undoes_a_successful_switch(game_root, state_dir, transition, prefix, monkeypatch):
+    _catalog(prefix, ["CSV2_a12aacea-74b0"])
+    monkeypatch.setattr(sr, "set_aside_content_catalog", lambda *a, **k: (_ for _ in ()).throw(OSError("boom")))
+    logs = []
+    sr.apply_transition(game_root, transition, state_dir, hpatchz="x", run=StubHpatchz(),
+                        prefix_path=prefix, log_fn=logs.append)
+    assert sr.read_runtime_version(game_root) == DST and any("warning" in m for m in logs)
+
+
+def test_pre_launch_repair_only_acts_while_a_switch_is_in_place(game_root, state_dir, transition, prefix):
+    f = _catalog(prefix, ["CSV2_a12aacea-74b0"])
+    # No Mosaic switch recorded (a plain 1.7.104 install): the catalog is correct as is.
+    assert sr.repair_content_catalog(game_root, prefix, state_dir) is False and f.exists()
+    _apply(game_root, transition, state_dir)                # switch WITHOUT prefix_path (like the real one that crashed)
+    assert f.exists()
+    assert sr.repair_content_catalog(game_root, prefix, state_dir) is True and not f.exists()
+    assert sr.repair_content_catalog(game_root, prefix, state_dir) is False      # idempotent
+
+
+def test_skyrimse_pre_launch_repair_sets_the_catalog_aside(game_root, state_dir, transition, prefix, monkeypatch, tmp_path):
+    """The game-level hook the app calls before every launch."""
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
+    from Games.Bethesda.skyrim_se import SkyrimSE
+    from Utils.config_paths import get_game_config_dir
+    game = SkyrimSE()
+    monkeypatch.setattr(game, "get_game_path", lambda: game_root)
+    monkeypatch.setattr(game, "get_prefix_path", lambda: prefix)
+    cfg = get_game_config_dir(game.name)
+    f = _catalog(prefix, ["CSV2_016105c0-aaaa", "CSV2_a12aacea-74b0"])
+    logs = []
+    assert game.pre_launch_repair(logs.append) is False and f.exists()        # nothing switched yet
+    sr.apply_transition(game_root, transition, cfg, hpatchz="x", run=StubHpatchz())   # no prefix: like the real run
+    assert f.exists()
+    assert game.pre_launch_repair(logs.append) is True and not f.exists()
+    assert any("set aside" in m for m in logs)
+    assert game.pre_launch_repair(logs.append) is False
+
+
+def test_skyrimse_pre_launch_repair_never_raises(monkeypatch):
+    from Games.Bethesda.skyrim_se import SkyrimSE
+    game = SkyrimSE()
+    monkeypatch.setattr(game, "get_game_path", lambda: (_ for _ in ()).throw(RuntimeError("boom")))
+    logs = []
+    assert game.pre_launch_repair(logs.append) is False and any("skipped" in m for m in logs)

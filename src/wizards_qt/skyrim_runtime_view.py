@@ -163,7 +163,8 @@ class SkyrimRuntimeView(WizardViewBase):
         try:
             sr.revert_transition(
                 self._game_root, self._state_dir,
-                log_fn=lambda m: self._log(f"Skyrim Runtime Wizard: {m}"))
+                log_fn=lambda m: self._log(f"Skyrim Runtime Wizard: {m}"),
+                prefix_path=self._game.get_prefix_path())
             safe_emit(self._run_status_sig, self.tr(
                 "Skyrim is back to its original version.\n\nThe next collection install "
                 "that needs the older runtime will switch it again.\n\nClick Done to close."),

@@ -199,6 +199,26 @@ class SkyrimSE(Fallout_3):
             self._saves_routing_rule([".ess"]),
         ]
 
+    def pre_launch_repair(self, log_fn=None) -> bool:
+        """Called right before the game or a tool is launched. While a Mosaic
+        runtime switch is in place, set aside a ContentCatalog.txt written by the
+        other runtime — 1.6.1170 crashes on the loading screen ("invalid stoull
+        argument") on the newer ``CSV2_<uuid>`` ids the 1.7.104 first-run writes.
+        Returns True if it moved one. Never raises."""
+        try:
+            from Utils.config_paths import get_game_config_dir
+            from Utils.modding_tools import skyrim_runtime as sr
+            game_root = self.get_game_path()
+            if game_root is None:
+                return False
+            return sr.repair_content_catalog(
+                game_root, self.get_prefix_path(), get_game_config_dir(self.name),
+                log_fn=log_fn or (lambda *_a: None))
+        except Exception as exc:                              # noqa: BLE001 — never block a launch
+            if log_fn:
+                log_fn(f"Pre-launch repair skipped: {exc}")
+            return False
+
     @property
     def wizard_tools(self) -> list[WizardTool]:
         from Utils.modding_tools.pandora_tools import find_pandora_exe

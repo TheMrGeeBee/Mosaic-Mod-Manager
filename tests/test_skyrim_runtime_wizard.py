@@ -32,6 +32,9 @@ class FakeGame:
     def get_game_path(self):
         return self.root
 
+    def get_prefix_path(self):
+        return None
+
 
 @dataclass
 class Ctx:
