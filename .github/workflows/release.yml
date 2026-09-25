@@ -324,15 +324,14 @@ jobs:
           # Moves the previous Main-files version into the Files tab's
           # "Archived files" section — was a manual step before this.
           #
-          # "!= false" (not a bare truthy check) because this input's own
-          # declared default (true) is only actually applied by a real
-          # workflow_dispatch invocation — a plain tag push has no `inputs`
-          # context at all, so a bare `inputs.nexus_changelog_and_archive`
-          # would silently resolve to nothing (falsy) and skip both the
-          # changelog and the archive step for every automatic release.
-          # This treats "absent" the same as "true", and only an explicit
-          # dispatch-time `false` opts out.
-          archive_existing_version: ${{ inputs.nexus_changelog_and_archive != false }}
+          # On a tag push this is always on: this input's declared default
+          # (true) is only applied by a real workflow_dispatch, and a push has
+          # no `inputs` values, so `inputs.nexus_changelog_and_archive` is null
+          # there. Don't write `!= false` instead: GitHub expressions compare
+          # null and false as equal (both coerce to 0), so that was false on
+          # every push and skipped the changelog and the archive step on
+          # v1.1.0 through v1.4.0. Only an explicit dispatch-time `false` opts out.
+          archive_existing_version: ${{ github.event_name == 'push' || inputs.nexus_changelog_and_archive }}
           # changelog requires mod_id. AppImage and Flatpak share ONE Nexus
           # mod page — the changelog is a mod-level entry, not a per-file one,
           # so only this step (not the Flatpak step below) attaches it; doing
@@ -361,8 +360,8 @@ jobs:
           #     -H 'Content-Type: application/json' \
           #     -d '{"query":"query M($ids:[CompositeDomainWithIdInput!]!){legacyModsByDomain(ids:$ids){nodes{uid}}}","variables":{"ids":[{"gameDomain":"site","modId":2139}]}}'
           # File-slot ids (file_id above) are v3-native and need NO conversion.
-          mod_id: ${{ (inputs.nexus_changelog_and_archive != false) && vars.NEXUS_MOD_ID || '' }}
-          changelog: ${{ (inputs.nexus_changelog_and_archive != false) && steps.changelog.outputs.text || '' }}
+          mod_id: ${{ (github.event_name == 'push' || inputs.nexus_changelog_and_archive) && vars.NEXUS_MOD_ID || '' }}
+          changelog: ${{ (github.event_name == 'push' || inputs.nexus_changelog_and_archive) && steps.changelog.outputs.text || '' }}
 
       - name: Upload Flatpak to Nexus
         if: ${{ !inputs.skip_flatpak_nexus_upload }}
@@ -383,9 +382,9 @@ jobs:
           # still wants the automated changelog), so a changelog is never
           # silently dropped, but is still never posted twice.
           # Same "!= false" reasoning as the AppImage step above.
-          archive_existing_version: ${{ inputs.nexus_changelog_and_archive != false }}
-          mod_id: ${{ (inputs.nexus_changelog_and_archive != false) && inputs.skip_appimage_nexus_upload && vars.NEXUS_MOD_ID || '' }}
-          changelog: ${{ (inputs.nexus_changelog_and_archive != false) && inputs.skip_appimage_nexus_upload && steps.changelog.outputs.text || '' }}
+          archive_existing_version: ${{ github.event_name == 'push' || inputs.nexus_changelog_and_archive }}
+          mod_id: ${{ (github.event_name == 'push' || inputs.nexus_changelog_and_archive) && inputs.skip_appimage_nexus_upload && vars.NEXUS_MOD_ID || '' }}
+          changelog: ${{ (github.event_name == 'push' || inputs.nexus_changelog_and_archive) && inputs.skip_appimage_nexus_upload && steps.changelog.outputs.text || '' }}
 
   # ────────────────────────────────────────────────────────────────────
   # Publish the OSTree repo to GitHub Pages (the hosted Flatpak remote).
