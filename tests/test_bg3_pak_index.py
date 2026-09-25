@@ -363,3 +363,42 @@ def test_load_after_add_and_clear(tmp_path):
     assert bx.load_after_of(prof, "Addon") == ["BIU"]
     assert bx.clear_load_after(prof, "Addon") == 1
     assert bx.load_after_of(prof, "Addon") == []
+
+
+def test_same_module_by_file_name_and_uuid(tmp_path):
+    # KAVT deliberately ships unique_tav.pak with Unique Tav's UUID; with both
+    # enabled only the higher-priority copy is deployed.
+    def rec(uuid, name):
+        r = _rec(uuid, name)
+        r["rel"] = "unique_tav.pak"
+        return r
+    enabled = _entries("Unique Tav Custom Appearance", "KAVT")
+    index = {"Unique Tav Custom Appearance": [rec("u-ut", "unique_tav")],
+             "KAVT": [rec("u-ut", "KAVT - Virtual Tav")]}
+    [f] = [x for x in bx.analyse(enabled, index, tmp_path)[0] if x.kind == "same_module"]
+    assert f.mods == ["Unique Tav Custom Appearance", "KAVT"]
+    assert f.winner == "Unique Tav Custom Appearance"      # top of the list
+    assert any(k.startswith("file: unique_tav.pak") for k in f.keys)
+
+
+def test_same_uuid_different_file_has_no_known_winner(tmp_path):
+    def rec(uuid, name, rel):
+        r = _rec(uuid, name)
+        r["rel"] = rel
+        return r
+    enabled = _entries("A", "B")
+    index = {"A": [rec("same", "A", "a.pak")], "B": [rec("same", "B", "b.pak")]}
+    [f] = [x for x in bx.analyse(enabled, index, tmp_path)[0] if x.kind == "same_module"]
+    assert f.winner is None
+
+
+def test_dividers_are_not_same_module(tmp_path):
+    def div(uuid, rel):
+        r = _rec(uuid, "divider")
+        r["meta"]["is_meta_only"] = True
+        r["rel"] = rel
+        return r
+    enabled = _entries("Dividers A", "Dividers B")
+    index = {"Dividers A": [div("d1", "001.pak")], "Dividers B": [div("d1", "001.pak")]}
+    assert [x for x in bx.analyse(enabled, index, tmp_path)[0]
+            if x.kind == "same_module"] == []

@@ -258,7 +258,8 @@ class BG3InsightsView(WizardViewBase):
             self._detail.setPlainText(text)
         self._patch_btn.setEnabled(bool(pending_patch))
         can_order = f.kind not in ("identical", "declared_conflict", "variant_group",
-                                   "known_incompatible", "outdated_dependency")
+                                   "known_incompatible", "outdated_dependency",
+                                   "same_module")
         self._winner_box.setEnabled(can_order)
         self._win_btn.setEnabled(can_order)
         self._keep_btn.setEnabled(

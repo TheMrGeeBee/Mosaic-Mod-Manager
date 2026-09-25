@@ -338,7 +338,8 @@ def build_index(staging: Path, mod_names: list[str], cache_path: Path | None,
 
 # How much each kind matters, for sorting the report.
 SEVERITY = {"declared_conflict": 3, "known_incompatible": 3,
-            "outdated_dependency": 3, "gui_state": 2, "ui_template": 2,
+            "outdated_dependency": 3, "same_module": 3,
+            "gui_state": 2, "ui_template": 2,
             "stats_override": 2,
             "treasure_table": 2, "variant_group": 2, "same_file": 1,
             "identical": 0}
@@ -347,6 +348,7 @@ KIND_LABELS = {
     "declared_conflict": "Declared incompatible (meta.lsx Conflicts)",
     "known_incompatible": "Known incompatible (mod author)",
     "outdated_dependency": "Needs a newer version of a dependency",
+    "same_module": "Same module — only one of them is used",
     "variant_group": "Variants of the same mod enabled together",
     "gui_state": "Replace the same UI screen",
     "ui_template": "Replace the same UI templates",
@@ -611,11 +613,57 @@ def analyse(enabled: list[ModEntry], index: dict[str, list[dict]],
                       + (f" Source: {source}" if source else ""))))
 
     findings.extend(_outdated_dependencies(index, priority, order))
+    findings.extend(_same_modules(index, priority, order))
 
     _suggest_patches(findings, index)
 
     findings.sort(key=lambda f: (f.intended, -f.severity, -len(f.keys), f.mods))
     return findings, rank
+
+
+def _same_modules(index, priority, order) -> list[Finding]:
+    """Enabled mods that are the same module: they ship a .pak with the same
+    file name (deploy puts every .pak flat in the Mods folder, so only the
+    highest-priority copy is deployed) or the same meta.lsx UUID.  Replacement
+    mods do this on purpose — KAVT ships unique_tav.pak with Unique Tav's
+    UUID — and so do two installed copies of one mod.  Either way one of them
+    silently replaces the other."""
+    by_file: dict[str, set[str]] = defaultdict(set)
+    by_uuid: dict[str, set[str]] = defaultdict(set)
+    uuid_name: dict[str, str] = {}
+    for mod, recs in index.items():
+        if mod not in priority:
+            continue
+        for r in recs:
+            meta = r.get("meta") or {}
+            if meta.get("is_meta_only"):
+                continue          # load-order dividers
+            rel = (r.get("rel") or "").replace("\\", "/")
+            if rel.lower().endswith(".pak"):
+                by_file[rel.rsplit("/", 1)[-1].lower()].add(mod)
+            if meta.get("uuid") and meta["uuid"] not in _SYSTEM_UUIDS:
+                by_uuid[meta["uuid"]].add(mod)
+                uuid_name.setdefault(meta["uuid"], meta.get("name", ""))
+    groups: dict[tuple[str, ...], list[str]] = defaultdict(list)
+    for name, mods in by_file.items():
+        if len(mods) > 1:
+            groups[tuple(order(mods))].append(f"file: {name}")
+    for uuid, mods in by_uuid.items():
+        if len(mods) > 1:
+            groups[tuple(order(mods))].append(
+                f"module: {uuid_name.get(uuid) or uuid} ({uuid})")
+    out = []
+    for mods, keys in groups.items():
+        same_file = any(k.startswith("file:") for k in keys)
+        winner = mods[0] if same_file else None   # top of the list wins the file
+        note = (f"These are the same module, so only one is used"
+                + (f": {winner}'s copy is the one deployed, because it's "
+                   "higher in your list." if winner else ".")
+                + " If one replaces the other (e.g. KAVT replaces Unique Tav), "
+                  "disable the one you don't want.")
+        out.append(Finding(kind="same_module", mods=list(mods), keys=sorted(keys),
+                           winner=winner, note=note))
+    return out
 
 
 def _outdated_dependencies(index, priority, order) -> list[Finding]:
@@ -665,7 +713,8 @@ def _suggest_patches(findings: list[Finding], index: dict[str, list[dict]]) -> N
     """Mark findings where exactly one involved mod looks like a patch."""
     for f in findings:
         if f.kind in ("identical", "declared_conflict", "variant_group",
-                      "known_incompatible", "outdated_dependency") \
+                      "known_incompatible", "outdated_dependency",
+                      "same_module") \
                 or f.intended:
             continue
         patches = [m for m in f.mods if _looks_like_patch(m, index.get(m, []))]
