@@ -4647,9 +4647,22 @@ class MainWindow(QMainWindow):
             shown = "\n".join(f"• {f['name']} — {f['reason']}" for f in failed[:10])
             if len(failed) > 10:
                 shown += "\n" + self.tr("…and {0} more").format(len(failed) - 10)
-            parts.append(self.tr("These mods are not in the profile:\n\n{0}\n\nNothing was "
-                                 "rolled back. Press Install on the collection again and "
-                                 "choose Continue to retry them.").format(shown))
+            retry = [f for f in failed if f.get("retryable")]
+            stuck = [f for f in failed if not f.get("retryable")]
+            if retry and not stuck:
+                advice = self.tr("Nothing was rolled back. Press Install on the collection "
+                                 "again and choose Continue to retry them.")
+            elif stuck and not retry:
+                advice = self.tr("Nothing was rolled back. Pressing Install again will NOT "
+                                 "fix these — they fail the same way every time, so this "
+                                 "needs a fix in Mosaic (or installing the mod by hand).")
+            else:
+                advice = self.tr("Nothing was rolled back. Install again → Continue can "
+                                 "retry the download failures; the others fail the same "
+                                 "way every time and need a fix in Mosaic (or a manual "
+                                 "install).")
+            parts.append(self.tr("These mods are not in the profile:\n\n{0}\n\n{1}")
+                         .format(shown, advice))
         if warns:
             parts.append("\n\n".join("⚠ " + w for w in warns))
         parts.append(self.tr("The full report is in install_report.json inside the "

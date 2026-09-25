@@ -28,6 +28,7 @@ def test_report_names_every_failed_mod_with_a_reason():
     by_name = {f["name"]: f for f in r["failed"]}
     assert by_name["Mod A"]["reason"] == "Connection failed: boom"           # a recorded detail wins
     assert "FOMOD/BAIN" in by_name["Mod B"]["reason"]                        # plain-language status
+    assert by_name["Mod A"]["retryable"] and not by_name["Mod B"]["retryable"]
     assert by_name["Mod C"]["reason"] == "weird_status"                       # unknown status still shown
     assert by_name["Mod D"]["reason"] == "extraction error" and by_name["Mod D"]["mod_id"] == 0
     assert by_name["Mod A"]["file_id"] == 111 and by_name["Mod A"]["status"] == "download_failed"
@@ -116,3 +117,30 @@ def test_dialog_truncates_a_long_list_but_says_how_many_more(app):
     text = " ".join(l.text() for l in ov.findChildren(QLabel))
     assert "25 mod(s) did not install" in text and "…and 15 more" in text
     assert "Mod 9 " in text and "Mod 10 " not in text
+
+
+def test_a_stage_empty_mod_gets_a_plain_reason_and_is_not_offered_a_retry():
+    """Regression: 'Glowing Mushroom Collision Fixes' staged nothing every time, yet
+    the dialog said 'press Install again to retry' and showed only an archive name."""
+    r = build_install_report(
+        [("Glowing Mushroom Collision Fixes", 69558, 472102, "stage_empty",
+          "archive=Glowing Mushroom Collision Fixes - FOMOD Installer-69558-1-2-1.7z")], total=1964)
+    (f,) = r["failed"]
+    assert "produced no files" in f["reason"] and "archive=" not in f["reason"]
+    assert f["retryable"] is False
+
+
+def test_dialog_only_promises_a_retry_for_failures_a_retry_can_fix(app):
+    from PySide6.QtWidgets import QLabel
+    for failed, must, must_not in [
+        ([("A", 1, 1, "download_failed", "Connection failed")], "choose Continue to retry", "will NOT"),
+        ([("B", 2, 2, "stage_empty", "archive=x")], "will NOT fix these", "choose Continue to retry them"),
+    ]:
+        h = Harness()
+        h.resize(900, 700)
+        h.show()
+        h._col_failed = build_install_report(failed, total=2)["failed"]
+        h._show_failed_mods_report()
+        (ov,) = h.findChildren(ConfirmOverlay)
+        text = " ".join(l.text() for l in ov.findChildren(QLabel))
+        assert must in text and must_not not in text, text

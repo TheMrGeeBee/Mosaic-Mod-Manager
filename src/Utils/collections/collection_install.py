@@ -533,9 +533,17 @@ INSTALL_REPORT_NAME = "install_report.json"
 _STATUS_TEXT = {
     "download_failed": "download failed",
     "install_failed": "install failed",
+    "stage_empty": "its installer produced no files from the recorded choices (a Mosaic "
+                   "problem with this mod, not a download problem)",
     "deferred": "waiting on a FOMOD/BAIN choice that never completed",
     "unknown": "did not finish installing",
 }
+# Statuses where simply running the install again can succeed. Everything else is
+# deterministic: it will fail the same way until something is fixed.
+_RETRYABLE_STATUSES = frozenset({"download_failed"})
+# For these the recorded detail is diagnostic noise (e.g. "archive=<file name>"),
+# so the plain-language text is shown instead of it.
+_PLAIN_ONLY_STATUSES = frozenset({"stage_empty", "deferred", "unknown"})
 
 
 def build_install_report(missing, *, total: int, slug: str = "",
@@ -546,10 +554,13 @@ def build_install_report(missing, *, total: int, slug: str = "",
     """
     failed = []
     for name, mod_id, file_id, status, detail in missing:
+        status = str(status)
+        plain = _STATUS_TEXT.get(status, status)
         failed.append({
             "name": str(name), "mod_id": int(mod_id or 0), "file_id": int(file_id or 0),
-            "status": str(status),
-            "reason": (str(detail).strip() or _STATUS_TEXT.get(str(status), str(status))),
+            "status": status,
+            "reason": plain if status in _PLAIN_ONLY_STATUSES else (str(detail).strip() or plain),
+            "retryable": status in _RETRYABLE_STATUSES,
         })
     return {"collection": slug, "revision": revision, "total": int(total),
             "failed_count": len(failed), "failed": failed, "warnings": []}

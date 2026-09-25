@@ -44,7 +44,15 @@ def evaluate_dependency(dep: Dependency, flag_state: dict[str, str],
     """
     if dep.dep_type == "composite":
         if not dep.sub_deps:
-            return True  # Empty composite = no restriction = pass
+            # No conditions to test. An empty And is vacuously true (no
+            # restriction). An empty Or is FALSE: "any of nothing" cannot be
+            # met, exactly as in MO2 and Vortex. It matters: Glowing Mushroom
+            # Collision Fixes gives its Mari option a <dependencyType> whose
+            # only pattern is an EMPTY Or that would make it NotUsable. Treated
+            # as satisfied, every option in the group became unusable, the
+            # author's recorded choice was refused, no flags were set, and the
+            # mod staged nothing.
+            return dep.operator.lower() != "or"
         results = [evaluate_dependency(d, flag_state, installed_files,
                                         active_files, version_pass, loose_files)
                    for d in dep.sub_deps]
