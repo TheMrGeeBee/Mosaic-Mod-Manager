@@ -837,6 +837,43 @@ class Fallout_3(BaseGame):
         self._symlink_plugins_txt(profile, _log)
         return True
 
+    def find_missing_plugin_files(self, profile: str) -> list[str]:
+        """Enabled plugins of the deployed profile that have no readable file in
+        the game's Data folder — dangling symlinks count as missing.
+
+        Launching then crashes on the loading screen, and nothing in the crash
+        log says why (Gate To Sovngarde 2026-09-26: 141 dangling links after mod
+        folders were renamed under a deployed profile, the start plugin among
+        them). Cheap: one plugins.txt read and one Data listing. Returns [] when
+        the profile isn't the deployed one, or when it can't tell.
+        """
+        import os
+        if not self.get_deploy_active() or self.get_last_deployed_profile() != profile:
+            return []
+        game_path = self.get_game_path()
+        source = self.get_profile_root() / "profiles" / profile / "plugins.txt"
+        if game_path is None or not source.is_file():
+            return []
+        data_dir = Path(game_path) / "Data"
+        try:
+            lines = source.read_text(encoding="utf-8").splitlines()
+            present = {e.name.lower() for e in os.scandir(data_dir)
+                       if os.path.exists(e.path)}
+        except OSError:
+            return []
+        missing: list[str] = []
+        for line in lines:
+            line = line.strip()
+            if not line or line.startswith("#"):
+                continue
+            if self.plugins_use_star_prefix:
+                if not line.startswith("*"):
+                    continue                     # disabled
+                line = line[1:]
+            if line.lower() not in present:
+                missing.append(line)
+        return missing
+
     # -----------------------------------------------------------------------
     # Timestamp load order (Oblivion/FO3/FNV)
     # -----------------------------------------------------------------------

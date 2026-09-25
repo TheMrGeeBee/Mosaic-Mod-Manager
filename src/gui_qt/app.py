@@ -8484,13 +8484,45 @@ class MainWindow(QMainWindow):
                     exe_launch.launch_game(game, log_fn=self._append_log)
                 except Exception as exc:
                     self._append_log(f"Play error: {exc!r}")
-            threading.Thread(target=_run, daemon=True).start()
+            # Enabled plugins with no file in Data/ (a deploy that is out of date)
+            # crash on the loading screen with nothing to explain why — ask first.
+            self._guard_missing_plugins(
+                game, lambda: threading.Thread(target=_run, daemon=True).start())
 
         if exe_launch.load_deploy_before_launch(game) and hasattr(game, "deploy"):
             self._post_deploy_action = _launch
             self._on_deploy()
         else:
             _launch()
+
+    def _guard_missing_plugins(self, game, proceed):
+        """UI thread: call *proceed()* unless enabled plugins of the deployed
+        profile are missing from the game's Data folder, in which case say so and
+        let the user cancel (or launch anyway). Never blocks on an internal error."""
+        try:
+            missing = (game.find_missing_plugin_files(self._gs.profile)
+                       if hasattr(game, "find_missing_plugin_files") else [])
+        except Exception as exc:                          # noqa: BLE001
+            self._append_log(f"[play] missing-plugin check skipped: {exc}")
+            missing = []
+        if not missing:
+            proceed()
+            return
+        self._append_log(f"[play] {len(missing)} enabled plugin(s) are missing from Data/: "
+                         + ", ".join(missing[:10]))
+        from gui_qt.overlays.confirm_overlay import ConfirmOverlay
+        shown = "\n".join(f"• {m}" for m in missing[:8])
+        if len(missing) > 8:
+            shown += "\n" + self.tr("…and {0} more").format(len(missing) - 8)
+        ConfirmOverlay.show_over(
+            self, self.tr("{0} enabled plugin(s) are missing").format(len(missing)),
+            self.tr("The game would start without these files, which usually ends in "
+                    "a crash on the loading screen:\n\n{0}\n\nThe deployment is out "
+                    "of date (mods were renamed, moved or removed since the last "
+                    "Deploy). Press Deploy, then Play again.").format(shown),
+            lambda ok: proceed() if ok else None,
+            confirm_label=self.tr("Launch anyway"), cancel_label=self.tr("Cancel"),
+            danger=False, card_h=min(300 + 18 * min(len(missing), 8), 520))
 
     def _on_play_action(self, which):
         game = self._gs.game

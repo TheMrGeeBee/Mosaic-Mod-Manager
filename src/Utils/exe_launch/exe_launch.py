@@ -1375,6 +1375,37 @@ def parse_env_overrides(text: str) -> dict:
     return out
 
 
+def game_running_in_prefix(compat_data: "str | Path", proc_root: "str | Path" = "/proc") -> bool:
+    """True if a game launched through Steam/Proton is running in *compat_data*.
+
+    Recognised by the two ways a game reaches a prefix: Steam's ``reaper
+    SteamLaunch AppId=<id>`` wrapper (the compat folder is named after the app id)
+    and ``proton waitforexitandrun`` with ``STEAM_COMPAT_DATA_PATH`` set to it.
+    Wizard tools use ``runinprefix`` and are deliberately not matched.
+    """
+    compat = Path(compat_data)
+    steam_marker = f"AppId={compat.name}".encode()
+    try:
+        pids = [p for p in Path(proc_root).iterdir() if p.name.isdigit()]
+    except OSError:
+        return False
+    for pid in pids:
+        try:
+            cmd = (pid / "cmdline").read_bytes()
+        except OSError:
+            continue
+        if b"SteamLaunch" in cmd and steam_marker in cmd:
+            return True
+        if b"waitforexitandrun" in cmd:
+            try:
+                env = (pid / "environ").read_bytes().split(b"\0")
+            except OSError:
+                continue
+            if f"STEAM_COMPAT_DATA_PATH={compat}".encode() in env:
+                return True
+    return False
+
+
 def shutdown_prefix_wineserver(proton_script: Path, compat_data: Path,
                                log_fn=None) -> None:
     """Kill leftover wine processes still attached to a tool prefix.
@@ -1382,7 +1413,18 @@ def shutdown_prefix_wineserver(proton_script: Path, compat_data: Path,
     Proton sidecars (xalia.exe, services.exe, explorer.exe) can keep the
     prefix's wineserver alive indefinitely after the tool itself closes;
     they outlive the app and linger until the desktop session ends.
+
+    Never when the game itself is running in this prefix: ``wineserver -k`` takes
+    every process in it down, so closing BethINI 19 seconds after pressing Play
+    killed the game that was still starting (2026-09-26, Gate To Sovngarde).
     """
+    try:
+        if game_running_in_prefix(compat_data):
+            if log_fn is not None:
+                log_fn("the game is running in this prefix — leaving its wineserver alone")
+            return
+    except Exception:
+        pass
     try:
         script = Path(proton_script)
         if script.name in ("wine", "wine64"):

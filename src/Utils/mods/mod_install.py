@@ -1111,7 +1111,17 @@ def prepare_archive(archive_path: str, game, profile_dir: Path, *,
     #                        finish_install doesn't look it up a second time.
     #   4. _clean_mod_name — strip the archive stem (offline / not on Nexus).
     if preferred_name:
-        mod_name = preferred_name
+        # A forced name (collections use the author's mod title) must be as
+        # Wine-addressable as every other route's: an unsanitised "C.O.I.N."
+        # became a folder Mosaic later renamed to "C.O.I.N" on a refresh, leaving
+        # the deployed symlinks dangling (141 missing files, the start plugin
+        # among them, on Gate To Sovngarde). The collection installer takes the
+        # folder name from this function's return value, so it stays consistent.
+        try:
+            from Utils.mods.mod_name_utils import sanitize_mod_folder_name
+            mod_name = sanitize_mod_folder_name(preferred_name) or preferred_name
+        except Exception:
+            mod_name = preferred_name
     else:
         nexus_name = _nexus_file_display_name(prebuilt_meta, game)
         if not nexus_name:
