@@ -177,6 +177,8 @@ class BG3InsightsView(WizardViewBase):
         if f.rule_violated:
             return self.tr("Your rule is broken")
         if f.intended:
+            if f.intended_by == "author rule":
+                return self.tr("Intended (author rule)")
             return self.tr("Intended (patch for the other)")
         if f.resolved_by_rule:
             return self.tr("Decided")
@@ -255,7 +257,8 @@ class BG3InsightsView(WizardViewBase):
                            ).format(f.suggested_patch) + "\n\n" + text
             self._detail.setPlainText(text)
         self._patch_btn.setEnabled(bool(pending_patch))
-        can_order = f.kind not in ("identical", "declared_conflict", "variant_group")
+        can_order = f.kind not in ("identical", "declared_conflict", "variant_group",
+                                   "known_incompatible", "outdated_dependency")
         self._winner_box.setEnabled(can_order)
         self._win_btn.setEnabled(can_order)
         self._keep_btn.setEnabled(

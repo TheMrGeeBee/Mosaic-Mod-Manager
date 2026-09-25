@@ -26,7 +26,10 @@ def _rec(uuid, name, deps=(), mod_type="", tags=()):
 
 def test_classify_priority():
     impui = [_rec("26922ba9-6018-5252-075d-7ff2ba6ed879", "ImpUI")]
-    assert L.classify("ImpUI", impui, "Visuals")[0] == "frameworks"   # known beats category
+    assert L.classify("ImpUI", impui, "Visuals",
+                      known_layer="frameworks")[0] == "frameworks"   # known beats category
+    assert L.classify("ImpUI", impui, "Visuals", override="misc",
+                      known_layer="frameworks")[0] == "misc"         # your choice beats known
     assert L.classify("X", [_rec("u", "X")], "Visuals", override="late") == ("late", "your choice")
     assert L.classify("X", [_rec("u", "X", mod_type="Patch")], "Gameplay")[0] == "patches"
     assert L.classify("X", [_rec("u", "X", tags=["Library"])], "Gameplay")[0] == "libraries"

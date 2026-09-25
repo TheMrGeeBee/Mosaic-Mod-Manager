@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "about": "Known load-order rules for Baldur's Gate 3, used by Mosaic's Sort Load Order and Load Order Insights. Bump 'version' with every change (a copy fetched from main is only used when its version is higher). Only add rules a mod author states (link it in 'source') or that were confirmed in-game. 'match' takes meta.lsx UUIDs and/or name fragments (case- and punctuation-insensitive, compared with the meta.lsx name and the mod folder name). 'layer' pins a mod to a layer: frameworks, libraries, gameplay, story, items, visuals, misc, patches, late. 'after'/'before' list mods this one must load after/before. 'incompatible' lists mods that should not be enabled together. Collection order, dependencies and the user's own decisions always win over these rules; these win over the automatic layers.",
+  "mods": [
+    {"name": "ImpUI (ImprovedUI)", "match": {"uuids": ["26922ba9-6018-5252-075d-7ff2ba6ed879"]}, "layer": "frameworks"},
+    {"name": "Mod Configuration Menu", "match": {"uuids": ["755a8a72-407f-4f0d-9a33-274ac0f0b53d"]}, "layer": "frameworks"},
+    {"name": "Community Library", "match": {"uuids": ["396c5966-09b0-40a1-af3f-93a5e9ce71c0"]}, "layer": "libraries"},
+    {"name": "VolitionCabinet", "match": {"uuids": ["f97b43be-7398-4ea5-8fe2-be7eb3d4b5ca"]}, "layer": "libraries"},
+    {"name": "AahzLib", "match": {"uuids": ["5d1bd6cb-6361-45ef-b20c-d997acfba822"]}, "layer": "libraries"},
+    {"name": "MazzleLib", "match": {"uuids": ["96bc14a7-733e-4bea-859d-3695d745efc1"]}, "layer": "libraries"},
+    {"name": "MazzleDocs", "match": {"uuids": ["ad95bd1c-1a80-45fb-b73b-9eea1f8e58d0"]}, "layer": "libraries"},
+    {"name": "Tag Framework", "match": {"uuids": ["2cba831e-bc5e-4ed5-b831-b5c4580b02b0"]}, "layer": "libraries"},
+    {"name": "Goon's Library", "match": {"uuids": ["07fbc2f1-f359-4b9d-b243-fe28bd783e4c"]}, "layer": "libraries"},
+    {"name": "Vlad's Codex - VFX Library", "match": {"uuids": ["fd03819b-cec2-c351-1680-81f1f1e52c76"]}, "layer": "libraries"},
+    {"name": "Vlad's Grimoire - VFX Library", "match": {"uuids": ["0dd5b581-c210-4956-ab96-7682fb519de5"]}, "layer": "libraries"},
+    {"name": "VFX Library SHV", "match": {"uuids": ["dd19db12-96c0-4bca-9ef6-e8d733801d23"]}, "layer": "libraries"},
+    {"name": "AV Item Shipment Framework", "match": {"uuids": ["e6333436-9cf0-4464-aaf2-39246292575e"]}, "layer": "libraries"},
+    {"name": "Dialogue and Reactivity Tags (DART) Framework", "match": {"uuids": ["65e55feb-aada-4fec-821f-7d913e9b4d82"]}, "layer": "libraries"},
+    {"name": "Character Preset Framework", "match": {"uuids": ["4fa17abe-993c-4e7e-ab2a-e7370b166ac9"]}, "layer": "libraries"},
+    {"name": "Compatibility Framework", "match": {"uuids": ["67fbbd53-7c7d-4cfa-9409-6d737b4d92a9"]}, "layer": "late"},
+    {"name": "Appearance Edit Enhanced", "match": {"uuids": ["7b8366bd-abc1-4f9f-ba9d-585549b4a750"]}, "layer": "late"},
+    {"name": "Appearance Edit Origins", "match": {"uuids": ["60de8215-7e9f-4cb6-9763-05aa6aecf257"]}, "layer": "late"},
+    {
+      "name": "Better Inventory UI",
+      "match": {"uuids": ["6b585be8-ed73-7347-2c58-73146e22b7d4"]},
+      "after": [
+        {"name": "Better Containers", "match": {"uuids": ["621674a3-2366-a411-a746-0ff51b931d90"], "names": ["Better Containers"]}},
+        {"name": "BCPP", "match": {"names": ["BCPP", "Better Character and Party Panel"]}},
+        {"name": "Better Hotbar 2", "match": {"uuids": ["191c52f3-07bb-f83e-e1db-bb06ea262000"], "names": ["Better Hotbar"]}}
+      ],
+      "incompatible": [
+        {"name": "Shadow Sorcerer - Subclass", "match": {"names": ["Shadow Sorcerer"]}},
+        {"name": "Better Arrow Icons", "match": {"names": ["Better Arrow Icons"]}, "note": "the arrow icons overlap"}
+      ],
+      "note": "Install Better Inventory UI after Better Containers, BCPP and Better Hotbar 2.",
+      "source": "https://www.nexusmods.com/baldursgate3/mods/4597"
+    }
+  ]
+}

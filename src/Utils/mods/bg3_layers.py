@@ -5,9 +5,9 @@ sorter (``Utils.mods.bg3_sort.compute_layered_plan``) orders layers first to
 last, keeps the current order inside a layer, and lets collection order,
 dependencies and the user's Load Order Insights decisions override layers.
 
-The built-in table is plain data on purpose: add a known mod's meta.lsx UUID
-to ``KNOWN_MODS`` to pin it.  A user can also move any single mod to another
-layer from the sort preview; that choice is saved per profile.
+Known mods are pinned to a layer in ``bg3_known_rules.json`` (see
+``Utils.mods.bg3_known_rules``).  A user can also move any single mod to
+another layer from the sort preview; that choice is saved per profile.
 
 No Qt imports.
 """
@@ -42,31 +42,9 @@ LAYERS: tuple[Layer, ...] = (
 LAYER_INDEX = {layer.id: i for i, layer in enumerate(LAYERS)}
 LAYER_LABEL = {layer.id: layer.label for layer in LAYERS}
 
-# Well-known mods, by meta.lsx UUID (lowercase).  Checked before any
-# heuristic, after the user's own per-mod choice.
-KNOWN_MODS: dict[str, str] = {
-    # UI / script frameworks almost everything else builds on
-    "26922ba9-6018-5252-075d-7ff2ba6ed879": "frameworks",   # ImpUI (and P8 Fork)
-    "755a8a72-407f-4f0d-9a33-274ac0f0b53d": "frameworks",   # Mod Configuration Menu
-    # Libraries
-    "396c5966-09b0-40a1-af3f-93a5e9ce71c0": "libraries",    # Community Library
-    "f97b43be-7398-4ea5-8fe2-be7eb3d4b5ca": "libraries",    # VolitionCabinet
-    "5d1bd6cb-6361-45ef-b20c-d997acfba822": "libraries",    # AahzLib
-    "96bc14a7-733e-4bea-859d-3695d745efc1": "libraries",    # MazzleLib
-    "ad95bd1c-1a80-45fb-b73b-9eea1f8e58d0": "libraries",    # MazzleDocs
-    "2cba831e-bc5e-4ed5-b831-b5c4580b02b0": "libraries",    # Tag Framework
-    "07fbc2f1-f359-4b9d-b243-fe28bd783e4c": "libraries",    # Goon's Library
-    "fd03819b-cec2-c351-1680-81f1f1e52c76": "libraries",    # Vlad's Codex - VFX Library
-    "0dd5b581-c210-4956-ab96-7682fb519de5": "libraries",    # Vlad's Grimoire - VFX Library
-    "dd19db12-96c0-4bca-9ef6-e8d733801d23": "libraries",    # VFX Library SHV
-    "e6333436-9cf0-4464-aaf2-39246292575e": "libraries",    # AV Item Shipment Framework
-    "65e55feb-aada-4fec-821f-7d913e9b4d82": "libraries",    # DART Framework
-    "4fa17abe-993c-4e7e-ab2a-e7370b166ac9": "libraries",    # Character Preset Framework
-    # Must load after the mods they adjust
-    "67fbbd53-7c7d-4cfa-9409-6d737b4d92a9": "late",         # Compatibility Framework
-    "7b8366bd-abc1-4f9f-ba9d-585549b4a750": "late",         # Appearance Edit Enhanced
-    "60de8215-7e9f-4cb6-9763-05aa6aecf257": "late",         # Appearance Edit Origins
-}
+# Well-known mods (ImpUI, Mod Configuration Menu, Compatibility Framework…)
+# are pinned to layers in ``bg3_known_rules.json`` — one list for layer pins,
+# author load-order rules and known incompatibilities.
 
 # Nexus category (meta.ini ``categoryname``, casefolded) -> layer.
 NEXUS_CATEGORIES: dict[str, str] = {
@@ -145,7 +123,8 @@ def read_categories(mod_dir: Path) -> tuple[str, list[str]]:
 def classify(mod: str, recs: list[dict], category: str,
              modio_tags: list[str] | None = None,
              override: str | None = None,
-             looks_like_patch=None) -> tuple[str, str]:
+             looks_like_patch=None,
+             known_layer: str | None = None) -> tuple[str, str]:
     """(layer id, reason) for one mod folder.
 
     *recs* are the mod's pak records from ``bg3_pak_index.build_index``.
@@ -155,11 +134,9 @@ def classify(mod: str, recs: list[dict], category: str,
     """
     if override in LAYER_INDEX:
         return override, "your choice"
+    if known_layer in LAYER_INDEX:
+        return known_layer, "known mod"
     metas = [r["meta"] for r in recs if r.get("meta")]
-    for m in metas:
-        known = KNOWN_MODS.get(m["uuid"].lower())
-        if known:
-            return known, "known mod"
     if any(m.get("mod_type", "").lower() == "patch" for m in metas):
         return "patches", "meta.lsx says it is a patch"
     if looks_like_patch is not None and looks_like_patch(mod, recs):

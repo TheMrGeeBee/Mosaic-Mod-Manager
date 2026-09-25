@@ -37,7 +37,7 @@ from Utils.mods.modsettings import (
 )
 
 INDEX_FILENAME = "bg3_pak_index.json"
-_INDEX_VERSION = 5
+_INDEX_VERSION = 6
 _STATE_KEY = "bg3_load_insights"
 
 # Files that say nothing about what a mod overrides.
@@ -122,6 +122,59 @@ def _can_collide(path: str) -> bool:
     return True
 
 
+def _meta_root(meta_xml: str):
+    try:
+        return ET.fromstring(meta_xml)
+    except ET.ParseError:
+        try:
+            return ET.fromstring(_repair_meta_xml(meta_xml))
+        except ET.ParseError:
+            return None
+
+
+def _parse_dependency_versions(meta_xml: str) -> dict[str, str]:
+    """{dependency UUID: the minimum Version64 (or 32-bit Version) the
+    meta.lsx Dependencies block asks for}."""
+    root = _meta_root(meta_xml)
+    out: dict[str, str] = {}
+    if root is None:
+        return out
+    for node in root.iter("node"):
+        if node.get("id") != "Dependencies":
+            continue
+        for child in node.iter("node"):
+            if child.get("id") != "ModuleShortDesc":
+                continue
+            attrs = {a.get("id"): a.get("value") for a in child.iter("attribute")}
+            uuid = attrs.get("UUID")
+            version = attrs.get("Version64") or attrs.get("Version")
+            if uuid and version:
+                out[uuid] = version
+        break
+    return out
+
+
+def decode_version(value: str | int | None) -> tuple[int, int, int, int]:
+    """BG3 packed module version -> (major, minor, revision, build).
+
+    major = v>>55, minor = (v>>47)&0xFF, revision = (v>>31)&0xFFFF,
+    build = v&0x7FFFFFFF.  The legacy ``Version`` attribute uses the same
+    64-bit layout (see ``modsettings._version64_or_default``); 1 and
+    268435456 are historic encodings of 1.0.0.0.
+    """
+    try:
+        v = int(value or 0)
+    except (TypeError, ValueError):
+        return (0, 0, 0, 0)
+    if v in (1, 268435456):
+        return (1, 0, 0, 0)
+    return (v >> 55, (v >> 47) & 0xFF, (v >> 31) & 0xFFFF, v & 0x7FFFFFFF)
+
+
+def format_version(t: tuple[int, int, int, int]) -> str:
+    return ".".join(str(x) for x in t)
+
+
 def _parse_conflicts(meta_xml: str) -> list[str]:
     """UUIDs listed under meta.lsx's <node id="Conflicts">."""
     try:
@@ -190,6 +243,7 @@ def scan_pak(pak: Path) -> dict:
                 "is_override_only": ovr and not own,
                 "is_meta_only": _is_meta_only_pak(info.file_names),
                 "tags": _parse_tags(info.meta_xml),
+                "dependency_versions": _parse_dependency_versions(info.meta_xml),
             }
             rec["conflicts"] = _parse_conflicts(info.meta_xml)
 
@@ -283,13 +337,16 @@ def build_index(staging: Path, mod_names: list[str], cache_path: Path | None,
 # ---------------------------------------------------------------------------
 
 # How much each kind matters, for sorting the report.
-SEVERITY = {"declared_conflict": 3, "gui_state": 2, "ui_template": 2,
+SEVERITY = {"declared_conflict": 3, "known_incompatible": 3,
+            "outdated_dependency": 3, "gui_state": 2, "ui_template": 2,
             "stats_override": 2,
             "treasure_table": 2, "variant_group": 2, "same_file": 1,
             "identical": 0}
 
 KIND_LABELS = {
     "declared_conflict": "Declared incompatible (meta.lsx Conflicts)",
+    "known_incompatible": "Known incompatible (mod author)",
+    "outdated_dependency": "Needs a newer version of a dependency",
     "variant_group": "Variants of the same mod enabled together",
     "gui_state": "Replace the same UI screen",
     "ui_template": "Replace the same UI templates",
@@ -311,6 +368,7 @@ class Finding:
     # The winner declares a dependency on every loser: it's a patch built on
     # top of them, so the current order is the intended one.
     intended: bool = False
+    intended_by: str = ""        # "patch" | "author rule"
     # A mod whose name says it's a patch/compat mod and that overlaps these
     # mods — probably a patch whose author never declared the dependencies.
     # Only a suggestion: the user confirms with accept_patch().
@@ -427,8 +485,8 @@ def _winner(mods: list[str], rank: dict[str, int]) -> str | None:
 
 
 def analyse(enabled: list[ModEntry], index: dict[str, list[dict]],
-            staging: Path, manifest: list[dict] | None = None
-            ) -> tuple[list[Finding], dict[str, int]]:
+            staging: Path, manifest: list[dict] | None = None,
+            known=None) -> tuple[list[Finding], dict[str, int]]:
     """Group every overlap between two or more enabled mods into findings."""
     rank = compute_load_rank(enabled, index, manifest)
     priority = {e.name: i for i, e in enumerate(enabled)}   # 0 = top = wins
@@ -516,16 +574,84 @@ def analyse(enabled: list[ModEntry], index: dict[str, list[dict]],
                      "they are alternative files of the same mod."))
 
     deps = dependents_map(index)
+    known_after = {}
+    if known is not None:
+        known_after = {(first, then): (reason, source)
+                       for first, then, reason, source in known.edges}
     for f in findings:
         if f.winner:
             losers = [m for m in f.mods if m != f.winner]
-            f.intended = bool(losers) and all(
-                l in deps.get(f.winner, set()) for l in losers)
+            if losers and all(l in deps.get(f.winner, set()) for l in losers):
+                f.intended, f.intended_by = True, "patch"
+            elif losers and all((l, f.winner) in known_after for l in losers):
+                f.intended, f.intended_by = True, "author rule"
+                reason, source = known_after[(losers[0], f.winner)]
+                f.note = (f"{reason[0].upper()}{reason[1:]}."
+                          + (f" Source: {source}" if source else ""))
+            else:
+                against = [(f.winner, l) for l in losers if (f.winner, l) in known_after]
+                if against:
+                    reason, source = known_after[against[0]]
+                    f.note = (f"{reason[0].upper()}{reason[1:]}, but the current "
+                              "order does the opposite — Sort Load Order fixes "
+                              "it." + (f" Source: {source}" if source else ""))
+
+    if known is not None:
+        seen_pairs: set[frozenset] = set()
+        for mod, other, note, source in known.incompatible:
+            pair = frozenset((mod, other))
+            if mod not in priority or other not in priority or pair in seen_pairs:
+                continue
+            seen_pairs.add(pair)
+            findings.append(Finding(
+                kind="known_incompatible", mods=order([mod, other]),
+                keys=[note or "incompatible"], winner=None,
+                note=(f"The author of {mod} says it doesn't work with {other}"
+                      + (f": {note}" if note else "") + "."
+                      + (f" Source: {source}" if source else ""))))
+
+    findings.extend(_outdated_dependencies(index, priority, order))
 
     _suggest_patches(findings, index)
 
     findings.sort(key=lambda f: (f.intended, -f.severity, -len(f.keys), f.mods))
     return findings, rank
+
+
+def _outdated_dependencies(index, priority, order) -> list[Finding]:
+    """Enabled mods whose meta.lsx asks for a newer version of a dependency
+    than the one installed (idea from NexusMods.App's BG3 diagnostics)."""
+    installed: dict[str, tuple[str, tuple]] = {}
+    for mod, recs in index.items():
+        if mod not in priority:
+            continue
+        for r in recs:
+            meta = r.get("meta")
+            if meta:
+                v = meta.get("version64") or meta.get("version")
+                installed.setdefault(meta["uuid"], (mod, decode_version(v)))
+    out: list[Finding] = []
+    for mod, recs in index.items():
+        if mod not in priority:
+            continue
+        for r in recs:
+            meta = r.get("meta") or {}
+            for dep_uuid, need_raw in (meta.get("dependency_versions") or {}).items():
+                if dep_uuid not in installed:
+                    continue
+                dep_mod, have = installed[dep_uuid]
+                need = decode_version(need_raw)
+                if dep_mod != mod and have < need:
+                    name = meta.get("dependency_names", {}).get(dep_uuid) or dep_mod
+                    out.append(Finding(
+                        kind="outdated_dependency", mods=order([mod, dep_mod]),
+                        keys=[f"{name}: needs {format_version(need)}, "
+                              f"installed {format_version(have)}"],
+                        winner=None,
+                        note=(f"{mod} asks for {name} {format_version(need)} or "
+                              f"newer, but {dep_mod} is {format_version(have)}. "
+                              "Update it, or it may not work.")))
+    return out
 
 
 def _looks_like_patch(mod: str, recs: list[dict]) -> bool:
@@ -538,7 +664,8 @@ def _looks_like_patch(mod: str, recs: list[dict]) -> bool:
 def _suggest_patches(findings: list[Finding], index: dict[str, list[dict]]) -> None:
     """Mark findings where exactly one involved mod looks like a patch."""
     for f in findings:
-        if f.kind in ("identical", "declared_conflict", "variant_group") \
+        if f.kind in ("identical", "declared_conflict", "variant_group",
+                      "known_incompatible", "outdated_dependency") \
                 or f.intended:
             continue
         patches = [m for m in f.mods if _looks_like_patch(m, index.get(m, []))]
@@ -606,7 +733,9 @@ def compute_insights(game, profile_dir: Path, log_fn=None) -> Insights:
     index = build_index(staging, [e.name for e in enabled],
                         profile_dir / INDEX_FILENAME, log_fn=log_fn)
     manifest = read_manifest(profile_dir)
-    findings, rank = analyse(enabled, index, staging, manifest)
+    from Utils.mods import bg3_known_rules as K
+    known = K.resolve(K.load_rules(log_fn=log_fn), index, {e.name for e in enabled})
+    findings, rank = analyse(enabled, index, staging, manifest, known)
     state = read_rules(profile_dir)
     _apply_rule_status(findings, state["rules"], rank)
     ignored_ids = set(state["ignored"])

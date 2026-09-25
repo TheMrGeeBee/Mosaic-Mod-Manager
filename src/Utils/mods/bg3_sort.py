@@ -230,7 +230,8 @@ def apply_plan(plan: SortPlan) -> Path:
 # Layered sort ("Sort Load Order")
 # ---------------------------------------------------------------------------
 
-def compute_layered_plan(game, modlist_path: Path, log_fn=None) -> SortPlan:
+def compute_layered_plan(game, modlist_path: Path, log_fn=None,
+                         known_rules: dict | None = None) -> SortPlan:
     """Full load-order sort: layers (``Utils.mods.bg3_layers``) ordered first
     to last, the current order kept inside each layer, and — stronger than
     layers — dependencies and the user's Load Order Insights decisions.
@@ -273,11 +274,16 @@ def compute_layered_plan(game, modlist_path: Path, log_fn=None) -> SortPlan:
 
     deps = dependents_map(index)
     overrides = L.read_overrides(profile_dir)
+    from Utils.mods import bg3_known_rules as K
+    if known_rules is None:
+        known_rules = K.load_rules(log_fn=log_fn)
+    known = K.resolve(known_rules, index, {e.name for e in enabled})
     for mod in free:
         category, modio_tags = L.read_categories(staging / mod)
         plan.layers[mod] = L.classify(
             mod, index.get(mod, []), category, modio_tags,
-            overrides.get(mod), _looks_like_patch)
+            overrides.get(mod), _looks_like_patch,
+            known_layer=known.layer_pins.get(mod, (None, ""))[0])
 
     # Hard edges (a -> b: a loads before b).  Dependencies first; then saved
     # decisions (loser before winner), skipped when they'd contradict a
@@ -315,6 +321,20 @@ def compute_layered_plan(game, modlist_path: Path, log_fn=None) -> SortPlan:
             why[(l, w)] = (f"you chose: loads after {l}"
                            if r.get("reason") == "load_after"
                            else f"your decision: wins over {l}")
+    # Known author rules: weaker than dependencies and the user's own
+    # decisions (skipped, and reported, when they'd contradict one), stronger
+    # than layers.
+    for first, then, reason, _source in known.edges:
+        if first in free_set and then in free_set and first != then:
+            if then in after[first]:
+                continue
+            if reaches(then, first):
+                plan.unresolved.append(
+                    f"{reason[0].upper()}{reason[1:]} — skipped: it conflicts "
+                    "with a dependency or one of your decisions")
+                continue
+            after[first].add(then); before[then].add(first)
+            why[(first, then)] = reason
 
     def key(m: str):
         return (L.LAYER_INDEX[plan.layers[m][0]], rank[m], modlist_pos.get(m, 0), m)
@@ -369,6 +389,13 @@ def compute_layered_plan(game, modlist_path: Path, log_fn=None) -> SortPlan:
             text = f"{L.LAYER_LABEL[layer]} ({reason})"
             if delayed.get(e.name):
                 text += f"; later than its layer: {delayed[e.name]}"
+            else:
+                # Inside its layer a mod can still move because of an author
+                # rule or a decision — name it (dependencies are self-evident).
+                ruled = [why[(p, e.name)] for p in before[e.name]
+                         if not why.get((p, e.name), "").startswith("depends on")]
+                if ruled:
+                    text += f"; {ruled[0]}"
             plan.moves.append(SortMove(name=e.name,
                                        old_index=modlist_pos[e.name],
                                        new_index=i, reason=text, layer=layer))
