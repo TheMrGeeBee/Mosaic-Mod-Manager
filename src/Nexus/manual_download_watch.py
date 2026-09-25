@@ -73,7 +73,32 @@ def should_fallback_to_browser(result) -> bool:
     (401): neither is fixed by opening a browser, and for a bad key in
     particular, falling back anyway would replace one clear, actionable
     error with a browser tab (or a whole collection's worth of them)."""
-    return (not result.success) and result.status_code not in (401, 429)
+    return ((not result.success) and result.status_code not in (401, 429)
+            and not is_transient_failure(result))
+
+
+# Wording of the errors NexusAPI raises for a dropped connection / timeout
+# (both arrive with status_code 0, like an empty-links response, so the text
+# is what tells them apart).
+_TRANSIENT_ERROR_MARKERS = ("connection failed", "timed out")
+
+
+def is_transient_failure(result) -> bool:
+    """True for a failed download that is likely to work if simply tried again:
+    a dropped connection, a timeout, or a Nexus server error (5xx / 408).
+
+    Opening a browser for these is wrong — a network blip would open one tab
+    per mod of a collection and each would wait up to 15 minutes — so callers
+    retry with a delay instead (see the collection installer)."""
+    if result.success:
+        return False
+    code = int(getattr(result, "status_code", 0) or 0)
+    if code == 408 or 500 <= code <= 599:
+        return True
+    if code == 0:
+        error = (getattr(result, "error", "") or "").lower()
+        return any(marker in error for marker in _TRANSIENT_ERROR_MARKERS)
+    return False
 
 
 def _expected_size(f) -> int:

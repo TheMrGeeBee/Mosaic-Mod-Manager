@@ -51,7 +51,8 @@ from Nexus.nexus_download import (
     DownloadResult, _find_cached_archive, delete_archive_and_sidecar,
     _get_downloads_dir, _md5_matches)
 from Nexus.nexus_meta import build_meta_from_download
-from Nexus.manual_download_watch import start_manual_install, should_fallback_to_browser
+from Nexus.manual_download_watch import (
+    start_manual_install, should_fallback_to_browser, is_transient_failure)
 from Utils.xdg import open_url as _open_browser_url
 
 
@@ -582,6 +583,33 @@ def cleanup_cancelled_install(game, profile_dir: "Path | None", *,
             log_fn(f"Cancel: failed to clear download cache: {exc}")
 
 
+# Delays before each retry of a transiently failed download (a dropped
+# connection, a timeout, a Nexus 5xx). Three retries span ~45 s, enough to ride
+# out a network blip without stalling the batch for long.
+DOWNLOAD_RETRY_DELAYS = (3.0, 10.0, 30.0)
+
+
+def download_with_retry(call, stop_event, log_fn=_noop, label: str = "",
+                        delays=None):
+    """Run ``call()`` (a download returning a DownloadResult) and retry it after
+    each delay while it fails *transiently*. Anything else — success, a real
+    refusal (403/404, rate limit, bad key), a cancel — returns immediately, so
+    the browser fallback still sees the original result. ``stop_event`` ends the
+    wait early when the install is cancelled."""
+    delays = DOWNLOAD_RETRY_DELAYS if delays is None else delays
+    result = call()
+    for attempt, delay in enumerate(delays, start=1):
+        if (result is None or result.success or stop_event.is_set()
+                or not is_transient_failure(result)):
+            break
+        log_fn(f"Collection install: '{label}' download failed ({result.error}) — "
+               f"retry {attempt}/{len(delays)} in {delay:g}s")
+        if stop_event.wait(delay):
+            break
+        result = call()
+    return result
+
+
 # ---------------------------------------------------------------------------
 # Orchestrator
 # ---------------------------------------------------------------------------
@@ -1077,12 +1105,14 @@ def run_collection_install(
 
         try:
             if result is None:
-                result = downloader.download_file(
-                    game_domain=mod_domain, mod_id=mod.mod_id, file_id=mod.file_id,
-                    progress_cb=_progress_cb, cancel=_col_stop,
-                    known_file_name=mod.file_name or "",
-                    expected_size_bytes=_exp_size,
-                    dest_dir=get_download_cache_dir_for_game(getattr(game, "name", "") or ""))
+                result = download_with_retry(
+                    lambda: downloader.download_file(
+                        game_domain=mod_domain, mod_id=mod.mod_id, file_id=mod.file_id,
+                        progress_cb=_progress_cb, cancel=_col_stop,
+                        known_file_name=mod.file_name or "",
+                        expected_size_bytes=_exp_size,
+                        dest_dir=get_download_cache_dir_for_game(getattr(game, "name", "") or "")),
+                    _col_stop, log, mod.mod_name or mod.file_name or "")
         except Exception as exc:
             import traceback as _tb
             log(f"Collection install: download exception for '{mod.mod_name}' "
