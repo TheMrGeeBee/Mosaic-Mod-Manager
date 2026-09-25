@@ -610,6 +610,42 @@ def download_with_retry(call, stop_event, log_fn=_noop, label: str = "",
     return result
 
 
+def verify_download_md5(result, expected_md5: str, redownload=None,
+                        log_fn=_noop, label: str = ""):
+    """Check a freshly downloaded archive against the collection's md5.
+
+    Returns *result* unchanged when it matches, or when there is nothing to
+    check (no md5 in the manifest, a failed result, a cache hit that was already
+    matched by md5/sidecar). On a mismatch the bad archive is deleted and, if
+    *redownload* is given, fetched once more; a second mismatch (or a failed
+    re-download) returns a failed DownloadResult that says so. Without this a
+    truncated or corrupted archive installs silently and shows up later as a
+    missing file or a broken plugin.
+    """
+    expected = (expected_md5 or "").strip().lower()
+    if (not expected or result is None or not result.success
+            or not result.file_path or result.from_cache):
+        return result
+    if _md5_matches(Path(result.file_path), expected):
+        return result
+    log_fn(f"Collection install: '{label}' downloaded archive failed its md5 check "
+           f"({Path(result.file_path).name}) — deleting it"
+           + (" and downloading again" if redownload else ""))
+    delete_archive_and_sidecar(Path(result.file_path))
+    retry = redownload() if redownload is not None else None
+    if (retry is not None and retry.success and retry.file_path
+            and _md5_matches(Path(retry.file_path), expected)):
+        log_fn(f"Collection install: '{label}' re-downloaded and verified.")
+        return retry
+    if retry is not None and retry.success and retry.file_path:
+        delete_archive_and_sidecar(Path(retry.file_path))
+    return DownloadResult(
+        success=False, game_domain=result.game_domain, mod_id=result.mod_id,
+        file_id=result.file_id, status_code=429,     # 429: a browser fallback would not help
+        error="The downloaded file failed its checksum twice (corrupt or truncated "
+              "download). Try this mod again later.")
+
+
 # ---------------------------------------------------------------------------
 # Orchestrator
 # ---------------------------------------------------------------------------
@@ -1176,6 +1212,19 @@ def run_collection_install(
                     mod_id=mod.mod_id, file_id=mod.file_id)
                 log(f"Collection install: '{mod.mod_name}' — manual browser "
                     f"download completed, continuing install.")
+
+        # A freshly downloaded archive must match the collection's md5 (cache
+        # hits were matched by sidecar/md5 already). One re-download on mismatch.
+        result = verify_download_md5(
+            result,
+            (idx.file_id_to_md5.get(mod.file_id, "")
+             or (getattr(mod, "md5", "") or "")),
+            redownload=lambda: downloader.download_file(
+                game_domain=mod_domain, mod_id=mod.mod_id, file_id=mod.file_id,
+                progress_cb=_progress_cb, cancel=_col_stop,
+                known_file_name=mod.file_name or "", expected_size_bytes=_exp_size,
+                dest_dir=get_download_cache_dir_for_game(getattr(game, "name", "") or "")),
+            log_fn=log, label=mod.mod_name or mod.file_name or "")
 
         mod_size = getattr(mod, "size_bytes", 0) or 0
         if mod_size > 0 and state.per_mod_prev.get(mod.file_id, 0) == 0:
