@@ -498,6 +498,59 @@ class CollectionInstallControl:
     # user already downloaded by hand (and that got auto-installed from
     # cache) doesn't get reported as still missing.
     unresolved_offsite: "list[tuple[str, str]]" = field(default_factory=list)
+    # Mods that did NOT end up in the profile after a clean finish, as
+    # ``build_install_report`` failure dicts (name, mod_id, file_id, status,
+    # detail). Read by the app to show a dialog instead of a log-only line.
+    failed_mods: "list[dict]" = field(default_factory=list)
+
+
+INSTALL_REPORT_NAME = "install_report.json"
+
+# Plain-language reasons for the outcome statuses the pipeline records.
+_STATUS_TEXT = {
+    "download_failed": "download failed",
+    "install_failed": "install failed",
+    "deferred": "waiting on a FOMOD/BAIN choice that never completed",
+    "unknown": "did not finish installing",
+}
+
+
+def build_install_report(missing, *, total: int, slug: str = "",
+                         revision: "int | None" = None) -> dict:
+    """The end-of-install report: which mods are not in the profile and why.
+
+    *missing* is the audit's list of ``(name, mod_id, file_id, status, detail)``.
+    """
+    failed = []
+    for name, mod_id, file_id, status, detail in missing:
+        failed.append({
+            "name": str(name), "mod_id": int(mod_id or 0), "file_id": int(file_id or 0),
+            "status": str(status),
+            "reason": (str(detail).strip() or _STATUS_TEXT.get(str(status), str(status))),
+        })
+    return {"collection": slug, "revision": revision, "total": int(total),
+            "failed_count": len(failed), "failed": failed}
+
+
+def write_install_report(profile_dir: "Path | None", report: dict) -> "Path | None":
+    """Save *report* as ``install_report.json`` in the profile (atomically);
+    returns the path, or None if it couldn't be written. A clean install removes
+    a stale report from an earlier run."""
+    if profile_dir is None or not Path(profile_dir).is_dir():
+        return None
+    import json
+    import os
+    target = Path(profile_dir) / INSTALL_REPORT_NAME
+    try:
+        if not report.get("failed"):
+            target.unlink(missing_ok=True)
+            return None
+        tmp = target.with_name(target.name + ".tmp")
+        tmp.write_text(json.dumps(report, indent=2), encoding="utf-8")
+        os.replace(tmp, target)
+        return target
+    except OSError:
+        return None
 
 
 # ---------------------------------------------------------------------------
@@ -1946,6 +1999,12 @@ def run_collection_install(
                                      getattr(mod, "mod_id", 0) or 0, fid,
                                      oc.get("status", "unknown"),
                                      oc.get("detail", "")))
+            _report = build_install_report(
+                _missing, total=len([m for m in ordered_mods if getattr(m, "file_id", 0)]),
+                slug=collection_slug, revision=revision_number)
+            write_install_report(profile_dir, _report)
+            if control is not None:
+                control.failed_mods = list(_report["failed"])
             if _missing:
                 log(f"⚠ Collection install: {len(_missing)} mod(s) did NOT install "
                     f"and are missing from the profile:")

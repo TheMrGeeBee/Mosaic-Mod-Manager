@@ -4447,6 +4447,8 @@ class MainWindow(QMainWindow):
                                      "unresolved_offsite", None)
             if _still_missing is not None:
                 self._col_offsite = list(_still_missing)
+        # Mods that did not end up in the profile (the audit's structured list).
+        self._col_failed = list(getattr(self._col_install_control, "failed_mods", None) or [])
         self._col_install_control = None
         # A detached-wizard staging job may have been held off while this
         # collection install ran (see _run_staged_finish guard) — drain it now.
@@ -4563,8 +4565,10 @@ class MainWindow(QMainWindow):
             QTimer.singleShot(1500, self._dismiss_col_overlay)
         self._select_installed_collection_profile(profile_name)
         msg = self.tr("Collection installed — {0}/{1} mod(s)").format(installed, total)
-        self._notify(msg + (self.tr(" ({0} skipped)").format(skipped_n) if skipped_n else ""), "success")
-        self._show_offsite_reminder()
+        self._notify(msg + (self.tr(" ({0} skipped)").format(skipped_n) if skipped_n else ""),
+                     "warning" if getattr(self, "_col_failed", None) else "success")
+        # Failed mods first (they need action), then the off-site reminder.
+        self._show_failed_mods_report(then=self._show_offsite_reminder)
 
     # ---- Import profile: local-bundle extraction -------------------------
     def _finish_import_bundle(self, bundle_zip, profile_name, ov,
@@ -4621,6 +4625,30 @@ class MainWindow(QMainWindow):
         self._notify(msg + (self.tr(" ({0} skipped)").format(skipped_n) if skipped_n else ""),
                      "success")
         self._show_offsite_reminder()
+
+    def _show_failed_mods_report(self, then=None):
+        """Post-install: name every mod that did NOT end up in the profile and
+        why (the audit used to be a log line only), then run *then()*. The full
+        list is also saved as install_report.json in the profile."""
+        failed = list(getattr(self, "_col_failed", None) or [])
+        self._col_failed = []
+        if not failed:
+            if then is not None:
+                then()
+            return
+        from gui_qt.overlays.confirm_overlay import ConfirmOverlay
+        shown = "\n".join(f"• {f['name']} — {f['reason']}" for f in failed[:10])
+        if len(failed) > 10:
+            shown += "\n" + self.tr("…and {0} more").format(len(failed) - 10)
+        ConfirmOverlay.show_over(
+            self, self.tr("{0} mod(s) did not install").format(len(failed)),
+            self.tr("These mods are not in the profile:\n\n{0}\n\nNothing was rolled "
+                    "back. Press Install on the collection again and choose Continue to "
+                    "retry them; the full list is in install_report.json inside the "
+                    "profile folder.").format(shown),
+            lambda _r, t=then: t() if t is not None else None,
+            confirm_label=self.tr("OK"), cancel_label=None, danger=False,
+            card_h=min(280 + 20 * min(len(failed), 10), 520))
 
     def _show_offsite_reminder(self):
         """Post-install reminder: the collection lists off-site mods that the
