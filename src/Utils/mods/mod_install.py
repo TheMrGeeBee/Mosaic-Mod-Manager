@@ -1284,6 +1284,10 @@ def prepare_archive(archive_path: str, game, profile_dir: Path, *,
                                prebuilt_meta=prebuilt_meta,
                                on_need_prefix=on_need_prefix)
     prepared._tmp_reserved = tmp_reserved
+    # A FOMOD was found but its ModuleConfig.xml would not parse: it installs
+    # verbatim and must NOT be probed as a BAIN package instead (the collection
+    # installer's BAIN branch checks this — see install_collection_archive).
+    prepared.fomod_parse_failed = fomod_result is not None and config is None
     if fomod_base is not None:
         prepared.saved_fomod_selections = _read_saved_fomod_selections(
             game, mod_name, log_fn, profile_dir=profile_dir)
@@ -2049,7 +2053,11 @@ def install_collection_archive(
                     is_fomod_install = False
 
         # ---- BAIN ---------------------------------------------------------
-        elif getattr(game, "supports_bain", True):
+        elif (getattr(game, "supports_bain", True)
+              and not getattr(prepared, "fomod_parse_failed", False)):
+            # (Not for a FOMOD whose config failed to parse: prepare_archive
+            # keeps BAIN mutually exclusive with FOMOD, and this branch used to
+            # ignore that, sending such an archive to the BAIN picker.)
             from Utils.installers.bain_installer import (
                 detect_bain, resolve_bain_files, bain_unwrap_single_folder)
             bain_root = bain_unwrap_single_folder(str(prepared.extract_dir))
