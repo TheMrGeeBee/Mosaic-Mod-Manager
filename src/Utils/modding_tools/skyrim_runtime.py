@@ -187,8 +187,83 @@ def load_transition(swap_dir: "str | Path", *, verify_patches: bool = True) -> T
 
 # ---- discovery -----------------------------------------------------------------
 
+HPATCHZ_VERSION = "5.1.3"
+HPATCHZ_ZIP_URL = ("https://github.com/sisong/HDiffPatch/releases/download/"
+                   f"v{HPATCHZ_VERSION}/hdiffpatch_v{HPATCHZ_VERSION}_bin_linux64.zip")
+# SHA-256 of that exact release zip — a download that differs is never run.
+HPATCHZ_ZIP_SHA256 = "628963bf2ee9108a97260fa5eef44acd9ec94369b76090a957c9182b3abbb558"
+_HPATCHZ_MEMBER = "linux64/hpatchz"          # statically linked, MIT licensed
+
+
+def managed_hpatchz_path() -> Path:
+    """Where Mosaic keeps its own copy of hpatchz (used when none is on PATH)."""
+    from Utils.config_paths import get_config_dir
+    return get_config_dir() / "bin" / f"hpatchz-{HPATCHZ_VERSION}"
+
+
 def find_hpatchz() -> str | None:
-    return shutil.which("hpatchz")
+    """hpatchz on PATH (the AppImage bundles one), else Mosaic's managed copy."""
+    found = shutil.which("hpatchz")
+    if found:
+        return found
+    managed = managed_hpatchz_path()
+    return str(managed) if managed.is_file() and os.access(managed, os.X_OK) else None
+
+
+def _download_bytes(url: str) -> bytes:
+    import urllib.request
+    from Utils.ca_bundle import get_ssl_context
+    req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+    with urllib.request.urlopen(req, timeout=60, context=get_ssl_context()) as resp:
+        return resp.read()
+
+
+def ensure_hpatchz(
+    *,
+    fetch: Callable[[str], bytes] = _download_bytes,
+    log_fn: Callable[[str], None] = _noop,
+) -> str:
+    """Path to a usable hpatchz, downloading Mosaic's managed copy if there is none.
+
+    The download is the upstream HDiffPatch release zip, accepted only if its
+    SHA-256 matches :data:`HPATCHZ_ZIP_SHA256`. Raises :class:`RuntimeSwapError`
+    (with a manual-install hint) if it can't be obtained.
+    """
+    found = find_hpatchz()
+    if found:
+        return found
+    import platform
+    if platform.system() != "Linux" or platform.machine() not in ("x86_64", "AMD64"):
+        raise RuntimeSwapError(_INSTALL_HPATCHZ)
+    log_fn(f"Runtime swap: downloading hpatchz {HPATCHZ_VERSION} …")
+    try:
+        blob = fetch(HPATCHZ_ZIP_URL)
+    except Exception as exc:                    # noqa: BLE001 — any network failure is the same to the user
+        raise RuntimeSwapError(f"Couldn't download hpatchz ({exc}). {_INSTALL_HPATCHZ}") from exc
+    if hashlib.sha256(blob).hexdigest() != HPATCHZ_ZIP_SHA256:
+        raise RuntimeSwapError(
+            "The downloaded hpatchz didn't match its expected checksum, so it was not used. "
+            + _INSTALL_HPATCHZ)
+    import io
+    import zipfile
+    try:
+        with zipfile.ZipFile(io.BytesIO(blob)) as zf:
+            data = zf.read(_HPATCHZ_MEMBER)
+    except (zipfile.BadZipFile, KeyError) as exc:
+        raise RuntimeSwapError(f"The downloaded hpatchz archive was unreadable ({exc!r}).") from exc
+    dest = managed_hpatchz_path()
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    tmp = dest.with_name(dest.name + ".part")
+    try:
+        tmp.write_bytes(data)
+        tmp.chmod(0o755)
+        os.replace(tmp, dest)
+    except OSError as exc:
+        raise RuntimeSwapError(f"Couldn't save hpatchz ({exc}). {_INSTALL_HPATCHZ}") from exc
+    finally:
+        tmp.unlink(missing_ok=True)
+    log_fn(f"Runtime swap: hpatchz saved to {dest}")
+    return str(dest)
 
 
 def read_runtime_version(game_root: "str | Path") -> Version | None:

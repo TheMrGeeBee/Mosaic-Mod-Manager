@@ -396,3 +396,84 @@ def test_revert_refuses_while_deployed(game_root, state_dir, transition):
     (game_root / "Data" / ".mm_deployed").write_bytes(b"")
     with pytest.raises(sr.RuntimeSwapError, match="Restore the game first"):
         sr.revert_transition(game_root, state_dir)
+
+
+# ---- hpatchz discovery / managed download --------------------------------------
+
+def _fake_hpatchz_zip(member: str = "linux64/hpatchz") -> bytes:
+    import io
+    import zipfile
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as zf:
+        zf.writestr(member, b"#!/bin/sh\necho fake hpatchz\n")
+    return buf.getvalue()
+
+
+@pytest.fixture
+def no_system_hpatchz(tmp_path, monkeypatch):
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
+    monkeypatch.setattr(sr.shutil, "which", lambda _name: None)
+    monkeypatch.setattr("platform.system", lambda: "Linux")
+    monkeypatch.setattr("platform.machine", lambda: "x86_64")
+
+
+def test_ensure_hpatchz_prefers_the_one_on_path(monkeypatch):
+    monkeypatch.setattr(sr.shutil, "which", lambda _name: "/usr/bin/hpatchz")
+
+    def boom(_url):
+        raise AssertionError("must not download when hpatchz is on PATH")
+
+    assert sr.ensure_hpatchz(fetch=boom) == "/usr/bin/hpatchz"
+
+
+def test_ensure_hpatchz_downloads_verifies_and_installs_once(no_system_hpatchz, monkeypatch):
+    blob = _fake_hpatchz_zip()
+    monkeypatch.setattr(sr, "HPATCHZ_ZIP_SHA256", _sha(blob))
+    urls: list[str] = []
+
+    def fetch(url):
+        urls.append(url)
+        return blob
+
+    path = Path(sr.ensure_hpatchz(fetch=fetch))
+    assert path == sr.managed_hpatchz_path() and path.is_file()
+    assert os.access(path, os.X_OK) and path.read_bytes().startswith(b"#!/bin/sh")
+    assert urls == [sr.HPATCHZ_ZIP_URL]
+    assert not list(path.parent.glob("*.part"))
+    # Second call finds the managed copy and does not download again.
+    assert sr.ensure_hpatchz(fetch=fetch) == str(path)
+    assert len(urls) == 1
+    assert sr.find_hpatchz() == str(path)
+
+
+def test_ensure_hpatchz_refuses_a_download_with_the_wrong_checksum(no_system_hpatchz):
+    with pytest.raises(sr.RuntimeSwapError, match="expected checksum"):
+        sr.ensure_hpatchz(fetch=lambda _u: _fake_hpatchz_zip())
+    assert not sr.managed_hpatchz_path().exists()
+    assert sr.find_hpatchz() is None
+
+
+def test_ensure_hpatchz_reports_network_failure_with_an_install_hint(no_system_hpatchz):
+    def offline(_url):
+        raise OSError("network unreachable")
+
+    with pytest.raises(sr.RuntimeSwapError, match=r"network unreachable.*hdiffpatch-bin"):
+        sr.ensure_hpatchz(fetch=offline)
+
+
+def test_ensure_hpatchz_rejects_a_zip_without_the_binary(no_system_hpatchz, monkeypatch):
+    blob = _fake_hpatchz_zip(member="other/thing")
+    monkeypatch.setattr(sr, "HPATCHZ_ZIP_SHA256", _sha(blob))
+    with pytest.raises(sr.RuntimeSwapError, match="unreadable"):
+        sr.ensure_hpatchz(fetch=lambda _u: blob)
+    assert not sr.managed_hpatchz_path().exists()
+
+
+def test_ensure_hpatchz_does_not_download_on_unsupported_platforms(no_system_hpatchz, monkeypatch):
+    monkeypatch.setattr("platform.machine", lambda: "aarch64")
+
+    def boom(_url):
+        raise AssertionError("must not download an x86-64 binary on aarch64")
+
+    with pytest.raises(sr.RuntimeSwapError, match="hpatchz was not found"):
+        sr.ensure_hpatchz(fetch=boom)
