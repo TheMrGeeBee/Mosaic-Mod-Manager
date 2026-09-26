@@ -169,7 +169,7 @@ class CreateCollectionView(QWidget):
 
     def _fetch_my_collections(self):
         try:
-            cols = self._api.get_my_collections()
+            cols = self._api.get_all_my_collections()
         except Exception as exc:
             self._log(f"[collection] could not list your collections: {exc}")
             cols = []

@@ -3227,7 +3227,7 @@ mutation CreateOrUpdateRevision($payload: CollectionPayload!,
         moderation and adult content) first.
         """
         try:
-            mine = self.get_my_collections()
+            mine = self.get_all_my_collections()
         except Exception as exc:
             app_log(f"get_collection_status: myCollections failed: {exc}")
             return "unknown"
@@ -3277,9 +3277,14 @@ query MyCollections($count: Int, $offset: Int) {
   }
 }"""
 
-    def get_my_collections(self, count: int = 50,
-                           offset: int = 0) -> "list[MyCollection]":
-        """Collections owned by the signed-in user, drafts and unlisted included."""
+    def get_my_collections(self, count: int = 50, offset: int = 0,
+                           raise_errors: bool = False) -> "list[MyCollection]":
+        """One page of the signed-in user's collections, drafts and unlisted
+        included. Use get_all_my_collections() for the whole set.
+
+        By default a lookup failure is logged and returns [] — with
+        ``raise_errors`` it propagates instead, so a paging caller can tell a
+        failed page from the end of the list."""
         try:
             resp = self._post_graphql(
                 self._MY_COLLECTIONS_QUERY,
@@ -3296,6 +3301,8 @@ query MyCollections($count: Int, $offset: Int) {
             raise
         except Exception as exc:
             app_log(f"get_my_collections error: {exc}")
+            if raise_errors:
+                raise
             return []
 
         out: "list[MyCollection]" = []
@@ -3340,6 +3347,21 @@ query MyCollections($count: Int, $offset: Int) {
                 updated_at=n.get("updatedAt", "") or "",
                 revisions=revisions,
             ))
+        return out
+
+    def get_all_my_collections(self, page_size: int = 50,
+                               max_pages: int = 100) -> "list[MyCollection]":
+        """Every collection the signed-in user owns, paged by offset until a
+        short page comes back. Raises on a failed page rather than returning a
+        truncated list — a partial list would make get_collection_status call
+        an older draft "missing"."""
+        out: "list[MyCollection]" = []
+        for page in range(max_pages):
+            batch = self.get_my_collections(
+                count=page_size, offset=page * page_size, raise_errors=True)
+            out.extend(batch)
+            if len(batch) < page_size:
+                break
         return out
 
     def get_collection_categories(self) -> "list[tuple[int, str]]":
