@@ -304,87 +304,92 @@ jobs:
           echo "appimage_zip=${APPIMAGE_ZIP}" >> "$GITHUB_OUTPUT"
           echo "flatpak_zip=${FLATPAK_ZIP}" >> "$GITHUB_OUTPUT"
 
-      # This action has no stable release yet (only v1.0.0-beta.N point
-      # tags as of writing) — pinned to the latest available rather than a
-      # floating @v1/@main tag.
+      # Uploads go through .github/scripts/nexus_upload.py instead of
+      # Nexus-Mods/upload-action (which we used through v1.5.1). Same API flow,
+      # but the script also names the version being replaced
+      # (previous_version_id) — the action never sent it, and without it Nexus
+      # left the old Main file as "Old version" instead of archiving it, so it
+      # was archived by hand after every release. The script checks the result
+      # afterwards and prints a ::warning:: if the old version is not Archived.
+      # "Allow mod manager download" is always sent as off (Nexus defaults it
+      # to on, and it was unticked by hand after every release).
+      # Tested against a mock API: tests/test_nexus_upload.py.
+      #
+      # ARCHIVE_AND_CHANGELOG: on a tag push this is always on: the input's
+      # declared default (true) is only applied by a real workflow_dispatch, and
+      # a push has no `inputs` values, so `inputs.nexus_changelog_and_archive` is
+      # null there. Don't write `!= false` instead: GitHub expressions compare
+      # null and false as equal (both coerce to 0), so that was false on every
+      # push and skipped the changelog and the archive step on v1.1.0 through
+      # v1.4.0. Only an explicit dispatch-time `false` opts out.
+      #
+      # The changelog is a mod-level entry and AppImage and Flatpak share ONE
+      # Nexus mod page, so only the AppImage step attaches it; posting it from
+      # both would just repeat the text. The Flatpak step attaches it only when
+      # the AppImage step was skipped this run (e.g. a Flatpak-only retry), so a
+      # changelog is never silently dropped and never posted twice. Left out
+      # entirely when nexus_changelog_and_archive is off (e.g. a partial retry
+      # while NEXUS_MOD_ID is broken, or the changelog was already added by hand).
+      #
+      # NEXUS_MOD_ID must be the v3 COMPOSITE UID (9856949946459), NOT the
+      # 2139 from the mod page URL. The v3 API's /mods/{id} endpoints key off
+      # (numeric_game_id << 32) | game_scoped_id — here
+      # (2295 << 32) | 2139, game 2295 being the "site" domain. The same
+      # scheme our own client uses (Nexus/nexus_api.py get_mods_batch,
+      # which stringifies uids for /mods/batch); Nexus's OpenAPI types the
+      # path param as a STRING "unique identifier for the mod" precisely
+      # because a uid overflows 32 bits.
+      # Setting this to the URL id makes every release fail the changelog
+      # step with `404 Mod not found: 2139` AFTER the file itself has
+      # already uploaded — so the retry then needs
+      # skip_appimage_nexus_upload=true to avoid a duplicate file version.
+      # That cost v1.0.5 and v1.0.6 a failed run each. Resolve the uid for
+      # any mod with:
+      #   curl -s https://api.nexusmods.com/v2/graphql \
+      #     -H 'Content-Type: application/json' \
+      #     -d '{"query":"query M($ids:[CompositeDomainWithIdInput!]!){legacyModsByDomain(ids:$ids){nodes{uid}}}","variables":{"ids":[{"gameDomain":"site","modId":2139}]}}'
+      # File-slot ids (NEXUS_*_FILE_ID) are v3-native and need NO conversion.
       - name: Upload AppImage to Nexus
         if: ${{ !inputs.skip_appimage_nexus_upload }}
-        uses: Nexus-Mods/upload-action@v1.0.0-beta.10
-        with:
-          api_key: ${{ secrets.NEXUSMODS_API_KEY }}
-          file_id: ${{ vars.NEXUS_APPIMAGE_FILE_ID }}
-          filename: ${{ steps.zip.outputs.appimage_zip }}
-          # Defaults to the zip's raw basename (e.g.
-          # MosaicModManager-1.0.0-x86_64.AppImage.zip) if unset — set
-          # explicitly for a readable Files-tab label.
-          display_name: "Mosaic Mod Manager - AppImage"
-          version: ${{ steps.nexus.outputs.version }}
-          category: main
-          update_mod_version: true
-          # Moves the previous Main-files version into the Files tab's
-          # "Archived files" section — was a manual step before this.
-          #
-          # On a tag push this is always on: this input's declared default
-          # (true) is only applied by a real workflow_dispatch, and a push has
-          # no `inputs` values, so `inputs.nexus_changelog_and_archive` is null
-          # there. Don't write `!= false` instead: GitHub expressions compare
-          # null and false as equal (both coerce to 0), so that was false on
-          # every push and skipped the changelog and the archive step on
-          # v1.1.0 through v1.4.0. Only an explicit dispatch-time `false` opts out.
-          archive_existing_version: ${{ github.event_name == 'push' || inputs.nexus_changelog_and_archive }}
-          # changelog requires mod_id. AppImage and Flatpak share ONE Nexus
-          # mod page — the changelog is a mod-level entry, not a per-file one,
-          # so only this step (not the Flatpak step below) attaches it; doing
-          # it from both steps would just post the same changelog text twice.
-          # Left empty when nexus_changelog_and_archive is off (e.g. a partial
-          # retry while NEXUS_MOD_ID is broken, or the changelog was already
-          # added by hand) — mod_id: '' is accepted by the action as "no
-          # changelog requested".
-          #
-          # NEXUS_MOD_ID must be the v3 COMPOSITE UID (9856949946459), NOT the
-          # 2139 from the mod page URL. This action talks to
-          # api.nexusmods.com/v3, whose /mods/{id} endpoints key off
-          # (numeric_game_id << 32) | game_scoped_id — here
-          # (2295 << 32) | 2139, game 2295 being the "site" domain. The same
-          # scheme our own client uses (Nexus/nexus_api.py get_mods_batch,
-          # which stringifies uids for /mods/batch); Nexus's OpenAPI types the
-          # path param as a STRING "unique identifier for the mod" precisely
-          # because a uid overflows 32 bits.
-          # Setting this to the URL id makes every release fail the changelog
-          # step with `404 Mod not found: 2139` AFTER the file itself has
-          # already uploaded — so the retry then needs
-          # skip_appimage_nexus_upload=true to avoid a duplicate file version.
-          # That cost v1.0.5 and v1.0.6 a failed run each. Resolve the uid for
-          # any mod with:
-          #   curl -s https://api.nexusmods.com/v2/graphql \
-          #     -H 'Content-Type: application/json' \
-          #     -d '{"query":"query M($ids:[CompositeDomainWithIdInput!]!){legacyModsByDomain(ids:$ids){nodes{uid}}}","variables":{"ids":[{"gameDomain":"site","modId":2139}]}}'
-          # File-slot ids (file_id above) are v3-native and need NO conversion.
-          mod_id: ${{ (github.event_name == 'push' || inputs.nexus_changelog_and_archive) && vars.NEXUS_MOD_ID || '' }}
-          changelog: ${{ (github.event_name == 'push' || inputs.nexus_changelog_and_archive) && steps.changelog.outputs.text || '' }}
+        env:
+          NEXUSMODS_API_KEY: ${{ secrets.NEXUSMODS_API_KEY }}
+          FILE_ID: ${{ vars.NEXUS_APPIMAGE_FILE_ID }}
+          ZIP: ${{ steps.zip.outputs.appimage_zip }}
+          VERSION: ${{ steps.nexus.outputs.version }}
+          MOD_ID: ${{ vars.NEXUS_MOD_ID }}
+          ARCHIVE_AND_CHANGELOG: ${{ github.event_name == 'push' || inputs.nexus_changelog_and_archive }}
+        run: |
+          set -euo pipefail
+          args=(--file-id "$FILE_ID" --file "$ZIP" --version "$VERSION"
+                --name "Mosaic Mod Manager - AppImage" --category main
+                --update-mod-version --allow-mod-manager-download false)
+          if [ "$ARCHIVE_AND_CHANGELOG" = "true" ]; then
+            args+=(--archive-existing --mod-id "$MOD_ID" --changelog-file nexus-changelog.md)
+          fi
+          python3 .github/scripts/nexus_upload.py "${args[@]}"
 
       - name: Upload Flatpak to Nexus
         if: ${{ !inputs.skip_flatpak_nexus_upload }}
-        uses: Nexus-Mods/upload-action@v1.0.0-beta.10
-        with:
-          api_key: ${{ secrets.NEXUSMODS_API_KEY }}
-          file_id: ${{ vars.NEXUS_FLATPAK_FILE_ID }}
-          filename: ${{ steps.zip.outputs.flatpak_zip }}
-          display_name: "Mosaic Mod Manager - Flatpak"
-          version: ${{ steps.nexus.outputs.version }}
-          category: main
-          update_mod_version: true
-          # Per-file archiving is correct here (this file slot's own
-          # previous version) — but NOT the changelog: that's attached once,
-          # normally by the AppImage step above (both files share one mod
-          # page). Falls back to attaching it here only when the AppImage
-          # step itself was skipped this run (e.g. a Flatpak-only retry that
-          # still wants the automated changelog), so a changelog is never
-          # silently dropped, but is still never posted twice.
-          # Same "!= false" reasoning as the AppImage step above.
-          archive_existing_version: ${{ github.event_name == 'push' || inputs.nexus_changelog_and_archive }}
-          mod_id: ${{ (github.event_name == 'push' || inputs.nexus_changelog_and_archive) && inputs.skip_appimage_nexus_upload && vars.NEXUS_MOD_ID || '' }}
-          changelog: ${{ (github.event_name == 'push' || inputs.nexus_changelog_and_archive) && inputs.skip_appimage_nexus_upload && steps.changelog.outputs.text || '' }}
+        env:
+          NEXUSMODS_API_KEY: ${{ secrets.NEXUSMODS_API_KEY }}
+          FILE_ID: ${{ vars.NEXUS_FLATPAK_FILE_ID }}
+          ZIP: ${{ steps.zip.outputs.flatpak_zip }}
+          VERSION: ${{ steps.nexus.outputs.version }}
+          MOD_ID: ${{ vars.NEXUS_MOD_ID }}
+          ARCHIVE_AND_CHANGELOG: ${{ github.event_name == 'push' || inputs.nexus_changelog_and_archive }}
+          APPIMAGE_SKIPPED: ${{ inputs.skip_appimage_nexus_upload }}
+        run: |
+          set -euo pipefail
+          args=(--file-id "$FILE_ID" --file "$ZIP" --version "$VERSION"
+                --name "Mosaic Mod Manager - Flatpak" --category main
+                --update-mod-version --allow-mod-manager-download false)
+          if [ "$ARCHIVE_AND_CHANGELOG" = "true" ]; then
+            args+=(--archive-existing)
+            if [ "$APPIMAGE_SKIPPED" = "true" ]; then
+              args+=(--mod-id "$MOD_ID" --changelog-file nexus-changelog.md)
+            fi
+          fi
+          python3 .github/scripts/nexus_upload.py "${args[@]}"
 
   # ────────────────────────────────────────────────────────────────────
   # Publish the OSTree repo to GitHub Pages (the hosted Flatpak remote).
