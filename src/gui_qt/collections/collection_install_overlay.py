@@ -320,13 +320,15 @@ class CollectionInstallOverlay(QWidget):
         is seen (dl_done keeps counting cache hits too, so this only ever
         holds true while EVERY processed mod was a hit)."""
         all_cached = dl_done > 0 and cache_hit_done >= dl_done
-        if all_cached == self._all_cached:
-            return
-        self._all_cached = all_cached
-        self._dl_frame.setVisible(not all_cached)
+        if all_cached != self._all_cached:
+            self._all_cached = all_cached
+            self._dl_frame.setVisible(not all_cached)
+            if all_cached:
+                self._agg_bar.setRange(0, 1000)
+                self._agg_bar.setValue(1000)
         if all_cached:
-            self._agg_bar.setRange(0, 1000)
-            self._agg_bar.setValue(1000)
+            # Refresh on every call, not just the flip — the count keeps
+            # growing while every mod is still a cache hit.
             self._agg_lbl.setText(
                 self.tr("All {0} mod(s) found in the download cache — "
                         "nothing to download").format(dl_done))
