@@ -38,6 +38,8 @@ _GL_UNSIGNED_SHORT = 0x1403
 _GL_FLOAT = 0x1406
 _GL_LINE, _GL_FILL, _GL_FRONT_AND_BACK = 0x1B01, 0x1B02, 0x0408
 _GL_DEPTH_TEST = 0x0B71
+_GL_BLEND = 0x0BE2
+_GL_SRC_ALPHA, _GL_ONE_MINUS_SRC_ALPHA = 0x0302, 0x0303
 _GL_COLOR_BUFFER_BIT, _GL_DEPTH_BUFFER_BIT = 0x4000, 0x0100
 _GL_TEXTURE0 = 0x84C0
 
@@ -64,6 +66,7 @@ in vec2 vUV;
 uniform sampler2D uTex;
 uniform int uTextured;
 uniform vec3 uColor;
+uniform float uAlpha;
 out vec4 frag;
 void main() {
     vec3 n = normalize(vN);
@@ -72,7 +75,7 @@ void main() {
     float light = 0.32 + 0.68 * d;
     vec4 base = (uTextured == 1) ? texture(uTex, vUV) : vec4(uColor, 1.0);
     if (uTextured == 1 && base.a < 0.35) discard;
-    frag = vec4(base.rgb * light, 1.0);
+    frag = vec4(base.rgb * light, uAlpha);
 }
 """
 
@@ -103,53 +106,125 @@ class _Drawable:
 
 
 class OrbitCamera:
-    """Orbit camera around a target point, Z-up."""
+    """Orbit camera around a target point, Z-up.
+
+    The distance is never stored: it is derived every frame from the object's
+    size and the viewport's aspect ratio, times ``zoom_factor``. So "1.0" always
+    means the object just fills the view at the default angle — whatever its
+    size (a 4-unit marker or a 14,000-unit landscape piece) and however the
+    window is shaped — and scroll-zoom is relative to that.
+
+    With the object's vertices the fit is tight (the largest extent touches the
+    margin, centred on what is visible); without them it falls back to the
+    bounding sphere."""
     DEFAULT_YAW = math.radians(-35)
     DEFAULT_PITCH = math.radians(20)
+    FOV = 40.0                       # vertical, degrees
+    MARGIN = 1.04                    # breathing room around the fitted object
+    MIN_ZOOM, MAX_ZOOM = 0.02, 4.0
 
     def __init__(self):
         self.target = QVector3D(0, 0, 0)
         self.radius = 1.0
-        self.dist = 3.0
+        self.zoom_factor = 1.0
         self.yaw = self.DEFAULT_YAW
         self.pitch = self.DEFAULT_PITCH
+        self._pts: list = []
+        self._fit_cache: dict[float, float] = {}
 
-    def frame(self, bounds):
-        if bounds is None:
+    def frame(self, sphere, points=None):
+        """Fit to *sphere* = ((x, y, z), radius) — or None to reset to a unit
+        sphere — and reset zoom and angle. *points* (vertex samples) enable the
+        tight fit and re-centre the target on the visible extent."""
+        if sphere is None:
             self.target, self.radius = QVector3D(0, 0, 0), 1.0
+            points = None
         else:
-            lo, hi = bounds
-            self.target = QVector3D((lo[0] + hi[0]) / 2, (lo[1] + hi[1]) / 2,
-                                    (lo[2] + hi[2]) / 2)
-            self.radius = max(0.5 * math.dist(lo, hi), 1e-3)
-        self.dist = self.radius * 2.6
+            (x, y, z), r = sphere
+            self.target, self.radius = QVector3D(x, y, z), max(r, 1e-6)
+        self.zoom_factor = 1.0
         self.yaw, self.pitch = self.DEFAULT_YAW, self.DEFAULT_PITCH
+        self._pts = list(points) if points else []
+        self._fit_cache = {}
+        if self._pts:
+            right, up, toward = self._basis()
+            xs = [(p[0] - self.target.x()) * right[0] + (p[1] - self.target.y()) * right[1]
+                  + (p[2] - self.target.z()) * right[2] for p in self._pts]
+            ys = [(p[0] - self.target.x()) * up[0] + (p[1] - self.target.y()) * up[1]
+                  + (p[2] - self.target.z()) * up[2] for p in self._pts]
+            cx, cy = (min(xs) + max(xs)) / 2, (min(ys) + max(ys)) / 2
+            self.target = self.target + QVector3D(
+                cx * right[0] + cy * up[0], cx * right[1] + cy * up[1],
+                cx * right[2] + cy * up[2])
+
+    def _basis(self):
+        """(right, up, toward-camera) unit vectors at the default angle."""
+        cp = math.cos(self.DEFAULT_PITCH)
+        e = (cp * math.cos(self.DEFAULT_YAW), cp * math.sin(self.DEFAULT_YAW),
+             math.sin(self.DEFAULT_PITCH))
+        # right = normalize(cross(forward, worldUp)) with forward = -e, worldUp = +Z
+        rx, ry = -e[1], e[0]
+        n = math.hypot(rx, ry) or 1.0
+        right = (rx / n, ry / n, 0.0)
+        up = (e[1] * right[2] - e[2] * right[1], e[2] * right[0] - e[0] * right[2],
+              e[0] * right[1] - e[1] * right[0])   # cross(toward, right)
+        return right, up, e
+
+    def fit_distance(self, aspect: float) -> float:
+        """Camera distance at which the object just fits the view."""
+        v = math.radians(self.FOV) / 2
+        tan_v = math.tan(v)
+        tan_h = max(aspect, 1e-3) * tan_v
+        if not self._pts:
+            return self.MARGIN * self.radius / math.sin(min(v, math.atan(tan_h)))
+        key = round(aspect, 2)
+        cached = self._fit_cache.get(key)
+        if cached is None:
+            right, up, toward = self._basis()
+            t = self.target
+            d = 0.0
+            for p in self._pts:
+                dx, dy, dz = p[0] - t.x(), p[1] - t.y(), p[2] - t.z()
+                x = dx * right[0] + dy * right[1] + dz * right[2]
+                y = dx * up[0] + dy * up[1] + dz * up[2]
+                z = dx * toward[0] + dy * toward[1] + dz * toward[2]
+                need = z + max(abs(x) / tan_h, abs(y) / tan_v)
+                if need > d:
+                    d = need
+            # Never put the camera inside the object.
+            cached = max(self.MARGIN * d, 1.5 * self.radius)
+            self._fit_cache[key] = cached
+        return cached
+
+    def dist(self, aspect: float) -> float:
+        return self.fit_distance(aspect) * self.zoom_factor
 
     def orbit(self, dx: float, dy: float):
         self.yaw -= dx * 0.008
         self.pitch = max(-1.55, min(1.55, self.pitch + dy * 0.008))
 
     def zoom(self, steps: float):
-        self.dist = max(self.radius * 0.05,
-                        min(self.radius * 40, self.dist * (0.88 ** steps)))
+        self.zoom_factor = max(self.MIN_ZOOM, min(self.MAX_ZOOM,
+                                                  self.zoom_factor * (0.88 ** steps)))
 
-    def eye(self) -> QVector3D:
+    def eye(self, aspect: float) -> QVector3D:
         cp = math.cos(self.pitch)
-        return self.target + self.dist * QVector3D(
+        return self.target + self.dist(aspect) * QVector3D(
             cp * math.cos(self.yaw), cp * math.sin(self.yaw), math.sin(self.pitch))
 
     def matrices(self, aspect: float):
         view = QMatrix4x4()
-        view.lookAt(self.eye(), self.target, QVector3D(0, 0, 1))
+        view.lookAt(self.eye(aspect), self.target, QVector3D(0, 0, 1))
         proj = QMatrix4x4()
-        proj.perspective(40.0, max(aspect, 1e-3), max(self.radius * 0.01, 1e-3),
-                         max(self.dist + self.radius * 6, 10.0))
+        d = self.dist(aspect)
+        proj.perspective(self.FOV, max(aspect, 1e-3), max(self.radius * 0.004, 1e-4),
+                         d + self.radius * 4)
         return view, proj
 
-    def pan(self, view: QMatrix4x4, dx: float, dy: float):
+    def pan(self, view: QMatrix4x4, aspect: float, dx: float, dy: float):
         right = QVector3D(view.row(0).x(), view.row(0).y(), view.row(0).z())
         up = QVector3D(view.row(1).x(), view.row(1).y(), view.row(1).z())
-        k = self.dist * 0.0016
+        k = self.dist(aspect) * 0.0016
         self.target += (-dx * k) * right + (dy * k) * up
 
 
@@ -250,23 +325,40 @@ class MeshRenderer:
         # which GL rejects for a sampler (INVALID_OPERATION).
         gl.glUniform1i(p.uniformLocation("uTex"), 0)
         gl.glPolygonMode(_GL_FRONT_AND_BACK, _GL_LINE if mode == WIRE else _GL_FILL)
-        for d in self._drawables:
-            if d.shape.is_effect and mode != WIRE:
-                continue                                  # glow/FX planes hide the mesh
-            use_tex = mode == TEXTURED and d.tex is not None
-            gl.glUniform1i(p.uniformLocation("uTextured"), 1 if use_tex else 0)
-            p.setUniformValue("uColor", QVector3D(0.55, 0.85, 0.95) if mode == WIRE
-                              else QVector3D(0.72, 0.74, 0.78))
-            if use_tex:
-                gl.glActiveTexture(_GL_TEXTURE0)
-                d.tex.bind()
-            d.vao.bind()
-            # Offset 0 into the bound index buffer. It must be a shiboken VoidPtr: a
-            # plain 0 is rejected and ctypes.c_void_p(0) silently draws nothing.
-            gl.glDrawElements(_GL_TRIANGLES, d.count, _GL_UNSIGNED_SHORT, VoidPtr(0))
-            d.vao.release()
-            if use_tex:
-                d.tex.release()
+        # Solid shapes first; effect shapes (glows, editor markers, FX planes)
+        # after, translucent, so they tint what is behind them instead of
+        # hiding it — and a mesh made only of them (a marker) is still visible.
+        for effect in (False, True):
+            if effect:
+                gl.glEnable(_GL_BLEND)
+                gl.glBlendFunc(_GL_SRC_ALPHA, _GL_ONE_MINUS_SRC_ALPHA)
+                gl.glDepthMask(False)
+            for d in self._drawables:
+                if d.shape.is_effect != effect:
+                    continue
+                use_tex = mode == TEXTURED and d.tex is not None and not effect
+                gl.glUniform1i(p.uniformLocation("uTextured"), 1 if use_tex else 0)
+                if mode == WIRE:
+                    col, alpha = QVector3D(0.55, 0.85, 0.95), 1.0
+                elif effect:
+                    col, alpha = QVector3D(0.45, 0.72, 1.0), 0.6
+                else:
+                    col, alpha = QVector3D(0.72, 0.74, 0.78), 1.0
+                p.setUniformValue("uColor", col)
+                gl.glUniform1f(p.uniformLocation("uAlpha"), alpha)
+                if use_tex:
+                    gl.glActiveTexture(_GL_TEXTURE0)
+                    d.tex.bind()
+                d.vao.bind()
+                # Offset 0 into the bound index buffer. It must be a shiboken VoidPtr: a
+                # plain 0 is rejected and ctypes.c_void_p(0) silently draws nothing.
+                gl.glDrawElements(_GL_TRIANGLES, d.count, _GL_UNSIGNED_SHORT, VoidPtr(0))
+                d.vao.release()
+                if use_tex:
+                    d.tex.release()
+            if effect:
+                gl.glDepthMask(True)
+                gl.glDisable(_GL_BLEND)
         gl.glPolygonMode(_GL_FRONT_AND_BACK, _GL_FILL)
         p.release()
 
@@ -297,8 +389,13 @@ class MeshViewport(QOpenGLWidget):
             for i, sh in enumerate(scene.shapes):
                 images[i] = texture_for(sh)
         self._renderer.set_scene(scene, images)
-        self._camera.frame(scene.bounds() if scene else None)
+        self._frame_scene()
         self.update()
+
+    def _frame_scene(self):
+        sc = self._scene
+        self._camera.frame(sc.bounding_sphere() if sc else None,
+                           sc.sample_points() if sc else None)
 
     def set_mode(self, mode: str):
         if mode != self._mode:
@@ -328,8 +425,9 @@ class MeshViewport(QOpenGLWidget):
         if e.buttons() & Qt.LeftButton:
             self._camera.orbit(dx, dy)
         elif e.buttons() & (Qt.RightButton | Qt.MiddleButton):
-            view, _ = self._camera.matrices(self.width() / max(self.height(), 1))
-            self._camera.pan(view, dx, dy)
+            aspect = self.width() / max(self.height(), 1)
+            view, _ = self._camera.matrices(aspect)
+            self._camera.pan(view, aspect, dx, dy)
         self.update()
 
     def wheelEvent(self, e):
@@ -340,7 +438,7 @@ class MeshViewport(QOpenGLWidget):
             e.accept()
 
     def mouseDoubleClickEvent(self, e):
-        self._camera.frame(self._scene.bounds() if self._scene else None)
+        self._frame_scene()
         self.update()
 
     # -- GL -------------------------------------------------------------------------
@@ -361,10 +459,11 @@ class MeshViewport(QOpenGLWidget):
 
 
 def render_offscreen(scene: NifScene, images: "dict[int, QImage | None]",
-                     mode: str = SOLID, size: int = 512,
+                     mode: str = SOLID, size: "int | tuple[int, int]" = 512,
                      camera: "OrbitCamera | None" = None) -> "QImage | None":
-    """Render one frame without a window. Returns None if no GL context is
-    available. Needs a QGuiApplication."""
+    """Render one frame without a window. *size* is a square edge or (w, h).
+    Returns None if no GL context is available. Needs a QGuiApplication."""
+    w, h = (size, size) if isinstance(size, int) else size
     fmt = QSurfaceFormat()
     fmt.setVersion(3, 3)
     fmt.setProfile(QSurfaceFormat.CoreProfile)
@@ -383,14 +482,14 @@ def render_offscreen(scene: NifScene, images: "dict[int, QImage | None]",
             return None
         ff = QOpenGLFramebufferObjectFormat()
         ff.setAttachment(QOpenGLFramebufferObject.CombinedDepthStencil)
-        fbo = QOpenGLFramebufferObject(size, size, ff)
+        fbo = QOpenGLFramebufferObject(w, h, ff)
         fbo.bind()
-        r.gl.glViewport(0, 0, size, size)
+        r.gl.glViewport(0, 0, w, h)
         cam = camera or OrbitCamera()
         if camera is None:
-            cam.frame(scene.bounds())
+            cam.frame(scene.bounding_sphere(), scene.sample_points())
         r.set_scene(scene, images)
-        view, proj = cam.matrices(1.0)
+        view, proj = cam.matrices(w / h)
         r.render(view, proj, mode)
         img = fbo.toImage()
         fbo.release()

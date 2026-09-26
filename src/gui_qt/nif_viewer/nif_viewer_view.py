@@ -20,7 +20,7 @@ from __future__ import annotations
 
 from PySide6.QtCore import QModelIndex, Qt, QTimer, Signal
 from PySide6.QtWidgets import (
-    QComboBox, QHBoxLayout, QLabel, QLineEdit, QPushButton, QSizePolicy,
+    QCheckBox, QComboBox, QHBoxLayout, QLabel, QLineEdit, QPushButton, QSizePolicy,
     QSplitter, QStackedWidget, QTreeView, QVBoxLayout, QWidget,
 )
 
@@ -91,6 +91,11 @@ class NifViewerView(QWidget):
         self._search.setPlaceholderText(self.tr("Search meshes and mods"))
         self._search.setClearButtonEnabled(True)
         bh.addWidget(self._search, 1)
+        self._only_over = QCheckBox(self.tr("Only overridden"))
+        self._only_over.setToolTip(self.tr(
+            "Show only files that another mod (or the base game) also provides — "
+            "the files where an override happens"))
+        bh.addWidget(self._only_over)
         self._sources = QComboBox()
         self._sources.setToolTip(self.tr("What a selected mesh shows"))
         self._sources.addItem(self.tr("Mesh (.nif)"), _SRC_MESH)
@@ -100,6 +105,10 @@ class NifViewerView(QWidget):
         bh.addWidget(self._sources)
         self._wire = QPushButton(self.tr("Wireframe"))
         self._wire.setCheckable(True)
+        self._wire.setToolTip(self.tr("Draw the mesh as wireframe"))
+        self._wire.setStyleSheet(
+            f"QPushButton:checked {{ background:{_c(pal, 'ACCENT')};"
+            f" color:{_c(pal, 'TEXT_ON_ACCENT')}; }}")
         bh.addWidget(self._wire)
         rv.addWidget(bar)
 
@@ -133,6 +142,7 @@ class NifViewerView(QWidget):
         self._search_timer.timeout.connect(self._apply_search)
         self._search.textChanged.connect(lambda _t: self._search_timer.start())
         self._tree.selectionModel().currentChanged.connect(self._on_current_changed)
+        self._only_over.toggled.connect(self._on_only_overridden)
         self._sources.currentIndexChanged.connect(self._on_source_changed)
         self._wire.toggled.connect(lambda _on: self._apply_mode())
         self._catalog_ready.connect(self._on_catalog_ready)
@@ -160,19 +170,32 @@ class NifViewerView(QWidget):
         self._tree.expand(self._model.index(0, 0))          # base game first, lazily
 
     def _apply_search(self):
-        if self._catalog is None:
-            return
-        found = self._model.set_filter(self._search.text())
-        if found < 0:
+        if self._catalog is not None:
+            self._model.set_filter(self._search.text())
+            self._after_filter()
+
+    def _on_only_overridden(self, on: bool):
+        if self._catalog is not None:
+            self._model.set_only_overridden(on)
+            self._after_filter()
+
+    def _after_filter(self):
+        """Status line and expansion after the tree's filter changed."""
+        m = self._model
+        if not m.filtering():
             self._tree_status.setText(self.tr("{0} + {1} mod(s) with meshes or textures")
                                       .format(self._catalog.base_name, len(self._catalog.mods())))
             return
-        self._tree_status.setText(self.tr("{0} match(es)").format(found))
+        found = m.match_count()
+        self._tree_status.setText(
+            self.tr("{0} overridden file(s)").format(found)
+            if self._only_over.isChecked() and not self._search.text().strip()
+            else self.tr("{0} match(es)").format(found))
         if 0 < found <= 3000:
             self._tree.expandAll()
         else:
-            for r in range(self._model.rowCount()):
-                self._tree.expand(self._model.index(r, 0))
+            for r in range(m.rowCount()):
+                self._tree.expand(m.index(r, 0))
 
     # -- selection ----------------------------------------------------------------------------
     def _on_current_changed(self, current: QModelIndex, _prev):

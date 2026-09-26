@@ -118,3 +118,17 @@ def test_missing_loose_file_and_unreadable_archive_raise(tmp_path):
     with pytest.raises(OSError):
         cat.read(cat.resolve(MESH))
     assert cat.base_entries() == []                     # unreadable base archive ignored
+
+
+def test_contested_keys_are_paths_more_than_one_layer_provides(world):
+    # MESH: base + modA + modB; TEX: base + modA + modB. ONLY_BASE / NEW_IN_MOD: one layer.
+    assert world.contested_keys() == {MESH, TEX}
+
+
+def test_a_mods_own_loose_and_bsa_copies_are_not_an_override(tmp_path):
+    cat = AssetCatalog(
+        base_name="G", base_archives=[], mod_order=["m"],
+        loose={"m": {MESH: MESH}}, bsas={"m": [("m.bsa", [MESH])]},
+        loose_winner={MESH: "m"}, bsa_winner={MESH: "m"},
+        mod_dir_for=lambda m: tmp_path / m)
+    assert cat.contested_keys() == frozenset()

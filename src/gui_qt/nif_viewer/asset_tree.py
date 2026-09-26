@@ -64,6 +64,7 @@ class AssetTreeModel(QAbstractItemModel):
         self._root = _Node("", "root")
         self._entries: dict[str, list[AssetEntry]] = {}
         self._filter = ""
+        self._only_overridden = False
         self._match_count = 0
 
     # -- data ---------------------------------------------------------------------
@@ -76,12 +77,26 @@ class AssetTreeModel(QAbstractItemModel):
     def set_filter(self, text: str) -> int:
         """Show only roots/files matching *text* (case-insensitive substring of a
         mod name or file path). Returns the number of matching files, or -1 when
-        the filter is empty."""
+        no filter is active."""
         text = text.strip().lower()
         if text != self._filter:
             self._filter = text
             self._rebuild()
-        return self._match_count if text else -1
+        return self._match_count if self.filtering() else -1
+
+    def set_only_overridden(self, on: bool) -> int:
+        """Restrict the tree to files another layer (base game or mod) also
+        provides. Combines with the text filter; returns as set_filter does."""
+        if on != self._only_overridden:
+            self._only_overridden = on
+            self._rebuild()
+        return self._match_count if self.filtering() else -1
+
+    def filtering(self) -> bool:
+        return bool(self._filter) or self._only_overridden
+
+    def match_count(self) -> int:
+        return self._match_count
 
     def _root_entries(self, key: str) -> list[AssetEntry]:
         if key not in self._entries:
@@ -97,17 +112,24 @@ class AssetTreeModel(QAbstractItemModel):
         cat = self._catalog
         if cat is not None:
             keys = [BASE] + cat.mods()
+            contested = cat.contested_keys() if self._only_overridden else frozenset()
             for key in keys:
                 name = cat.base_name if key == BASE else key
                 node = _Node(name, "root", self._root, root_key=key)
-                if self._filter and self._filter not in name.lower():
-                    hits = [e for e in self._root_entries(key) if self._filter in e.path]
+                if self.filtering():
+                    name_match = bool(self._filter) and self._filter in name.lower()
+
+                    def keep(e, name_match=name_match):
+                        return ((name_match or not self._filter or self._filter in e.path)
+                                and (not self._only_overridden or e.path in contested))
+
+                    hits = [e for e in self._root_entries(key) if keep(e)]
                     if not hits:
                         continue
-                    build_hierarchy(node, hits)
                     self._match_count += len(hits)
-                elif self._filter:
-                    self._match_count += len(self._root_entries(key))   # whole mod matches
+                    # A mod matched by name alone keeps its lazy children.
+                    if not (name_match and not self._only_overridden):
+                        build_hierarchy(node, hits)
                 self._root.children.append(node)
         self.endResetModel()
 

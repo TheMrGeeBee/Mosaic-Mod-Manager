@@ -143,6 +143,19 @@ def test_missing_shader_gives_no_textures_and_bounds_work():
     assert read_nif(_nif([("NiNode", _node(0, []))])).bounds() is None
 
 
+def test_bounding_sphere_and_sample_points():
+    sc = read_nif(_simple())
+    (cx, cy, cz), r = sc.bounding_sphere()
+    assert (cx, cy, cz) == (0.5, 0.5, 0.0)
+    assert r == pytest.approx(math.sqrt(0.5))       # farthest vertex from the box centre
+    assert sc.bounding_sphere() is sc.bounding_sphere()          # cached
+    assert sorted(sc.sample_points()) == [(0, 0, 0), (0, 1, 0), (1, 0, 0)]
+    assert read_nif(_nif([("NiNode", _node(0, []))])).bounding_sphere() is None
+    many = read_nif(_simple()).shapes[0]
+    from Utils.nif.nif_reader import NifScene
+    assert len(NifScene([many] * 5).sample_points(limit=6)) <= 6 + 5
+
+
 def test_rejects_other_games_and_garbage():
     with pytest.raises(NifUnsupported):
         read_nif(_nif([("NiNode", _node(0, []))], bsver=83))       # Skyrim LE

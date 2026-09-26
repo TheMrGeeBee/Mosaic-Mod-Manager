@@ -88,6 +88,7 @@ class AssetCatalog:
         self._open: dict[Path, "BsaFile | None"] = {}
         self._base_files: "dict[str, Path] | None" = None
         self._mod_keys: "set[str] | None" = None
+        self._contested: "frozenset[str] | None" = None
 
     # -- mods ---------------------------------------------------------------------
     def mods(self) -> list[str]:
@@ -103,6 +104,24 @@ class AssetCatalog:
                     keys.update(ps)
             self._mod_keys = keys
         return self._mod_keys
+
+    def contested_keys(self) -> frozenset[str]:
+        """Paths that more than one layer provides — the base game plus every mod
+        counts once each, however many of its own archives hold the file. These
+        are the files where an override happens. Reads the base game's archive
+        tables on first use."""
+        if self._contested is None:
+            count: dict[str, int] = {}
+            for m in self.mod_order:
+                keys = set(self._loose.get(m, ()))
+                for _a, ps in self._bsas.get(m, ()):
+                    keys.update(ps)
+                for k in keys:
+                    count[k] = count.get(k, 0) + 1
+            for k in self._base_map():
+                count[k] = count.get(k, 0) + 1
+            self._contested = frozenset(k for k, c in count.items() if c >= 2)
+        return self._contested
 
     def _mod_winner(self, key: str) -> "tuple[str, str, str] | None":
         """(mod, kind, archive) of the winning MOD copy, or None if only the

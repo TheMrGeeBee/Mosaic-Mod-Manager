@@ -97,6 +97,18 @@ def test_filter_hides_roots_without_matches_and_clears(app, world):
     assert m.set_filter("") == -1 and _names(m) == ["Game", "modA", "modB"]
 
 
+def test_only_overridden_shows_contested_files_and_combines_with_search(app, world):
+    m = AssetTreeModel()
+    m.set_catalog(world)
+    assert m.set_only_overridden(True) == 6                    # MESH + TEX in base, modA, modB
+    assert _names(m) == ["Game", "modA", "modB"]
+    assert ONLY_BASE.rsplit("/", 1)[-1] not in _names(m, _find(m, "Game", "meshes"))
+    assert m.set_filter("iron_d") == 3                         # search narrows it further
+    assert m.set_filter("thing.nif") == 0 and _names(m) == []  # uncontested → gone
+    assert m.set_filter("") == 6 and m.set_only_overridden(False) == -1
+    assert m.filtering() is False and _names(m) == ["Game", "modA", "modB"]
+
+
 # -- tab flow --------------------------------------------------------------------------------
 def _png(color: str) -> bytes:
     img = QImage(4, 4, QImage.Format_RGBA8888)
@@ -194,3 +206,20 @@ def test_search_filters_the_tree(app, viewer):
     viewer._search.setText("iron_d")
     _wait(app, lambda: "match" in viewer._tree_status.text())
     assert _names(viewer._model) == ["modX"]
+
+
+def test_only_overridden_checkbox_filters_the_tree(app, viewer):
+    # modX's files are not provided by any other layer → nothing overridden.
+    viewer._only_over.setChecked(True)
+    assert _names(viewer._model) == []
+    assert "0 overridden file(s)" in viewer._tree_status.text()
+    viewer._only_over.setChecked(False)
+    assert _names(viewer._model) == ["Game", "modX"]
+
+
+def test_wireframe_button_shows_when_it_is_on(app, viewer):
+    assert "QPushButton:checked" in viewer._wire.styleSheet()
+    viewer._wire.setChecked(True)
+    assert viewer._viewport.mode() == "wire"
+    viewer._wire.setChecked(False)
+    assert viewer._viewport.mode() == "textured"

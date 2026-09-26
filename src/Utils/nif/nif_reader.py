@@ -67,6 +67,38 @@ class NifShape:
 @dataclass
 class NifScene:
     shapes: list[NifShape]
+    _sphere: object = field(default=None, repr=False, compare=False)
+
+    def sample_points(self, limit: int = 6000) -> list[tuple[float, float, float]]:
+        """Up to *limit* vertices spread evenly over all shapes (for view fitting)."""
+        total = sum(len(sh.positions) // 3 for sh in self.shapes)
+        step = max(1, total // limit)
+        pts = []
+        for sh in self.shapes:
+            p = sh.positions
+            for i in range(0, len(p) // 3, step):
+                pts.append((p[3 * i], p[3 * i + 1], p[3 * i + 2]))
+        return pts
+
+    def bounding_sphere(self) -> "tuple[tuple[float, float, float], float] | None":
+        """(centre, radius): centred on the bounding box, radius = the farthest
+        vertex from it — tighter than half the box diagonal for round objects.
+        Cached; None for a scene with no vertices."""
+        if self._sphere is None:
+            b = self.bounds()
+            if b is None:
+                return None
+            lo, hi = b
+            c = tuple((lo[i] + hi[i]) / 2 for i in range(3))
+            r2 = 0.0
+            for sh in self.shapes:
+                p = sh.positions
+                for i in range(0, len(p), 3):
+                    d = (p[i] - c[0]) ** 2 + (p[i + 1] - c[1]) ** 2 + (p[i + 2] - c[2]) ** 2
+                    if d > r2:
+                        r2 = d
+            self._sphere = (c, max(r2 ** 0.5, 1e-6))
+        return self._sphere
 
     def bounds(self) -> "tuple[tuple[float, float, float], tuple[float, float, float]] | None":
         lo = [float("inf")] * 3
