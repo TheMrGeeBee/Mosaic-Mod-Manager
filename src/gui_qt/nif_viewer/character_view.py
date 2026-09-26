@@ -272,6 +272,17 @@ class CharacterView(QWidget):
                 return entry, None, self.tr("Could not read {0}: {1}").format(name, exc)
             group = slot_group(entry.path, covered_slots(sc))
             if group is None:
+                # Usually an item's display/inventory model (unskinned); the worn
+                # meshes sit beside it, named after it (bladesarmor.nif →
+                # bladesarmor_1.nif, bladesarmorf_1.nif). Point at them.
+                stem = name.rsplit(".", 1)[0]
+                worn = [e.path.rsplit("/", 1)[-1] for e in cat.siblings(entry)
+                        if e.path.endswith(".nif") and e.path.rsplit("/", 1)[-1].startswith(stem)][:8]
+                if worn:
+                    return entry, None, self.tr(
+                        "{0} has no body slots — it looks like an item's display model, "
+                        "not a worn mesh. Worn versions in the same folder: {1}."
+                    ).format(name, ", ".join(worn))
                 return entry, None, self.tr(
                     "{0} has no body slots, so it can't be worn (props, weapons and shields "
                     "aren't supported yet).").format(name)

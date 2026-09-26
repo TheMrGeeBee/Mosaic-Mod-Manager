@@ -199,3 +199,23 @@ def test_mark_incompatible_and_read_head(mixed):
     assert mixed.read_head(e, 8) == mixed.read(e)[:8]
     assert mixed.read_head(_entry(mixed, "modB", "meshes/bse.nif"), 8) == \
         mixed.read(_entry(mixed, "modB", "meshes/bse.nif"))[:8]
+
+
+def test_siblings_are_the_other_files_in_the_same_folder_and_layer(tmp_path):
+    folder = "meshes/armor/blades/"
+    base = _bsa(tmp_path, "Skyrim - Meshes0.bsa", {
+        folder + "bladesarmor.nif": b"a", folder + "bladesarmor_1.nif": b"b",
+        folder + "bladeshelmet.nif": b"c", "meshes/other/x.nif": b"d"})
+    mods = tmp_path / "mods"
+    _put(mods / "modA", {folder + "bladesarmor_1.nif": b"e", "meshes/other/y.nif": b"f"})
+    cat = AssetCatalog(
+        base_name="G", base_archives=[base], mod_order=["modA"],
+        loose={"modA": {folder + "bladesarmor_1.nif": folder + "bladesarmor_1.nif",
+                        "meshes/other/y.nif": "meshes/other/y.nif"}},
+        bsas={}, loose_winner={}, bsa_winner={}, mod_dir_for=lambda m: mods / m)
+    display = next(e for e in cat.base_entries() if e.path == folder + "bladesarmor.nif")
+    assert [e.path for e in cat.siblings(display)] == [folder + "bladesarmor_1.nif",
+                                                       folder + "bladeshelmet.nif"]   # same folder, same layer only
+    mod_worn = next(e for e in cat.mod_entries("modA") if e.path.endswith("bladesarmor_1.nif"))
+    assert cat.siblings(mod_worn) == []                             # modA has nothing else in that folder
+    cat.close()

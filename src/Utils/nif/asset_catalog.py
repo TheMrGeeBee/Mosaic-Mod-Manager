@@ -216,6 +216,15 @@ class AssetCatalog:
             raise BsaReadError(f"cannot open {entry.archive or '?'} for {entry.path}")
         return bsa.read(entry.path)
 
+    def siblings(self, entry: AssetEntry) -> list[AssetEntry]:
+        """Other files in the same folder from the same layer (base game or mod),
+        sorted by path — e.g. the worn versions of an item's display model."""
+        folder = entry.path.rsplit("/", 1)[0]
+        pool = self.base_entries() if entry.mod == BASE else self.mod_entries(entry.mod)
+        return sorted((e for e in pool
+                       if e.path != entry.path and e.path.rsplit("/", 1)[0] == folder),
+                      key=lambda e: e.path)
+
     # -- format compatibility -----------------------------------------------------------
     @staticmethod
     def _ekey(entry: AssetEntry) -> tuple:

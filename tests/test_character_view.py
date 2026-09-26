@@ -26,6 +26,10 @@ FILES = {
     "meshes/clutter/mug.nif": b"PROP",
     "meshes/armor/le/le_cuirass.nif": b"LE",
     "textures/armor/iron_d.dds": b"TEX",
+    "meshes/armor/blades/bladesarmor.nif": b"DISPLAY",              # an item's display model
+    "meshes/armor/blades/bladesarmor_1.nif": b"CUIRASS_M",
+    "meshes/armor/blades/bladesarmorf_1.nif": b"CUIRASS_F",
+    "meshes/armor/blades/bladeshelmet.nif": b"BOOTS",
 }
 
 
@@ -37,6 +41,7 @@ def fake_read_nif(data, include_nodes=False):
         b"BOOTS": NifScene([shape("boots", [37, 38], [2, 1])]),
         b"HAIR": NifScene([shape("hair", [131, 141], [2, 1])]),
         b"PROP": NifScene([shape("mug", skinned=False, slots=[])]),
+        b"DISPLAY": NifScene([shape("display", skinned=False, slots=[])]),
     }
     if data == b"LE":
         raise NifUnsupported("BS version 83", 0x14020007, 83)
@@ -180,7 +185,7 @@ def test_picker_lists_wearable_winners_only(app, catalog):
     paths = [e.path for e in dlg._entries]
     assert "meshes/clutter/mug.nif" not in paths and "textures/armor/iron_d.dds" not in paths
     assert "meshes/armor/le/le_cuirass.nif" not in paths                    # incompatible: hidden
-    assert "meshes/armor/iron/f/cuirass_1.nif" in paths and len(dlg._entries) == 5
+    assert "meshes/armor/iron/f/cuirass_1.nif" in paths and len(dlg._entries) == 9
     assert paths == sorted(paths)
 
 
@@ -223,3 +228,15 @@ def test_add_to_character_button_follows_the_selection(app, tmp_path, monkeypatc
     v._tree.setCurrentIndex(_find(v._model, "modX", "textures", "armor", "iron_d.dds"))
     assert not v._equip_btn.isEnabled()
     v.deleteLater()
+
+
+def test_a_display_model_is_refused_with_its_worn_siblings_named(app, view, catalog):
+    _ready(app, view)
+    view.equip(entry(catalog, "meshes/armor/blades/bladesarmor.nif"))
+    _wait(app, lambda: "display model" in view._info.text())
+    text = view._info.text()
+    assert "bladesarmor_1.nif" in text and "bladesarmorf_1.nif" in text
+    assert "bladeshelmet.nif" not in text                       # a different item, not a sibling by name
+    assert view._pieces == {}
+    view.equip(entry(catalog, "meshes/clutter/mug.nif"))        # no similarly-named files → the plain message
+    _wait(app, lambda: "props, weapons and shields" in view._info.text())
