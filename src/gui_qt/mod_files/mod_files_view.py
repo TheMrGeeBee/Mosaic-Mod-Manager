@@ -482,7 +482,7 @@ class ModFilesView(QWidget):
                 return
             cb = getattr(self, "on_open_image", None)
             if cb is not None:
-                cb(target, node.rel_str)
+                cb(target, node.rel_str, node.rel_key, self._mod_name)
             return
         from Utils.text_files import TEXT_EXTENSIONS
         if ext in TEXT_EXTENSIONS:

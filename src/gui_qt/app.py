@@ -1062,24 +1062,65 @@ class MainWindow(QMainWindow):
         view = ThemeEditorView(self)
         self._tabs.open_tab(view, self.tr("Theme Editor"), key="theme_editor")
 
-    def _open_image_preview_tab(self, path, rel_str):
+    def _open_image_preview_tab(self, path, rel_str, rel_key=None, mod_name=None):
         """Open an image/.dds preview as a MODLIST-PANEL-SCOPED tab: it shows in
         the modlist region (in the shared top tab bar) while the Mod Files tree
         in the plugins panel stays live. Reuses one preview tab — browsing to a
-        new image swaps it in place (Tk parity)."""
+        new image swaps it in place (Tk parity). When other mods ship the same
+        file the preview offers a picker and a side-by-side compare."""
         from pathlib import Path as _P
         from gui_qt.image_preview import ImagePreview
         name = rel_str.replace("\\", "/").rsplit("/", 1)[-1]
+        providers = self._asset_providers(rel_key, mod_name)
         existing = getattr(self, "_image_preview_widget", None)
         if existing is not None and self._tabs.has_key("mf_image_preview"):
-            existing.set_image(_P(path), name)
+            existing.set_image(_P(path), name, providers, mod_name)
             self._tabs.focus_key("mf_image_preview")
             self._tabs.set_tab_title("mf_image_preview", name)
             return
-        widget = ImagePreview(_P(path), name)
+        widget = ImagePreview(_P(path), name, providers=providers,
+                              current_mod=mod_name)
         self._image_preview_widget = widget
         self._tabs.open_scoped_tab(
             widget, name, self._modlist_panel_stack, key="mf_image_preview")
+
+    def _asset_providers(self, rel_key, mod_name):
+        """Every mod that ships the post-strip file *rel_key*, for the image
+        preview's picker/compare: enabled mods in priority order plus the mod
+        being viewed (it may be disabled) and whichever mod the filemap says
+        wins. Uses the cached mod index / conflict data the Mod Files tab has
+        already loaded, so it is cheap. Returns [] for anything that can't be
+        resolved — the preview then behaves as a plain single-image viewer."""
+        if not rel_key:
+            return []
+        try:
+            g = self._gs.game
+            staging = self._gs.staging_dir()
+            ml = self._gs.modlist_path()
+            pd = self._gs.profile_dir()
+            if g is None or staging is None or ml is None or not ml.is_file():
+                return []
+            from Utils.filemap import read_mod_index
+            from Utils.mods import mod_files as mflogic
+            from Utils.mods.file_providers import find_providers
+            from Utils.mods.modlist import read_modlist
+            index_path = staging.parent / "modindex.bin"
+            full_index = read_mod_index(index_path)
+            if not full_index:
+                return []
+            _contested, winner = mflogic.build_conflict_cache(
+                index_path, pd, full_index)
+            order = [e.name for e in read_modlist(ml)
+                     if not e.is_separator and e.enabled]
+            for extra in (mod_name, winner.get(rel_key.lower())):
+                if extra and extra not in order:
+                    order.append(extra)
+            return find_providers(
+                full_index, rel_key, winner, order,
+                lambda m: mflogic._mod_dir_for(g, m),
+                lambda m: mflogic.read_strip_prefixes(pd, m))
+        except Exception:
+            return []
 
     def _open_bsa_preview_tab(self, path, rel_str):
         """Open a BSA/BA2 archive's contents as a MODLIST-PANEL-SCOPED tab: it
