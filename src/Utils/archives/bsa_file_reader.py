@@ -12,6 +12,7 @@ v104 (Oblivion, Skyrim LE, Fallout 3/NV) stores files zlib-compressed; v105
 from __future__ import annotations
 
 import struct
+import threading
 import zlib
 from pathlib import Path
 
@@ -41,6 +42,7 @@ class BsaFile:
         self.path = Path(path)
         self._f = None
         self._files: dict[str, tuple[int, int]] = {}
+        self._lock = threading.Lock()      # one shared file handle → serialise reads
         self.version = 0
         self._flags = 0
         try:
@@ -119,8 +121,9 @@ class BsaFile:
         compressed = bool(self._flags & _AF_COMPRESSED_DEF) ^ bool(
             size_field & _FILE_COMPRESS_INVERT)
         try:
-            self._f.seek(offset)
-            block = self._f.read(size)
+            with self._lock:
+                self._f.seek(offset)
+                block = self._f.read(size)
             if len(block) < size:
                 raise BsaReadError(f"short read for {path}")
             if self._flags & _AF_EMBED_FILE_NAMES and block:

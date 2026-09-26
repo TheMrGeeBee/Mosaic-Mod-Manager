@@ -9565,6 +9565,15 @@ class MainWindow(QMainWindow):
         manager is always available (it lists every game's tool prefixes, like
         the Tk wizard picker's button); 'Add Favourites…' is only shown when the
         current game has tools to favourite."""
+        from Utils.nif.catalog_loader import NIF_VIEWER_GAME_IDS
+        game = self._gs.game
+        if game is not None and getattr(game, "game_id", None) in NIF_VIEWER_GAME_IDS:
+            menu.addSeparator()
+            viewer = menu.addAction(self.tr("NIF / Character Viewer…"))
+            viewer.setToolTip(self.tr(
+                "Browse every mesh and texture the game would load — base game and "
+                "each mod — and view them in 3D."))
+            viewer.triggered.connect(lambda _=False: self._open_nif_viewer_tab())
         menu.addSeparator()
         if tools:
             fav = menu.addAction(self.tr("Add Favourites…"))
@@ -9576,6 +9585,20 @@ class MainWindow(QMainWindow):
         act.setToolTip(self.tr("Browse every wizard-tool Wine prefix and delete them "
                        "to reclaim disk space."))
         act.triggered.connect(lambda _=False: self._open_prefix_manager())
+
+    def _open_nif_viewer_tab(self):
+        """Open the NIF Viewer as a tab in the shared top tab bar (one instance;
+        re-opening focuses it). It indexes the game and the active profile as
+        they are now — close and re-open it after switching profile."""
+        if self._tabs.has_key("nif_viewer"):
+            self._tabs.focus_key("nif_viewer")
+            return
+        game = self._gs.game
+        if game is None:
+            return
+        from gui_qt.nif_viewer.nif_viewer_view import NifViewerView
+        view = NifViewerView(game, self._gs.profile_dir(), self._gs.staging_dir())
+        self._tabs.open_tab(view, self.tr("NIF Viewer"), key="nif_viewer")
 
     def _open_favourite_wizards(self, tools):
         """Open the borderless favourites picker for the given wizard *tools*.

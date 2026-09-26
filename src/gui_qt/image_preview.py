@@ -43,6 +43,24 @@ def _load_qimage(path: Path) -> QImage | None:
         return None
 
 
+def load_qimage_bytes(data: bytes) -> QImage | None:
+    """Decode an image held in memory (e.g. read out of a BSA): QImage first,
+    Pillow for .dds/.tga. Safe off the GUI thread."""
+    img = QImage.fromData(data)
+    if not img.isNull():
+        return img
+    try:
+        import io
+        from PIL import Image as PilImage
+        with PilImage.open(io.BytesIO(data)) as im:
+            im = im.convert("RGBA")
+            qi = QImage(im.tobytes("raw", "RGBA"), im.width, im.height,
+                        QImage.Format_RGBA8888)
+            return qi.copy()
+    except Exception:
+        return None
+
+
 class _ImageCanvas(QLabel):
     """Paints the image over a checkerboard with free zoom (scrollwheel) and
     pan (left-drag). Zoom is anchored under the cursor; double-click resets to

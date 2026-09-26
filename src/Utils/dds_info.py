@@ -107,16 +107,9 @@ def _uncompressed_name(flags: int, bits: int, a_mask: int) -> str:
     return f"{bits}-bit"
 
 
-def read_dds_info(path: "Path | str") -> "DdsInfo | None":
-    """Parse *path*'s DDS header. Returns None for a missing, truncated or
-    non-DDS file — never raises."""
-    try:
-        p = Path(path)
-        size = p.stat().st_size
-        with p.open("rb") as f:
-            head = f.read(_HEADER_LEN + _DX10_LEN)
-    except OSError:
-        return None
+def parse_dds_info(head: bytes, size_bytes: int) -> "DdsInfo | None":
+    """Parse a DDS header from *head* (the file's first bytes, ideally ≥148).
+    Returns None if it isn't a valid DDS header — never raises."""
     if len(head) < _HEADER_LEN or head[:4] != _MAGIC:
         return None
     try:
@@ -145,7 +138,20 @@ def read_dds_info(path: "Path | str") -> "DdsInfo | None":
     mip_count = mips if (flags & _DDSD_MIPMAPCOUNT and mips > 0) else 1
     return DdsInfo(
         width=width, height=height, mip_count=mip_count, format=name,
-        size_bytes=size,
+        size_bytes=size_bytes,
         is_cubemap=bool(caps2 & _DDSCAPS2_CUBEMAP),
         is_volume=bool(caps2 & _DDSCAPS2_VOLUME),
     )
+
+
+def read_dds_info(path: "Path | str") -> "DdsInfo | None":
+    """Parse *path*'s DDS header. Returns None for a missing, truncated or
+    non-DDS file — never raises."""
+    try:
+        p = Path(path)
+        size = p.stat().st_size
+        with p.open("rb") as f:
+            head = f.read(_HEADER_LEN + _DX10_LEN)
+    except OSError:
+        return None
+    return parse_dds_info(head, size)
