@@ -57,6 +57,21 @@ def test_a_dangling_symlink_counts_as_missing(setup, tmp_path):
     assert g.find_missing_plugin_files("P") == ["Gone.esp", "Never There.esp"]
 
 
+def _filemap(prof, *rows, name="filemap.txt"):
+    (prof / name).write_text("".join(f"{r}\tSome Mod\n" for r in rows), encoding="utf-8")
+
+
+def test_an_enabled_plugin_no_mod_provides_is_not_a_deploy_problem(setup, tmp_path):
+    """GTS 2026-09-26: 12 enabled .esp entries whose ESL-ified .esl replaced them
+    (originals sit in ESP/ subfolders) made the guard cry wolf on every Play."""
+    g, root, prof = setup
+    (root / "Data" / "Gone.esp").symlink_to(tmp_path / "renamed" / "Gone.esp")   # dangling
+    _plugins(prof, "*Gone.esp", "*1WR.esp", "*Optional.esp", "*Removed.esp")
+    _filemap(prof, "Gone.esp", "ESP/1WR.esp", "Optional/Optional.esp")
+    _filemap(prof, "Removed.esp", name="deployed_filemap.txt")     # removed since deploy
+    assert g.find_missing_plugin_files("P") == ["Gone.esp", "Removed.esp"]
+
+
 def test_disabled_plugins_are_ignored(setup):
     g, root, prof = setup
     _plugins(prof, "NotEnabled.esp", "*Enabled.esp")

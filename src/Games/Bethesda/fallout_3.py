@@ -846,6 +846,12 @@ class Fallout_3(BaseGame):
         folders were renamed under a deployed profile, the start plugin among
         them). Cheap: one plugins.txt read and one Data listing. Returns [] when
         the profile isn't the deployed one, or when it can't tell.
+
+        Only plugins a mod is meant to put in Data/ count (top level of the
+        current or last-deployed filemap). An enabled entry nothing provides —
+        e.g. the ``.esp`` of a collection whose ESL-ified ``.esl`` replaced it,
+        the original left in an ``ESP/`` subfolder — is a stale plugins.txt line,
+        not an out-of-date deploy, and Deploy can never fix it.
         """
         import os
         if not self.get_deploy_active() or self.get_last_deployed_profile() != profile:
@@ -861,6 +867,7 @@ class Fallout_3(BaseGame):
                        if os.path.exists(e.path)}
         except OSError:
             return []
+        provided = self._filemap_root_files(source.parent)
         missing: list[str] = []
         for line in lines:
             line = line.strip()
@@ -870,9 +877,31 @@ class Fallout_3(BaseGame):
                 if not line.startswith("*"):
                     continue                     # disabled
                 line = line[1:]
-            if line.lower() not in present:
-                missing.append(line)
+            key = line.lower()
+            if key in present:
+                continue
+            if provided is not None and key not in provided:
+                continue                         # no mod supplies it — not a deploy issue
+            missing.append(line)
         return missing
+
+    @staticmethod
+    def _filemap_root_files(profile_dir: Path) -> "set[str] | None":
+        """Lower-cased names of files placed directly in Data/ per the profile's
+        filemap.txt and deployed_filemap.txt; None when neither can be read."""
+        names: set[str] = set()
+        found = False
+        for fname in ("filemap.txt", "deployed_filemap.txt"):
+            try:
+                with open(profile_dir / fname, encoding="utf-8") as fh:
+                    found = True
+                    for row in fh:
+                        rel = row.split("\t", 1)[0]
+                        if rel and "/" not in rel and not rel.startswith("#"):
+                            names.add(rel.lower())
+            except OSError:
+                continue
+        return names if found else None
 
     # -----------------------------------------------------------------------
     # Timestamp load order (Oblivion/FO3/FNV)
