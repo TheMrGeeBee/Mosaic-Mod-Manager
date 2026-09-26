@@ -285,3 +285,82 @@ def test_opening_an_unconverted_mesh_explains_it(app, mixed_viewer):
 
 def test_hide_toggle_does_not_count_as_a_user_filter(app, mixed_viewer):
     assert mixed_viewer._model.filtering() is False
+
+
+# -- character view: body + skeleton ------------------------------------------------------------------
+def _skeleton_blob():
+    names = ("skeleton_female.nif", "NPC Root [Root]", "NPC COM [COM ]", "NPC Spine [Spn0]",
+             "NPC Head [Head]", "NPC L Hand [LHnd]")
+    blocks = [("NiNode", _node(i, [i + 1] if i < 5 else [], t=(0, 0, 10 * i))) for i in range(6)]
+    return _nif(blocks, strings=names)
+
+
+@pytest.fixture
+def char_viewer(app, tmp_path, monkeypatch):
+    from Utils.nif.character import SKELETONS
+    (tmp_path / "modX/meshes").mkdir(parents=True)
+    (tmp_path / "modX/meshes/thing.nif").write_bytes(_simple())
+    skel = SKELETONS["female"]
+    (tmp_path / "modX" / skel).parent.mkdir(parents=True)
+    (tmp_path / "modX" / skel).write_bytes(_skeleton_blob())
+    (tmp_path / "modX/textures/armor").mkdir(parents=True)
+    (tmp_path / "modX/textures/armor/iron_d.dds").write_bytes(_png("red"))
+    cat = AssetCatalog(
+        base_name="Game", base_archives=[], mod_order=["modX"],
+        loose={"modX": {"meshes/thing.nif": "meshes/thing.nif", skel: skel,
+                        "textures/armor/iron_d.dds": "textures/armor/iron_d.dds"}},
+        bsas={}, loose_winner={}, bsa_winner={}, mod_dir_for=lambda m: tmp_path / m)
+    monkeypatch.setattr(nif_viewer_view, "build_catalog", lambda *_a: cat)
+    v = nif_viewer_view.NifViewerView(object(), tmp_path, tmp_path)
+    _wait(app, lambda: v._catalog is not None)
+    yield v, skel
+    v.deleteLater()
+
+
+def test_body_and_skeleton_controls_exist_with_sane_defaults(app, char_viewer):
+    v, _ = char_viewer
+    assert v._body.currentData() == "auto" and [v._body.itemData(i) for i in range(4)] == \
+        ["auto", "female", "male", "none"]
+    assert v._skel.isChecked() is False
+
+
+def test_skeleton_toggle_adds_bones_to_a_mesh(app, char_viewer):
+    v, _ = char_viewer
+    _select(v, "modX", "meshes", "thing.nif")
+    _wait(app, lambda: v._last is not None)
+    assert v._last["skeleton"] is None and v._last["worn_on"] is None     # a prop: no body
+    v._last = None
+    v._skel.setChecked(True)                                    # reloads with the skeleton
+    _wait(app, lambda: v._last is not None)
+    assert len(v._last["skeleton"]) == 6
+    assert "skeleton: 5 bones" in v._info.text()                # the .nif root isn't a bone
+
+
+def test_a_skeleton_nif_shows_its_bones_on_its_own(app, char_viewer):
+    v, skel = char_viewer
+    _select(v, "modX", *skel.split("/"))
+    _wait(app, lambda: v._last is not None)
+    assert v._last["scene"].shapes == [] and len(v._last["skeleton"]) == 6
+    assert v._stack.currentIndex() == nif_viewer_view._PAGE_MESH
+    assert "skeleton: 5 bones" in v._info.text()
+
+
+def test_explicit_body_without_body_files_is_harmless(app, char_viewer):
+    v, _ = char_viewer
+    v._body.setCurrentIndex(1)                                  # Female — no body meshes in this catalog
+    _select(v, "modX", "meshes", "thing.nif")
+    _wait(app, lambda: v._last is not None)
+    assert v._last["worn_on"] is None and len(v._last["scene"].shapes) == 1
+
+
+def test_switching_sources_back_reloads_when_the_skeleton_was_skipped(app, char_viewer):
+    v, _ = char_viewer
+    v._skel.setChecked(True)
+    v._sources.setCurrentIndex(1)                               # Textures: skeleton not fetched
+    _select(v, "modX", "meshes", "thing.nif")
+    _wait(app, lambda: v._last is not None)
+    assert v._last["skeleton"] is None
+    v._last = None
+    v._sources.setCurrentIndex(2)                               # back to Mesh + textures
+    _wait(app, lambda: v._last is not None)
+    assert v._last["skeleton"] is not None

@@ -15,9 +15,9 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PySide6.QtGui import QColor, QImage  # noqa: E402
 from PySide6.QtWidgets import QApplication  # noqa: E402
 
-from Utils.nif.nif_reader import NifScene, NifShape  # noqa: E402
+from Utils.nif.nif_reader import NifNode, NifScene, NifShape  # noqa: E402
 from gui_qt.nif_viewer.gl_viewport import (  # noqa: E402
-    SOLID, TEXTURED, WIRE, OrbitCamera, compute_normals, render_offscreen,
+    SOLID, TEXTURED, WIRE, OrbitCamera, compute_normals, fit_inputs, render_offscreen,
 )
 
 BG = QColor(34, 34, 34).rgb()
@@ -156,3 +156,49 @@ def test_camera_fit_scales_with_the_object_and_never_enters_it():
     tight = OrbitCamera()
     tight.frame(((0, 0, 0.3), 100.0), pts)
     assert tight.fit_distance(1.0) >= 1.5 * 100.0  # floor: camera stays outside the sphere
+
+
+# -- skeleton overlay -----------------------------------------------------------------------------
+def _bones():
+    return [NifNode("skel.nif", -1, (0, 0, 0)),
+            NifNode("NPC Root [Root]", 0, (0, 0, -1)),
+            NifNode("NPC Spine [Spn0]", 1, (0, 0, 0)),
+            NifNode("NPC Head [Head]", 2, (0, 0, 1))]
+
+
+def _orange(img: QImage) -> int:
+    n = 0
+    for y in range(img.height()):
+        for x in range(img.width()):
+            c = QColor(img.pixel(x, y))
+            if c.red() > 200 and 100 < c.green() < 190 and c.blue() < 90:
+                n += 1
+    return n
+
+
+def test_skeleton_is_drawn_over_the_mesh(app):
+    scene = NifScene([_tri()])
+    without = _render(scene)
+    assert _orange(without) == 0
+    img = render_offscreen(scene, {}, SOLID, 128, _front_camera(scene), skeleton=_bones())
+    assert _orange(img) > 10                                   # joints/bones over the grey mesh
+
+
+def test_a_skeleton_alone_is_framed_and_drawn(app):
+    empty = NifScene([])
+    sphere, pts = fit_inputs(empty, _bones())
+    assert sphere is not None and len(pts) == 3                # the helper node is not a bone
+    img = render_offscreen(empty, {}, SOLID, 200, skeleton=_bones())
+    if img is None:
+        pytest.skip("no OpenGL 3.3 core context available")
+    assert _orange(img) > 10
+    x0, x1, y0, y1 = _bbox(img)
+    assert x0 >= 0 and y0 >= 0 and x1 < 199 and y1 < 199       # nothing clipped
+
+
+def test_fit_inputs_include_bones_beyond_the_mesh():
+    scene = NifScene([_tri()])                                  # z in [-1, 1]
+    tall = [NifNode("NPC Head [Head]", -1, (0, 0, 50))]
+    (c, r), pts = fit_inputs(scene, tall)
+    assert c[2] == pytest.approx(24.5) and r > 25              # framing grew to hold the head
+    assert fit_inputs(None, None) == (None, None)

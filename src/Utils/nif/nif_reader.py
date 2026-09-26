@@ -105,11 +105,25 @@ class NifShape:
     textures: list[str] = field(default_factory=list)   # slot order, normalised
     is_skinned: bool = False
     is_effect: bool = False   # BSEffectShaderProperty (glow, fx) — not a solid surface
+    slots: frozenset = frozenset()   # body slots (32 body, 33 hands, 37 feet…) it covers
+    # Per-partition split of `indices` (skinned shapes only): partition i covers
+    # part_slots[i] and owns the next part_tris[i] triangles, in order.
+    part_slots: tuple = ()
+    part_tris: tuple = ()
+
+
+@dataclass
+class NifNode:
+    """A NiNode of the file's tree (bones, in a skeleton NIF)."""
+    name: str
+    parent: int                                  # index into NifScene.nodes, -1 for a root
+    position: tuple[float, float, float]         # world space
 
 
 @dataclass
 class NifScene:
     shapes: list[NifShape]
+    nodes: list[NifNode] = field(default_factory=list)   # only with read_nif(include_nodes=True)
     _sphere: object = field(default=None, repr=False, compare=False)
 
     def sample_points(self, limit: int = 6000) -> list[tuple[float, float, float]]:
@@ -352,6 +366,7 @@ def _read_skin_partition(r: _R):
     pos, uvs, nrm = _decode_vertices(r.b, r.p, nverts, vsize, desc)
     r.p += data_size
     tris = array("H")
+    counts: list[int] = []
     for _ in range(nparts):
         nv, nt, nb, nstrips, nw = r.u16(), r.u16(), r.u16(), r.u16(), r.u16()
         r.skip(2 * nb)                               # bones
@@ -370,7 +385,8 @@ def _read_skin_partition(r: _R):
         chunk.frombytes(r.b[r.p:r.p + nt * 6])
         r.p += nt * 6
         tris.extend(chunk)
-    return pos, uvs, nrm, tris
+        counts.append(nt)
+    return pos, uvs, nrm, tris, tuple(counts)
 
 
 def _read_shape(r: _R, ptype: str):
@@ -419,6 +435,20 @@ def _read_shape(r: _R, ptype: str):
             "uvs": uvs, "indices": idx, "dyn": dyn}
 
 
+def _read_dismember_slots(r: _R) -> tuple:
+    """BSDismemberSkinInstance → its partitions' body slots, in order
+    (BSDismemberBodyPartType: 32 body, 33 hands, 37 feet…). The game hides the
+    base body parts whose slot an equipped armour covers."""
+    r.i32(); r.i32(); r.i32()                    # skin data, skin partition, skeleton root
+    r.skip(4 * r.u32())                          # bone refs
+    n = r.u32()
+    slots = []
+    for _ in range(n):
+        r.u16()                                  # part flags
+        slots.append(r.u16())
+    return tuple(slots)
+
+
 def _read_texture_set(r: _R) -> list[str]:
     n = r.u32()
     return [normalize_texture_path(r.sized_str()) for _ in range(n)]
@@ -441,8 +471,11 @@ def _read_effect_shader(r: _R) -> str:
 
 
 # -- public API ---------------------------------------------------------------------
-def read_nif(data: bytes) -> NifScene:
+def read_nif(data: bytes, include_nodes: bool = False) -> NifScene:
     """Parse *data* (a whole .nif file) into world-space shapes.
+
+    *include_nodes* also returns the node tree (names + world positions) —
+    wanted for skeletons, skipped otherwise to keep scenes small.
 
     Raises NifUnsupported for other games/versions, NifError for corrupt files.
     Blocks we don't understand are skipped; a shape that fails to parse is
@@ -472,11 +505,12 @@ def read_nif(data: bytes) -> NifScene:
     # Cheap pass: node children + texture-set/shader lookups.
     children: dict[int, list[int]] = {}
     locals_: dict[int, tuple] = {}
+    names: dict[int, str] = {}
     for i, t in enumerate(tname):
         if t in _NODE_TYPES:
             try:
                 r = reader(i)
-                _object_net(r, hdr.strings)
+                names[i] = _object_net(r, hdr.strings)
                 locals_[i] = _av_object(r)
                 n = r.u32()
                 children[i] = [r.i32() for _ in range(n)]
@@ -510,6 +544,7 @@ def read_nif(data: bytes) -> NifScene:
             g = _read_shape(reader(i), tname[i])
         except (struct.error, IndexError, NifError):
             return
+        part_tris: tuple = ()
         if (not g["positions"] or not len(g["indices"])) and g["skin"] >= 0:
             try:
                 sr = reader(g["skin"])
@@ -518,7 +553,7 @@ def read_nif(data: bytes) -> NifScene:
                 if 0 <= part < hdr.nblocks and tname[part] == "NiSkinPartition":
                     got = _read_skin_partition(reader(part))
                     if got is not None:
-                        ppos, g["uvs"], g["normals"], g["indices"] = got
+                        ppos, g["uvs"], g["normals"], g["indices"], part_tris = got
                         g["positions"] = ppos if ppos is not None else g["dyn"]
                         if g["positions"] is not None and g["uvs"] is not None \
                                 and len(g["uvs"]) // 2 != len(g["positions"]) // 3:
@@ -547,19 +582,34 @@ def read_nif(data: bytes) -> NifScene:
                 ln = (nx * nx + ny * ny + nz * nz) ** 0.5 or 1.0
                 wn[k], wn[k + 1], wn[k + 2] = nx / ln, ny / ln, nz / ln
         tex, is_fx = textures_for(g["shader"])
+        part_slots: tuple = ()
+        if g["skin"] >= 0 and tname[g["skin"]] == "BSDismemberSkinInstance":
+            try:
+                part_slots = _read_dismember_slots(reader(g["skin"]))
+            except (struct.error, IndexError):
+                pass
+        if len(part_slots) != len(part_tris) or sum(part_tris) * 3 != len(g["indices"]):
+            part_tris = ()                       # can't split reliably: treat as one piece
         shapes.append(NifShape(
             name=g["name"], positions=wp, normals=wn, uvs=g["uvs"],
             indices=g["indices"], textures=tex,
-            is_skinned=g["skin"] >= 0, is_effect=is_fx))
+            is_skinned=g["skin"] >= 0, is_effect=is_fx, slots=frozenset(part_slots),
+            part_slots=part_slots if part_tris else (), part_tris=part_tris))
 
-    def walk(i: int, world, depth=0):
+    nodes: list[NifNode] = []
+
+    def walk(i: int, world, depth=0, parent=-1):
         if not 0 <= i < hdr.nblocks or depth > 64:
             return
         t = tname[i]
         if t in _NODE_TYPES:
             w = _compose(world, locals_.get(i, _IDENT))
+            me = parent
+            if include_nodes:
+                me = len(nodes)
+                nodes.append(NifNode(names.get(i, ""), parent, w[2]))
             for c in children.get(i, []):
-                walk(c, w, depth + 1)
+                walk(c, w, depth + 1, me)
         elif t in _SHAPE_TYPES:
             emit(i, world)
 
@@ -569,4 +619,4 @@ def read_nif(data: bytes) -> NifScene:
     for i, t in enumerate(tname):
         if t in _SHAPE_TYPES and i not in seen_shapes:
             emit(i, _IDENT)
-    return NifScene(shapes)
+    return NifScene(shapes, nodes)

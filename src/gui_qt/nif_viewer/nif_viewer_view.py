@@ -18,6 +18,8 @@ layered catalog, so it is drawn with the textures the game would load.
 
 from __future__ import annotations
 
+import threading
+
 from PySide6.QtCore import QModelIndex, Qt, QTimer, Signal
 from PySide6.QtWidgets import (
     QCheckBox, QComboBox, QHBoxLayout, QLabel, QLineEdit, QPushButton, QSizePolicy,
@@ -28,6 +30,9 @@ from Utils.archives.bsa_file_reader import BsaReadError
 from Utils.dds_info import parse_dds_info
 from Utils.nif.asset_catalog import BASE, AssetCatalog, AssetEntry
 from Utils.nif.catalog_loader import build_catalog
+from Utils.nif.character import (
+    SKELETONS, auto_gender, body_paths, compose, detect_gender, detect_weight,
+)
 from Utils.nif.nif_reader import (
     NifError, NifUnsupported, format_label, read_nif, version_string,
 )
@@ -42,6 +47,8 @@ from gui_qt.worker import run_in_worker
 
 _PAGE_MESH, _PAGE_IMAGE, _PAGE_MESSAGE = 0, 1, 2
 _SRC_MESH, _SRC_TEXTURE, _SRC_BOTH = "mesh", "texture", "both"
+_BODY_AUTO, _BODY_FEMALE, _BODY_MALE, _BODY_NONE = "auto", "female", "male", "none"
+_IMG_CACHE_MAX = 300
 
 
 class NifViewerView(QWidget):
@@ -57,6 +64,9 @@ class NifViewerView(QWidget):
         self._entry: "AssetEntry | None" = None
         self._last: "dict | None" = None
         self._scan_text = ""          # shown in the tree status while formats are being checked
+        self._img_cache: dict[str, object] = {}      # texture path → decoded QImage (or None)
+        self._skel_cache: dict[str, object] = {}     # gender → skeleton nodes (or None)
+        self._cache_lock = threading.Lock()
         self._closing = False
         pal = active_palette()
 
@@ -125,6 +135,29 @@ class NifViewerView(QWidget):
         bh.addWidget(self._wire)
         rv.addWidget(bar)
 
+        opts = QWidget()
+        opts.setStyleSheet(f"background:{_c(pal, 'BG_HEADER')};")
+        oh = QHBoxLayout(opts)
+        oh.setContentsMargins(8, 0, 8, 6)
+        oh.addWidget(QLabel(self.tr("Body:")))
+        self._body = QComboBox()
+        self._body.setToolTip(self.tr(
+            "Wear the selected armour or clothes on the game's own body (parts the "
+            "armour covers are hidden, as in game). Auto picks a body for wearable "
+            "gear from its path."))
+        self._body.addItem(self.tr("Auto"), _BODY_AUTO)
+        self._body.addItem(self.tr("Female"), _BODY_FEMALE)
+        self._body.addItem(self.tr("Male"), _BODY_MALE)
+        self._body.addItem(self.tr("None"), _BODY_NONE)
+        oh.addWidget(self._body)
+        self._skel = QCheckBox(self.tr("Skeleton"))
+        self._skel.setToolTip(self.tr(
+            "Draw the game's skeleton (its bones) over the mesh. Selecting a "
+            "skeleton .nif shows its bones on their own."))
+        oh.addWidget(self._skel)
+        oh.addStretch(1)
+        rv.addWidget(opts)
+
         self._stack = QStackedWidget()
         self._viewport = MeshViewport()
         self._canvas = _ImageCanvas()
@@ -157,6 +190,8 @@ class NifViewerView(QWidget):
         self._tree.selectionModel().currentChanged.connect(self._on_current_changed)
         self._only_over.toggled.connect(self._on_only_overridden)
         self._hide_bad.toggled.connect(self._on_hide_bad)
+        self._body.currentIndexChanged.connect(self._on_char_option)
+        self._skel.toggled.connect(self._on_char_option)
         self._scan_progress.connect(self._on_scan_progress)
         self._scan_done.connect(self._on_scan_done)
         self._sources.currentIndexChanged.connect(self._on_source_changed)
@@ -265,6 +300,42 @@ class NifViewerView(QWidget):
     def _needs_textures(self) -> bool:
         return self._source() in (_SRC_TEXTURE, _SRC_BOTH)
 
+    def _image(self, cat: AssetCatalog, path: str):
+        """The decoded QImage of texture *path* (through the catalog's winners), cached."""
+        with self._cache_lock:
+            if path in self._img_cache:
+                return self._img_cache[path]
+        e = cat.resolve(path)
+        try:
+            img = load_qimage_bytes(cat.read(e)) if e else None
+        except (OSError, BsaReadError):
+            img = None
+        with self._cache_lock:
+            self._img_cache[path] = img
+            while len(self._img_cache) > _IMG_CACHE_MAX:
+                self._img_cache.pop(next(iter(self._img_cache)))
+        return img
+
+    def _load_nif(self, cat: AssetCatalog, path: str, include_nodes: bool = False):
+        """Read and parse the game's winning copy of *path*; None if it isn't there."""
+        e = cat.resolve(path)
+        if e is None:
+            return None
+        try:
+            return read_nif(cat.read(e), include_nodes=include_nodes)
+        except (NifError, BsaReadError, OSError):
+            return None
+
+    def _load_skeleton(self, cat: AssetCatalog, gender: str):
+        with self._cache_lock:
+            if gender in self._skel_cache:
+                return self._skel_cache[gender]
+        sc = self._load_nif(cat, SKELETONS[gender], include_nodes=True)
+        nodes = sc.nodes if sc is not None and sc.nodes else None
+        with self._cache_lock:
+            self._skel_cache[gender] = nodes
+        return nodes
+
     def _load(self, entry: AssetEntry):
         cat = self._catalog
         if cat is None:
@@ -274,6 +345,8 @@ class NifViewerView(QWidget):
         self._entry, self._last = entry, None
         self._info.setText(self.tr("Loading {0}…").format(entry.path.rsplit("/", 1)[-1]))
         want_tex = self._needs_textures()
+        body_mode = self._body.currentData()
+        want_skel = self._skel.isChecked() and self._source() != _SRC_TEXTURE
 
         def job():
             try:
@@ -282,27 +355,37 @@ class NifViewerView(QWidget):
                     info = parse_dds_info(data[:148], len(data))
                     return gen, {"kind": "texture", "image": load_qimage_bytes(data),
                                  "info": info.summary() if info else ""}
-                scene = read_nif(data)
+                scene = read_nif(data, include_nodes=True)
+                skeleton, worn_on = None, None
+                if not scene.shapes and len(scene.nodes) >= 5:
+                    skeleton = scene.nodes                    # a skeleton NIF: show its bones
+                else:
+                    gender = (auto_gender(entry.path, scene) if body_mode == _BODY_AUTO
+                              else None if body_mode == _BODY_NONE else body_mode)
+                    if gender:
+                        bodies = [b for b in (self._load_nif(cat, p) for p in
+                                              body_paths(gender, detect_weight(entry.path)))
+                                  if b is not None]
+                        if bodies:
+                            scene, worn_on = compose(scene, bodies), gender
+                    if want_skel:
+                        skeleton = self._load_skeleton(
+                            cat, gender or detect_gender(entry.path) or "female")
                 images: dict[int, object] = {}
                 missing: list[str] = []
                 if want_tex:
-                    cache: dict[str, object] = {}
                     for i, sh in enumerate(scene.shapes):
                         path = sh.textures[0] if sh.textures else ""
                         if not path or sh.is_effect:
                             continue
-                        if path not in cache:
-                            e = cat.resolve(path)
-                            try:
-                                cache[path] = load_qimage_bytes(cat.read(e)) if e else None
-                            except (OSError, BsaReadError):
-                                cache[path] = None
-                        if cache[path] is not None:
-                            images[i] = cache[path]
+                        img = self._image(cat, path)
+                        if img is not None:
+                            images[i] = img
                         else:
                             missing.append(path)
                 return gen, {"kind": "mesh", "scene": scene, "images": images,
-                             "missing": missing, "textures_loaded": want_tex}
+                             "missing": missing, "textures_loaded": want_tex,
+                             "skeleton": skeleton, "worn_on": worn_on}
             except NifUnsupported as exc:
                 label = format_label(exc.version, exc.bsver)
                 cat.mark_incompatible(entry, label)
@@ -317,6 +400,11 @@ class NifViewerView(QWidget):
 
         run_in_worker(job, self._asset_ready, unpack=True, name="nif-viewer-load",
                       error_result=(gen, {"kind": "error", "text": self.tr("Unexpected error")}))
+
+    def _on_char_option(self, *_args):
+        """Body / Skeleton changed: rebuild the current mesh."""
+        if self._entry is not None and not self._entry.path.endswith(".dds"):
+            self._load(self._entry)
 
     def _on_asset_ready(self, gen: int, res: dict):
         if gen != self._gen:
@@ -361,18 +449,26 @@ class NifViewerView(QWidget):
         res = self._last
         if res is None:
             return
-        scene = res["scene"]
-        tris = sum(len(s.indices) // 3 for s in scene.shapes if not s.is_effect)
-        parts = [self.tr("{0} shape(s)").format(len(scene.shapes)),
-                 self.tr("{0:,} triangles").format(tris)]
-        if res["textures_loaded"]:
+        scene, skeleton = res["scene"], res["skeleton"]
+        tris = sum(len(s.indices) // 3 for s in scene.shapes)
+        parts = []
+        if scene.shapes:
+            parts += [self.tr("{0} shape(s)").format(len(scene.shapes)),
+                      self.tr("{0:,} triangles").format(tris)]
+        if res["worn_on"]:
+            parts.append(self.tr("worn on the {0} body").format(
+                self.tr("female") if res["worn_on"] == "female" else self.tr("male")))
+        if skeleton:
+            from Utils.nif.skeleton import is_bone
+            parts.append(self.tr("skeleton: {0} bones").format(sum(is_bone(n) for n in skeleton)))
+        if res["textures_loaded"] and scene.shapes:
             miss = sorted(set(res["missing"]))
             parts.append(self.tr("textures: {0} found").format(len(res["images"]))
                          + (self.tr(", {0} missing").format(len(miss)) if miss else ""))
         info = " · ".join(parts)
-        if not scene.shapes:
+        if not scene.shapes and not skeleton:
             self._show_message(self.tr("This file has no drawable geometry "
-                                       "(skeleton, animation or collision only)."))
+                                       "(animation or collision only)."))
             self._info.setText(self._describe(info))
             return
         src = self._source()
@@ -385,7 +481,7 @@ class NifViewerView(QWidget):
         else:
             images = res["images"] if src == _SRC_BOTH else {}
             index = {id(s): i for i, s in enumerate(scene.shapes)}
-            self._viewport.set_scene(scene, lambda sh: images.get(index[id(sh)]))
+            self._viewport.set_scene(scene, lambda sh: images.get(index[id(sh)]), skeleton)
             self._apply_mode()
             self._stack.setCurrentIndex(_PAGE_MESH)
             QTimer.singleShot(400, self._check_gl)
@@ -404,7 +500,12 @@ class NifViewerView(QWidget):
     def _on_source_changed(self, _i):
         if self._entry is None or self._entry.path.endswith(".dds"):
             return
-        if self._last is not None and (not self._needs_textures() or self._last["textures_loaded"]):
+        last = self._last
+        reusable = (last is not None
+                    and (not self._needs_textures() or last["textures_loaded"])
+                    and (not self._skel.isChecked() or self._source() == _SRC_TEXTURE
+                         or last["skeleton"] is not None))
+        if reusable:
             self._show_mesh()
         else:
-            self._load(self._entry)                   # textures weren't fetched yet
+            self._load(self._entry)                   # textures / bones weren't fetched yet

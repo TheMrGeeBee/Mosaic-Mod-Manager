@@ -170,6 +170,28 @@ def test_rejects_other_games_and_garbage():
         read_nif(_simple()[:-40])                                   # shorter than block table
 
 
+def test_include_nodes_returns_names_parents_and_world_positions():
+    blob = _nif([
+        ("NiNode", _node(0, [1])),                                  # "Root"
+        ("NiNode", _node(1, [2], t=(0, 0, 10))),                    # "Shape" (used as a node name)
+        ("NiNode", _node(0, [], t=(1, 0, 0), scale=2.0)),
+    ])
+    sc = read_nif(blob, include_nodes=True)
+    assert [(n.name, n.parent) for n in sc.nodes] == [("Root", -1), ("Shape", 0), ("Root", 1)]
+    assert sc.nodes[1].position == (0, 0, 10)
+    assert sc.nodes[2].position == (1, 0, 10)                       # parent translation added
+    assert read_nif(blob).nodes == []                               # off by default
+
+
+def test_dismember_slots_are_read_in_partition_order():
+    from Utils.nif.nif_reader import _R, _read_dismember_slots
+    body = (struct.pack("<iii", 5, 6, 7)                    # skin data, partition, skeleton root
+            + struct.pack("<I2i", 2, 8, 9)                   # two bone refs
+            + struct.pack("<I", 3)                           # three partitions: (flags, slot)
+            + struct.pack("<HH", 1, 32) + struct.pack("<HH", 1, 34) + struct.pack("<HH", 1, 38))
+    assert _read_dismember_slots(_R(body)) == (32, 34, 38)
+
+
 def test_sniff_and_label_formats():
     head = lambda **kw: _nif([("NiNode", _node(0, []))], **kw)[:128]   # noqa: E731
     assert sniff_nif_format(head()) == (0x14020007, 100)
@@ -222,3 +244,15 @@ def test_real_vanilla_meshes_parse():
                 assert nv and max(sh.indices) < nv, path
                 shapes += 1
         assert shapes > 20
+
+
+@pytest.mark.skipif(not (_DATA / "Skyrim - Meshes0.bsa").is_file(),
+                    reason="needs a Skyrim SE install")
+def test_real_vanilla_body_partitions_split_the_triangles():
+    from Utils.archives.bsa_file_reader import BsaFile
+    with BsaFile(_DATA / "Skyrim - Meshes0.bsa") as bsa:
+        sc = read_nif(bsa.read("meshes/actors/character/character assets/femalebody_1.nif"))
+    torso = next(s for s in sc.shapes if len(s.part_slots) == 3)
+    assert sorted(torso.part_slots) == [32, 34, 38]      # file order is (38, 32, 34)
+    assert sum(torso.part_tris) * 3 == len(torso.indices)
+    assert torso.slots == {32, 34, 38}

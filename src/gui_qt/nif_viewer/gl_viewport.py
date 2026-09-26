@@ -20,7 +20,7 @@ from PySide6.QtCore import Qt, QPoint
 from shiboken6 import VoidPtr
 from PySide6.QtGui import (
     QColor, QImage, QMatrix4x4, QOffscreenSurface, QOpenGLContext, QSurfaceFormat,
-    QVector3D,
+    QVector3D, QVector4D,
 )
 from PySide6.QtOpenGL import (
     QOpenGLBuffer, QOpenGLFramebufferObject, QOpenGLFramebufferObjectFormat,
@@ -29,7 +29,8 @@ from PySide6.QtOpenGL import (
 )
 from PySide6.QtOpenGLWidgets import QOpenGLWidget
 
-from Utils.nif.nif_reader import NifScene, NifShape
+from Utils.nif.nif_reader import NifNode, NifScene, NifShape
+from Utils.nif.skeleton import bone_segments, is_bone
 
 SOLID, WIRE, TEXTURED = "solid", "wire", "textured"
 
@@ -42,6 +43,8 @@ _GL_BLEND = 0x0BE2
 _GL_SRC_ALPHA, _GL_ONE_MINUS_SRC_ALPHA = 0x0302, 0x0303
 _GL_COLOR_BUFFER_BIT, _GL_DEPTH_BUFFER_BIT = 0x4000, 0x0100
 _GL_TEXTURE0 = 0x84C0
+_GL_POINTS, _GL_LINES = 0x0000, 0x0001
+_GL_PROGRAM_POINT_SIZE = 0x8642
 
 _VERT = """
 #version 330 core
@@ -77,6 +80,26 @@ void main() {
     if (uTextured == 1 && base.a < 0.35) discard;
     frag = vec4(base.rgb * light, uAlpha);
 }
+"""
+
+
+# Flat-colour lines and points (the skeleton), drawn over the meshes.
+_LINE_VERT = """
+#version 330 core
+layout(location = 0) in vec3 aPos;
+uniform mat4 uMVP;
+uniform float uPoint;
+void main() {
+    gl_Position = uMVP * vec4(aPos, 1.0);
+    gl_PointSize = uPoint;
+}
+"""
+
+_LINE_FRAG = """
+#version 330 core
+uniform vec4 uColor;
+out vec4 frag;
+void main() { frag = uColor; }
 """
 
 
@@ -241,6 +264,11 @@ class MeshRenderer:
         self._images: dict[int, "QImage | None"] = {}
         self._drawables: list[_Drawable] = []
         self._dirty = False
+        self.line_prog: "QOpenGLShaderProgram | None" = None
+        self._skeleton: "list[NifNode] | None" = None
+        self._skel_dirty = False
+        self._skel_gpu: list = []          # [(vao, vbo, vertex_count, mode)]
+        self.show_skeleton = False
 
     def initialize(self, owner) -> bool:
         try:
@@ -253,6 +281,12 @@ class MeshRenderer:
                     and prog.link()):
                 raise RuntimeError("shader build failed: " + prog.log())
             self.prog = prog
+            lp = QOpenGLShaderProgram(owner)
+            if not (lp.addShaderFromSourceCode(QOpenGLShader.Vertex, _LINE_VERT)
+                    and lp.addShaderFromSourceCode(QOpenGLShader.Fragment, _LINE_FRAG)
+                    and lp.link()):
+                raise RuntimeError("line shader build failed: " + lp.log())
+            self.line_prog = lp
             return True
         except Exception as exc:                       # pragma: no cover - driver specific
             self.error = str(exc)
@@ -261,7 +295,38 @@ class MeshRenderer:
     def set_scene(self, scene: "NifScene | None", images: "dict[int, QImage | None]"):
         self._scene, self._images, self._dirty = scene, images, True
 
+    def set_skeleton(self, nodes: "list[NifNode] | None"):
+        """Bones to draw over the meshes (None clears). See show_skeleton."""
+        self._skeleton, self._skel_dirty = nodes, True
+
+    def _free_skeleton(self):
+        for vao, vbo, _n, _m in self._skel_gpu:
+            vbo.destroy()
+            vao.destroy()
+        self._skel_gpu = []
+
+    def _upload_skeleton(self):
+        self._free_skeleton()
+        self._skel_dirty = False
+        if not self._skeleton:
+            return
+        lines, joints = bone_segments(self._skeleton)
+        for data, mode in ((lines, _GL_LINES), (joints, _GL_POINTS)):
+            if not len(data):
+                continue
+            vao = QOpenGLVertexArrayObject()
+            vao.create()
+            vao.bind()
+            vbo = QOpenGLBuffer(QOpenGLBuffer.VertexBuffer)
+            vbo.create(); vbo.bind()
+            vbo.allocate(data.tobytes(), len(data) * 4)
+            self.line_prog.enableAttributeArray(0)
+            self.line_prog.setAttributeBuffer(0, _GL_FLOAT, 0, 3, 12)
+            vao.release()
+            self._skel_gpu.append((vao, vbo, len(data) // 3, mode))
+
     def release(self):
+        self._free_skeleton()
         for d in self._drawables:
             for o in (d.tex, d.vbo, d.ibo, d.vao):
                 if o is not None:
@@ -361,6 +426,49 @@ class MeshRenderer:
                 gl.glDisable(_GL_BLEND)
         gl.glPolygonMode(_GL_FRONT_AND_BACK, _GL_FILL)
         p.release()
+        self._render_skeleton(view, proj)
+
+    def _render_skeleton(self, view: QMatrix4x4, proj: QMatrix4x4):
+        gl, lp = self.gl, self.line_prog
+        if self._skel_dirty:
+            self._upload_skeleton()
+        if not self.show_skeleton or not self._skel_gpu or lp is None:
+            return
+        # Over everything, so the bones show through armour and skin.
+        gl.glDisable(_GL_DEPTH_TEST)
+        gl.glEnable(_GL_BLEND)
+        gl.glBlendFunc(_GL_SRC_ALPHA, _GL_ONE_MINUS_SRC_ALPHA)
+        gl.glEnable(_GL_PROGRAM_POINT_SIZE)
+        lp.bind()
+        lp.setUniformValue("uMVP", proj * view)
+        for vao, _vbo, n, mode in self._skel_gpu:
+            pts = mode == _GL_POINTS
+            gl.glUniform1f(lp.uniformLocation("uPoint"), 7.0 if pts else 1.0)
+            lp.setUniformValue("uColor", QVector4D(1.0, 0.55, 0.1, 1.0) if pts
+                               else QVector4D(1.0, 0.85, 0.2, 0.95))
+            vao.bind()
+            gl.glDrawArrays(mode, 0, n)
+            vao.release()
+        lp.release()
+        gl.glDisable(_GL_PROGRAM_POINT_SIZE)
+        gl.glDisable(_GL_BLEND)
+        gl.glEnable(_GL_DEPTH_TEST)
+
+
+def fit_inputs(scene: "NifScene | None", skeleton: "list[NifNode] | None"):
+    """(sphere, points) for OrbitCamera.frame(): the meshes plus, when given, the
+    skeleton's bones — so a character's head bones aren't cut off by a headless
+    body. (None, None) when there is nothing to frame."""
+    pts = list(scene.sample_points()) if scene else []
+    if skeleton:
+        pts += [n.position for n in skeleton if is_bone(n)]
+    if not pts:
+        return None, None
+    lo = [min(p[i] for p in pts) for i in range(3)]
+    hi = [max(p[i] for p in pts) for i in range(3)]
+    c = tuple((lo[i] + hi[i]) / 2 for i in range(3))
+    r = max(math.dist(c, p) for p in pts)
+    return (c, max(r, 1e-6)), pts
 
 
 class MeshViewport(QOpenGLWidget):
@@ -376,26 +484,34 @@ class MeshViewport(QOpenGLWidget):
         self._renderer = MeshRenderer()
         self._camera = OrbitCamera()
         self._scene: "NifScene | None" = None
+        self._skeleton: "list[NifNode] | None" = None
         self._mode = SOLID
         self._last: "QPoint | None" = None
 
     # -- public -----------------------------------------------------------------
     def set_scene(self, scene: "NifScene | None",
-                  texture_for: "Callable[[NifShape], QImage | None] | None" = None):
-        """Show *scene*; *texture_for* supplies each shape's diffuse image."""
+                  texture_for: "Callable[[NifShape], QImage | None] | None" = None,
+                  skeleton: "list[NifNode] | None" = None):
+        """Show *scene*; *texture_for* supplies each shape's diffuse image;
+        *skeleton* (a skeleton NIF's nodes) is drawn as bones over the meshes and
+        included in the framing. Either may be empty — a skeleton NIF on its own
+        has no shapes."""
         self._scene = scene
         images = {}
         if scene is not None and texture_for is not None:
             for i, sh in enumerate(scene.shapes):
                 images[i] = texture_for(sh)
         self._renderer.set_scene(scene, images)
+        self._skeleton = skeleton or None
+        self._renderer.set_skeleton(self._skeleton)
+        self._renderer.show_skeleton = bool(self._skeleton)
         self._frame_scene()
         self.update()
 
     def _frame_scene(self):
-        sc = self._scene
-        self._camera.frame(sc.bounding_sphere() if sc else None,
-                           sc.sample_points() if sc else None)
+        """Fit the camera to the meshes and, when shown, the skeleton's bones."""
+        sphere, pts = fit_inputs(self._scene, self._skeleton)
+        self._camera.frame(sphere, pts)
 
     def set_mode(self, mode: str):
         if mode != self._mode:
@@ -460,7 +576,8 @@ class MeshViewport(QOpenGLWidget):
 
 def render_offscreen(scene: NifScene, images: "dict[int, QImage | None]",
                      mode: str = SOLID, size: "int | tuple[int, int]" = 512,
-                     camera: "OrbitCamera | None" = None) -> "QImage | None":
+                     camera: "OrbitCamera | None" = None,
+                     skeleton: "list[NifNode] | None" = None) -> "QImage | None":
     """Render one frame without a window. *size* is a square edge or (w, h).
     Returns None if no GL context is available. Needs a QGuiApplication."""
     w, h = (size, size) if isinstance(size, int) else size
@@ -487,8 +604,11 @@ def render_offscreen(scene: NifScene, images: "dict[int, QImage | None]",
         r.gl.glViewport(0, 0, w, h)
         cam = camera or OrbitCamera()
         if camera is None:
-            cam.frame(scene.bounding_sphere(), scene.sample_points())
+            cam.frame(*fit_inputs(scene, skeleton))
         r.set_scene(scene, images)
+        if skeleton:
+            r.set_skeleton(skeleton)
+            r.show_skeleton = True
         view, proj = cam.matrices(w / h)
         r.render(view, proj, mode)
         img = fbo.toImage()
