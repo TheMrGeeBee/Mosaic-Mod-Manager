@@ -96,6 +96,18 @@ def sniff_nif_format(head: bytes) -> "tuple[int, int] | None":
 
 
 @dataclass
+class SkinData:
+    """What a skinned shape needs to be re-posed on a skeleton: the shape's own
+    vertices (local space), and per bone its name, its skin→bone transform
+    (rotation row-major 3x3, scale, translation) and the vertices it weights."""
+    bone_names: tuple
+    bone_xf: tuple                     # per bone: (r9, scale, translation)
+    weights: tuple                     # per bone: (array('H') vertex ids, array('f') weights)
+    local_positions: array
+    local_normals: "array | None"
+
+
+@dataclass
 class NifShape:
     name: str
     positions: array          # world-space xyz, flat
@@ -110,6 +122,7 @@ class NifShape:
     # part_slots[i] and owns the next part_tris[i] triangles, in order.
     part_slots: tuple = ()
     part_tris: tuple = ()
+    skin: "SkinData | None" = None
 
 
 @dataclass
@@ -118,6 +131,8 @@ class NifNode:
     name: str
     parent: int                                  # index into NifScene.nodes, -1 for a root
     position: tuple[float, float, float]         # world space
+    rotation: tuple = (1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0)   # world, row-major 3x3
+    scale: float = 1.0                                                  # world
 
 
 @dataclass
@@ -244,6 +259,10 @@ def _compose(parent, local):
          pt[1] + pr[3] * x + pr[4] * y + pr[5] * z,
          pt[2] + pr[6] * x + pr[7] * y + pr[8] * z)
     return (r, ps * ls, t)
+
+
+# Public alias: world = parent ∘ local for (rotation 3x3 row-major, scale, translation).
+compose_transform = _compose
 
 
 def normalize_texture_path(p: str) -> str:
@@ -449,6 +468,35 @@ def _read_dismember_slots(r: _R) -> tuple:
     return tuple(slots)
 
 
+def _read_skin(inst: _R, data_reader, names: dict) -> "tuple | None":
+    """NiSkinInstance + NiSkinData → (bone_names, bone_xf, weights), or None if
+    the data is missing or has no per-bone vertex weights."""
+    data_ref = inst.i32()
+    inst.i32(); inst.i32()                        # skin partition, skeleton root
+    n = inst.u32()
+    bone_refs = [inst.i32() for _ in range(n)]
+    d = data_reader(data_ref)
+    if d is None:
+        return None
+    d.floats(13)                                   # overall skin transform (unused: see SkinData)
+    nb = d.u32()
+    has_weights = d.u8()
+    if not has_weights or nb != n:
+        return None
+    xf, weights = [], []
+    for _ in range(nb):
+        v = d.floats(13)
+        xf.append((v[:9], v[12], v[9:12]))
+        d.floats(4)                                # bounding sphere
+        nv = d.u16()
+        ids, ws = array("H"), array("f")
+        for k in range(nv):
+            ids.append(d.u16())
+            ws.append(d.f32())
+        weights.append((ids, ws))
+    return tuple(names.get(b, "") for b in bone_refs), tuple(xf), tuple(weights)
+
+
 def _read_texture_set(r: _R) -> list[str]:
     n = r.u32()
     return [normalize_texture_path(r.sized_str()) for _ in range(n)]
@@ -590,11 +638,22 @@ def read_nif(data: bytes, include_nodes: bool = False) -> NifScene:
                 pass
         if len(part_slots) != len(part_tris) or sum(part_tris) * 3 != len(g["indices"]):
             part_tris = ()                       # can't split reliably: treat as one piece
+        skin_data = None
+        if g["skin"] >= 0 and tname[g["skin"]] in ("BSDismemberSkinInstance", "NiSkinInstance"):
+            try:
+                got = _read_skin(
+                    reader(g["skin"]),
+                    lambda ref: reader(ref) if 0 <= ref < hdr.nblocks and tname[ref] == "NiSkinData" else None,
+                    names)
+                if got is not None:
+                    skin_data = SkinData(got[0], got[1], got[2], g["positions"], g["normals"])
+            except (struct.error, IndexError):
+                pass
         shapes.append(NifShape(
             name=g["name"], positions=wp, normals=wn, uvs=g["uvs"],
             indices=g["indices"], textures=tex,
             is_skinned=g["skin"] >= 0, is_effect=is_fx, slots=frozenset(part_slots),
-            part_slots=part_slots if part_tris else (), part_tris=part_tris))
+            part_slots=part_slots if part_tris else (), part_tris=part_tris, skin=skin_data))
 
     nodes: list[NifNode] = []
 
@@ -607,7 +666,7 @@ def read_nif(data: bytes, include_nodes: bool = False) -> NifScene:
             me = parent
             if include_nodes:
                 me = len(nodes)
-                nodes.append(NifNode(names.get(i, ""), parent, w[2]))
+                nodes.append(NifNode(names.get(i, ""), parent, w[2], w[0], w[1]))
             for c in children.get(i, []):
                 walk(c, w, depth + 1, me)
         elif t in _SHAPE_TYPES:

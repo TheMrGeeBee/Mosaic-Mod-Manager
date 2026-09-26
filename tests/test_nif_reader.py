@@ -256,3 +256,31 @@ def test_real_vanilla_body_partitions_split_the_triangles():
     assert sorted(torso.part_slots) == [32, 34, 38]      # file order is (38, 32, 34)
     assert sum(torso.part_tris) * 3 == len(torso.indices)
     assert torso.slots == {32, 34, 38}
+
+
+@pytest.mark.skipif(not (_DATA / "Skyrim - Meshes0.bsa").is_file(),
+                    reason="needs a Skyrim SE install")
+def test_real_skin_data_reproduces_body_placement_and_seats_hair_on_the_head():
+    """Checks the skinning formula against the real game: vanilla body/boots/helmet
+    stay where their files put them, and hair (stored relative to the head bone)
+    lands on the head."""
+    from Utils.archives.bsa_file_reader import BsaFile
+    from Utils.nif.character import bone_transforms, skin_shape
+    CA = "meshes/actors/character/character assets"
+    with BsaFile(_DATA / "Skyrim - Meshes0.bsa") as b0, BsaFile(_DATA / "Skyrim - Meshes1.bsa") as b1:
+        def rd(p, **kw):
+            return read_nif((b0 if p in b0 else b1).read(p), **kw)
+        bones = bone_transforms(rd(CA + " female/skeleton_female.nif", include_nodes=True).nodes)
+        for path in (CA + "/femalebody_1.nif", "meshes/armor/iron/f/boots_1.nif",
+                     "meshes/armor/iron/f/helmet.nif"):
+            for sh in rd(path).shapes:
+                out = skin_shape(sh, bones)
+                assert out is not sh, sh.name
+                moved = max(math.dist(out.positions[i:i + 3], sh.positions[i:i + 3])
+                            for i in range(0, len(sh.positions), 3))
+                assert moved < 0.05, (path, sh.name, moved)
+        hair = rd(CA + "/hair/female/hair01.nif").shapes[0]
+        assert max(hair.positions[2::3]) < 20                                   # stored head-relative…
+        seated = skin_shape(hair, bones)
+        zs = seated.positions[2::3]
+        assert 105 < min(zs) and max(zs) < 140                                  # …and skinned onto the head

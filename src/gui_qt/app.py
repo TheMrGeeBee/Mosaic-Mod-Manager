@@ -9569,11 +9569,16 @@ class MainWindow(QMainWindow):
         game = self._gs.game
         if game is not None and getattr(game, "game_id", None) in NIF_VIEWER_GAME_IDS:
             menu.addSeparator()
-            viewer = menu.addAction(self.tr("NIF / Character Viewer…"))
+            viewer = menu.addAction(self.tr("NIF Viewer…"))
             viewer.setToolTip(self.tr(
                 "Browse every mesh and texture the game would load — base game and "
                 "each mod — and view them in 3D."))
             viewer.triggered.connect(lambda _=False: self._open_nif_viewer_tab())
+            char = menu.addAction(self.tr("Character Viewer…"))
+            char.setToolTip(self.tr(
+                "Dress a whole character on the game's skeleton: armour, clothing and "
+                "hair on the base body, with the skeleton overlay."))
+            char.triggered.connect(lambda _=False: self._open_character_tab())
         menu.addSeparator()
         if tools:
             fav = menu.addAction(self.tr("Add Favourites…"))
@@ -9598,7 +9603,34 @@ class MainWindow(QMainWindow):
             return
         from gui_qt.nif_viewer.nif_viewer_view import NifViewerView
         view = NifViewerView(game, self._gs.profile_dir(), self._gs.staging_dir())
+        view.equip_requested.connect(self._equip_on_character)
         self._tabs.open_tab(view, self.tr("NIF Viewer"), key="nif_viewer")
+
+    def _open_character_tab(self):
+        """Open the Character tab (one instance; re-opening focuses it) and
+        return its view, or None if there is no game."""
+        if self._tabs.has_key("character_viewer") and getattr(self, "_character_view", None) is not None:
+            self._tabs.focus_key("character_viewer")
+            return self._character_view
+        game = self._gs.game
+        if game is None:
+            return None
+        from gui_qt.nif_viewer.character_view import CharacterView
+        view = CharacterView(game, self._gs.profile_dir(), self._gs.staging_dir())
+        self._character_view = view
+        self._tabs.open_tab(view, self.tr("Character"), key="character_viewer")
+        return view
+
+    def _equip_on_character(self, entry):
+        """"Add to character" from the NIF Viewer: put the mesh on the Character
+        tab, opening it first if needed (an already-open tab is left in the
+        background so several pieces can be added in a row)."""
+        if self._tabs.has_key("character_viewer") and getattr(self, "_character_view", None) is not None:
+            self._character_view.equip(entry)
+            return
+        view = self._open_character_tab()
+        if view is not None:
+            view.equip(entry)
 
     def _open_favourite_wizards(self, tools):
         """Open the borderless favourites picker for the given wizard *tools*.

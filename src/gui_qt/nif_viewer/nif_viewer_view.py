@@ -18,8 +18,6 @@ layered catalog, so it is drawn with the textures the game would load.
 
 from __future__ import annotations
 
-import threading
-
 from PySide6.QtCore import QModelIndex, Qt, QTimer, Signal
 from PySide6.QtWidgets import (
     QCheckBox, QComboBox, QHBoxLayout, QLabel, QLineEdit, QPushButton, QSizePolicy,
@@ -31,12 +29,13 @@ from Utils.dds_info import parse_dds_info
 from Utils.nif.asset_catalog import BASE, AssetCatalog, AssetEntry
 from Utils.nif.catalog_loader import build_catalog
 from Utils.nif.character import (
-    SKELETONS, auto_gender, body_paths, compose, detect_gender, detect_weight,
+    auto_gender, body_paths, compose, detect_gender, detect_weight,
 )
 from Utils.nif.nif_reader import (
     NifError, NifUnsupported, format_label, read_nif, version_string,
 )
 from gui_qt.image_preview import _ImageCanvas, load_qimage_bytes
+from gui_qt.nif_viewer.asset_loader import AssetLoader
 from gui_qt.nif_viewer.asset_tree import (
     AssetTreeDelegate, AssetTreeModel, EntryRole,
 )
@@ -48,7 +47,6 @@ from gui_qt.worker import run_in_worker
 _PAGE_MESH, _PAGE_IMAGE, _PAGE_MESSAGE = 0, 1, 2
 _SRC_MESH, _SRC_TEXTURE, _SRC_BOTH = "mesh", "texture", "both"
 _BODY_AUTO, _BODY_FEMALE, _BODY_MALE, _BODY_NONE = "auto", "female", "male", "none"
-_IMG_CACHE_MAX = 300
 
 
 class NifViewerView(QWidget):
@@ -56,6 +54,7 @@ class NifViewerView(QWidget):
     _asset_ready = Signal(int, object)
     _scan_progress = Signal(int, int)
     _scan_done = Signal(int)
+    equip_requested = Signal(object)          # AssetEntry to put on the Character tab
 
     def __init__(self, game, profile_dir, staging_dir, parent=None):
         super().__init__(parent)
@@ -64,9 +63,7 @@ class NifViewerView(QWidget):
         self._entry: "AssetEntry | None" = None
         self._last: "dict | None" = None
         self._scan_text = ""          # shown in the tree status while formats are being checked
-        self._img_cache: dict[str, object] = {}      # texture path → decoded QImage (or None)
-        self._skel_cache: dict[str, object] = {}     # gender → skeleton nodes (or None)
-        self._cache_lock = threading.Lock()
+        self._loader = AssetLoader()
         self._closing = False
         pal = active_palette()
 
@@ -156,6 +153,12 @@ class NifViewerView(QWidget):
             "skeleton .nif shows its bones on their own."))
         oh.addWidget(self._skel)
         oh.addStretch(1)
+        self._equip_btn = QPushButton(self.tr("Add to character"))
+        self._equip_btn.setToolTip(self.tr(
+            "Put the selected mesh on the Character tab, in the slot it belongs to "
+            "(armour, clothing, hair…)"))
+        self._equip_btn.setEnabled(False)
+        oh.addWidget(self._equip_btn)
         rv.addWidget(opts)
 
         self._stack = QStackedWidget()
@@ -190,6 +193,7 @@ class NifViewerView(QWidget):
         self._tree.selectionModel().currentChanged.connect(self._on_current_changed)
         self._only_over.toggled.connect(self._on_only_overridden)
         self._hide_bad.toggled.connect(self._on_hide_bad)
+        self._equip_btn.clicked.connect(self._on_equip_clicked)
         self._body.currentIndexChanged.connect(self._on_char_option)
         self._skel.toggled.connect(self._on_char_option)
         self._scan_progress.connect(self._on_scan_progress)
@@ -291,50 +295,22 @@ class NifViewerView(QWidget):
     # -- selection ----------------------------------------------------------------------------
     def _on_current_changed(self, current: QModelIndex, _prev):
         entry = current.data(EntryRole) if current.isValid() else None
+        self._equip_btn.setEnabled(entry is not None and entry.path.endswith(".nif"))
         if entry is not None:
             self._load(entry)
+
+    def _on_equip_clicked(self):
+        e = self._entry
+        if e is not None and e.path.endswith(".nif"):
+            self.equip_requested.emit(e)
+            self._info.setText(self.tr("Sent {0} to the Character tab.").format(
+                e.path.rsplit("/", 1)[-1]))
 
     def _source(self) -> str:
         return self._sources.currentData()
 
     def _needs_textures(self) -> bool:
         return self._source() in (_SRC_TEXTURE, _SRC_BOTH)
-
-    def _image(self, cat: AssetCatalog, path: str):
-        """The decoded QImage of texture *path* (through the catalog's winners), cached."""
-        with self._cache_lock:
-            if path in self._img_cache:
-                return self._img_cache[path]
-        e = cat.resolve(path)
-        try:
-            img = load_qimage_bytes(cat.read(e)) if e else None
-        except (OSError, BsaReadError):
-            img = None
-        with self._cache_lock:
-            self._img_cache[path] = img
-            while len(self._img_cache) > _IMG_CACHE_MAX:
-                self._img_cache.pop(next(iter(self._img_cache)))
-        return img
-
-    def _load_nif(self, cat: AssetCatalog, path: str, include_nodes: bool = False):
-        """Read and parse the game's winning copy of *path*; None if it isn't there."""
-        e = cat.resolve(path)
-        if e is None:
-            return None
-        try:
-            return read_nif(cat.read(e), include_nodes=include_nodes)
-        except (NifError, BsaReadError, OSError):
-            return None
-
-    def _load_skeleton(self, cat: AssetCatalog, gender: str):
-        with self._cache_lock:
-            if gender in self._skel_cache:
-                return self._skel_cache[gender]
-        sc = self._load_nif(cat, SKELETONS[gender], include_nodes=True)
-        nodes = sc.nodes if sc is not None and sc.nodes else None
-        with self._cache_lock:
-            self._skel_cache[gender] = nodes
-        return nodes
 
     def _load(self, entry: AssetEntry):
         cat = self._catalog
@@ -363,13 +339,13 @@ class NifViewerView(QWidget):
                     gender = (auto_gender(entry.path, scene) if body_mode == _BODY_AUTO
                               else None if body_mode == _BODY_NONE else body_mode)
                     if gender:
-                        bodies = [b for b in (self._load_nif(cat, p) for p in
+                        bodies = [b for b in (self._loader.nif(cat, p) for p in
                                               body_paths(gender, detect_weight(entry.path)))
                                   if b is not None]
                         if bodies:
                             scene, worn_on = compose(scene, bodies), gender
                     if want_skel:
-                        skeleton = self._load_skeleton(
+                        skeleton = self._loader.skeleton(
                             cat, gender or detect_gender(entry.path) or "female")
                 images: dict[int, object] = {}
                 missing: list[str] = []
@@ -378,7 +354,7 @@ class NifViewerView(QWidget):
                         path = sh.textures[0] if sh.textures else ""
                         if not path or sh.is_effect:
                             continue
-                        img = self._image(cat, path)
+                        img = self._loader.image(cat, path)
                         if img is not None:
                             images[i] = img
                         else:

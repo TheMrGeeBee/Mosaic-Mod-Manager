@@ -491,11 +491,12 @@ class MeshViewport(QOpenGLWidget):
     # -- public -----------------------------------------------------------------
     def set_scene(self, scene: "NifScene | None",
                   texture_for: "Callable[[NifShape], QImage | None] | None" = None,
-                  skeleton: "list[NifNode] | None" = None):
+                  skeleton: "list[NifNode] | None" = None, reframe: bool = True):
         """Show *scene*; *texture_for* supplies each shape's diffuse image;
         *skeleton* (a skeleton NIF's nodes) is drawn as bones over the meshes and
         included in the framing. Either may be empty — a skeleton NIF on its own
-        has no shapes."""
+        has no shapes. With *reframe* False the camera stays where the user put it
+        (swapping a piece on a character shouldn't reset the view)."""
         self._scene = scene
         images = {}
         if scene is not None and texture_for is not None:
@@ -505,7 +506,8 @@ class MeshViewport(QOpenGLWidget):
         self._skeleton = skeleton or None
         self._renderer.set_skeleton(self._skeleton)
         self._renderer.show_skeleton = bool(self._skeleton)
-        self._frame_scene()
+        if reframe:
+            self._frame_scene()
         self.update()
 
     def _frame_scene(self):
