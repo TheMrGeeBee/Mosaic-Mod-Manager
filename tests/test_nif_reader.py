@@ -15,7 +15,8 @@ from pathlib import Path
 import pytest
 
 from Utils.nif.nif_reader import (
-    NifError, NifUnsupported, normalize_texture_path, read_nif,
+    NifError, NifUnsupported, format_label, normalize_texture_path, read_nif,
+    sniff_nif_format, version_string,
 )
 
 _VF = (1 | 2 | 8) << 44                     # position + uv + normal
@@ -167,6 +168,28 @@ def test_rejects_other_games_and_garbage():
         read_nif(_simple()[:60])                                    # truncated header
     with pytest.raises(NifError):
         read_nif(_simple()[:-40])                                   # shorter than block table
+
+
+def test_sniff_and_label_formats():
+    head = lambda **kw: _nif([("NiNode", _node(0, []))], **kw)[:128]   # noqa: E731
+    assert sniff_nif_format(head()) == (0x14020007, 100)
+    assert sniff_nif_format(head(bsver=83)) == (0x14020007, 83)
+    assert sniff_nif_format(head(bsver=130)) == (0x14020007, 130)
+    assert sniff_nif_format(b"not a nif") is None
+    assert sniff_nif_format(b"") is None
+    assert sniff_nif_format(head()[:45]) is None                       # truncated
+    assert format_label(0x14020007, 100) == "Skyrim SE"
+    assert format_label(0x14020007, 83) == "Skyrim LE"
+    assert format_label(0x14020007, 130) == "Fallout 4"
+    assert format_label(0x14000005, 0) == "NIF 20.0.0.5"
+    assert version_string(0x14020007) == "20.2.0.7"
+
+
+def test_unsupported_carries_the_version_for_a_friendly_message():
+    with pytest.raises(NifUnsupported) as e:
+        read_nif(_nif([("NiNode", _node(0, []))], bsver=83))
+    assert (e.value.version, e.value.bsver) == (0x14020007, 83)
+    assert format_label(e.value.version, e.value.bsver) == "Skyrim LE"
 
 
 @pytest.mark.parametrize("raw,want", [

@@ -112,6 +112,14 @@ class BsaFile:
 
     def read(self, path: str) -> bytes:
         """The decompressed bytes of *path*. Raises BsaReadError if absent/corrupt."""
+        return self._read(path, None)
+
+    def read_head(self, path: str, n: int = 128) -> bytes:
+        """The first *n* decompressed bytes of *path* — for sniffing a file's
+        type without decompressing all of it."""
+        return self._read(path, n)
+
+    def _read(self, path: str, limit: "int | None") -> bytes:
         key = self._norm(path)
         spec = self._files.get(key)
         if spec is None:
@@ -128,10 +136,15 @@ class BsaFile:
                 raise BsaReadError(f"short read for {path}")
             if self._flags & _AF_EMBED_FILE_NAMES and block:
                 block = block[1 + block[0]:]
-            if compressed:
-                body = block[4:]                      # 4-byte original-size prefix
-                return (lz4.frame.decompress(body) if self.version == 105
-                        else zlib.decompress(body))
-            return block
+            if not compressed:
+                return block if limit is None else block[:limit]
+            body = block[4:]                          # 4-byte original-size prefix
+            if self.version == 105:
+                if limit is None:
+                    return lz4.frame.decompress(body)
+                return lz4.frame.LZ4FrameDecompressor().decompress(body, max_length=limit)
+            if limit is None:
+                return zlib.decompress(body)
+            return zlib.decompressobj().decompress(body, limit)
         except (OSError, zlib.error, RuntimeError, ValueError) as exc:
             raise BsaReadError(f"cannot decompress {path}: {exc}") from exc

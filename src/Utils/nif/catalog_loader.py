@@ -11,9 +11,13 @@ import os
 from pathlib import Path
 
 from Utils.nif.asset_catalog import AssetCatalog, is_viewable, norm_key
+from Utils.nif.nif_reader import SKYRIM_SE_FORMAT
 
 # Games whose meshes the NIF reader understands (Skyrim SE: NIF 20.2.0.7, BS 100).
 NIF_VIEWER_GAME_IDS = frozenset({"skyrim_se"})
+
+# The NIF (version, BS version) each viewer game's meshes are expected to have.
+EXPECTED_NIF_FORMAT = {"skyrim_se": SKYRIM_SE_FORMAT}
 
 
 def vanilla_archives(game, data_dir: "Path | None", mod_archives: "set[str]",
@@ -151,4 +155,5 @@ def build_catalog(game, profile_dir: "Path | None", staging_dir: "Path | None") 
         mod_order=mod_order, loose=loose, bsas=bsas,
         loose_winner=loose_winner, bsa_winner=bsa_winner,
         mod_dir_for=lambda m: mflogic._mod_dir_for(game, m),
-        strips_for=lambda m: mflogic.read_strip_prefixes(profile_dir, m))
+        strips_for=lambda m: mflogic.read_strip_prefixes(profile_dir, m),
+        expected_nif_format=EXPECTED_NIF_FORMAT.get(getattr(game, "game_id", None)))

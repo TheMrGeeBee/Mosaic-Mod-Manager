@@ -132,3 +132,70 @@ def test_a_mods_own_loose_and_bsa_copies_are_not_an_override(tmp_path):
         loose_winner={MESH: "m"}, bsa_winner={MESH: "m"},
         mod_dir_for=lambda m: tmp_path / m)
     assert cat.contested_keys() == frozenset()
+
+
+# -- format scan -------------------------------------------------------------------------
+def _nif_blob(bsver):
+    from test_nif_reader import _nif, _node
+    return _nif([("NiNode", _node(0, []))], bsver=bsver)
+
+
+@pytest.fixture
+def mixed(tmp_path):
+    """modA: loose SE + loose LE; modB: BSA with an SE and an LE mesh. Base has an LE
+    mesh too, which the scan must ignore (the base game's own files are trusted)."""
+    mods = tmp_path / "mods"
+    _put(mods / "modA", {"meshes/se.nif": _nif_blob(100), "meshes/le.nif": _nif_blob(83),
+                         "meshes/junk.nif": b"not a nif"})
+    (mods / "modB").mkdir(parents=True)
+    (mods / "modB" / "b.bsa").write_bytes(_bsa(tmp_path, "b.bsa", {
+        "meshes/bse.nif": _nif_blob(100), "meshes/ble.nif": _nif_blob(130)}).read_bytes())
+    base = _bsa(tmp_path, "Skyrim - Meshes0.bsa", {"meshes/base_le.nif": _nif_blob(83)})
+    cat = AssetCatalog(
+        base_name="G", base_archives=[base], mod_order=["modA", "modB"],
+        loose={"modA": {k: k for k in ("meshes/se.nif", "meshes/le.nif", "meshes/junk.nif")}},
+        bsas={"modB": [("b.bsa", ["meshes/bse.nif", "meshes/ble.nif"])]},
+        loose_winner={}, bsa_winner={}, mod_dir_for=lambda m: mods / m,
+        expected_nif_format=(0x14020007, 100))
+    yield cat
+    cat.close()
+
+
+def _entry(cat, mod, path):
+    return next(e for e in cat.mod_entries(mod) if e.path == path)
+
+
+def test_scan_marks_meshes_in_other_formats(mixed):
+    assert mixed.scan_formats() == 2
+    assert mixed.incompatible_label(_entry(mixed, "modA", "meshes/le.nif")) == "Skyrim LE"
+    assert mixed.incompatible_label(_entry(mixed, "modB", "meshes/ble.nif")) == "Fallout 4"
+    assert mixed.incompatible_label(_entry(mixed, "modA", "meshes/se.nif")) is None
+    assert mixed.incompatible_label(_entry(mixed, "modB", "meshes/bse.nif")) is None
+    assert mixed.incompatible_label(_entry(mixed, "modA", "meshes/junk.nif")) is None  # not a NIF: unclassified
+    base_le = next(e for e in mixed.base_entries() if e.path == "meshes/base_le.nif")
+    assert mixed.incompatible_label(base_le) is None                                   # base is trusted
+
+
+def test_scan_reports_progress_and_can_be_cancelled(mixed):
+    seen = []
+    mixed.scan_formats(progress=lambda i, n: seen.append((i, n)))
+    assert seen[0][0] == 0 and seen[-1] == (5, 5)
+    fresh = mixed
+    fresh._bad.clear()
+    assert fresh.scan_formats(cancel=lambda: True) == 0            # stops before the first file
+
+
+def test_scan_without_an_expected_format_does_nothing(tmp_path):
+    cat = AssetCatalog(base_name="G", base_archives=[], mod_order=[], loose={}, bsas={},
+                       loose_winner={}, bsa_winner={}, mod_dir_for=lambda m: None)
+    assert cat.scan_formats() == 0
+
+
+def test_mark_incompatible_and_read_head(mixed):
+    e = _entry(mixed, "modA", "meshes/se.nif")
+    assert mixed.incompatible_label(e) is None
+    mixed.mark_incompatible(e, "Skyrim LE")
+    assert mixed.incompatible_label(e) == "Skyrim LE" and mixed.incompatible_count() == 1
+    assert mixed.read_head(e, 8) == mixed.read(e)[:8]
+    assert mixed.read_head(_entry(mixed, "modB", "meshes/bse.nif"), 8) == \
+        mixed.read(_entry(mixed, "modB", "meshes/bse.nif"))[:8]

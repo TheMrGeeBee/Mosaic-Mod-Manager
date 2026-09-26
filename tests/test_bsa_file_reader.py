@@ -59,3 +59,15 @@ def test_missing_file_and_bad_archives(tmp_path):
     cut.write_bytes(_pack(tmp_path, 105).read_bytes()[:50])
     with pytest.raises(BsaReadError):
         BsaFile(cut)
+
+
+@pytest.mark.parametrize("version", [104, 105])
+@pytest.mark.parametrize("compress", [True, False])
+def test_read_head_returns_only_the_first_bytes(tmp_path, version, compress):
+    with BsaFile(_pack(tmp_path, version, compress)) as bsa:
+        rel = "meshes/armor/iron/m/cuirass_0.nif"
+        assert bsa.read_head(rel, 16) == FILES[rel][:16]
+        assert bsa.read_head("meshes/top.nif", 128) == b"x"          # shorter than n
+        assert bsa.read_head(rel, 10**6) == FILES[rel]               # longer than the file
+        with pytest.raises(BsaReadError):
+            bsa.read_head("meshes/nope.nif")

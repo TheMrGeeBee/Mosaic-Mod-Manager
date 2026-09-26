@@ -51,6 +51,49 @@ class NifError(Exception):
 class NifUnsupported(NifError):
     """A valid NIF, but a game/version this reader doesn't handle."""
 
+    def __init__(self, message: str, version: int = 0, bsver: int = 0):
+        super().__init__(message)
+        self.version = version
+        self.bsver = bsver
+
+
+SKYRIM_SE_FORMAT = (SKYRIM_SE_VERSION, SKYRIM_SE_BSVER)
+
+_BS_GAMES = {100: "Skyrim SE", 83: "Skyrim LE", 34: "Fallout 3 / New Vegas",
+             130: "Fallout 4", 155: "Fallout 76", 172: "Starfield", 11: "Oblivion"}
+
+
+def version_string(version: int) -> str:
+    return ".".join(str((version >> s) & 0xFF) for s in (24, 16, 8, 0))
+
+
+def format_label(version: int, bsver: int) -> str:
+    """Human name for a NIF's (version, BS version): "Skyrim LE", "Fallout 4"…"""
+    if version >= 0x14000005 and bsver in _BS_GAMES:
+        return _BS_GAMES[bsver]
+    return f"NIF {version_string(version)}" + (f", BS {bsver}" if bsver else "")
+
+
+def sniff_nif_format(head: bytes) -> "tuple[int, int] | None":
+    """(version, BS version) from a file's first ~100 bytes, or None if it isn't
+    a NIF. Cheap — for classifying files without parsing them."""
+    if not head.startswith((b"Gamebryo File Format, Version ",
+                            b"NetImmerse File Format, Version ")):
+        return None
+    nl = head.find(b"\n")
+    if nl < 0:
+        return None
+    try:
+        version, = struct.unpack_from("<I", head, nl + 1)
+        if version < 0x14000003:                  # pre-20.0.0.3 layout has no BS header
+            return (version, 0)
+        _endian, user, _nblocks, user2 = struct.unpack_from("<BIII", head, nl + 5)
+    except struct.error:
+        return None
+    return (version, user2 if user >= 10 else user)
+
+
+
 
 @dataclass
 class NifShape:
@@ -219,14 +262,16 @@ def _read_header(b: bytes) -> _Header:
         version = r.u32()
         endian = r.u8()
         if version != SKYRIM_SE_VERSION:
-            raise NifUnsupported(f"NIF version {version:#x} (only Skyrim SE 20.2.0.7)")
+            raise NifUnsupported(
+                f"NIF version {version_string(version)} (only Skyrim SE {version_string(SKYRIM_SE_VERSION)})",
+                version)
         if endian != 1:
-            raise NifUnsupported("big-endian NIF")
+            raise NifUnsupported("big-endian NIF", version)
         r.u32()                          # user version
         nblocks = r.u32()
         bsver = r.u32()
         if bsver != SKYRIM_SE_BSVER:
-            raise NifUnsupported(f"BS version {bsver} (only Skyrim SE = 100)")
+            raise NifUnsupported(f"BS version {bsver} (only Skyrim SE = 100)", version, bsver)
         r.short_str(); r.short_str(); r.short_str()   # author, process, export
         ntypes = r.u16()
         types = [r.sized_str() for _ in range(ntypes)]

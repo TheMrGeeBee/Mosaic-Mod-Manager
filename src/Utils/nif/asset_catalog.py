@@ -25,6 +25,7 @@ from typing import Callable, Iterable, Mapping
 
 from Utils.archives.bsa_file_reader import BsaFile, BsaReadError
 from Utils.mods.file_providers import resolve_on_disk
+from Utils.nif.nif_reader import format_label, sniff_nif_format
 
 BASE = ""          # AssetEntry.mod for the base game layer
 
@@ -64,6 +65,7 @@ class AssetCatalog:
         bsa_winner: Mapping[str, str],
         mod_dir_for: Callable[[str], "Path | None"],
         strips_for: Callable[[str], Iterable[str]] = lambda _m: (),
+        expected_nif_format: "tuple[int, int] | None" = None,
     ):
         """
         base_archives: the game's own BSAs, lowest priority first.
@@ -72,6 +74,8 @@ class AssetCatalog:
         bsas:          {mod: [(archive_key, paths)]} — viewable paths only.
         loose_winner:  rel_key → winning mod for loose files (filemap.txt).
         bsa_winner:    rel_key → winning mod among BSAs (engine plugin order).
+        expected_nif_format: the game's (NIF version, BS version); meshes in any
+                       other format are reported as incompatible by scan_formats().
         """
         self.base_name = base_name
         self._base_archives = list(base_archives)
@@ -89,6 +93,8 @@ class AssetCatalog:
         self._base_files: "dict[str, Path] | None" = None
         self._mod_keys: "set[str] | None" = None
         self._contested: "frozenset[str] | None" = None
+        self._expected_format = expected_nif_format
+        self._bad: dict[tuple, str] = {}       # entry key → format label
 
     # -- mods ---------------------------------------------------------------------
     def mods(self) -> list[str]:
@@ -209,6 +215,73 @@ class AssetCatalog:
         if bsa is None:
             raise BsaReadError(f"cannot open {entry.archive or '?'} for {entry.path}")
         return bsa.read(entry.path)
+
+    # -- format compatibility -----------------------------------------------------------
+    @staticmethod
+    def _ekey(entry: AssetEntry) -> tuple:
+        return (entry.mod, entry.kind, entry.archive, entry.path)
+
+    def incompatible_label(self, entry: AssetEntry) -> "str | None":
+        """Name of the NIF format (e.g. "Skyrim LE") if *entry* is a mesh in a
+        format other than the game's — known from scan_formats() or from having
+        been opened; None if compatible or not yet checked."""
+        return self._bad.get(self._ekey(entry))
+
+    def mark_incompatible(self, entry: AssetEntry, label: str):
+        self._bad[self._ekey(entry)] = label
+
+    def incompatible_count(self) -> int:
+        return len(self._bad)
+
+    def read_head(self, entry: AssetEntry, n: int = 128) -> bytes:
+        """The first *n* bytes of *entry*'s file (cheap for archived files)."""
+        return self._head(self._ekey(entry), n)
+
+    def _head(self, key: tuple, n: int) -> bytes:
+        mod, kind, archive, path = key
+        if kind == "loose":
+            rel = self._loose.get(mod, {}).get(path, path)
+            disk = resolve_on_disk(self._mod_dir_for(mod), rel, self._strips_for(mod))
+            if disk is None:
+                return b""
+            with disk.open("rb") as f:
+                return f.read(n)
+        mod_dir = self._mod_dir_for(mod) if mod != BASE else None
+        arch = (mod_dir / archive) if mod_dir is not None else next(
+            (a for a in self._base_archives if a.name == archive), None)
+        bsa = self._archive(arch) if arch is not None else None
+        return bsa.read_head(path, n) if bsa is not None else b""
+
+    def scan_formats(self, progress: "Callable[[int, int], None] | None" = None,
+                     cancel: "Callable[[], bool] | None" = None) -> int:
+        """Classify every mesh the MODS provide by sniffing its header, marking
+        those not in the game's format. (The base game's own files are trusted.)
+        Returns how many meshes are incompatible. Safe to run on a worker thread;
+        *progress* gets (done, total) every few hundred files."""
+        exp = self._expected_format
+        if exp is None:
+            return 0
+        work: list[tuple] = []
+        for m in self.mod_order:
+            work += [(m, "loose", "", k) for k in self._loose.get(m, ()) if k.endswith(".nif")]
+            for arch, ps in self._bsas.get(m, []):
+                work += [(m, "bsa", arch, k) for k in ps if k.endswith(".nif")]
+        work.sort(key=lambda t: (t[0], t[2]))          # keep each archive's reads together
+        total = len(work)
+        for i, key in enumerate(work):
+            if cancel is not None and cancel():
+                break
+            if progress is not None and i % 250 == 0:
+                progress(i, total)
+            try:
+                fmt = sniff_nif_format(self._head(key, 128))
+            except (OSError, BsaReadError):
+                continue
+            if fmt is not None and fmt != exp:
+                self._bad[key] = format_label(*fmt)
+        if progress is not None:
+            progress(total, total)
+        return len(self._bad)
 
     def _archive(self, path: Path) -> "BsaFile | None":
         with self._lock:

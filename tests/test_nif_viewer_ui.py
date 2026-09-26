@@ -18,9 +18,11 @@ from PySide6.QtWidgets import QApplication  # noqa: E402
 
 from Utils.nif.asset_catalog import AssetCatalog  # noqa: E402
 from gui_qt.nif_viewer import nif_viewer_view  # noqa: E402
-from gui_qt.nif_viewer.asset_tree import AssetTreeModel, EntryRole, SourceRole  # noqa: E402
+from gui_qt.nif_viewer.asset_tree import (  # noqa: E402
+    AssetTreeModel, EntryRole, SourceRole, WarnRole,
+)
 from test_asset_catalog import MESH, NEW_IN_MOD, ONLY_BASE, TEX, world  # noqa: E402,F401
-from test_nif_reader import _simple  # noqa: E402
+from test_nif_reader import _nif, _node, _simple  # noqa: E402
 
 
 @pytest.fixture(scope="module")
@@ -223,3 +225,63 @@ def test_wireframe_button_shows_when_it_is_on(app, viewer):
     assert viewer._viewport.mode() == "wire"
     viewer._wire.setChecked(False)
     assert viewer._viewport.mode() == "textured"
+
+
+# -- incompatible meshes ---------------------------------------------------------------------
+@pytest.fixture
+def mixed_viewer(app, tmp_path, monkeypatch):
+    modA = tmp_path / "modA"
+    (modA / "meshes").mkdir(parents=True)
+    (modA / "meshes/se.nif").write_bytes(_simple())
+    (modA / "meshes/le.nif").write_bytes(_nif([("NiNode", _node(0, []))], bsver=83))
+    modL = tmp_path / "modLE"                              # ships only an LE mesh
+    (modL / "meshes").mkdir(parents=True)
+    (modL / "meshes/only_le.nif").write_bytes(_nif([("NiNode", _node(0, []))], bsver=83))
+    cat = AssetCatalog(
+        base_name="Game", base_archives=[], mod_order=["modA", "modLE"],
+        loose={"modA": {"meshes/se.nif": "meshes/se.nif", "meshes/le.nif": "meshes/le.nif"},
+               "modLE": {"meshes/only_le.nif": "meshes/only_le.nif"}},
+        bsas={}, loose_winner={}, bsa_winner={}, mod_dir_for=lambda m: tmp_path / m,
+        expected_nif_format=(0x14020007, 100))
+    monkeypatch.setattr(nif_viewer_view, "build_catalog", lambda *_a: cat)
+    v = nif_viewer_view.NifViewerView(object(), tmp_path, tmp_path)
+    _wait(app, lambda: v._catalog is not None)
+    # The scan finishes on a worker; the tree is rebuilt when its "done" signal lands,
+    # which is also what puts the "hidden" note into the status line.
+    _wait(app, lambda: "2 incompatible mesh(es) hidden" in v._tree_status.text())
+    yield v
+    v.deleteLater()
+
+
+def test_incompatible_meshes_are_hidden_by_default_after_the_scan(app, mixed_viewer):
+    v = mixed_viewer
+    assert v._hide_bad.isChecked()
+    assert _names(v._model) == ["Game", "modA"]                       # modLE: nothing left → gone
+    modA = _find(v._model, "modA", "meshes")
+    assert _names(v._model, modA) == ["se.nif"]
+    assert "2 incompatible mesh(es) hidden" in v._tree_status.text()
+
+
+def test_unticking_hide_shows_them_marked_in_amber(app, mixed_viewer):
+    v = mixed_viewer
+    v._hide_bad.setChecked(False)
+    assert _names(v._model) == ["Game", "modA", "modLE"]
+    le = _find(v._model, "modA", "meshes", "le.nif")
+    assert le.data(WarnRole) is True and le.data(SourceRole) == "Skyrim LE"
+    assert "Skyrim LE format" in le.data(Qt.ToolTipRole)
+    assert le.data(Qt.ForegroundRole) is not None
+    assert _find(v._model, "modA", "meshes", "se.nif").data(WarnRole) is False
+    assert "marked in amber" in v._tree_status.text()
+
+
+def test_opening_an_unconverted_mesh_explains_it(app, mixed_viewer):
+    v = mixed_viewer
+    v._hide_bad.setChecked(False)
+    v._tree.setCurrentIndex(_find(v._model, "modA", "meshes", "le.nif"))
+    _wait(app, lambda: v._stack.currentIndex() == nif_viewer_view._PAGE_MESSAGE
+          and "Skyrim LE format" in v._message.text())
+    assert "BS 83" in v._message.text() and "20.2.0.7" in v._message.text()
+
+
+def test_hide_toggle_does_not_count_as_a_user_filter(app, mixed_viewer):
+    assert mixed_viewer._model.filtering() is False

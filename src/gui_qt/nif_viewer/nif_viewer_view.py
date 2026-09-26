@@ -28,13 +28,16 @@ from Utils.archives.bsa_file_reader import BsaReadError
 from Utils.dds_info import parse_dds_info
 from Utils.nif.asset_catalog import BASE, AssetCatalog, AssetEntry
 from Utils.nif.catalog_loader import build_catalog
-from Utils.nif.nif_reader import NifError, read_nif
+from Utils.nif.nif_reader import (
+    NifError, NifUnsupported, format_label, read_nif, version_string,
+)
 from gui_qt.image_preview import _ImageCanvas, load_qimage_bytes
 from gui_qt.nif_viewer.asset_tree import (
     AssetTreeDelegate, AssetTreeModel, EntryRole,
 )
 from gui_qt.nif_viewer.gl_viewport import SOLID, TEXTURED, WIRE, MeshViewport
 from gui_qt.theme.theme_qt import _c, active_palette
+from gui_qt.safe_emit import safe_emit
 from gui_qt.worker import run_in_worker
 
 _PAGE_MESH, _PAGE_IMAGE, _PAGE_MESSAGE = 0, 1, 2
@@ -44,6 +47,8 @@ _SRC_MESH, _SRC_TEXTURE, _SRC_BOTH = "mesh", "texture", "both"
 class NifViewerView(QWidget):
     _catalog_ready = Signal(object)
     _asset_ready = Signal(int, object)
+    _scan_progress = Signal(int, int)
+    _scan_done = Signal(int)
 
     def __init__(self, game, profile_dir, staging_dir, parent=None):
         super().__init__(parent)
@@ -51,6 +56,8 @@ class NifViewerView(QWidget):
         self._gen = 0
         self._entry: "AssetEntry | None" = None
         self._last: "dict | None" = None
+        self._scan_text = ""          # shown in the tree status while formats are being checked
+        self._closing = False
         pal = active_palette()
 
         root = QHBoxLayout(self)
@@ -91,6 +98,12 @@ class NifViewerView(QWidget):
         self._search.setPlaceholderText(self.tr("Search meshes and mods"))
         self._search.setClearButtonEnabled(True)
         bh.addWidget(self._search, 1)
+        self._hide_bad = QCheckBox(self.tr("Hide incompatible"))
+        self._hide_bad.setChecked(True)
+        self._hide_bad.setToolTip(self.tr(
+            "Hide meshes in another game's NIF format (for example Skyrim LE meshes "
+            "in Skyrim SE). Untick to see them, marked in amber."))
+        bh.addWidget(self._hide_bad)
         self._only_over = QCheckBox(self.tr("Only overridden"))
         self._only_over.setToolTip(self.tr(
             "Show only files that another mod (or the base game) also provides — "
@@ -143,6 +156,9 @@ class NifViewerView(QWidget):
         self._search.textChanged.connect(lambda _t: self._search_timer.start())
         self._tree.selectionModel().currentChanged.connect(self._on_current_changed)
         self._only_over.toggled.connect(self._on_only_overridden)
+        self._hide_bad.toggled.connect(self._on_hide_bad)
+        self._scan_progress.connect(self._on_scan_progress)
+        self._scan_done.connect(self._on_scan_done)
         self._sources.currentIndexChanged.connect(self._on_source_changed)
         self._wire.toggled.connect(lambda _on: self._apply_mode())
         self._catalog_ready.connect(self._on_catalog_ready)
@@ -154,6 +170,7 @@ class NifViewerView(QWidget):
 
     # -- catalog ---------------------------------------------------------------------------
     def _close_catalog(self):
+        self._closing = True                       # stops a running format scan
         cat, self._catalog = self._catalog, None
         if cat is not None:
             cat.close()
@@ -164,38 +181,77 @@ class NifViewerView(QWidget):
             return
         self._catalog = cat
         self._model.set_catalog(cat)
-        n = len(cat.mods())
-        self._tree_status.setText(
-            self.tr("{0} + {1} mod(s) with meshes or textures").format(cat.base_name, n))
+        self._update_status()
         self._tree.expand(self._model.index(0, 0))          # base game first, lazily
+        # Classify the mods' meshes in the background (cheap: headers only).
+        run_in_worker(
+            lambda: cat.scan_formats(
+                progress=lambda i, n: safe_emit(self._scan_progress, i, n),
+                cancel=lambda: self._closing),
+            self._scan_done, name="nif-viewer-scan", error_result=0)
+
+    # -- tree status / filters -------------------------------------------------------------
+    def _update_status(self):
+        cat, m = self._catalog, self._model
+        if cat is None:
+            return
+        if m.filtering():
+            found = m.match_count()
+            text = (self.tr("{0} overridden file(s)").format(found)
+                    if self._only_over.isChecked() and not self._search.text().strip()
+                    else self.tr("{0} match(es)").format(found))
+        else:
+            text = self.tr("{0} + {1} mod(s) with meshes or textures").format(
+                cat.base_name, len(cat.mods()))
+        bad = cat.incompatible_count()
+        if self._scan_text:
+            text += "\n" + self._scan_text
+        elif bad:
+            text += "\n" + (self.tr("{0} incompatible mesh(es) hidden") if self._hide_bad.isChecked()
+                            else self.tr("{0} incompatible mesh(es) marked in amber")).format(bad)
+        self._tree_status.setText(text)
+
+    def _on_scan_progress(self, done: int, total: int):
+        if self._closing or total <= 0:
+            return
+        self._scan_text = self.tr("Checking mesh formats… {0}%").format(done * 100 // total)
+        self._update_status()
+
+    def _on_scan_done(self, _count):
+        if self._closing or self._catalog is None:
+            return
+        self._scan_text = ""
+        self._model.refresh_incompatible()
+        self._after_rebuild()
+
+    def _on_hide_bad(self, on: bool):
+        if self._catalog is not None:
+            self._model.set_hide_incompatible(on)
+            self._after_rebuild()
+
+    def _after_rebuild(self):
+        """Status line and expansion after the tree was rebuilt (filter, scan…)."""
+        m = self._model
+        self._update_status()
+        if m.filtering():
+            found = m.match_count()
+            if 0 < found <= 3000:
+                self._tree.expandAll()
+                return
+            for r in range(m.rowCount()):
+                self._tree.expand(m.index(r, 0))
+        elif m.rowCount():
+            self._tree.expand(m.index(0, 0))
 
     def _apply_search(self):
         if self._catalog is not None:
             self._model.set_filter(self._search.text())
-            self._after_filter()
+            self._after_rebuild()
 
     def _on_only_overridden(self, on: bool):
         if self._catalog is not None:
             self._model.set_only_overridden(on)
-            self._after_filter()
-
-    def _after_filter(self):
-        """Status line and expansion after the tree's filter changed."""
-        m = self._model
-        if not m.filtering():
-            self._tree_status.setText(self.tr("{0} + {1} mod(s) with meshes or textures")
-                                      .format(self._catalog.base_name, len(self._catalog.mods())))
-            return
-        found = m.match_count()
-        self._tree_status.setText(
-            self.tr("{0} overridden file(s)").format(found)
-            if self._only_over.isChecked() and not self._search.text().strip()
-            else self.tr("{0} match(es)").format(found))
-        if 0 < found <= 3000:
-            self._tree.expandAll()
-        else:
-            for r in range(m.rowCount()):
-                self._tree.expand(m.index(r, 0))
+            self._after_rebuild()
 
     # -- selection ----------------------------------------------------------------------------
     def _on_current_changed(self, current: QModelIndex, _prev):
@@ -247,6 +303,15 @@ class NifViewerView(QWidget):
                             missing.append(path)
                 return gen, {"kind": "mesh", "scene": scene, "images": images,
                              "missing": missing, "textures_loaded": want_tex}
+            except NifUnsupported as exc:
+                label = format_label(exc.version, exc.bsver)
+                cat.mark_incompatible(entry, label)
+                text = self.tr(
+                    "This mesh is in {0} format (NIF {1}, BS {2}).\n\nThe viewer can only "
+                    "draw Skyrim SE meshes so far. Meshes in another game's format are "
+                    "not converted for this game and can cause crashes."
+                ).format(label, version_string(exc.version), exc.bsver)
+                return gen, {"kind": "error", "text": text, "incompatible": True}
             except (NifError, BsaReadError, OSError) as exc:
                 return gen, {"kind": "error", "text": str(exc)}
 
@@ -260,6 +325,9 @@ class NifViewerView(QWidget):
         if kind == "error":
             self._show_message(res["text"])
             self._info.setText("")
+            if res.get("incompatible"):
+                self._tree.viewport().update()          # show its amber mark now
+                self._update_status()
         elif kind == "texture":
             self._show_image(res["image"])
             self._info.setText(self._describe(res["info"]))

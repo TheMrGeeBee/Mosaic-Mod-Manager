@@ -13,6 +13,8 @@ from Utils.nif.asset_catalog import BASE, AssetCatalog, AssetEntry
 
 EntryRole = Qt.UserRole + 1
 SourceRole = Qt.UserRole + 2
+WarnRole = Qt.UserRole + 3          # True for a mesh in the wrong NIF format
+_WARN = QColor(214, 158, 62)
 
 
 class _Node:
@@ -65,6 +67,7 @@ class AssetTreeModel(QAbstractItemModel):
         self._entries: dict[str, list[AssetEntry]] = {}
         self._filter = ""
         self._only_overridden = False
+        self._hide_incompatible = True
         self._match_count = 0
 
     # -- data ---------------------------------------------------------------------
@@ -92,6 +95,21 @@ class AssetTreeModel(QAbstractItemModel):
             self._rebuild()
         return self._match_count if self.filtering() else -1
 
+    def set_hide_incompatible(self, on: bool):
+        """Hide meshes whose NIF format isn't the game's (once known — see
+        AssetCatalog.scan_formats). Not a user "filter": filtering() ignores it."""
+        if on != self._hide_incompatible:
+            self._hide_incompatible = on
+            self._rebuild()
+
+    def refresh_incompatible(self):
+        """Call after scan_formats() finished: hides newly found files, or (when
+        they are shown) just repaints their warning marks."""
+        if self._hide_incompatible and self._catalog and self._catalog.incompatible_count():
+            self._rebuild()
+        else:
+            self.layoutChanged.emit()
+
     def filtering(self) -> bool:
         return bool(self._filter) or self._only_overridden
 
@@ -104,6 +122,14 @@ class AssetTreeModel(QAbstractItemModel):
             self._entries[key] = (cat.base_entries() if key == BASE
                                   else cat.mod_entries(key)) if cat else []
         return self._entries[key]
+
+    def _entries_for(self, key: str) -> list[AssetEntry]:
+        """A root's entries minus hidden-incompatible meshes."""
+        entries = self._root_entries(key)
+        cat = self._catalog
+        if key != BASE and self._hide_incompatible and cat and cat.incompatible_count():
+            return [e for e in entries if cat.incompatible_label(e) is None]
+        return entries
 
     def _rebuild(self):
         self.beginResetModel()
@@ -123,13 +149,16 @@ class AssetTreeModel(QAbstractItemModel):
                         return ((name_match or not self._filter or self._filter in e.path)
                                 and (not self._only_overridden or e.path in contested))
 
-                    hits = [e for e in self._root_entries(key) if keep(e)]
+                    hits = [e for e in self._entries_for(key) if keep(e)]
                     if not hits:
                         continue
                     self._match_count += len(hits)
                     # A mod matched by name alone keeps its lazy children.
                     if not (name_match and not self._only_overridden):
                         build_hierarchy(node, hits)
+                elif (key != BASE and self._hide_incompatible
+                        and cat.incompatible_count() and not self._entries_for(key)):
+                    continue                     # everything this mod ships is hidden
                 self._root.children.append(node)
         self.endResetModel()
 
@@ -164,7 +193,7 @@ class AssetTreeModel(QAbstractItemModel):
 
     def fetchMore(self, parent):
         n = self.node(parent)
-        entries = self._root_entries(n.root_key)
+        entries = self._entries_for(n.root_key)
         tmp = _Node("", "root")
         build_hierarchy(tmp, entries)
         if tmp.children:
@@ -188,10 +217,17 @@ class AssetTreeModel(QAbstractItemModel):
             return n.name
         if role == EntryRole:
             return n.entry
+        bad = (self._catalog.incompatible_label(n.entry)
+               if n.entry is not None and self._catalog is not None else None)
+        if role == WarnRole:
+            return bad is not None
         if role == SourceRole and n.entry is not None:
-            return n.entry.source_label
-        if role == Qt.ForegroundRole and n.entry is not None and not n.entry.is_winner:
-            return QColor(130, 130, 130)
+            return f"{bad} · {n.entry.source_label}" if bad and n.entry.source_label else (bad or n.entry.source_label)
+        if role == Qt.ForegroundRole and n.entry is not None:
+            if bad:
+                return _WARN
+            if not n.entry.is_winner:
+                return QColor(130, 130, 130)
         if role == Qt.FontRole and n.kind == "root":
             f = QFont()
             f.setBold(True)
@@ -201,6 +237,9 @@ class AssetTreeModel(QAbstractItemModel):
             src = e.archive if e.kind == "bsa" else "loose file"
             owner = self._catalog.base_name if e.mod == BASE else e.mod
             tip = f"{e.path}\n{owner} — {src}"
+            if bad:
+                tip += (f"\n⚠ {bad} format — not this game's mesh format "
+                        "(unconverted meshes may crash the game)")
             if not e.is_winner and self._catalog is not None:
                 w = self._catalog.resolve(e.path)
                 if w is not None:
@@ -225,7 +264,9 @@ class AssetTreeDelegate(QStyledItemDelegate):
         name_opt.rect.setRight(option.rect.right() - tag_w)
         super().paint(painter, name_opt, index)
         selected = bool(option.state & QStyle.State_Selected)
-        painter.setPen(option.palette.highlightedText().color() if selected else QColor(120, 140, 170))
+        warn = bool(index.data(WarnRole))
+        painter.setPen(option.palette.highlightedText().color() if selected
+                       else (_WARN if warn else QColor(120, 140, 170)))
         painter.drawText(option.rect.adjusted(0, 0, -4, 0), Qt.AlignRight | Qt.AlignVCenter,
                          fm.elidedText(tag, Qt.ElideMiddle, tag_w - 6))
         painter.restore()
