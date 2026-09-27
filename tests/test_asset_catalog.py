@@ -233,3 +233,12 @@ def test_entry_in_layer_finds_that_layers_own_copy_even_if_it_loses(world):
     assert world.entry_in_layer(BASE, NEW_IN_MOD) is None
     assert world.entry_in_layer("modB", "MESHES\\ARMOR\\IRON\\CUIRASS.NIF").mod == "modB"   # normalised lookup
     assert world.read(b) == b"B-bsa-mesh"
+
+
+def test_slots_of_prefers_the_authoritative_plugin_map_over_the_mesh_guess(world):
+    entry = world.entry_in_layer("modA", MESH)
+    assert world.slots_of(entry) is None                             # MESH's bytes aren't a real NIF
+    world._authoritative_slots[MESH] = frozenset({32, 34, 38})
+    assert world.slots_of(entry) == frozenset({32, 34, 38})           # ground truth wins, no read needed
+    assert world.entry_in_layer("modB", NEW_IN_MOD) is not None
+    assert world.slots_of(world.entry_in_layer("modB", NEW_IN_MOD)) is None   # untouched path: falls back as before

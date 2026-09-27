@@ -66,6 +66,7 @@ class AssetCatalog:
         mod_dir_for: Callable[[str], "Path | None"],
         strips_for: Callable[[str], Iterable[str]] = lambda _m: (),
         expected_nif_format: "tuple[int, int] | None" = None,
+        authoritative_slots: "Mapping[str, frozenset] | None" = None,
     ):
         """
         base_archives: the game's own BSAs, lowest priority first.
@@ -76,6 +77,14 @@ class AssetCatalog:
         bsa_winner:    rel_key → winning mod among BSAs (engine plugin order).
         expected_nif_format: the game's (NIF version, BS version); meshes in any
                        other format are reported as incompatible by scan_formats().
+        authoritative_slots: {mesh rel_key: slots} straight from the active
+                       plugins' own ARMA records (Utils.plugins.armor_records) —
+                       ground truth where a mesh is known, taking priority over
+                       slots_of()'s mesh-partition guess. A mesh no plugin
+                       references (or when this is None entirely) still falls
+                       back to the guess, so meshes that only Bodyslide/manual
+                       installs ship (no plugin referencing that exact path)
+                       keep working the way they always have.
         """
         self.base_name = base_name
         self._base_archives = list(base_archives)
@@ -94,6 +103,7 @@ class AssetCatalog:
         self._mod_keys: "set[str] | None" = None
         self._contested: "frozenset[str] | None" = None
         self._expected_format = expected_nif_format
+        self._authoritative_slots = dict(authoritative_slots or {})
         self._bad: dict[tuple, str] = {}       # entry key → format label
         self._slots: dict[tuple, "frozenset | None"] = {}   # entry key → body slots (None: unreadable)
 
@@ -235,7 +245,14 @@ class AssetCatalog:
 
     def slots_of(self, entry: AssetEntry) -> "frozenset | None":
         """Body slots the mesh *entry* covers (empty for props/unskinned models),
-        or None if it can't be read. Cached — the first call reads the file."""
+        or None if it can't be read. An active plugin's own ARMA record for
+        this exact path is ground truth and is used whenever there is one;
+        otherwise falls back to the mesh's own partitions (read_body_slots).
+        Cached — the first call reads the file (skipped entirely when the
+        authoritative map already has an answer)."""
+        auth = self._authoritative_slots.get(entry.path)
+        if auth is not None:
+            return auth
         key = self._ekey(entry)
         if key not in self._slots:
             try:

@@ -149,6 +149,15 @@ def build_catalog(game, profile_dir: "Path | None", staging_dir: "Path | None") 
         data_dir = game.get_mod_data_path()
     except Exception:
         pass
+
+    authoritative_slots: dict = {}
+    if getattr(game, "game_id", None) in EXPECTED_NIF_FORMAT:
+        try:
+            from Utils.plugins.armor_records import build_slot_index
+            authoritative_slots = build_slot_index(game, profile_dir)
+        except Exception:
+            pass                                   # best-effort: never fail a catalog build over plugin data
+
     return AssetCatalog(
         base_name=getattr(game, "name", "Game"),
         base_archives=vanilla_archives(game, data_dir, mod_archive_names, staging_dir),
@@ -156,4 +165,5 @@ def build_catalog(game, profile_dir: "Path | None", staging_dir: "Path | None") 
         loose_winner=loose_winner, bsa_winner=bsa_winner,
         mod_dir_for=lambda m: mflogic._mod_dir_for(game, m),
         strips_for=lambda m: mflogic.read_strip_prefixes(profile_dir, m),
-        expected_nif_format=EXPECTED_NIF_FORMAT.get(getattr(game, "game_id", None)))
+        expected_nif_format=EXPECTED_NIF_FORMAT.get(getattr(game, "game_id", None)),
+        authoritative_slots=authoritative_slots)
