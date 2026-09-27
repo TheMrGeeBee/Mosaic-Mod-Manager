@@ -275,13 +275,31 @@ def test_unticking_hide_shows_them_marked_in_amber(app, mixed_viewer):
 
 
 def test_opening_a_mesh_from_another_game_explains_it(app, mixed_viewer, tmp_path):
+    # Fallout 76 (bsver=155): still a genuinely unsupported format, unlike
+    # Fallout 4 (130), which the reader now understands — see
+    # test_a_fallout4_mesh_is_flagged_but_can_be_opened below for that case.
     v = mixed_viewer
-    (tmp_path / "modA/meshes/fo4.nif").write_bytes(_nif([("NiNode", _node(0, []))], bsver=130))
+    (tmp_path / "modA/meshes/fo76.nif").write_bytes(_nif([("NiNode", _node(0, []))], bsver=155))
     from Utils.nif.asset_catalog import AssetEntry
-    v._load(AssetEntry("meshes/fo4.nif", "modA", "loose", "", True))
+    v._load(AssetEntry("meshes/fo76.nif", "modA", "loose", "", True))
     _wait(app, lambda: v._stack.currentIndex() == nif_viewer_view._PAGE_MESSAGE
-          and "Fallout 4 format" in v._message.text())
-    assert "BS 130" in v._message.text() and "20.2.0.7" in v._message.text()
+          and "Fallout 76 format" in v._message.text())
+    assert "BS 155" in v._message.text() and "20.2.0.7" in v._message.text()
+
+
+def test_a_fallout4_mesh_is_flagged_but_can_be_opened(app, mixed_viewer, tmp_path):
+    """Fallout 4 meshes are viewable in a Skyrim SE profile too: the amber flag
+    still says it's another game's format (this viewer's catalog expects BS
+    100), but opening one now actually draws it rather than refusing."""
+    from Utils.nif.asset_catalog import AssetEntry
+    from test_nif_reader import _FO4_TRI, _fo4_nif
+
+    v = mixed_viewer
+    (tmp_path / "modA/meshes/fo4.nif").write_bytes(_fo4_nif(_FO4_TRI, [(0, 1, 2)]))
+    v._load(AssetEntry("meshes/fo4.nif", "modA", "loose", "", True))
+    _wait(app, lambda: v._last is not None or "no drawable geometry" in v._message.text())
+    assert "can't" not in v._message.text()
+    assert v._last is not None                          # real geometry, not an empty scene
 
 
 def test_a_skyrim_le_mesh_is_flagged_but_can_be_opened(app, mixed_viewer):

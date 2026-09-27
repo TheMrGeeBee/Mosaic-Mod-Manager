@@ -65,3 +65,18 @@ def test_files_deployed_from_staging_are_not_vanilla(tmp_path):
 def test_missing_folder(tmp_path):
     assert vanilla_archives(GAME, None, set()) == []
     assert vanilla_archives(GAME, tmp_path / "nope", set()) == []
+
+
+FO4_GAME = SimpleNamespace(
+    vanilla_plugins=["Fallout4.esm", "DLCRobot.esm"],
+    vanilla_ccc_filename="Fallout4.ccc",
+    archive_extensions=frozenset({".ba2"}))
+
+
+def test_ba2_extension_is_used_when_the_game_declares_it(tmp_path):
+    data = tmp_path / "Data"
+    _touch(data, "Fallout4 - Meshes.ba2", "Fallout4 - Textures1.ba2", "DLCRobot - Main.ba2",
+           "Fallout4 - Meshes.bsa",                    # wrong extension for this game: never matches
+           "SomeMod - Main.ba2")                        # mod-looking name: never matches
+    got = names(vanilla_archives(FO4_GAME, data, set()))
+    assert got == ["Fallout4 - Meshes.ba2", "Fallout4 - Textures1.ba2", "DLCRobot - Main.ba2"]

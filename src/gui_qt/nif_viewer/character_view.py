@@ -379,7 +379,7 @@ class CharacterView(QWidget):
             try:
                 sc = read_nif(cat.read(entry))
             except NifUnsupported as exc:
-                return entry, None, self.tr("{0} is in {1} format — only Skyrim meshes can be worn.").format(
+                return entry, None, self.tr("{0} is in {1} format — only Skyrim/Fallout 4 meshes can be worn.").format(
                     name, format_label(exc.version, exc.bsver)), None
             except (NifError, BsaReadError, OSError) as exc:
                 return entry, None, self.tr("Could not read {0}: {1}").format(name, exc), None

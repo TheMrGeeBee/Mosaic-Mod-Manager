@@ -72,7 +72,11 @@ def _nif(blocks, strings=("Root", "Shape"), roots=(0,), bsver=100,
             types.append(t)
     out = b"Gamebryo File Format, Version 20.2.0.7\n"
     out += struct.pack("<IBII", version, 1, 12, len(blocks)) + struct.pack("<I", bsver)
-    out += b"\x01\0" * 3
+    # BSStreamHeader export strings: Author always; Process Script only for
+    # BS < 131; Export Script always; Max Filepath only for BS >= 103 (Fallout
+    # 4 has 4 fields where Skyrim has 3 — see _read_header).
+    n_strs = 2 + (1 if bsver < 131 else 0) + (1 if bsver >= 103 else 0)
+    out += b"\x01\0" * n_strs
     out += struct.pack("<H", len(types)) + b"".join(_s(t) for t in types)
     out += struct.pack(f"<{len(blocks)}H", *[types.index(t) for t, _ in blocks])
     out += struct.pack(f"<{len(blocks)}I", *[len(p) for _, p in blocks])
@@ -229,7 +233,7 @@ def test_le_partitions_map_local_indices_and_unroll_strips():
 
 def test_rejects_other_games_and_garbage():
     with pytest.raises(NifUnsupported):
-        read_nif(_nif([("NiNode", _node(0, []))], bsver=130))      # Fallout 4
+        read_nif(_nif([("NiNode", _node(0, []))], bsver=155))      # Fallout 76
     with pytest.raises(NifUnsupported):
         read_nif(_nif([("NiNode", _node(0, []))], version=0x14000005))
     with pytest.raises(NifError):
@@ -271,7 +275,7 @@ def test_read_body_slots_needs_no_geometry_and_unions_every_skin_instance():
     assert read_body_slots(blob) == frozenset({32, 34, 38})
     assert read_body_slots(_simple()) == frozenset()                      # a prop: no skin instances
     with pytest.raises(NifUnsupported):
-        read_body_slots(_nif([("NiNode", _node(0, []))], bsver=130))
+        read_body_slots(_nif([("NiNode", _node(0, []))], bsver=155))
     with pytest.raises(NifError):
         read_body_slots(b"nope")
 
@@ -293,9 +297,9 @@ def test_sniff_and_label_formats():
 
 def test_unsupported_carries_the_version_for_a_friendly_message():
     with pytest.raises(NifUnsupported) as e:
-        read_nif(_nif([("NiNode", _node(0, []))], bsver=130))
-    assert (e.value.version, e.value.bsver) == (0x14020007, 130)
-    assert format_label(e.value.version, e.value.bsver) == "Fallout 4"
+        read_nif(_nif([("NiNode", _node(0, []))], bsver=155))
+    assert (e.value.version, e.value.bsver) == (0x14020007, 155)
+    assert format_label(e.value.version, e.value.bsver) == "Fallout 76"
 
 
 @pytest.mark.parametrize("raw,want", [
@@ -368,3 +372,162 @@ def test_real_skin_data_reproduces_body_placement_and_seats_hair_on_the_head():
         seated = skin_shape(hair, bones)
         zs = seated.positions[2::3]
         assert 105 < min(zs) and max(zs) < 140                                  # …and skinned onto the head
+
+
+# -- Fallout 4 (BS 130): BSSubIndexTriShape, embedded skin weights, segments --------------
+def _half(f: float) -> bytes:
+    return struct.pack("<e", f)
+
+
+def _fo4_vertex(pos, uv, normal, bone_idx, bone_w) -> bytes:
+    """32 bytes matching the descriptor used below (half-float position +
+    bitangent X, half UV, byte normal + bitangent Y, byte tangent + bitangent
+    Z, then 4 half bone weights + 4 byte bone indices) — the exact layout
+    verified against a real FO4 body mesh while building this reader."""
+    out = b"".join(_half(v) for v in pos) + _half(0.0)                      # position (6) + bitangent X (2)
+    out += b"".join(_half(v) for v in uv)                                    # uv (4)
+    out += bytes(int(round((c + 1) * 127.5)) & 0xFF for c in normal) + b"\0"  # normal (3) + bitangent Y (1)
+    out += b"\0\0\0\0"                                                       # tangent (3) + bitangent Z (1)
+    out += b"".join(_half(w) for w in bone_w) + bytes(bone_idx)              # skin: weights (8) + indices (4)
+    assert len(out) == 32
+    return out
+
+
+# desc: vertex size 8 dwords(32B); uv@2,normal@3,tangent@4,skin@5 (dword units);
+# attrs: Vertex|UVs|Normals|Tangents|Skinned (no Full_Precision -> half position).
+_FO4_DESC = (8 | (2 << 8) | (3 << 16) | (4 << 20) | (5 << 28)
+            | ((1 | 2 | 8 | 16 | 64) << 44))
+
+
+def _fo4_shape(name_idx, verts, tris, shader_ref, skin_ref, segments=b"") -> bytes:
+    vdata = b"".join(_fo4_vertex(*v) for v in verts)
+    tdata = b"".join(struct.pack("<3H", *t) for t in tris)
+    return (_object_net(name_idx) + _xform() + b"\0" * 16
+            + struct.pack("<iii", skin_ref, shader_ref, -1)
+            + struct.pack("<Q", _FO4_DESC)
+            + struct.pack("<IHI", len(tris), len(verts), len(vdata) + len(tdata))
+            + vdata + tdata + segments)
+
+
+def _fo4_segment_tail(leaves, extra_top_level=0) -> bytes:
+    """One top-level "container" segment per leaf plus *extra_top_level* empty
+    ones, each leaf as that segment's single sub-segment, with a shared table
+    giving each leaf's real slot via User Index — matches the shape (though
+    not necessarily the exact semantics) of a real body mesh's segment tail."""
+    n = len(leaves)
+    num_segments = n + extra_top_level
+    total_segments = 2 * n + extra_top_level             # each leaf: 1 self-entry + 1 sub entry
+    out = struct.pack("<III", sum(t for _s, t, _sl in leaves), num_segments, total_segments)
+    for start, ntri, _slot in leaves:
+        out += struct.pack("<IIII", start * 3, 0, 0xFFFFFFFF, 1)            # container, 1 sub
+        out += struct.pack("<IIII", start * 3, ntri, 0, 0)                  # the real sub-segment
+    for _ in range(extra_top_level):
+        out += struct.pack("<IIII", 0, 0, 0xFFFFFFFF, 0)
+    out += struct.pack("<II", num_segments, total_segments)
+    out += struct.pack(f"<{num_segments}I", *range(num_segments))           # per-segment start offsets (unused)
+    for seg_i, (_start, _ntri, slot) in enumerate(leaves):
+        out += struct.pack("<III", seg_i, 0xFFFFFFFF, 0)                    # self entry (ignored: bone_id sentinel)
+        out += struct.pack("<III", slot, 0xDEADBEEF, 0)                     # sub entry: real slot
+    for _ in range(extra_top_level):
+        out += struct.pack("<III", 0, 0xFFFFFFFF, 0)
+    ssf = b"test.ssf"
+    out += struct.pack("<H", len(ssf)) + ssf
+    return out
+
+
+def _fo4_skin_instance(bone_refs, data_ref) -> bytes:
+    return struct.pack("<ii", -1, data_ref) + struct.pack("<I", len(bone_refs)) \
+        + struct.pack(f"<{len(bone_refs)}i", *bone_refs) + struct.pack("<I", 0)
+
+
+def _fo4_bone_data(bone_xf) -> bytes:
+    out = struct.pack("<I", len(bone_xf))
+    for r9, sc, t in bone_xf:
+        out += struct.pack("<4f", 0, 0, 0, 1) + struct.pack("<9f", *r9) + struct.pack("<3f", *t) + struct.pack("<f", sc)
+    return out
+
+
+def _fo4_nif(verts, tris, segments=b"", bone_names=("NPC Root [Root]", "NPC Spine [Spn0]")):
+    nbones = len(bone_names)
+    bone_xf = [((1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0), 1.0, (0.0, 0.0, 0.0))] * nbones
+    strings = ("Root", *bone_names, "Shape")
+    blocks = [("BSFadeNode", _node(0, list(range(1, 1 + nbones)) + [1 + nbones]))]
+    for i in range(nbones):
+        blocks.append(("NiNode", _node(1 + i, [])))
+    shape_i = 1 + nbones
+    skin_i = shape_i + 1
+    bonedata_i = skin_i + 1
+    shader_i = bonedata_i + 1
+    texset_i = shader_i + 1
+    blocks.append(("BSSubIndexTriShape",
+                   _fo4_shape(shape_i, verts, tris, shader_i, skin_i, segments)))
+    blocks.append(("BSSkin::Instance", _fo4_skin_instance(list(range(1, 1 + nbones)), bonedata_i)))
+    blocks.append(("BSSkin::BoneData", _fo4_bone_data(bone_xf)))
+    blocks.append(("BSLightingShaderProperty", _lighting_shader(texset_i)))
+    blocks.append(("BSShaderTextureSet", _texture_set(["Textures\\Armor\\Vault\\Body_d.DDS", ""])))
+    return _nif(blocks, strings=strings, bsver=130)
+
+
+_FO4_TRI = [((0, 0, 0), (0, 0), (0, 0, 1), (0, 1, 0, 0), (1.0, 0.0, 0.0, 0.0)),
+           ((1, 0, 0), (1, 0), (0, 0, 1), (0, 1, 0, 0), (0.0, 1.0, 0.0, 0.0)),
+           ((0, 1, 0), (0, 1), (0, 0, 1), (1, 0, 0, 0), (0.5, 0.5, 0.0, 0.0))]
+
+
+def test_fallout4_shape_decodes_half_float_positions_and_embedded_weights():
+    sc = read_nif(_fo4_nif(_FO4_TRI, [(0, 1, 2)]))
+    sh = sc.shapes[0]
+    assert [round(v, 3) for v in sh.positions] == [0, 0, 0, 1, 0, 0, 0, 1, 0]
+    assert list(sh.indices) == [0, 1, 2]
+    assert sh.textures[0].endswith("body_d.dds")
+    assert sh.is_skinned and sh.skin is not None
+    assert sh.skin.bone_names == ("NPC Root [Root]", "NPC Spine [Spn0]")
+    # skin.weights is bone-major: vertex 0 -> bone 0 only (w=1.0); vertex 1 ->
+    # bone 1 only (w=1.0); vertex 2 splits 0.5/0.5 across both.
+    ids0, ws0 = sh.skin.weights[0]                        # bone 0's (vertex ids, weights)
+    assert dict(zip(ids0, ws0)) == {0: 1.0, 2: 0.5}
+    ids1, ws1 = sh.skin.weights[1]                        # bone 1's (vertex ids, weights)
+    assert dict(zip(ids1, ws1)) == {1: 1.0, 2: 0.5}
+
+
+def test_fallout4_header_field_count_differs_from_skyrim():
+    """A naive Skyrim-shaped 3-export-string header misparses a Fallout 4
+    file — this is the exact regression the Max Filepath fix guards against."""
+    blob = _fo4_nif(_FO4_TRI, [(0, 1, 2)])
+    sc = read_nif(blob)                    # must not raise / must not misparse block types
+    assert len(sc.shapes) == 1
+
+
+def test_fallout4_segments_give_slots_from_the_shared_table():
+    leaves = [(0, 1, 30), (1, 2, 37)]                    # 2 leaf tris, arbitrary "slot" numbers
+    tail = _fo4_segment_tail(leaves)
+    tris = [(0, 1, 2), (0, 2, 1), (1, 2, 0)]
+    sc = read_nif(_fo4_nif(_FO4_TRI * 1, tris[:1] + tris[1:], segments=tail))
+    sh = sc.shapes[0]
+    assert sh.slots == frozenset({30, 37})
+    assert sh.part_tris == ()                            # per-triangle hiding deliberately not attempted
+
+
+@pytest.mark.parametrize("bsver,label", [(100, "Skyrim SE"), (130, "Fallout 4")])
+def test_read_body_slots_rejects_nothing_new_for_supported_bsvers(bsver, label):
+    assert read_body_slots(_nif([("NiNode", _node(0, []))], bsver=bsver)) == frozenset()
+
+
+# -- optional: a slice of the real game (Fallout 4) ----------------------------------
+_FO4_DATA = Path.home() / "games/steamapps/common/Fallout 4/Data_Core"
+
+
+@pytest.mark.skipif(not (_FO4_DATA / "Fallout4 - Meshes.ba2").is_file(),
+                    reason="needs a Fallout 4 install")
+def test_real_fallout4_meshes_parse():
+    from Utils.archives.bsa_file_reader import BsaFile
+
+    with BsaFile(_FO4_DATA / "Fallout4 - Meshes.ba2") as ba2:
+        nifs = [p for p in ba2.paths() if p.endswith(".nif")][::300]
+        assert len(nifs) > 20
+        shapes = 0
+        for path in nifs:
+            for sh in read_nif(ba2.read(path)).shapes:
+                nv = len(sh.positions) // 3
+                assert nv and max(sh.indices) < nv, path
+                shapes += 1
+        assert shapes > 20

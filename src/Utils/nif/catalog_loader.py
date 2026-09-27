@@ -11,13 +11,14 @@ import os
 from pathlib import Path
 
 from Utils.nif.asset_catalog import AssetCatalog, is_viewable, norm_key
-from Utils.nif.nif_reader import SKYRIM_SE_FORMAT
+from Utils.nif.nif_reader import FALLOUT4_FORMAT, SKYRIM_SE_FORMAT
 
-# Games whose meshes the NIF reader understands (Skyrim SE: NIF 20.2.0.7, BS 100).
-NIF_VIEWER_GAME_IDS = frozenset({"skyrim_se"})
+# Games whose meshes the NIF reader understands (Skyrim SE: NIF 20.2.0.7, BS
+# 100; Fallout 4: same NIF version, BS 130).
+NIF_VIEWER_GAME_IDS = frozenset({"skyrim_se", "Fallout4"})
 
 # The NIF (version, BS version) each viewer game's meshes are expected to have.
-EXPECTED_NIF_FORMAT = {"skyrim_se": SKYRIM_SE_FORMAT}
+EXPECTED_NIF_FORMAT = {"skyrim_se": SKYRIM_SE_FORMAT, "Fallout4": FALLOUT4_FORMAT}
 
 
 def vanilla_archives(game, data_dir: "Path | None", mod_archives: "set[str]",
@@ -40,6 +41,7 @@ def vanilla_archives(game, data_dir: "Path | None", mod_archives: "set[str]",
     core = data_dir.parent / (data_dir.name + "_Core")
     if core.is_dir():
         data_dir, staging_dir, mod_archives = core, None, set()
+    exts = tuple(getattr(game, "archive_extensions", None) or (".bsa",))
     stems = [Path(p).stem.lower() for p in getattr(game, "vanilla_plugins", [])]
     ccc = getattr(game, "vanilla_ccc_filename", "") or ""
     for base in (data_dir, data_dir.parent):
@@ -59,10 +61,11 @@ def vanilla_archives(game, data_dir: "Path | None", mod_archives: "set[str]",
         return []
     for name in names:
         low = name.lower()
-        if not low.endswith(".bsa") or low in mod_archives:
+        if not low.endswith(exts) or low in mod_archives:
             continue
+        ext = next(e for e in exts if low.endswith(e))
         rank = next((i for i, stem in enumerate(stems)
-                     if low == stem + ".bsa" or low.startswith(stem + " - ")), None)
+                     if low == stem + ext or low.startswith(stem + " - ")), None)
         if rank is None:
             continue
         path = data_dir / name

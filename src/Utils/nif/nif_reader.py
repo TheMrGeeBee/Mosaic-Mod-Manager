@@ -24,7 +24,8 @@ _HEADER_PREFIX = b"Gamebryo File Format, Version "
 SKYRIM_SE_VERSION = 0x14020007
 SKYRIM_SE_BSVER = 100
 SKYRIM_LE_BSVER = 83
-_SUPPORTED_BSVERS = (SKYRIM_LE_BSVER, SKYRIM_SE_BSVER)
+FALLOUT4_BSVER = 130
+_SUPPORTED_BSVERS = (SKYRIM_LE_BSVER, SKYRIM_SE_BSVER, FALLOUT4_BSVER)
 
 # BSVertexDesc attribute flags (bits 44+ of the 64-bit descriptor).
 _VF_VERTEX = 1 << 44
@@ -44,7 +45,7 @@ _NODE_TYPES = frozenset({
     "BSMasterParticleSystem", "NiBSAnimationNode",
 })
 _SHAPE_TYPES = frozenset({"BSTriShape", "BSDynamicTriShape", "BSMeshLODTriShape",
-                          "BSLODTriShape", "NiTriShape"})
+                          "BSLODTriShape", "NiTriShape", "BSSubIndexTriShape"})
 
 
 class NifError(Exception):
@@ -62,6 +63,7 @@ class NifUnsupported(NifError):
 
 SKYRIM_SE_FORMAT = (SKYRIM_SE_VERSION, SKYRIM_SE_BSVER)
 SKYRIM_LE_FORMAT = (SKYRIM_SE_VERSION, SKYRIM_LE_BSVER)
+FALLOUT4_FORMAT = (SKYRIM_SE_VERSION, FALLOUT4_BSVER)
 
 _BS_GAMES = {100: "Skyrim SE", 83: "Skyrim LE", 34: "Fallout 3 / New Vegas",
              130: "Fallout 4", 155: "Fallout 76", 172: "Starfield", 11: "Oblivion"}
@@ -309,8 +311,22 @@ def _read_header(b: bytes) -> _Header:
         nblocks = r.u32()
         bsver = r.u32()
         if bsver not in _SUPPORTED_BSVERS:
-            raise NifUnsupported(f"BS version {bsver} (only Skyrim LE = 83 and SE = 100)", version, bsver)
-        r.short_str(); r.short_str(); r.short_str()   # author, process, export
+            raise NifUnsupported(
+                f"BS version {bsver} (only Skyrim LE = 83, SE = 100, Fallout 4 = 130)", version, bsver)
+        # BSStreamHeader (niftools/nifxml): Author always present; "Unknown Int"
+        # only for BS > 130 (Fallout 76 etc.); "Process Script" only for BS < 131
+        # (present for both Skyrim and FO4); "Export Script" always present;
+        # "Max Filepath" only from BS >= 103 — the field Skyrim's header lacks
+        # and Fallout 4's has, verified against a real FO4 mesh (a naive port of
+        # the Skyrim-only 3-string layout misaligns everything after it).
+        r.short_str()                                   # author
+        if bsver > 130:
+            r.u32()                                      # unknown int (Fallout 76+)
+        if bsver < 131:
+            r.short_str()                                 # process script
+        r.short_str()                                    # export script
+        if bsver >= 103:
+            r.short_str()                                 # max filepath (Fallout 4+)
         ntypes = r.u16()
         types = [r.sized_str() for _ in range(ntypes)]
         idx = struct.unpack_from(f"<{nblocks}H", b, r.p); r.p += 2 * nblocks
@@ -342,13 +358,24 @@ def _av_object(r: _R):
     return (rot, scale, t)
 
 
-def _decode_vertices(b: bytes, base: int, nverts: int, vsize: int, desc: int):
-    """Decode packed BSVertexData → (positions|None, uvs|None, normals|None), flat.
-    Positions are None when the descriptor has no position attribute (dynamic
-    shapes keep them in a separate block).
+def _decode_vertices(b: bytes, base: int, nverts: int, vsize: int, desc: int, bsver: int = 0):
+    """Decode packed BSVertexData → (positions|None, uvs|None, normals|None,
+    bone_indices|None, bone_weights|None), flat. Positions are None when the
+    descriptor has no position attribute (dynamic shapes keep them in a
+    separate block); bone_indices/weights are None unless *bsver* is Fallout 4
+    and the Skinned attribute bit is set.
 
     Skyrim SE positions are always 32-bit floats: the FULLPREC flag is only
-    meaningful from BS version 130 (a 32-byte vertex adds up only that way).
+    meaningful from BS version 130. Fallout 4 actually uses it — a body mesh
+    verified while adding FO4 support stores half-float positions (FULLPREC
+    unset) — so bsver >= 130 is the one case that must check the bit instead
+    of assuming full precision.
+
+    Fallout 4 also has no separate skin-weight block (Skyrim's NiSkinPartition):
+    weights and bone indices for up to 4 bones are embedded per vertex, right
+    after tangent data — verified byte-for-byte against a real FO4 mesh (the
+    block's declared Data Size matched exactly with this offset scheme, and
+    the weights extracted summed to 1.0 across many real vertices).
     Attribute offsets come from the descriptor's nibbles (in dwords)."""
     def off(attr: int) -> int:
         return ((desc >> (4 * attr + 4)) & 0xF) * 4
@@ -356,12 +383,17 @@ def _decode_vertices(b: bytes, base: int, nverts: int, vsize: int, desc: int):
     has_pos = bool(desc & _VF_VERTEX)
     has_uv = bool(desc & _VF_UV)
     has_n = bool(desc & _VF_NORMAL)
-    uv_off, n_off = off(1), off(3)
+    has_skin = bsver >= FALLOUT4_BSVER and bool(desc & _VF_SKINNED)
+    full_pos = bsver < FALLOUT4_BSVER or bool(desc & _VF_FULLPREC)
+    uv_off, n_off, skin_off = off(1), off(3), off(6)
     pos = array("f") if has_pos else None
     uvs = array("f") if has_uv else None
     nrm = array("f") if has_n else None
-    unpack_pos = struct.Struct("<3f").unpack_from
+    bone_idx = array("B") if has_skin else None
+    bone_w = array("f") if has_skin else None
+    unpack_pos = (struct.Struct("<3f") if full_pos else struct.Struct("<3e")).unpack_from
     unpack_uv = struct.Struct("<2e").unpack_from
+    unpack_bw = struct.Struct("<4e").unpack_from
     for i in range(nverts):
         o = base + i * vsize
         if has_pos:
@@ -371,7 +403,10 @@ def _decode_vertices(b: bytes, base: int, nverts: int, vsize: int, desc: int):
         if has_n:
             nrm.extend((b[o + n_off] / 127.5 - 1.0, b[o + n_off + 1] / 127.5 - 1.0,
                         b[o + n_off + 2] / 127.5 - 1.0))
-    return pos, uvs, nrm
+        if has_skin:
+            bone_w.extend(unpack_bw(b, o + skin_off))
+            bone_idx.extend(b[o + skin_off + 8:o + skin_off + 12])
+    return pos, uvs, nrm, bone_idx, bone_w
 
 
 def _read_skin_partition(r: _R):
@@ -387,7 +422,7 @@ def _read_skin_partition(r: _R):
     if data_size == 0 or vsize == 0:
         return None
     nverts = data_size // vsize
-    pos, uvs, nrm = _decode_vertices(r.b, r.p, nverts, vsize, desc)
+    pos, uvs, nrm, _bi, _bw = _decode_vertices(r.b, r.p, nverts, vsize, desc)
     r.p += data_size
     tris = array("H")
     counts: list[int] = []
@@ -413,8 +448,13 @@ def _read_skin_partition(r: _R):
     return pos, uvs, nrm, tris, tuple(counts)
 
 
-def _read_shape(r: _R, ptype: str):
-    """Parse a BSTriShape-family block into a dict of raw geometry."""
+def _read_shape(r: _R, ptype: str, bsver: int = 0):
+    """Parse a BSTriShape-family block into a dict of raw geometry.
+
+    Fallout 4's Num Triangles field is a uint32 (Skyrim's is a uint16) and its
+    BSSubIndexTriShape has no particle-data trailer — instead, once the
+    vertex/triangle arrays end, its own dismemberment segment data follows
+    (see _read_fo4_segments)."""
     name = _object_net(r, r.strings)
     local = _av_object(r)
     r.skip(16)                           # bounding sphere
@@ -422,42 +462,109 @@ def _read_shape(r: _R, ptype: str):
     shader = r.i32()
     r.i32()                              # alpha property
     desc = r.u64()
-    ntris = r.u16()
+    ntris = r.u32() if bsver >= FALLOUT4_BSVER else r.u16()
     nverts = r.u16()
     data_size = r.u32()
     vsize = (desc & 0xF) * 4
-    pos = uvs = nrm = None
+    pos = uvs = nrm = bone_idx = bone_w = None
     idx = array("H")
     if data_size and nverts and vsize:
-        if data_size != vsize * nverts + ntris * 6:
-            raise NifError(f"BSTriShape size mismatch in {name!r}")
-        pos, uvs, nrm = _decode_vertices(r.b, r.p, nverts, vsize, desc)
+        expected = vsize * nverts + ntris * 6
+        # Fallout 4's own "Data Size" is a documented calc'd field (nifxml),
+        # and real-world exporters (Outfit Studio/CBBE, verified on an actual
+        # 1st-person body mesh) write a stale value that doesn't match it —
+        # the game itself clearly ignores it too, since the mesh loads fine
+        # in-game. Skyrim's exporters have never been seen to disagree with
+        # the formula across 22k+ real meshes, so keep the strict check there
+        # (a real mismatch signals real corruption worth dropping the shape
+        # over), but for FO4 trust the computed size over the stored one.
+        if data_size != expected:
+            if bsver < FALLOUT4_BSVER:
+                raise NifError(f"BSTriShape size mismatch in {name!r}")
+        pos, uvs, nrm, bone_idx, bone_w = _decode_vertices(r.b, r.p, nverts, vsize, desc, bsver)
         r.p += vsize * nverts
         idx.frombytes(r.b[r.p:r.p + ntris * 6])
         r.p += ntris * 6
-    # Trailer: particle-data size (always present in BS 100), then the
-    # subclass extras. We only understand the no-particle-data case.
     dyn = None
     lod0 = 0
-    try:
-        if r.u32() == 0:
-            if ptype == "BSDynamicTriShape":
-                dsize = r.u32()
-                if dsize >= 16 * nverts:
-                    v4 = struct.unpack_from(f"<{4 * nverts}f", r.b, r.p)
-                    dyn = array("f")
-                    for k in range(0, len(v4), 4):
-                        dyn.extend(v4[k:k + 3])
-            elif ptype in ("BSMeshLODTriShape", "BSLODTriShape"):
-                lod0 = r.u32()           # draw LOD0 only (the array holds all LODs)
-    except struct.error:
-        pass
+    fo4_segments: list = []
+    if bsver >= FALLOUT4_BSVER:
+        if ptype == "BSSubIndexTriShape" and data_size:
+            try:
+                fo4_segments = _read_fo4_segments(r)
+            except (struct.error, IndexError):
+                pass
+    else:
+        # Trailer: particle-data size (always present in BS 100), then the
+        # subclass extras. We only understand the no-particle-data case.
+        try:
+            if r.u32() == 0:
+                if ptype == "BSDynamicTriShape":
+                    dsize = r.u32()
+                    if dsize >= 16 * nverts:
+                        v4 = struct.unpack_from(f"<{4 * nverts}f", r.b, r.p)
+                        dyn = array("f")
+                        for k in range(0, len(v4), 4):
+                            dyn.extend(v4[k:k + 3])
+                elif ptype in ("BSMeshLODTriShape", "BSLODTriShape"):
+                    lod0 = r.u32()           # draw LOD0 only (the array holds all LODs)
+        except struct.error:
+            pass
     if lod0 and 0 < lod0 <= len(idx) // 3:
         idx = idx[:lod0 * 3]
     return {"name": name, "local": local, "skin": skin, "shader": shader,
             "positions": pos if pos is not None else dyn, "normals": nrm,
-            "uvs": uvs, "indices": idx, "dyn": dyn}
+            "uvs": uvs, "indices": idx, "dyn": dyn,
+            "bone_idx": bone_idx, "bone_w": bone_w, "fo4_segments": fo4_segments}
 
+
+def _read_fo4_segments(r: "_R") -> list:
+    """BSSubIndexTriShape's dismemberment tail (BSGeometrySegmentData +
+    optional BSGeometrySegmentSharedData) -> [(start_tri, num_tris, slot), ...]
+    for every LEAF segment/sub-segment (one that actually owns triangles).
+
+    Verified byte-for-byte against real FO4 meshes (final read position landed
+    exactly on the block's own declared end on both a plain armour piece and a
+    25-total-segment body mesh). Segments form a tree (each top-level segment
+    may have sub-segments); a body mesh's real triangles live in the
+    sub-segments, with the top-level entry a zero-triangle container. When
+    present, the shared per-segment table's ``User Index`` gives each entry's
+    ``Biped Object`` (Bethesda's own doc: "like the body part types in
+    Skyrim") in flat declaration order — one entry per top-level segment (its
+    own self-reference, recognisable by ``Bone ID`` 0xffffffff) then one per
+    its sub-segments, in order. Semantics not yet cross-checked against a real
+    FO4 ARMA record, so treat the resulting numbers as approximate, exactly
+    like the Skyrim LE/SE partition-derived slots. Falls back to the top-level
+    segment's own declared index when no shared table is present."""
+    r.u32()                                             # num primitives (== the shape's own triangle count)
+    num_segments = r.u32()
+    total_segments = r.u32()
+    # (start_tri, num_tris, own top-level segment index) for every leaf, plus
+    # the flat declaration-order slot (including zero-triangle self entries)
+    # so the shared table below can be zipped back onto the right leaf.
+    entries: list = []               # (flat_index, start_tri, num_tris, seg_i)
+    flat_i = 0
+    for seg_i in range(num_segments):
+        start_idx, n_prim, _parent, n_sub = r.u32(), r.u32(), r.u32(), r.u32()
+        entries.append((flat_i, start_idx // 3, n_prim, seg_i))
+        flat_i += 1
+        for _ in range(n_sub):
+            s_start, s_nprim, _s_parent, _unused = r.u32(), r.u32(), r.u32(), r.u32()
+            entries.append((flat_i, s_start // 3, s_nprim, seg_i))
+            flat_i += 1
+    if num_segments < total_segments:
+        shared_nseg, shared_total = r.u32(), r.u32()
+        r.skip(4 * shared_nseg)                          # per-top-level-segment start offsets (unused)
+        user_by_flat = []
+        for _ in range(shared_total):
+            user_index, _bone_id, ncut = r.u32(), r.u32(), r.u32()
+            r.skip(4 * ncut)
+            user_by_flat.append(user_index)
+        ssf_len = r.u16()
+        r.skip(ssf_len)                                    # SSF file path (unused)
+        return [(start_tri, n_prim, user_by_flat[fi] if fi < len(user_by_flat) else seg_i)
+                for fi, start_tri, n_prim, seg_i in entries if n_prim]
+    return [(start_tri, n_prim, seg_i) for _fi, start_tri, n_prim, seg_i in entries if n_prim]
 
 def _read_dismember_slots(r: _R) -> tuple:
     """BSDismemberSkinInstance → its partitions' body slots, in order
@@ -502,12 +609,79 @@ def _read_skin(inst: _R, data_reader, names: dict) -> "tuple | None":
     return tuple(names.get(b, "") for b in bone_refs), tuple(xf), tuple(weights)
 
 
+def _read_fo4_skin(inst: _R, data_reader, names: dict,
+                   bone_idx: "array | None", bone_w: "array | None") -> "tuple | None":
+    """BSSkin::Instance + BSSkin::BoneData → (bone_names, bone_xf, weights),
+    matching _read_skin's return shape so skin_shape()/skin_scene() in
+    character.py need no changes to pose either game's meshes.
+
+    Unlike Skyrim, Fallout 4 has no per-bone vertex-weight list in the skin
+    data at all — weights and bone indices for up to 4 bones are embedded
+    directly in the shape's own vertex data (see _decode_vertices) and must be
+    inverted here into the per-bone (vertex ids, weights) lists the rest of
+    the skinning code expects. BSSkinBoneTrans orders its fields bounding
+    sphere first then rotation/translation/scale — the opposite of Skyrim's
+    NiSkinData — verified against a real FO4 mesh."""
+    inst.i32()                                     # skeleton root (Ptr, unused: names come from bone refs)
+    data_ref = inst.i32()
+    n = inst.u32()
+    bone_refs = [inst.i32() for _ in range(n)]
+    if not bone_idx or not bone_w or len(bone_idx) != 4 * (len(bone_w) // 4):
+        return None
+    d = data_reader(data_ref)
+    if d is None:
+        return None
+    nb = d.u32()
+    if nb != n:
+        return None
+    xf = []
+    for _ in range(nb):
+        d.floats(4)                                # bounding sphere (first, unlike NiSkinData)
+        r9 = d.floats(9)
+        t = d.floats(3)
+        sc = d.f32()
+        xf.append((r9, sc, t))
+    per_bone_ids = [array("H") for _ in range(nb)]
+    per_bone_ws = [array("f") for _ in range(nb)]
+    nverts = len(bone_w) // 4
+    for vid in range(nverts):
+        base = vid * 4
+        for s in range(4):
+            bi, w = bone_idx[base + s], bone_w[base + s]
+            if w > 0.0 and bi < nb:
+                per_bone_ids[bi].append(vid)
+                per_bone_ws[bi].append(w)
+    weights = tuple(zip(per_bone_ids, per_bone_ws))
+    return tuple(names.get(b, "") for b in bone_refs), tuple(xf), weights
+
+
+def _read_fo4_shape_slots(r: "_R") -> "frozenset":
+    """A BSSubIndexTriShape's segment slot numbers, skipping past the vertex
+    and triangle arrays without decoding them — the read_body_slots() fast
+    path for Fallout 4 (see _read_fo4_segments for what the numbers mean and
+    _read_shape for the fields this mirrors)."""
+    _object_net(r, r.strings)
+    _av_object(r)
+    r.skip(16)                           # bounding sphere
+    r.i32(); r.i32(); r.i32()            # skin, shader, alpha refs
+    desc = r.u64()
+    ntris = r.u32()
+    nverts = r.u16()
+    data_size = r.u32()
+    if not data_size:
+        return frozenset()
+    r.skip(data_size)
+    return frozenset(slot for _s, _n, slot in _read_fo4_segments(r))
+
+
 def read_body_slots(data: bytes) -> frozenset:
     """The body slots (32 body, 33 hands, 37 feet…) a mesh covers, without parsing
-    any geometry: just the header and the small BSDismemberSkinInstance blocks.
-    Empty for meshes with no such blocks (props, weapons, unskinned models).
-    Raises NifError/NifUnsupported like read_nif for files it can't read. Fast
-    enough to run over thousands of files (a picker's candidate list)."""
+    any geometry: just the header and the small BSDismemberSkinInstance blocks
+    (Skyrim) or BSSubIndexTriShape's own segment tail (Fallout 4, skipped over
+    rather than decoded). Empty for meshes with no such blocks (props, weapons,
+    unskinned models). Raises NifError/NifUnsupported like read_nif for files
+    it can't read. Fast enough to run over thousands of files (a picker's
+    candidate list)."""
     hdr = _read_header(data)
     slots: set = set()
     pos = hdr.body_start
@@ -515,6 +689,11 @@ def read_body_slots(data: bytes) -> frozenset:
         if t < len(hdr.types) and hdr.types[t] == "BSDismemberSkinInstance":
             try:
                 slots.update(_read_dismember_slots(_R(data, pos, hdr.strings)))
+            except (struct.error, IndexError):
+                pass
+        elif hdr.bsver >= FALLOUT4_BSVER and t < len(hdr.types) and hdr.types[t] == "BSSubIndexTriShape":
+            try:
+                slots.update(_read_fo4_shape_slots(_R(data, pos, hdr.strings)))
             except (struct.error, IndexError):
                 pass
         pos += size
@@ -709,7 +888,7 @@ def read_nif(data: bytes, include_nodes: bool = False) -> NifScene:
                     reader(i), lambda ref: reader(ref) if 0 <= ref < hdr.nblocks
                     and tname[ref] == "NiTriShapeData" else None)
             else:
-                g = _read_shape(reader(i), tname[i])
+                g = _read_shape(reader(i), tname[i], hdr.bsver)
         except (struct.error, IndexError, NifError):
             return
         part_tris: tuple = ()
@@ -758,6 +937,18 @@ def read_nif(data: bytes, include_nodes: bool = False) -> NifScene:
                 part_slots = _read_dismember_slots(reader(g["skin"]))
             except (struct.error, IndexError):
                 pass
+        elif g.get("fo4_segments"):
+            # Only the *set* of slot numbers is used, not per-triangle hiding:
+            # a real body mesh's own top-level segment and its sub-segments
+            # were found to report overlapping/non-tiling triangle ranges
+            # (e.g. a torso segment's own range plus 4 "sub" ranges that
+            # extend past its end) — real, verified FO4 data, not a parsing
+            # bug. Splitting hide_covered() by these ranges could hide the
+            # wrong triangles, so part_tris is left unset here and the
+            # mismatch check below falls back to treating the shape as one
+            # unsplit piece, same as any other shape whose slots can't be
+            # trusted for partition-level hiding.
+            part_slots = tuple(sorted({slot for _s, _n, slot in g["fo4_segments"]}))
         if g.get("le") and g["skin"] >= 0 and part_slots:
             # LE keeps all triangles in the shape's own data and the per-slot split in
             # the skin partitions: re-order the triangles partition by partition so
@@ -783,6 +974,16 @@ def read_nif(data: bytes, include_nodes: bool = False) -> NifScene:
                     reader(g["skin"]),
                     lambda ref: reader(ref) if 0 <= ref < hdr.nblocks and tname[ref] == "NiSkinData" else None,
                     names)
+                if got is not None:
+                    skin_data = SkinData(got[0], got[1], got[2], g["positions"], g["normals"])
+            except (struct.error, IndexError):
+                pass
+        elif g["skin"] >= 0 and tname[g["skin"]] == "BSSkin::Instance":
+            try:
+                got = _read_fo4_skin(
+                    reader(g["skin"]),
+                    lambda ref: reader(ref) if 0 <= ref < hdr.nblocks and tname[ref] == "BSSkin::BoneData" else None,
+                    names, g.get("bone_idx"), g.get("bone_w"))
                 if got is not None:
                     skin_data = SkinData(got[0], got[1], got[2], g["positions"], g["normals"])
             except (struct.error, IndexError):
