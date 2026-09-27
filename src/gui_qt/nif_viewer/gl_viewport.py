@@ -119,6 +119,29 @@ def compute_normals(pos: array, idx: array) -> array:
     return n
 
 
+# QOpenGLTexture's destructor asks whether the *current* context shares with the
+# one the texture was created in — through a raw pointer that dangles once that
+# context is gone. A widget's context dies when its tab closes, and by then Qt has
+# already invalidated the Python widget, so our cleanup can't run; the texture
+# wrapper is then freed later by the garbage collector (often while another
+# view's context is current) and the destructor dereferences the dead context:
+# a segfault. So a texture wrapper is never left to the garbage collector while
+# it still owns a GPU texture: it is kept here until destroy() has really run
+# (textureId() == 0). If its context is already gone it stays here for good —
+# a small Python-side leak, while the driver frees the GPU texture itself.
+_LIVE_TEXTURES: "set[QOpenGLTexture]" = set()
+
+
+def _destroy_texture(tex: "QOpenGLTexture | None"):
+    """Destroy *tex* if its context is current; otherwise leave it registered."""
+    if tex is None:
+        return
+    if QOpenGLContext.currentContext() is not None:
+        tex.destroy()
+    if tex.textureId() == 0:                     # really gone: safe to let go
+        _LIVE_TEXTURES.discard(tex)
+
+
 class _Drawable:
     """GPU-side copy of one shape."""
     def __init__(self, shape: NifShape, image: "QImage | None"):
@@ -328,7 +351,8 @@ class MeshRenderer:
     def release(self):
         self._free_skeleton()
         for d in self._drawables:
-            for o in (d.tex, d.vbo, d.ibo, d.vao):
+            _destroy_texture(d.tex)
+            for o in (d.vbo, d.ibo, d.vao):
                 if o is not None:
                     o.destroy()
         self._drawables = []
@@ -368,6 +392,7 @@ class MeshRenderer:
             d.vao.release()
             if d.image is not None and not d.image.isNull():
                 d.tex = QOpenGLTexture(d.image.convertToFormat(QImage.Format_RGBA8888))
+                _LIVE_TEXTURES.add(d.tex)
                 d.tex.setMinificationFilter(QOpenGLTexture.LinearMipMapLinear)
                 d.tex.setMagnificationFilter(QOpenGLTexture.Linear)
                 d.tex.setWrapMode(QOpenGLTexture.Repeat)
@@ -453,6 +478,13 @@ class MeshRenderer:
         gl.glDisable(_GL_PROGRAM_POINT_SIZE)
         gl.glDisable(_GL_BLEND)
         gl.glEnable(_GL_DEPTH_TEST)
+
+
+def _release_quietly(renderer: "MeshRenderer"):
+    try:
+        renderer.release()
+    except Exception:
+        pass
 
 
 def fit_inputs(scene: "NifScene | None", skeleton: "list[NifNode] | None"):
@@ -564,12 +596,13 @@ class MeshViewport(QOpenGLWidget):
         self._renderer.initialize(self)
         ctx = self.context()
         if ctx is not None:
-            ctx.aboutToBeDestroyed.connect(self._release)
-
-    def _release(self):
-        self.makeCurrent()
-        self._renderer.release()
-        self.doneCurrent()
+            # Deliberately NOT a bound method of the widget: by the time the
+            # context dies (the tab closed) Qt has invalidated the Python widget,
+            # and calling makeCurrent() on it only raises. The renderer alone
+            # cleans up; textures it can't destroy stay registered (see
+            # _LIVE_TEXTURES) instead of crashing later.
+            renderer = self._renderer
+            ctx.aboutToBeDestroyed.connect(lambda: _release_quietly(renderer))
 
     def paintGL(self):
         view, proj = self._camera.matrices(self.width() / max(self.height(), 1))
