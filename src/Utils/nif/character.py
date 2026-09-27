@@ -75,32 +75,41 @@ SKYRIM_PROFILE = GameProfile(
 
 # Fallout 4: verified against real Fallout4.esm ARMA records (BOD2 masks), not
 # guessed — see the NIF/character viewer memory note for the worked examples
-# (Glasses always 47, Pip-Boy always 60, Torso/L-Arm/R-Arm/L-Leg/R-Leg exactly
-# 41-45, Body always 33, gloves 34+35). FO4 has no Skyrim-style "+100"
-# duplicate slot range and no helmet/hair slot collision (30 vs 31 are already
-# distinct), so neither of those Skyrim quirks apply. No separate feet mesh
-# (boots replace part of the body/legs coverage instead) and no per-NPC
-# body-weight morph — base body/hands ship as a single file, not a _0/_1 pair
-# (confirmed on a real CBBE-replaced body). Torso(41)/L-Arm(42)/R-Arm(43)/
-# L-Leg(44)/R-Leg(45) are folded into the same "body"/"arms"/"legs" groups as
-# the more common 33/34-35 slots (both represent the same body region in
-# different outfit-construction styles) rather than given their own rows.
+# (Glasses always 47, Pip-Boy always 60, Body always 33, gloves 34+35). FO4
+# has no Skyrim-style "+100" duplicate slot range and no helmet/hair slot
+# collision (30 vs 31 are already distinct), so neither of those Skyrim
+# quirks apply. No separate feet mesh (boots replace part of the body/legs
+# coverage instead) and no per-NPC body-weight morph — base body/hands ship
+# as a single file, not a _0/_1 pair (confirmed on a real CBBE-replaced body).
+#
+# Torso(41)/L-Arm(42)/R-Arm(43)/L-Leg(44)/R-Leg(45) are a second, separate
+# limb-detail layer with NO Skyrim equivalent — real user report + real data
+# confirmed these must each get their own row, not be folded into
+# Body/Arms/Legs: FO4 armor is commonly modular per limb (a left-arm piece
+# from one mod worn alongside an unrelated right-arm piece), so merging
+# left+right into one slot meant equipping one silently unequipped the
+# other. Left/right sides aren't split for hands (34+35 have only ever been
+# seen together on one glove mesh, never as separate L/R pieces) or for the
+# main Body(33) slot itself (a full one-piece outfit, not limb-modular).
 FALLOUT4_BODY_DIR = "meshes/actors/character/characterassets/"
 FALLOUT4_SKELETONS = {"male": FALLOUT4_BODY_DIR + "skeleton.nif",
                       "female": FALLOUT4_BODY_DIR + "skeleton.nif"}   # one skeleton, both genders
-FALLOUT4_GROUPS = [("head", "Head"), ("hair", "Hair"), ("body", "Body"), ("arms", "Arms"),
-                   ("hands", "Hands"), ("legs", "Legs"), ("eyes", "Eyes/Glasses"),
+FALLOUT4_GROUPS = [("head", "Head"), ("hair", "Hair"), ("body", "Body"), ("torso", "Torso (armor)"),
+                   ("l_arm", "Left Arm"), ("r_arm", "Right Arm"), ("hands", "Hands"),
+                   ("l_leg", "Left Leg"), ("r_leg", "Right Leg"), ("eyes", "Eyes/Glasses"),
                    ("pipboy", "Pip-Boy"), ("backpack", "Backpack")]
-FALLOUT4_LAYER_ORDER = ["hair", "body", "arms", "legs", "hands", "eyes", "pipboy", "backpack", "head"]
+FALLOUT4_LAYER_ORDER = ["hair", "body", "torso", "l_arm", "r_arm", "l_leg", "r_leg", "hands",
+                        "eyes", "pipboy", "backpack", "head"]
 FALLOUT4_PROFILE = GameProfile(
     body_dir=FALLOUT4_BODY_DIR, skeletons=FALLOUT4_SKELETONS, groups=FALLOUT4_GROUPS,
     layer_order=FALLOUT4_LAYER_ORDER,
-    slot_groups={"head": frozenset({30}), "hair": frozenset({31}), "body": frozenset({33, 41}),
-                "arms": frozenset({42, 43}), "hands": frozenset({34, 35}), "legs": frozenset({44, 45}),
+    slot_groups={"head": frozenset({30}), "hair": frozenset({31}), "body": frozenset({33}),
+                "torso": frozenset({41}), "l_arm": frozenset({42}), "r_arm": frozenset({43}),
+                "hands": frozenset({34, 35}), "l_leg": frozenset({44}), "r_leg": frozenset({45}),
                 "eyes": frozenset({47}), "pipboy": frozenset({60}), "backpack": frozenset({61})},
     base_parts=("body", "hands"), has_weight_suffix=False,
     head_fmt="base{gender}head.nif", eyes_fmt=None,
-    base_part_groups=frozenset({"body", "hands", "arms", "legs"}))
+    base_part_groups=frozenset({"body", "hands", "torso", "l_arm", "r_arm", "l_leg", "r_leg"}))
 
 
 def profile_for_game(game_id: "str | None") -> GameProfile:

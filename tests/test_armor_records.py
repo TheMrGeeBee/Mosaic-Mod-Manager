@@ -162,3 +162,71 @@ def test_real_vanilla_iron_armor_slots_match_the_engine():
     for edid, want in cases.items():
         slots, _paths = parse_arma(recs[edid])
         assert slots == want, edid
+
+
+def test_build_slot_index_includes_the_base_game_masters_even_when_absent_from_plugins_txt(tmp_path):
+    """Real bug, found via a real profile: Bethesda games with
+    plugins_include_vanilla=False (Skyrim SE and Fallout 4 both are) never
+    write their own base-game masters into plugins.txt at all — the engine
+    force-loads them regardless, and every tool (this app's own
+    save_plugins, MO2, Vortex, libloadorder) omits them the same way. A
+    plugins.txt-only reader silently drops the base masters' own ARMA
+    records — confirmed on a real Fallout 4 profile: the vanilla Pip-Boy's
+    own ARMA (in Fallout4.esm) went missing this way. loadorder.txt (which
+    does list them) plus game.vanilla_plugins is the fix."""
+    from Utils.filemap import _write_mod_index
+
+    data_dir = tmp_path / "Data"
+    data_dir.mkdir()
+    _write_plugin(data_dir / "Game.esm", _write_arma_record(1, (60,), b"pipboy.nif\0"))
+    mods_dir = tmp_path / "mods"
+    (mods_dir / "Mod A").mkdir(parents=True)
+    _write_plugin((mods_dir / "Mod A" / "ModA.esp"),
+                  _write_arma_record(2, (33,), b"outfit.nif\0"))
+
+    class FakeGame:
+        plugins_include_vanilla = False
+        vanilla_plugins = ["Game.esm"]
+        vanilla_ccc_filename = ""
+
+        def get_mod_data_path(self):
+            return data_dir
+
+        def get_effective_mod_staging_path(self):
+            return mods_dir
+
+    # Game.esm is deliberately absent from plugins.txt — only loadorder.txt
+    # (and vanilla_plugins) says it's there, matching a real profile exactly.
+    (tmp_path / "plugins.txt").write_text("*ModA.esp\n", encoding="utf-8")
+    (tmp_path / "loadorder.txt").write_text("Game.esm\nModA.esp\n", encoding="utf-8")
+    (tmp_path / "modlist.txt").write_text("*Mod A\n", encoding="utf-8")
+    _write_mod_index(tmp_path / "modindex.bin", {"Mod A": ({"moda.esp": "ModA.esp"}, {})})
+
+    index = build_slot_index(FakeGame(), tmp_path)
+    assert index == {"meshes/pipboy.nif": frozenset({60}), "meshes/outfit.nif": frozenset({33})}
+
+
+def test_build_slot_index_falls_back_to_plugins_txt_when_loadorder_is_missing(tmp_path):
+    from Utils.filemap import _write_mod_index
+
+    mods_dir = tmp_path / "mods"
+    (mods_dir / "Mod A").mkdir(parents=True)
+    _write_plugin((mods_dir / "Mod A" / "ModA.esp"),
+                  _write_arma_record(1, (33,), b"outfit.nif\0"))
+
+    class FakeGame:
+        plugins_include_vanilla = False
+        vanilla_plugins = ["Game.esm"]     # never resolvable: no loadorder.txt to name it either
+
+        def get_mod_data_path(self):
+            return tmp_path / "Data"
+
+        def get_effective_mod_staging_path(self):
+            return mods_dir
+
+    (tmp_path / "plugins.txt").write_text("*ModA.esp\n", encoding="utf-8")
+    (tmp_path / "modlist.txt").write_text("*Mod A\n", encoding="utf-8")
+    _write_mod_index(tmp_path / "modindex.bin", {"Mod A": ({"moda.esp": "ModA.esp"}, {})})
+
+    index = build_slot_index(FakeGame(), tmp_path)
+    assert index == {"meshes/outfit.nif": frozenset({33})}

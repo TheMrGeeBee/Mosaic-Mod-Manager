@@ -169,4 +169,10 @@ def build_catalog(game, profile_dir: "Path | None", staging_dir: "Path | None") 
         mod_dir_for=lambda m: mflogic._mod_dir_for(game, m),
         strips_for=lambda m: mflogic.read_strip_prefixes(profile_dir, m),
         expected_nif_format=EXPECTED_NIF_FORMAT.get(getattr(game, "game_id", None)),
-        authoritative_slots=authoritative_slots)
+        authoritative_slots=authoritative_slots,
+        # Fallout 4's own dismemberment segments aren't reliable enough to
+        # guess a slot from (verified: a real mesh's own segments claimed slot
+        # 60/Pip-Boy alongside meaningless small numbers) — only trust a real
+        # plugin's ARMA record for this game. Skyrim's mesh partitions are
+        # reliable enough to keep as a fallback (the default).
+        slots_need_authority=(getattr(game, "game_id", None) == "Fallout4"))

@@ -242,3 +242,26 @@ def test_slots_of_prefers_the_authoritative_plugin_map_over_the_mesh_guess(world
     assert world.slots_of(entry) == frozenset({32, 34, 38})           # ground truth wins, no read needed
     assert world.entry_in_layer("modB", NEW_IN_MOD) is not None
     assert world.slots_of(world.entry_in_layer("modB", NEW_IN_MOD)) is None   # untouched path: falls back as before
+
+
+def test_slots_need_authority_excludes_unauthored_meshes_instead_of_guessing(tmp_path):
+    # Fallout 4's own mesh-embedded slots aren't reliable (a real mesh's own
+    # segments can claim an unrelated slot alongside meaningless placeholder
+    # numbers) — with slots_need_authority set, a mesh with no ARMA coverage
+    # must come back None (unknown), never a guess from the file itself.
+    base = _bsa(tmp_path, "Fallout4 - Meshes.ba2", {MESH: b"some-bytes"})
+    cat = AssetCatalog(
+        base_name="Game", base_archives=[base], mod_order=[],
+        loose={}, bsas={}, loose_winner={}, bsa_winner={}, mod_dir_for=lambda m: None,
+        authoritative_slots={MESH: frozenset({33})}, slots_need_authority=True)
+    authored = cat.entry_in_layer(BASE, MESH)
+    assert cat.slots_of(authored) == frozenset({33})           # covered: still ground truth
+    cat.close()
+
+    cat2 = AssetCatalog(
+        base_name="Game", base_archives=[base], mod_order=[],
+        loose={}, bsas={}, loose_winner={}, bsa_winner={}, mod_dir_for=lambda m: None,
+        authoritative_slots={}, slots_need_authority=True)
+    unauthored = cat2.entry_in_layer(BASE, MESH)
+    assert cat2.slots_of(unauthored) is None                    # not covered: excluded, no fallback guess
+    cat2.close()

@@ -535,15 +535,42 @@ def test_fallout4_body_paths_have_no_weight_suffix_and_a_different_head_name():
 
 # Slot numbers verified against real Fallout4.esm ARMA (BOD2) records while
 # building this — see the worked examples in the NIF/character viewer memory
-# note (Glasses always 47, Pip-Boy always 60, Torso/arms/legs exactly 41-45,
-# Body always 33, gloves 34+35).
+# note (Glasses always 47, Pip-Boy always 60, Torso/L-Arm/R-Arm/L-Leg/R-Leg
+# exactly 41-45 with each side its own slot, Body always 33, gloves 34+35).
+# Torso/limb pieces get their own group, not folded into Body/Arms/Legs — a
+# real user report caught that a left-arm and a right-arm piece from two
+# different mods shared one "Arms" group, so equipping one silently
+# unequipped the other.
 @pytest.mark.parametrize("slots,want", [
-    ({30}, "head"), ({31}, "hair"), ({33}, "body"), ({41}, "body"),
-    ({34, 35}, "hands"), ({42, 43}, "arms"), ({44, 45}, "legs"),
+    ({30}, "head"), ({31}, "hair"), ({33}, "body"), ({41}, "torso"),
+    ({34, 35}, "hands"), ({42}, "l_arm"), ({43}, "r_arm"),
+    ({44}, "l_leg"), ({45}, "r_leg"),
     ({47}, "eyes"), ({60}, "pipboy"), ({61}, "backpack"),
 ])
 def test_fallout4_slot_group_matches_real_arma_data(slots, want):
     assert slot_group("meshes/armor/vault/piece.nif", frozenset(slots), FALLOUT4_PROFILE) == want
+
+
+def test_fallout4_torso_and_body_are_independent_slots():
+    # A full outfit (33) and a separate chest-armor overlay (41) must be able
+    # to coexist — verified real behaviour, not folded together like Skyrim's
+    # single "body" slot.
+    assert slot_group("meshes/armor/x/jumpsuit.nif", frozenset({33}), FALLOUT4_PROFILE) == "body"
+    assert slot_group("meshes/armor/x/chestplate.nif", frozenset({41}), FALLOUT4_PROFILE) == "torso"
+
+
+def test_fallout4_left_and_right_limbs_are_independent_slots():
+    assert slot_group("meshes/armor/x/arm_l.nif", frozenset({42}), FALLOUT4_PROFILE) == "l_arm"
+    assert slot_group("meshes/armor/x/arm_r.nif", frozenset({43}), FALLOUT4_PROFILE) == "r_arm"
+    assert slot_group("meshes/armor/x/leg_l.nif", frozenset({44}), FALLOUT4_PROFILE) == "l_leg"
+    assert slot_group("meshes/armor/x/leg_r.nif", frozenset({45}), FALLOUT4_PROFILE) == "r_leg"
+
+
+def test_fallout4_a_reservation_slot_does_not_steal_the_group():
+    # A full outfit commonly ALSO reserves the Pip-Boy slot (33+60 together,
+    # e.g. a real vanilla long-sleeve outfit) purely to stop the Pip-Boy mesh
+    # clipping through the sleeve — it must still group as Body, not Pip-Boy.
+    assert slot_group("meshes/clothes/x/outfit.nif", frozenset({33, 60}), FALLOUT4_PROFILE) == "body"
 
 
 def test_fallout4_has_no_skyrim_duplicate_range_or_hair_tiebreak():
@@ -558,7 +585,7 @@ def test_fallout4_has_no_skyrim_duplicate_range_or_hair_tiebreak():
 def test_fallout4_base_body_is_wearable_without_a_weight_suffix():
     p = "meshes/actors/character/characterassets/femalebody.nif"
     assert is_wearable_path(p, "body", FALLOUT4_PROFILE)
-    assert is_wearable_path(p, "arms", FALLOUT4_PROFILE)     # the body file also covers arms/legs
+    assert is_wearable_path(p, "l_arm", FALLOUT4_PROFILE)     # the body file also covers limbs
     assert not is_wearable_path(p, "eyes", FALLOUT4_PROFILE)  # never satisfies an FO4-only group
     assert fits_slot(p, frozenset({33}), "body", FALLOUT4_PROFILE)
 

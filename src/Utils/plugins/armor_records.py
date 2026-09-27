@@ -79,12 +79,48 @@ def _active_plugin_paths(game, profile_dir: "Path | None") -> list:
     from Utils.filemap import read_mod_index
     from Utils.mods.mod_files import _mod_dir_for
     from Utils.mods.modlist import read_modlist
-    from Utils.plugins.plugins import read_plugins
+    from Utils.plugins.plugins import read_loadorder, read_plugins
 
     pl_path = profile_dir / "plugins.txt"
     if not pl_path.is_file():
         return []
-    names = [e.name for e in read_plugins(pl_path) if e.enabled]
+    enabled = {e.name for e in read_plugins(pl_path) if e.enabled}
+
+    # Games where plugins_include_vanilla is False (Fallout 4 confirmed: a
+    # real profile's plugins.txt had 713 lines, none of them Fallout4.esm or
+    # any DLC master) never write the base game's own masters into
+    # plugins.txt at all — the engine force-loads them regardless, and every
+    # tool (MO2/Vortex/libloadorder) omits them the same way (see
+    # gui_qt.plugin.plugin_state.save_plugins for the write-side of this same
+    # convention). Skipping them here silently dropped Fallout4.esm's own
+    # ARMA records (including the vanilla Pip-Boy's) from the slot index.
+    # loadorder.txt carries the full order including these; only fall back to
+    # plugins.txt's own order if it's missing.
+    order_path = profile_dir / "loadorder.txt"
+    if order_path.is_file() and not getattr(game, "plugins_include_vanilla", True):
+        vanilla = set(getattr(game, "vanilla_plugins", ()))
+        ccc = getattr(game, "vanilla_ccc_filename", "") or ""
+        data_dir_for_ccc = None
+        try:
+            data_dir_for_ccc = game.get_mod_data_path()
+        except Exception:
+            pass
+        if ccc and data_dir_for_ccc is not None:
+            for base in (data_dir_for_ccc, data_dir_for_ccc.parent):
+                f = base / ccc
+                if f.is_file():
+                    try:
+                        vanilla |= {ln.strip() for ln in
+                                   f.read_text(encoding="utf-8", errors="replace").splitlines()
+                                   if ln.strip()}
+                    except OSError:
+                        pass
+                    break
+        full_order = [ln.split("#")[0].strip() for ln in
+                      order_path.read_text(encoding="utf-8", errors="replace").splitlines()]
+        names = [p for p in full_order if p and (p in vanilla or p in enabled)]
+    else:
+        names = [e.name for e in read_plugins(pl_path) if e.enabled]
 
     enabled_mods = []
     if (profile_dir / "modlist.txt").is_file():

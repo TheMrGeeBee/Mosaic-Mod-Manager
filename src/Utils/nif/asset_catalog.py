@@ -67,6 +67,7 @@ class AssetCatalog:
         strips_for: Callable[[str], Iterable[str]] = lambda _m: (),
         expected_nif_format: "tuple[int, int] | None" = None,
         authoritative_slots: "Mapping[str, frozenset] | None" = None,
+        slots_need_authority: bool = False,
     ):
         """
         base_archives: the game's own BSAs, lowest priority first.
@@ -80,11 +81,18 @@ class AssetCatalog:
         authoritative_slots: {mesh rel_key: slots} straight from the active
                        plugins' own ARMA records (Utils.plugins.armor_records) —
                        ground truth where a mesh is known, taking priority over
-                       slots_of()'s mesh-partition guess. A mesh no plugin
-                       references (or when this is None entirely) still falls
-                       back to the guess, so meshes that only Bodyslide/manual
-                       installs ship (no plugin referencing that exact path)
-                       keep working the way they always have.
+                       slots_of()'s mesh-partition guess.
+        slots_need_authority: when a mesh isn't in authoritative_slots, return
+                       None (unknown) from slots_of() instead of falling back
+                       to the mesh's own partition guess. Skyrim's mesh
+                       partitions are reliable enough to guess from (the
+                       default, False); Fallout 4's dismemberment segments are
+                       not — verified on a real mesh whose own segments claim
+                       slot 60 (Pip-Boy) alongside meaningless small "tier"
+                       numbers, which put an unrelated full outfit in the
+                       Pip-Boy picker. catalog_loader sets this True for
+                       Fallout 4, so an un-authored mesh is simply excluded
+                       from every slot picker rather than mis-sorted into one.
         """
         self.base_name = base_name
         self._base_archives = list(base_archives)
@@ -104,6 +112,7 @@ class AssetCatalog:
         self._contested: "frozenset[str] | None" = None
         self._expected_format = expected_nif_format
         self._authoritative_slots = dict(authoritative_slots or {})
+        self._slots_need_authority = slots_need_authority
         self._bad: dict[tuple, str] = {}       # entry key → format label
         self._slots: dict[tuple, "frozenset | None"] = {}   # entry key → body slots (None: unreadable)
 
@@ -245,14 +254,18 @@ class AssetCatalog:
 
     def slots_of(self, entry: AssetEntry) -> "frozenset | None":
         """Body slots the mesh *entry* covers (empty for props/unskinned models),
-        or None if it can't be read. An active plugin's own ARMA record for
-        this exact path is ground truth and is used whenever there is one;
-        otherwise falls back to the mesh's own partitions (read_body_slots).
-        Cached — the first call reads the file (skipped entirely when the
-        authoritative map already has an answer)."""
+        or None if it can't be read (or, when slots_need_authority is set and
+        no plugin covers this exact path, unknown by design — see that flag).
+        An active plugin's own ARMA record for this exact path is ground truth
+        and is used whenever there is one; otherwise falls back to the mesh's
+        own partitions (read_body_slots), unless slots_need_authority says not
+        to. Cached — the first call reads the file (skipped entirely when the
+        authoritative map already has an answer, or is required and absent)."""
         auth = self._authoritative_slots.get(entry.path)
         if auth is not None:
             return auth
+        if self._slots_need_authority:
+            return None
         key = self._ekey(entry)
         if key not in self._slots:
             try:
