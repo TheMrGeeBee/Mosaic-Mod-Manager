@@ -9617,6 +9617,10 @@ class MainWindow(QMainWindow):
             return None
         from gui_qt.nif_viewer.character_view import CharacterView
         view = CharacterView(game, self._gs.profile_dir(), self._gs.staging_dir())
+        # Equipping from the NIF Viewer happens with the Character tab in the
+        # background — its result (slot, or why it was refused) shows as a toast.
+        view.equip_result.connect(
+            lambda msg, ok: self._notify(msg, "success" if ok else "warning"))
         self._character_view = view
         self._tabs.open_tab(view, self.tr("Character"), key="character_viewer")
         return view

@@ -125,6 +125,7 @@ class CharacterView(QWidget):
     _catalog_ready = Signal(object)
     _build_ready = Signal(int, object)
     _equip_ready = Signal(object, object, str, object)   # entry, group | None, message, gender | None
+    equip_result = Signal(str, bool)              # message, ok — for a toast when equipping from elsewhere
 
     def __init__(self, game, profile_dir, staging_dir, parent=None):
         super().__init__(parent)
@@ -302,6 +303,7 @@ class CharacterView(QWidget):
             return
         if group is None:
             self._info.setText(message)
+            self.equip_result.emit(message, False)
             return
         # First piece: match the character to it (male armour on a male body).
         if not self._pieces:
@@ -311,6 +313,8 @@ class CharacterView(QWidget):
                 self._gender.blockSignals(False)
         self._pieces[group] = entry
         self._piece_gender[group] = gender
+        self.equip_result.emit(self.tr("Added {0} to the character ({1})").format(
+            entry.path.rsplit("/", 1)[-1], GROUP_LABELS.get(group, group)), True)
         self._refresh_slots()
         self._rebuild(reframe=False)
 

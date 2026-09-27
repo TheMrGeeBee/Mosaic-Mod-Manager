@@ -295,3 +295,71 @@ def test_a_piece_for_the_other_gender_is_flagged(app, view, catalog):
     view._unequip("feet")
     _wait(app, lambda: "made for" not in view._info.text() and "1 piece(s) worn" in view._info.text())
     assert "feet" not in view._piece_gender
+
+
+# -- feedback and the right-click menu ------------------------------------------------------------------------------
+@pytest.fixture
+def nif_view(app, tmp_path, monkeypatch, catalog):
+    from gui_qt.nif_viewer import nif_viewer_view as nv
+    monkeypatch.setattr(nv, "build_catalog", lambda *_a: catalog)
+    v = nv.NifViewerView(object(), tmp_path, tmp_path)
+    _wait(app, lambda: v._catalog is not None)
+    yield v
+    v.deleteLater()
+
+
+def _row(view, *path):
+    from test_nif_viewer_ui import _find
+    return _find(view._model, *path)
+
+
+def test_pressing_add_to_character_visibly_acknowledges_the_click(app, nif_view):
+    v = nif_view
+    v._equip_flash.setInterval(60)
+    v._tree.setCurrentIndex(_row(v, "modX", "meshes", "armor", "iron", "f", "boots_1.nif"))
+    idle = v._equip_btn.text()
+    assert idle == "Add to character" and v._equip_btn.styleSheet() == ""
+    v._equip_btn.click()
+    assert v._equip_btn.text() == "✓ Added" and "background" in v._equip_btn.styleSheet()
+    _wait(app, lambda: v._equip_btn.text() == idle)                       # flashes, then goes back
+    assert v._equip_btn.styleSheet() == ""
+
+
+def test_the_right_click_menu_offers_add_to_character_for_meshes_only(app, nif_view):
+    v = nif_view
+    boots = _row(v, "modX", "meshes", "armor", "iron", "f", "boots_1.nif")
+    menu = v._build_tree_menu(boots)
+    assert [a.text() for a in menu.actions()] == ["Add to character"]
+    assert v._build_tree_menu(_row(v, "modX", "textures", "armor", "iron_d.dds")) is None   # a texture
+    assert v._build_tree_menu(_row(v, "modX", "meshes")) is None                            # a folder
+    assert v._build_tree_menu(_row(v, "modX")) is None                                      # a mod
+    from PySide6.QtCore import QModelIndex
+    assert v._build_tree_menu(QModelIndex()) is None                                        # empty space
+
+
+def test_right_click_equips_that_row_without_selecting_or_flashing(app, nif_view):
+    v = nif_view
+    got = []
+    v.equip_requested.connect(got.append)
+    v._tree.setCurrentIndex(_row(v, "modX", "meshes", "armor", "iron", "f", "cuirass_1.nif"))
+    selected = v._entry
+    other = _row(v, "modX", "meshes", "armor", "iron", "f", "boots_1.nif")
+    v._build_tree_menu(other).actions()[0].trigger()
+    assert [e.path for e in got] == ["meshes/armor/iron/f/boots_1.nif"]
+    assert v._entry == selected                                            # the selection (and its load) untouched
+    assert v._equip_btn.text() == "Add to character"                       # the button is about the selection
+    assert "Sent boots_1.nif" in v._info.text()
+    v._build_tree_menu(_row(v, "modX", "meshes", "armor", "iron", "f", "cuirass_1.nif")).actions()[0].trigger()
+    assert v._equip_btn.text() == "✓ Added"                                # right-clicking the selected row flashes it
+
+
+def test_the_character_tab_reports_each_equip_for_a_toast(app, view, catalog):
+    _ready(app, view)
+    got = []
+    view.equip_result.connect(lambda msg, ok: got.append((msg, ok)))
+    view.equip(entry(catalog, "meshes/armor/iron/f/boots_1.nif"))
+    _wait(app, lambda: got)
+    assert got[-1] == ("Added boots_1.nif to the character (Feet)", True)
+    view.equip(entry(catalog, "meshes/clutter/mug.nif"))
+    _wait(app, lambda: len(got) == 2)
+    assert got[-1][1] is False and "no body slots" in got[-1][0]

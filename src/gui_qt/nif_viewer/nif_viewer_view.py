@@ -20,7 +20,7 @@ from __future__ import annotations
 
 from PySide6.QtCore import QModelIndex, Qt, QTimer, Signal
 from PySide6.QtWidgets import (
-    QCheckBox, QComboBox, QHBoxLayout, QLabel, QLineEdit, QPushButton, QSizePolicy,
+    QCheckBox, QComboBox, QMenu, QHBoxLayout, QLabel, QLineEdit, QPushButton, QSizePolicy,
     QSplitter, QStackedWidget, QTreeView, QVBoxLayout, QWidget,
 )
 
@@ -89,6 +89,8 @@ class NifViewerView(QWidget):
         self._tree.setItemDelegate(AssetTreeDelegate(self._tree))
         self._tree.setEditTriggers(QTreeView.NoEditTriggers)
         self._tree.setAnimated(False)
+        self._tree.setContextMenuPolicy(Qt.CustomContextMenu)
+        self._tree.customContextMenuRequested.connect(self._on_tree_menu)
         lv.addWidget(self._tree, 1)
         split.addWidget(left)
 
@@ -158,6 +160,13 @@ class NifViewerView(QWidget):
             "Put the selected mesh on the Character tab, in the slot it belongs to "
             "(armour, clothing, hair…)"))
         self._equip_btn.setEnabled(False)
+        self._equip_btn.setMinimumWidth(self._equip_btn.sizeHint().width() + 24)   # room for "✓ Added"
+        self._equip_css = (f"QPushButton {{ background:{_c(pal, 'ACCENT')};"
+                           f" color:{_c(pal, 'TEXT_ON_ACCENT')}; }}")
+        self._equip_flash = QTimer(self)
+        self._equip_flash.setSingleShot(True)
+        self._equip_flash.setInterval(1400)
+        self._equip_flash.timeout.connect(self._reset_equip_button)
         oh.addWidget(self._equip_btn)
         rv.addWidget(opts)
 
@@ -302,9 +311,41 @@ class NifViewerView(QWidget):
     def _on_equip_clicked(self):
         e = self._entry
         if e is not None and e.path.endswith(".nif"):
-            self.equip_requested.emit(e)
-            self._info.setText(self.tr("Sent {0} to the Character tab.").format(
-                e.path.rsplit("/", 1)[-1]))
+            self._request_equip(e)
+
+    def _request_equip(self, entry: AssetEntry):
+        """Send *entry* to the Character tab and acknowledge it right away; the
+        Character tab reports the outcome (slot, or why it was refused) itself."""
+        self.equip_requested.emit(entry)
+        name = entry.path.rsplit("/", 1)[-1]
+        self._info.setText(self.tr("Sent {0} to the Character tab.").format(name))
+        if entry == self._entry:                      # the button belongs to the selection
+            self._equip_btn.setText(self.tr("✓ Added"))
+            self._equip_btn.setStyleSheet(self._equip_css)
+            self._equip_flash.start()
+
+    def _reset_equip_button(self):
+        self._equip_btn.setText(self.tr("Add to character"))
+        self._equip_btn.setStyleSheet("")
+
+    def _build_tree_menu(self, index: QModelIndex) -> "QMenu | None":
+        """Right-click menu for the tree row at *index*: None unless it is a mesh
+        that can be worn."""
+        entry = index.data(EntryRole) if index.isValid() else None
+        if entry is None or not entry.path.endswith(".nif"):
+            return None
+        menu = QMenu(self)
+        act = menu.addAction(self.tr("Add to character"))
+        act.setToolTip(self.tr("Put this mesh on the Character tab, in the slot it belongs to"))
+        act.triggered.connect(lambda _=False, e=entry: self._request_equip(e))
+        return menu
+
+    def _on_tree_menu(self, pos):
+        # The row under the cursor, not the selection: right-clicking must not
+        # trigger the (slow) load of whatever it lands on.
+        menu = self._build_tree_menu(self._tree.indexAt(pos))
+        if menu is not None:
+            menu.exec(self._tree.viewport().mapToGlobal(pos))
 
     def _source(self) -> str:
         return self._sources.currentData()
