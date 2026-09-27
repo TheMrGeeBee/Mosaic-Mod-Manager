@@ -35,10 +35,17 @@ FILES = {
 }
 
 
+def _scaled(sh, k):
+    """*sh* with its vertices scaled by k (so the slim/heavy fakes differ measurably)."""
+    for i in range(len(sh.positions)):
+        sh.positions[i] *= k
+    return sh
+
+
 def fake_read_nif(data, include_nodes=False):
     scenes = {
-        b"CUIRASS_F": NifScene([shape("cuirass_f", [32, 34], [2, 1])]),
-        b"CUIRASS_F0": NifScene([shape("cuirass_f0", [32, 34], [2, 1])]),
+        b"CUIRASS_F": NifScene([_scaled(shape("cuirass_f", [32, 34], [2, 1]), 3.0)]),      # heavy: x3
+        b"CUIRASS_F0": NifScene([_scaled(shape("cuirass_f", [32, 34], [2, 1]), 1.0)]),     # slim: same shape, x1
         b"CUIRASS_M": NifScene([shape("cuirass_m", [32, 34], [2, 1])]),
         b"CUIRASS_ALT": NifScene([shape("cuirass_alt", [32], [2])]),
         b"BOOTS": NifScene([shape("boots", [37, 38], [2, 1])]),
@@ -186,14 +193,80 @@ def test_the_scene_is_built_from_the_pieces_and_stale_builds_are_dropped(app, vi
     assert "stale" not in view._message.text()
 
 
-def test_settings_changes_rebuild(app, view, catalog):
+def _set_weight(view, pct):
+    """What dragging the slider and pausing does: update it, then run the (debounced) rebuild."""
+    view._weight_timer.stop()
+    view._weight.setValue(pct)
+    view._weight_timer.stop()
+    view._rebuild(reframe=False)
+
+
+def test_gender_and_skeleton_changes_rebuild(app, view, catalog):
     _ready(app, view)
     view.equip(entry(catalog, "meshes/armor/iron/f/cuirass_1.nif"))
     _wait(app, lambda: "1 piece(s) worn" in view._info.text())
     gen = view._gen
-    view._weight.setCurrentIndex(1)
+    view._gender.setCurrentIndex(1)
     view._skel.setChecked(True)
     assert view._gen == gen + 2
+
+
+def test_the_weight_slider_shows_its_value_and_rebuilds_after_a_pause(app, view, catalog):
+    _ready(app, view)
+    assert view._weight.value() == 100 and view.weight() == 1.0
+    assert "100%" in view._weight_label.text()
+    view.equip(entry(catalog, "meshes/armor/iron/f/cuirass_1.nif"))
+    _wait(app, lambda: "1 piece(s) worn" in view._info.text())
+    gen = view._gen
+    view._weight.setValue(40)
+    assert "40%" in view._weight_label.text() and view.weight() == 0.4       # the label follows at once…
+    assert view._gen == gen                                                   # …the rebuild waits
+    _wait(app, lambda: view._gen == gen + 1)                                  # …until the slider has been still
+    view._weight.setValue(41); view._weight.setValue(42); view._weight.setValue(43)
+    _wait(app, lambda: view._gen == gen + 2)                                  # a drag is one rebuild, not three
+    assert view._gen == gen + 2
+
+
+def test_worn_pieces_follow_the_body_weight(app, view, catalog):
+    _ready(app, view)
+    got = _capture_builds(view)
+    view.equip(entry(catalog, "meshes/armor/iron/f/cuirass_1.nif"))        # equipped as the heavy version
+    view.equip(entry(catalog, "meshes/armor/iron/f/boots_1.nif"))           # has no slim version
+    _wait(app, lambda: len(view._pieces) == 2)
+    _wait(app, lambda: got and "boots" in [s.name for s in got[-1]["scene"].shapes])
+    reach = lambda: next(s for s in got[-1]["scene"].shapes if s.name == "cuirass_f").positions[3]   # noqa: E731
+    assert reach() == 3.0 and not got[-1]["matched"] and not got[-1]["blended"]        # Heavy: as equipped
+
+    n = len(got)
+    _set_weight(view, 0)                                                   # slim: the _0 file
+    _wait(app, lambda: len(got) > n)
+    assert reach() == 1.0
+    assert "boots" in [s.name for s in got[-1]["scene"].shapes]            # no boots_0: keeps the _1
+    assert got[-1]["matched"] == ["cuirass_0.nif"] and not got[-1]["blended"]
+    assert "matched to body weight: cuirass_0.nif" in view._info.text()
+    assert view._slot_labels["body"].text() == "cuirass_1.nif"             # the slot still shows what was chosen
+
+    n = len(got)
+    _set_weight(view, 100)
+    _wait(app, lambda: len(got) > n and reach() == 3.0)
+    assert got[-1]["matched"] == []
+
+
+def test_in_between_weights_blend_the_slim_and_heavy_meshes(app, view, catalog):
+    _ready(app, view)
+    got = _capture_builds(view)
+    view.equip(entry(catalog, "meshes/armor/iron/f/cuirass_1.nif"))
+    view.equip(entry(catalog, "meshes/armor/iron/f/boots_1.nif"))
+    _wait(app, lambda: len(view._pieces) == 2)
+    _wait(app, lambda: got and "boots" in [s.name for s in got[-1]["scene"].shapes])
+    reach = lambda: next(s for s in got[-1]["scene"].shapes if s.name == "cuirass_f").positions[3]   # noqa: E731
+    for pct, want in ((50, 2.0), (25, 1.5), (75, 2.5)):                     # linear between x1 (slim) and x3 (heavy)
+        n = len(got)
+        _set_weight(view, pct)
+        _wait(app, lambda: len(got) > n)
+        assert reach() == pytest.approx(want), pct
+        assert got[-1]["blended"] == ["cuirass_1.nif"] and got[-1]["matched"] == []   # boots have no pair: not blended
+        assert f"blended at weight {pct}%: cuirass_1.nif" in view._info.text()
 
 
 # -- picker ---------------------------------------------------------------------------------------------------
@@ -309,31 +382,6 @@ def _capture_builds(view):
     got = []
     view._build_ready.connect(lambda gen, res: got.append(res))
     return got
-
-
-def test_worn_pieces_follow_the_body_weight(app, view, catalog):
-    _ready(app, view)
-    got = _capture_builds(view)
-    view.equip(entry(catalog, "meshes/armor/iron/f/cuirass_1.nif"))        # equipped as the heavy version
-    view.equip(entry(catalog, "meshes/armor/iron/f/boots_1.nif"))           # has no slim version
-    _wait(app, lambda: len(view._pieces) == 2)
-    _wait(app, lambda: got and "boots" in [s.name for s in got[-1]["scene"].shapes])
-    names = lambda: [s.name for s in got[-1]["scene"].shapes]              # noqa: E731
-    assert "cuirass_f" in names() and not got[-1]["matched"]                # Heavy: as equipped
-
-    n = len(got)
-    view._weight.setCurrentIndex(1)                                        # Light (_0)
-    _wait(app, lambda: len(got) > n and "cuirass_f0" in names())
-    assert "cuirass_f" not in names()
-    assert "boots" in names()                                              # no boots_0: keeps the _1
-    assert got[-1]["matched"] == ["cuirass_0.nif"]
-    assert "matched to body weight: cuirass_0.nif" in view._info.text()
-    assert view._slot_labels["body"].text() == "cuirass_1.nif"             # the slot still shows what was chosen
-
-    n = len(got)
-    view._weight.setCurrentIndex(0)                                        # back to Heavy
-    _wait(app, lambda: len(got) > n and "cuirass_f" in names() and "cuirass_f0" not in names())
-    assert got[-1]["matched"] == []
 
 
 def test_the_first_piece_sets_the_gender_from_its_f_suffix_pair(app, view, catalog):

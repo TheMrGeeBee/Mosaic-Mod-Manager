@@ -18,7 +18,7 @@ import time
 
 from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtWidgets import (
-    QCheckBox, QComboBox, QDialog, QDialogButtonBox, QGridLayout, QHBoxLayout, QLabel,
+    QSlider, QCheckBox, QComboBox, QDialog, QDialogButtonBox, QGridLayout, QHBoxLayout, QLabel,
     QLineEdit, QListWidget, QListWidgetItem, QPushButton, QSizePolicy, QStackedWidget,
     QVBoxLayout, QWidget,
 )
@@ -27,7 +27,7 @@ from Utils.archives.bsa_file_reader import BsaReadError
 from Utils.nif.asset_catalog import BASE, AssetCatalog, AssetEntry
 from Utils.nif.catalog_loader import build_catalog
 from Utils.nif.character import (
-    GROUP_LABELS, GROUPS, assemble, body_paths, bone_transforms, covered_slots, detect_gender,
+    GROUP_LABELS, GROUPS, assemble, blend_scene, body_paths, bone_transforms, covered_slots, detect_gender,
     fits_slot, gender_fits, guess_gender, is_race_variant, is_wearable_path, slot_group,
     weight_variant,
 )
@@ -222,11 +222,16 @@ class CharacterView(QWidget):
         self._gender.addItem(self.tr("Female"), "female")
         self._gender.addItem(self.tr("Male"), "male")
         form.addWidget(self._gender, 0, 1)
-        form.addWidget(QLabel(self.tr("Body weight")), 1, 0)
-        self._weight = QComboBox()
-        self._weight.addItem(self.tr("Heavy (_1)"), 1)
-        self._weight.addItem(self.tr("Light (_0)"), 0)
+        self._weight_label = QLabel()
+        form.addWidget(self._weight_label, 1, 0)
+        self._weight = QSlider(Qt.Horizontal)
+        self._weight.setRange(0, 100)
+        self._weight.setValue(100)
+        self._weight.setToolTip(self.tr(
+            "Body weight, 0 (slim) to 100 (heavy). The game morphs the body and worn "
+            "pieces between their _0 and _1 meshes in the same way."))
         form.addWidget(self._weight, 1, 1)
+        self._show_weight()
         self._skel = QCheckBox(self.tr("Show skeleton"))
         form.addWidget(self._skel, 2, 0, 1, 2)
         lv.addLayout(form)
@@ -296,7 +301,13 @@ class CharacterView(QWidget):
 
         # -- wiring ---------------------------------------------------------------------------------
         self._gender.currentIndexChanged.connect(lambda _i: self._rebuild(reframe=False))
-        self._weight.currentIndexChanged.connect(lambda _i: self._rebuild(reframe=False))
+        # Dragging the slider updates the label at once; the (slow) rebuild waits
+        # until it has been still for a moment.
+        self._weight_timer = QTimer(self)
+        self._weight_timer.setSingleShot(True)
+        self._weight_timer.setInterval(250)
+        self._weight_timer.timeout.connect(lambda: self._rebuild(reframe=False))
+        self._weight.valueChanged.connect(self._on_weight_changed)
         self._skel.toggled.connect(lambda _on: self._rebuild(reframe=self._first_build))
         self._catalog_ready.connect(self._on_catalog_ready)
         self._build_ready.connect(self._on_build_ready)
@@ -304,6 +315,17 @@ class CharacterView(QWidget):
         self.destroyed.connect(lambda *_: self._close())
         run_in_worker(lambda: build_catalog(game, profile_dir, staging_dir),
                       self._catalog_ready, name="character-catalog")
+
+    def weight(self) -> float:
+        """Body weight 0.0 (slim, the _0 meshes) to 1.0 (heavy, the _1 meshes)."""
+        return self._weight.value() / 100.0
+
+    def _show_weight(self):
+        self._weight_label.setText(self.tr("Body weight {0}%").format(self._weight.value()))
+
+    def _on_weight_changed(self, _value: int):
+        self._show_weight()
+        self._weight_timer.start()
 
     # -- lifecycle ---------------------------------------------------------------------------------
     def _close(self):
@@ -449,32 +471,69 @@ class CharacterView(QWidget):
             return
         self._gen += 1
         gen = self._gen
-        gender, weight = self._gender.currentData(), self._weight.currentData()
+        gender, weight = self._gender.currentData(), self.weight()
         want_skel = self._skel.isChecked()
         pieces = dict(self._pieces)
         reframe = reframe or self._first_build
         self._info.setText(self.tr("Building…"))
 
+        def load_weighted(slim_entry, heavy_entry):
+            """The scene at the current weight from a slim/heavy pair of files: at the
+            ends only the matching file is read; in between both are blended (vertex by
+            vertex, like the game). A missing partner just means the other is used."""
+            if weight <= 0.0:
+                order = (slim_entry, heavy_entry)
+            elif weight >= 1.0:
+                order = (heavy_entry, slim_entry)
+            else:
+                slim = self._loader.nif_entry(cat, slim_entry)
+                heavy = self._loader.nif_entry(cat, heavy_entry)
+                if slim is not None and heavy is not None:
+                    return blend_scene(slim, heavy, weight), True
+                return (heavy or slim), False
+            for e in order:                                   # the wanted end, else the other
+                if e is not None:
+                    sc = self._loader.nif_entry(cat, e)
+                    if sc is not None:
+                        return sc, False
+            return None, False
+
         def job():
             problems: list[str] = []
-            base = [b for b in (self._loader.nif(cat, p) for p in body_paths(gender, weight, head=True))
-                    if b is not None]
+            base = []
+            # Base body/hands/feet come in slim and heavy files; head and eyes in one.
+            for p0, p1 in zip(body_paths(gender, 0, head=True), body_paths(gender, 1, head=True)):
+                e0, e1 = cat.resolve(p0), cat.resolve(p1)
+                sc, _blended = load_weighted(e0, e1) if p0 != p1 else (self._loader.nif_entry(cat, e1), False)
+                if sc is not None:
+                    base.append(sc)
             scenes = {}
-            matched: list[str] = []
+            matched: list[str] = []                         # a different weight file than equipped was used
+            blended: list[str] = []                         # slim and heavy files blended
             for group, entry in pieces.items():
-                # Use the worn mesh's slim/heavy version that matches the body: the
-                # copy from the same mod (or the base game) if it ships one, else
+                # A worn mesh comes as a slim (_0) and a heavy (_1) file: the copies from
+                # the same mod (or the base game) are used when it ships them, else
                 # whichever copy wins.
-                vpath = weight_variant(entry.path, weight)
-                if vpath and vpath != entry.path:
-                    variant = cat.entry_in_layer(entry.mod, vpath) or cat.resolve(vpath)
-                    if variant is not None:
-                        matched.append(variant.path.rsplit("/", 1)[-1])
-                        entry = variant
-                try:
-                    scenes[group] = read_nif(cat.read(entry))
-                except (NifError, BsaReadError, OSError) as exc:
-                    problems.append(f"{entry.path.rsplit('/', 1)[-1]}: {exc}")
+                lo, hi = weight_variant(entry.path, 0), weight_variant(entry.path, 1)
+                if lo is None:
+                    slim_e = heavy_e = entry
+                else:
+                    def find(p, entry=entry):
+                        return entry if p == entry.path else (
+                            cat.entry_in_layer(entry.mod, p) or cat.resolve(p))
+                    slim_e, heavy_e = find(lo), find(hi)
+                sc, was_blended = load_weighted(slim_e, heavy_e)
+                if sc is None:
+                    problems.append(f"{entry.path.rsplit('/', 1)[-1]}: could not be read")
+                    continue
+                scenes[group] = sc
+                name = entry.path.rsplit("/", 1)[-1]
+                if was_blended:
+                    blended.append(name)
+                elif lo is not None:
+                    used = slim_e if weight <= 0.0 else heavy_e
+                    if used is not None and used.path != entry.path:
+                        matched.append(used.path.rsplit("/", 1)[-1])
             # The skeleton poses every piece (hair and eyes are stored relative to a
             # bone and only land on the head that way); it is drawn only if asked.
             skel_nodes = self._loader.skeleton(cat, gender)
@@ -493,7 +552,8 @@ class CharacterView(QWidget):
             skeleton = skel_nodes if want_skel else None
             return gen, {"scene": scene, "images": images, "missing": missing,
                          "skeleton": skeleton, "problems": problems, "reframe": reframe,
-                         "base_found": len(base), "pieces": len(scenes), "matched": matched}
+                         "base_found": len(base), "pieces": len(scenes), "matched": matched,
+                         "blended": blended, "weight": weight}
 
         run_in_worker(job, self._build_ready, unpack=True, name="character-build",
                       error_result=(gen, {"error": self.tr("Unexpected error")}))
@@ -527,6 +587,9 @@ class CharacterView(QWidget):
                      + (self.tr(", {0} missing").format(len(miss)) if miss else ""))
         if res["matched"]:
             parts.append(self.tr("matched to body weight: {0}").format(", ".join(res["matched"])))
+        if res["blended"]:
+            parts.append(self.tr("blended at weight {0}%: {1}").format(
+                round(res["weight"] * 100), ", ".join(res["blended"])))
         current = self._gender.currentData()
         other = [self._pieces[g].path.rsplit("/", 1)[-1] for g, pg in self._piece_gender.items()
                  if pg and pg != current and g in self._pieces]

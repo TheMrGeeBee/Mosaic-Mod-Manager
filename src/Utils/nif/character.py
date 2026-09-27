@@ -296,6 +296,62 @@ def gender_fits(path: str, gender: "str | None", sibling_paths: "Iterable[str]" 
     return gender is None or g is None or g == gender
 
 
+# -- body weight ------------------------------------------------------------------------------------------
+def _lerp(a: array, b: array, t: float) -> array:
+    return array("f", [x + (y - x) * t for x, y in zip(a, b)])
+
+
+def _lerp_unit(a: array, b: array, t: float) -> array:
+    """Blend two arrays of xyz normals and re-normalise each."""
+    out = _lerp(a, b, t)
+    for i in range(0, len(out) - 2, 3):
+        n = (out[i] ** 2 + out[i + 1] ** 2 + out[i + 2] ** 2) ** 0.5 or 1.0
+        out[i], out[i + 1], out[i + 2] = out[i] / n, out[i + 1] / n, out[i + 2] / n
+    return out
+
+
+def blend_shape(slim: NifShape, heavy: NifShape, t: float) -> NifShape:
+    """The shape at body weight *t* (0 = the ``_0`` mesh, 1 = the ``_1`` mesh).
+
+    The game morphs between the two files vertex by vertex, so the two must have
+    the same vertices in the same order; when they don't, the heavy one is used
+    unchanged. Everything but geometry (triangles, UVs, textures, slots, bones and
+    weights) comes from the heavy mesh. For a skinned shape it is the shape's own
+    vertices that are blended — the skinning to the skeleton happens afterwards."""
+    if t <= 0.0:
+        return slim
+    if t >= 1.0 or len(slim.positions) != len(heavy.positions):
+        return heavy
+    normals = heavy.normals
+    if slim.normals is not None and heavy.normals is not None \
+            and len(slim.normals) == len(heavy.normals):
+        normals = _lerp_unit(slim.normals, heavy.normals, t)
+    skin = heavy.skin
+    if slim.skin is not None and heavy.skin is not None \
+            and len(slim.skin.local_positions) == len(heavy.skin.local_positions):
+        ln = None
+        if slim.skin.local_normals is not None and heavy.skin.local_normals is not None \
+                and len(slim.skin.local_normals) == len(heavy.skin.local_normals):
+            ln = _lerp_unit(slim.skin.local_normals, heavy.skin.local_normals, t)
+        skin = replace(heavy.skin,
+                       local_positions=_lerp(slim.skin.local_positions, heavy.skin.local_positions, t),
+                       local_normals=ln)
+    return replace(heavy, positions=_lerp(slim.positions, heavy.positions, t),
+                   normals=normals, skin=skin)
+
+
+def blend_scene(slim: NifScene, heavy: NifScene, t: float) -> NifScene:
+    """Blend two weight variants of one mesh file, pairing their shapes by name
+    (and vertex count). Shapes only the heavy file has are kept as they are."""
+    if t <= 0.0:
+        return slim
+    if t >= 1.0:
+        return heavy
+    by_name = {(sh.name, len(sh.positions)): sh for sh in slim.shapes}
+    return NifScene([blend_shape(by_name[k], sh, t) if (k := (sh.name, len(sh.positions))) in by_name else sh
+                     for sh in heavy.shapes], heavy.nodes)
+
+
 # -- skinning ---------------------------------------------------------------------------------------
 def bone_transforms(nodes: "list[NifNode]") -> dict:
     """{bone name: (rotation, scale, translation)} — the skeleton's rest pose."""

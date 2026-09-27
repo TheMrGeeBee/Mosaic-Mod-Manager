@@ -7,18 +7,20 @@ from __future__ import annotations
 import threading
 
 from Utils.archives.bsa_file_reader import BsaFile, BsaReadError  # noqa: F401  (BsaReadError re-exported for callers)
-from Utils.nif.asset_catalog import AssetCatalog
+from Utils.nif.asset_catalog import AssetCatalog, AssetEntry
 from Utils.nif.character import SKELETONS
 from Utils.nif.nif_reader import NifError, NifScene, read_nif
 from gui_qt.image_preview import load_qimage_bytes
 
 _IMG_CACHE_MAX = 300
+_NIF_CACHE_MAX = 96
 
 
 class AssetLoader:
     def __init__(self):
         self._img_cache: dict[str, object] = {}      # texture path → decoded QImage (or None)
         self._skel_cache: dict[str, object] = {}     # gender → skeleton nodes (or None)
+        self._nif_cache: dict[tuple, "NifScene | None"] = {}   # entry key → parsed scene
         self._lock = threading.Lock()
 
     def image(self, cat: AssetCatalog, path: str):
@@ -46,6 +48,27 @@ class AssetLoader:
             return read_nif(cat.read(e), include_nodes=include_nodes)
         except (NifError, BsaReadError, OSError):
             return None
+
+    def nif_entry(self, cat: AssetCatalog, entry: "AssetEntry | None") -> "NifScene | None":
+        """Parse *entry* (that exact copy), cached: dragging the weight slider
+        rebuilds the character many times over the same few files. The scenes are
+        never modified in place (blending/skinning/hiding all return new shapes),
+        so sharing them is safe."""
+        if entry is None:
+            return None
+        key = (entry.mod, entry.kind, entry.archive, entry.path)
+        with self._lock:
+            if key in self._nif_cache:
+                return self._nif_cache[key]
+        try:
+            scene = read_nif(cat.read(entry))
+        except (NifError, BsaReadError, OSError):
+            scene = None
+        with self._lock:
+            self._nif_cache[key] = scene
+            while len(self._nif_cache) > _NIF_CACHE_MAX:
+                self._nif_cache.pop(next(iter(self._nif_cache)))
+        return scene
 
     def skeleton(self, cat: AssetCatalog, gender: str):
         """The game's skeleton nodes for *gender* (cached), or None."""

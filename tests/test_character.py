@@ -141,8 +141,8 @@ def test_bone_segments_connect_to_the_nearest_bone_ancestor():
 
 # -- equipment groups and assembly ---------------------------------------------------------------
 from Utils.nif.character import (  # noqa: E402
-    GROUPS, LAYER_ORDER, assemble, fits_slot, gender_fits, guess_gender, is_wearable_path,
-    paired_gender, slot_group, weight_variant,
+    GROUPS, LAYER_ORDER, assemble, blend_scene, blend_shape, fits_slot, gender_fits, guess_gender,
+    is_wearable_path, paired_gender, slot_group, weight_variant,
 )
 
 
@@ -449,3 +449,60 @@ def test_gear_for_beast_races_and_children_is_not_offered():
     assert not is_wearable_path("meshes/clothes/child/dress_1.nif", "body")
     assert not is_wearable_path("meshes/armor/x/childrensclothes_1.nif", "body")
     assert is_wearable_path("meshes/armor/x/dress_1.nif", "body")
+
+
+# -- body weight blending ---------------------------------------------------------------------------------------
+def weighted(pos, normals=None, local=None, name="s"):
+    sh = NifShape(name, array("f", pos), array("f", normals) if normals else None, None,
+                  array("H", [0, 1, 2]), is_skinned=local is not None)
+    if local is not None:
+        sh.skin = SkinData(("Head",), ((IDENT, 1.0, (0, 0, 0)),), ((array("H", [0, 1, 2]), array("f", [1, 1, 1])),),
+                           array("f", local), array("f", normals) if normals else None)
+    return sh
+
+
+def test_blend_shape_interpolates_between_the_two_weights():
+    slim = weighted([0, 0, 0, 1, 0, 0, 0, 1, 0])
+    heavy = weighted([0, 0, 0, 3, 0, 0, 0, 5, 0])
+    assert blend_shape(slim, heavy, 0.0) is slim
+    assert blend_shape(slim, heavy, 1.0) is heavy
+    mid = blend_shape(slim, heavy, 0.5)
+    assert list(mid.positions) == [0, 0, 0, 2, 0, 0, 0, 3, 0]
+    assert list(slim.positions) == [0, 0, 0, 1, 0, 0, 0, 1, 0]                 # inputs untouched
+    q = blend_shape(slim, heavy, 0.25)
+    assert [round(v, 4) for v in q.positions[3:6]] == [1.5, 0.0, 0.0]
+
+
+def test_blended_normals_stay_unit_length():
+    slim = weighted([0] * 9, normals=[1, 0, 0] * 3)
+    heavy = weighted([0] * 9, normals=[0, 1, 0] * 3)
+    n = blend_shape(slim, heavy, 0.5).normals
+    assert math.isclose(math.sqrt(n[0] ** 2 + n[1] ** 2 + n[2] ** 2), 1.0, rel_tol=1e-6)
+    assert n[0] == pytest.approx(n[1])
+
+
+def test_a_skinned_shape_blends_its_own_vertices_before_skinning():
+    """The game morphs the base mesh, then poses it: the skin's local vertices are what blend."""
+    slim = weighted([0] * 9, local=[0, 0, 0, 0, 0, 0, 0, 0, 0])
+    heavy = weighted([0] * 9, local=[2, 0, 0, 2, 0, 0, 2, 0, 0])
+    mid = blend_shape(slim, heavy, 0.5)
+    assert list(mid.skin.local_positions[:3]) == [1.0, 0.0, 0.0]
+    posed = skin_shape(mid, {"Head": (IDENT, 1.0, (0, 0, 10))})
+    assert list(posed.positions[:3]) == [1.0, 0.0, 10.0]                      # blended, THEN placed on the bone
+    assert list(heavy.skin.local_positions[:3]) == [2.0, 0.0, 0.0]            # input untouched
+
+
+def test_shapes_that_do_not_line_up_fall_back_to_the_heavy_mesh():
+    slim = weighted([0] * 9)
+    heavy = weighted([0] * 12)                                                # different vertex count
+    assert blend_shape(slim, heavy, 0.5) is heavy
+
+
+def test_blend_scene_pairs_shapes_by_name_and_keeps_extras():
+    slim = NifScene([weighted([0] * 9, name="body"), weighted([0] * 9, name="only_slim")])
+    heavy = NifScene([weighted([2, 0, 0] * 3, name="body"), weighted([5, 0, 0] * 3, name="only_heavy")])
+    out = blend_scene(slim, heavy, 0.5)
+    assert [s.name for s in out.shapes] == ["body", "only_heavy"]
+    assert out.shapes[0].positions[0] == 1.0                                  # blended
+    assert out.shapes[1].positions[0] == 5.0                                  # no slim counterpart: as is
+    assert blend_scene(slim, heavy, 0.0) is slim and blend_scene(slim, heavy, 1.0) is heavy
