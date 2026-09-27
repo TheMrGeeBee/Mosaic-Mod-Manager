@@ -274,13 +274,24 @@ def test_unticking_hide_shows_them_marked_in_amber(app, mixed_viewer):
     assert "marked in amber" in v._tree_status.text()
 
 
-def test_opening_an_unconverted_mesh_explains_it(app, mixed_viewer):
+def test_opening_a_mesh_from_another_game_explains_it(app, mixed_viewer, tmp_path):
+    v = mixed_viewer
+    (tmp_path / "modA/meshes/fo4.nif").write_bytes(_nif([("NiNode", _node(0, []))], bsver=130))
+    from Utils.nif.asset_catalog import AssetEntry
+    v._load(AssetEntry("meshes/fo4.nif", "modA", "loose", "", True))
+    _wait(app, lambda: v._stack.currentIndex() == nif_viewer_view._PAGE_MESSAGE
+          and "Fallout 4 format" in v._message.text())
+    assert "BS 130" in v._message.text() and "20.2.0.7" in v._message.text()
+
+
+def test_a_skyrim_le_mesh_is_flagged_but_can_be_opened(app, mixed_viewer):
+    """LE meshes are viewable now: the amber flag says they are another game's format,
+    opening one no longer says it can't be drawn."""
     v = mixed_viewer
     v._hide_bad.setChecked(False)
     v._tree.setCurrentIndex(_find(v._model, "modA", "meshes", "le.nif"))
-    _wait(app, lambda: v._stack.currentIndex() == nif_viewer_view._PAGE_MESSAGE
-          and "Skyrim LE format" in v._message.text())
-    assert "BS 83" in v._message.text() and "20.2.0.7" in v._message.text()
+    _wait(app, lambda: v._last is not None or "no drawable geometry" in v._message.text())
+    assert "can't" not in v._message.text() and "Skyrim LE format" not in v._message.text()
 
 
 def test_hide_toggle_does_not_count_as_a_user_filter(app, mixed_viewer):

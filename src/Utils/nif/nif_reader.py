@@ -1,9 +1,9 @@
-"""Minimal Skyrim SE (NIF 20.2.0.7, BS version 100) reader for previewing meshes.
+"""Minimal Skyrim reader (NIF 20.2.0.7: SE = BS version 100, LE = 83) for previewing meshes.
 
 Not a general NIF library: it reads only what a viewer needs — the node tree
-(transforms), BSTriShape / BSDynamicTriShape / BSMeshLODTriShape geometry, and
-the texture paths from BSLightingShaderProperty + BSShaderTextureSet or
-BSEffectShaderProperty. Every block's byte size is in the file header, so the
+(transforms), geometry (SE: BSTriShape / BSDynamicTriShape / BSMeshLODTriShape;
+LE: NiTriShape + NiTriShapeData), and the texture paths from
+BSLightingShaderProperty + BSShaderTextureSet or BSEffectShaderProperty. Every block's byte size is in the file header, so the
 hundreds of block types we don't understand (physics, animation, particles…)
 are skipped without being parsed.
 
@@ -15,6 +15,7 @@ Pure Python, no numpy: struct decodes half-floats natively.
 
 from __future__ import annotations
 
+import math
 import struct
 from array import array
 from dataclasses import dataclass, field
@@ -22,6 +23,8 @@ from dataclasses import dataclass, field
 _HEADER_PREFIX = b"Gamebryo File Format, Version "
 SKYRIM_SE_VERSION = 0x14020007
 SKYRIM_SE_BSVER = 100
+SKYRIM_LE_BSVER = 83
+_SUPPORTED_BSVERS = (SKYRIM_LE_BSVER, SKYRIM_SE_BSVER)
 
 # BSVertexDesc attribute flags (bits 44+ of the 64-bit descriptor).
 _VF_VERTEX = 1 << 44
@@ -41,7 +44,7 @@ _NODE_TYPES = frozenset({
     "BSMasterParticleSystem", "NiBSAnimationNode",
 })
 _SHAPE_TYPES = frozenset({"BSTriShape", "BSDynamicTriShape", "BSMeshLODTriShape",
-                          "BSLODTriShape"})
+                          "BSLODTriShape", "NiTriShape"})
 
 
 class NifError(Exception):
@@ -58,6 +61,7 @@ class NifUnsupported(NifError):
 
 
 SKYRIM_SE_FORMAT = (SKYRIM_SE_VERSION, SKYRIM_SE_BSVER)
+SKYRIM_LE_FORMAT = (SKYRIM_SE_VERSION, SKYRIM_LE_BSVER)
 
 _BS_GAMES = {100: "Skyrim SE", 83: "Skyrim LE", 34: "Fallout 3 / New Vegas",
              130: "Fallout 4", 155: "Fallout 76", 172: "Starfield", 11: "Oblivion"}
@@ -278,6 +282,7 @@ def normalize_texture_path(p: str) -> str:
 # -- header ---------------------------------------------------------------------
 @dataclass
 class _Header:
+    bsver: int
     nblocks: int
     types: list[str]
     block_type: list[int]
@@ -296,15 +301,15 @@ def _read_header(b: bytes) -> _Header:
         endian = r.u8()
         if version != SKYRIM_SE_VERSION:
             raise NifUnsupported(
-                f"NIF version {version_string(version)} (only Skyrim SE {version_string(SKYRIM_SE_VERSION)})",
+                f"NIF version {version_string(version)} (only Skyrim {version_string(SKYRIM_SE_VERSION)})",
                 version)
         if endian != 1:
             raise NifUnsupported("big-endian NIF", version)
         r.u32()                          # user version
         nblocks = r.u32()
         bsver = r.u32()
-        if bsver != SKYRIM_SE_BSVER:
-            raise NifUnsupported(f"BS version {bsver} (only Skyrim SE = 100)", version, bsver)
+        if bsver not in _SUPPORTED_BSVERS:
+            raise NifUnsupported(f"BS version {bsver} (only Skyrim LE = 83 and SE = 100)", version, bsver)
         r.short_str(); r.short_str(); r.short_str()   # author, process, export
         ntypes = r.u16()
         types = [r.sized_str() for _ in range(ntypes)]
@@ -317,7 +322,7 @@ def _read_header(b: bytes) -> _Header:
         r.skip(4 * ngroups)
     except (struct.error, IndexError, ValueError) as exc:
         raise NifError(f"truncated or corrupt NIF header: {exc}") from exc
-    return _Header(nblocks, types, [i & 0x7FFF for i in idx], sizes, strings, r.p)
+    return _Header(bsver, nblocks, types, [i & 0x7FFF for i in idx], sizes, strings, r.p)
 
 
 # -- block parsers ----------------------------------------------------------------
@@ -516,6 +521,97 @@ def read_body_slots(data: bytes) -> frozenset:
     return frozenset(slots)
 
 
+def _read_trishape_data(r: _R):
+    """NiTriShapeData (Skyrim LE) → (positions, normals|None, uvs|None, triangle
+    indices). Each block is checked against its size in the header, so a layout
+    slip shows up as an exception, not a garbled mesh."""
+    r.i32()                                        # group id
+    nv = r.u16()
+    r.u8(); r.u8()                                 # keep / compress flags
+    pos = array("f")
+    if r.u8():
+        pos = array("f", struct.unpack_from(f"<{3 * nv}f", r.b, r.p))
+        r.skip(12 * nv)
+    flags = r.u16()                                # BS vector flags: bit 0 = a UV set, 0x1000 = tangents
+    r.u32()                                        # material CRC
+    nrm = None
+    has_n = r.u8()
+    if has_n:
+        nrm = array("f", struct.unpack_from(f"<{3 * nv}f", r.b, r.p))
+        r.skip(12 * nv)
+        if flags & 0x1000:
+            r.skip(24 * nv)                        # tangents + bitangents
+    r.skip(16)                                     # bounding sphere
+    if r.u8():
+        r.skip(16 * nv)                            # vertex colours
+    uvs = None
+    if flags & 1:
+        uvs = array("f", struct.unpack_from(f"<{2 * nv}f", r.b, r.p))
+        r.skip(8 * nv)
+    r.u16()                                        # consistency flags
+    r.i32()                                        # additional data
+    ntri = r.u16()
+    r.u32()                                        # number of triangle points
+    idx = array("H")
+    if r.u8():
+        idx = array("H", struct.unpack_from(f"<{3 * ntri}H", r.b, r.p))
+        r.skip(6 * ntri)
+    return pos, nrm, uvs, idx
+
+
+def _read_trishape_le(r: _R, reader) -> dict:
+    """NiTriShape (Skyrim LE) → the same dict _read_shape returns for SE."""
+    name = _object_net(r, r.strings)
+    local = _av_object(r)
+    data_ref, skin = r.i32(), r.i32()
+    n = r.u32()                                    # materials: names, extra data, active, dirty flag
+    r.skip(8 * n)
+    r.i32(); r.u8()
+    shader, _alpha = r.i32(), r.i32()
+    pos, nrm, uvs, idx = array("f"), None, None, array("H")
+    d = reader(data_ref) if data_ref >= 0 else None
+    if d is not None:
+        pos, nrm, uvs, idx = _read_trishape_data(d)
+    return {"name": name, "local": local, "skin": skin, "shader": shader,
+            "positions": pos, "normals": nrm, "uvs": uvs, "indices": idx, "dyn": None, "le": True}
+
+
+def _read_partitions_le(r: _R) -> "list[list[int]] | None":
+    """NiSkinPartition (Skyrim LE) → each partition's triangles as flat lists of
+    *global* vertex indices (partition-local indices mapped through its vertex map;
+    strips unrolled). The partitions together cover the shape's triangles once, so
+    they give the same per-partition split the SE files carry."""
+    out: list[list[int]] = []
+    for _ in range(r.u32()):
+        nv, nt, nb, ns, nw = r.u16(), r.u16(), r.u16(), r.u16(), r.u16()
+        r.skip(2 * nb)                             # bones
+        vmap = None
+        if r.u8():
+            vmap = struct.unpack_from(f"<{nv}H", r.b, r.p)
+            r.skip(2 * nv)
+        if r.u8():
+            r.skip(4 * nv * nw)                    # vertex weights
+        lens = [r.u16() for _ in range(ns)]
+        local: list[int] = []
+        if r.u8():
+            if ns:
+                for ln in lens:
+                    strip = struct.unpack_from(f"<{ln}H", r.b, r.p)
+                    r.skip(2 * ln)
+                    for i in range(len(strip) - 2):
+                        a, b, c = strip[i], strip[i + 1], strip[i + 2]
+                        if a != b and b != c and a != c:
+                            local += (a, c, b) if i % 2 else (a, b, c)
+            else:
+                local = list(struct.unpack_from(f"<{3 * nt}H", r.b, r.p))
+                r.skip(6 * nt)
+        if r.u8():
+            r.skip(nv * nw)                        # bone indices
+        r.skip(2)                                  # LOD level + global VB
+        out.append([vmap[i] for i in local] if vmap is not None else local)
+    return out
+
+
 def _read_texture_set(r: _R) -> list[str]:
     n = r.u32()
     return [normalize_texture_path(r.sized_str()) for _ in range(n)]
@@ -608,7 +704,12 @@ def read_nif(data: bytes, include_nodes: bool = False) -> NifScene:
             return
         seen_shapes.add(i)
         try:
-            g = _read_shape(reader(i), tname[i])
+            if tname[i] == "NiTriShape":
+                g = _read_trishape_le(
+                    reader(i), lambda ref: reader(ref) if 0 <= ref < hdr.nblocks
+                    and tname[ref] == "NiTriShapeData" else None)
+            else:
+                g = _read_shape(reader(i), tname[i])
         except (struct.error, IndexError, NifError):
             return
         part_tris: tuple = ()
@@ -630,6 +731,8 @@ def read_nif(data: bytes, include_nodes: bool = False) -> NifScene:
         pos = g["positions"]
         if pos is None or not len(pos) or not len(g["indices"]):
             return
+        if not all(math.isfinite(v) for v in pos):
+            return                               # NaN/inf vertices would poison framing and bounds
         r9, sc, t = _compose(world, g["local"])
         wp = array("f", bytes(4 * len(pos)))
         for k in range(0, len(pos), 3):
@@ -653,6 +756,22 @@ def read_nif(data: bytes, include_nodes: bool = False) -> NifScene:
         if g["skin"] >= 0 and tname[g["skin"]] == "BSDismemberSkinInstance":
             try:
                 part_slots = _read_dismember_slots(reader(g["skin"]))
+            except (struct.error, IndexError):
+                pass
+        if g.get("le") and g["skin"] >= 0 and part_slots:
+            # LE keeps all triangles in the shape's own data and the per-slot split in
+            # the skin partitions: re-order the triangles partition by partition so
+            # part_slots[i] owns the next part_tris[i], as in SE files.
+            try:
+                sr = reader(g["skin"])
+                sr.i32()
+                pref = sr.i32()
+                if 0 <= pref < hdr.nblocks and tname[pref] == "NiSkinPartition":
+                    parts = _read_partitions_le(reader(pref))
+                    total = sum(len(t) for t in parts)
+                    if parts and total == len(g["indices"]):
+                        g["indices"] = array("H", [v for t in parts for v in t])
+                        part_tris = tuple(len(t) // 3 for t in parts)
             except (struct.error, IndexError):
                 pass
         if len(part_slots) != len(part_tris) or sum(part_tris) * 3 != len(g["indices"]):

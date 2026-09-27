@@ -111,7 +111,8 @@ class NifViewerView(QWidget):
         self._hide_bad.setChecked(True)
         self._hide_bad.setToolTip(self.tr(
             "Hide meshes in another game's NIF format (for example Skyrim LE meshes "
-            "in Skyrim SE). Untick to see them, marked in amber."))
+            "in Skyrim SE — they can be viewed, but the game may not load them). "
+            "Untick to see them, marked in amber."))
         bh.addWidget(self._hide_bad)
         self._only_over = QCheckBox(self.tr("Only overridden"))
         self._only_over.setToolTip(self.tr(

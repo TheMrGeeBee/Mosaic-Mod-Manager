@@ -157,9 +157,79 @@ def test_bounding_sphere_and_sample_points():
     assert len(NifScene([many] * 5).sample_points(limit=6)) <= 6 + 5
 
 
+# -- Skyrim LE (BS 83): NiTriShape + NiTriShapeData ------------------------------------
+def _trishape_le(name_idx, data_ref, shader_ref, skin_ref=-1) -> bytes:
+    return (_object_net(name_idx) + _xform() + struct.pack("<ii", data_ref, skin_ref)
+            + struct.pack("<I", 0) + struct.pack("<iB", -1, 0)
+            + struct.pack("<ii", shader_ref, -1))
+
+
+def _trishape_data(verts, tris, uvs=True) -> bytes:
+    nv = len(verts)
+    out = struct.pack("<iHBB", 0, nv, 0, 0) + b"\x01"
+    out += b"".join(struct.pack("<3f", *v) for v, _uv, _n in verts)
+    out += struct.pack("<HI", 1 if uvs else 0, 0) + b"\x01"
+    out += b"".join(struct.pack("<3f", *n) for _v, _uv, n in verts)
+    out += b"\0" * 16 + b"\0"                       # bounding sphere, no vertex colours
+    if uvs:
+        out += b"".join(struct.pack("<2f", *uv) for _v, uv, _n in verts)
+    out += struct.pack("<HiHI", 0, 0, len(tris), 3 * len(tris)) + b"\x01"
+    out += b"".join(struct.pack("<3H", *t) for t in tris)
+    return out + struct.pack("<H", 0)
+
+
+def _le(verts=TRI, tris=((0, 1, 2),)) -> bytes:
+    return _nif([
+        ("BSFadeNode", _node(0, [1])),
+        ("NiTriShape", _trishape_le(1, 4, 2)),
+        ("BSLightingShaderProperty", _lighting_shader(3)),
+        ("BSShaderTextureSet", _texture_set(["Textures\\Armor\\Iron_d.DDS", ""])),
+        ("NiTriShapeData", _trishape_data(verts, list(tris))),
+    ], bsver=83)
+
+
+def test_skyrim_le_trishape_is_read_like_an_se_shape():
+    sc = read_nif(_le())
+    sh = sc.shapes[0]
+    assert sh.name == "Shape"
+    assert list(sh.positions) == [0, 0, 0, 1, 0, 0, 0, 1, 0]
+    assert list(sh.indices) == [0, 1, 2]
+    assert list(sh.uvs) == [0, 0, 1, 0, 0, 1]
+    assert sh.textures[0].endswith("iron_d.dds")
+    assert format_label(*sniff_nif_format(_le()[:128])) == "Skyrim LE"
+
+
+def test_shape_with_non_finite_vertices_is_dropped():
+    bad = [((float("nan"), 0, 0), (0, 0), (0, 0, 1))] + TRI[1:]
+    assert read_nif(_le(verts=bad)).shapes == []
+
+
+def test_le_partitions_map_local_indices_and_unroll_strips():
+    from Utils.nif.nif_reader import _R, _read_partitions_le
+
+    def part(nv, nt, vmap, tris=None, strips=None):
+        out = struct.pack("<HHHHH", nv, nt, 0, len(strips or []), 1)
+        out += b"\x01" + struct.pack(f"<{nv}H", *vmap)
+        out += b"\0"                                        # no vertex weights
+        out += b"".join(struct.pack("<H", len(x)) for x in (strips or []))
+        out += b"\x01"
+        if strips:
+            out += b"".join(struct.pack(f"<{len(x)}H", *x) for x in strips)
+        else:
+            out += b"".join(struct.pack("<3H", *t) for t in tris)
+        return out + b"\0" + b"\0\0"                        # no bone indices, LOD + global VB
+
+    blob = struct.pack("<I", 2)
+    blob += part(3, 1, [5, 6, 7], tris=[(0, 1, 2)])
+    blob += part(4, 2, [1, 2, 3, 4], strips=[[0, 1, 2, 3]])
+    got = _read_partitions_le(_R(blob))
+    assert got[0] == [5, 6, 7]
+    assert got[1] == [1, 2, 3, 2, 4, 3]                     # odd strip triangle flips its winding
+
+
 def test_rejects_other_games_and_garbage():
     with pytest.raises(NifUnsupported):
-        read_nif(_nif([("NiNode", _node(0, []))], bsver=83))       # Skyrim LE
+        read_nif(_nif([("NiNode", _node(0, []))], bsver=130))      # Fallout 4
     with pytest.raises(NifUnsupported):
         read_nif(_nif([("NiNode", _node(0, []))], version=0x14000005))
     with pytest.raises(NifError):
@@ -201,7 +271,7 @@ def test_read_body_slots_needs_no_geometry_and_unions_every_skin_instance():
     assert read_body_slots(blob) == frozenset({32, 34, 38})
     assert read_body_slots(_simple()) == frozenset()                      # a prop: no skin instances
     with pytest.raises(NifUnsupported):
-        read_body_slots(_nif([("NiNode", _node(0, []))], bsver=83))
+        read_body_slots(_nif([("NiNode", _node(0, []))], bsver=130))
     with pytest.raises(NifError):
         read_body_slots(b"nope")
 
@@ -223,9 +293,9 @@ def test_sniff_and_label_formats():
 
 def test_unsupported_carries_the_version_for_a_friendly_message():
     with pytest.raises(NifUnsupported) as e:
-        read_nif(_nif([("NiNode", _node(0, []))], bsver=83))
-    assert (e.value.version, e.value.bsver) == (0x14020007, 83)
-    assert format_label(e.value.version, e.value.bsver) == "Skyrim LE"
+        read_nif(_nif([("NiNode", _node(0, []))], bsver=130))
+    assert (e.value.version, e.value.bsver) == (0x14020007, 130)
+    assert format_label(e.value.version, e.value.bsver) == "Fallout 4"
 
 
 @pytest.mark.parametrize("raw,want", [
