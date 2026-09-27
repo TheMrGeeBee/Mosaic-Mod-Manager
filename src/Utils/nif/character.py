@@ -103,13 +103,21 @@ FALLOUT4_LAYER_ORDER = ["hair", "body", "torso", "l_arm", "r_arm", "l_leg", "r_l
 FALLOUT4_PROFILE = GameProfile(
     body_dir=FALLOUT4_BODY_DIR, skeletons=FALLOUT4_SKELETONS, groups=FALLOUT4_GROUPS,
     layer_order=FALLOUT4_LAYER_ORDER,
-    slot_groups={"head": frozenset({30}), "hair": frozenset({31}), "body": frozenset({33}),
+    # No slot-number entry for "hair" at all — see slot_group()'s docstring:
+    # real Fallout 4 hairstyles carry no slot data (hair is a race-menu
+    # HeadPart mesh there, never armor-equipped), while slot 31 alone is
+    # legitimately used by plenty of non-hair items (helmets, a DLC space-
+    # suit liner, even a creature mesh) purely to hide the hair underneath —
+    # confirmed on real ARMA data. Only the hair-folder check (below)
+    # identifies "hair" for this game.
+    slot_groups={"head": frozenset({30}), "body": frozenset({33}),
                 "torso": frozenset({41}), "l_arm": frozenset({42}), "r_arm": frozenset({43}),
                 "hands": frozenset({34, 35}), "l_leg": frozenset({44}), "r_leg": frozenset({45}),
                 "eyes": frozenset({47}), "pipboy": frozenset({60}), "backpack": frozenset({61})},
     base_parts=("body", "hands"), has_weight_suffix=False,
     head_fmt="base{gender}head.nif", eyes_fmt=None,
-    base_part_groups=frozenset({"body", "hands", "torso", "l_arm", "r_arm", "l_leg", "r_leg"}))
+    base_part_groups=frozenset({"body", "hands", "torso", "l_arm", "r_arm", "l_leg", "r_leg"}),
+    hair_needs_folder_tiebreak=True)
 
 
 def profile_for_game(game_id: "str | None") -> GameProfile:
@@ -286,21 +294,33 @@ def compose(selected: NifScene, bodies: list[NifScene]) -> NifScene:
     return NifScene(shapes)
 
 
-def slot_group(path: str, slots: frozenset, profile: GameProfile = SKYRIM_PROFILE) -> "str | None":
+def slot_group(path: str, slots: "frozenset | None", profile: GameProfile = SKYRIM_PROFILE) -> "str | None":
     """Which equipment group a mesh belongs to, from its body slots and path;
-    None when it has no body slots (props, weapons, shields are not wearable yet).
+    None when it has no body slots (props, weapons, shields are not wearable yet)
+    and isn't a hair-folder mesh either.
 
     Slot numbers are the game's BSDismemberBodyPartType (Skyrim: 30 head,
     31 hair, 32 body, 33 hands, 34 forearms, 35 amulet, 36 ring, 37 feet,
     38 calves, 42 circlet, 43 ears; +100 for the 'Skyrim' duplicates — 130
     head, 131 hair…; a helmet and a hairstyle both use 131, so the folder
     breaks that tie. Fallout 4 uses a different, non-overlapping set — see
-    FALLOUT4_PROFILE — with no such duplicate range or tie to break)."""
+    FALLOUT4_PROFILE.
+
+    The hair-folder check runs before the "no slots" bail (and before the
+    slot-number check) for two real, verified-on-real-data reasons: (1) real
+    Fallout 4 hairstyles carry no slot data at all — hair is a HeadPart
+    (race-menu) mesh there, never armor-equipped, so nothing ever authors an
+    ARMA slot for one; and (2) real Fallout 4 items OUTSIDE the hair folder
+    (helmets, a DLC space-suit liner, even a creature mesh) legitimately
+    reserve slot 31 purely to hide the hair underneath — so trusting slot 31
+    alone put those in the Hair picker instead of real hairstyles. Fallout 4
+    therefore has no slot-number entry for "hair" at all in its own profile;
+    only the folder identifies it."""
     p = path.replace("\\", "/").lower()
-    if not slots:
-        return None
     if profile.hair_needs_folder_tiebreak and ("character assets/hair/" in p or "/hair/" in p):
         return "hair"
+    if not slots:
+        return None
     s = {x % 100 if profile.fold_duplicate_slots and x >= 100 else x for x in slots}
     for group, keys in profile.slot_groups.items():
         if s & keys:
@@ -380,8 +400,15 @@ def fits_slot(path: str, slots: "frozenset | None", group: "str | None",
              profile: GameProfile = SKYRIM_PROFILE) -> bool:
     """Whether the mesh at *path* with body *slots* belongs in *group*: it must be
     a wearable path and its slots must place it in that group (any group when None,
-    as long as it has slots at all)."""
-    if not slots or not is_wearable_path(path, group, profile):
+    as long as it has slots at all) — except a hair-folder mesh, which needs no
+    slots at all (see slot_group's docstring: real Fallout 4 hairstyles carry
+    none, the folder alone already proves what it is)."""
+    if not is_wearable_path(path, group, profile):
+        return False
+    p = path.replace("\\", "/").lower()
+    if profile.hair_needs_folder_tiebreak and ("character assets/hair/" in p or "/hair/" in p):
+        return group in (None, "hair")
+    if not slots:
         return False
     return group is None or slot_group(path, slots, profile) == group
 

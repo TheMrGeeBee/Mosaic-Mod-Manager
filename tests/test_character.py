@@ -542,13 +542,23 @@ def test_fallout4_body_paths_have_no_weight_suffix_and_a_different_head_name():
 # different mods shared one "Arms" group, so equipping one silently
 # unequipped the other.
 @pytest.mark.parametrize("slots,want", [
-    ({30}, "head"), ({31}, "hair"), ({33}, "body"), ({41}, "torso"),
+    ({30}, "head"), ({33}, "body"), ({41}, "torso"),
     ({34, 35}, "hands"), ({42}, "l_arm"), ({43}, "r_arm"),
     ({44}, "l_leg"), ({45}, "r_leg"),
     ({47}, "eyes"), ({60}, "pipboy"), ({61}, "backpack"),
 ])
 def test_fallout4_slot_group_matches_real_arma_data(slots, want):
     assert slot_group("meshes/armor/vault/piece.nif", frozenset(slots), FALLOUT4_PROFILE) == want
+
+
+def test_fallout4_slot_31_alone_is_not_hair():
+    # Real ARMA data: slot 31 is used by plenty of non-hair items (a DLC
+    # space-suit helmet liner, a creature mesh, pumpkin helmets) purely to
+    # hide the player's hair underneath — it is NOT a reliable "this is a
+    # hairstyle" signal the way it is in Skyrim. Only the hair folder
+    # (below) identifies real FO4 hairstyles, which carry no ARMA slot data
+    # of their own at all.
+    assert slot_group("meshes/armor/helmet/liner.nif", frozenset({31}), FALLOUT4_PROFILE) is None
 
 
 def test_fallout4_torso_and_body_are_independent_slots():
@@ -573,13 +583,21 @@ def test_fallout4_a_reservation_slot_does_not_steal_the_group():
     assert slot_group("meshes/clothes/x/outfit.nif", frozenset({33, 60}), FALLOUT4_PROFILE) == "body"
 
 
-def test_fallout4_has_no_skyrim_duplicate_range_or_hair_tiebreak():
-    # Skyrim's "+100" duplicate slots and the helmet/hair folder tiebreak are
-    # Skyrim-only quirks; Fallout 4's own slots (30-61) never collide, and 130
-    # (a Skyrim "duplicate head") means nothing in the Fallout 4 profile.
+def test_fallout4_has_no_skyrim_duplicate_slot_range():
+    # Skyrim's "+100" duplicate-head-slot range is a Skyrim-only quirk;
+    # Fallout 4's own slots (30-61) never collide, and 130 (a Skyrim
+    # "duplicate head") means nothing in the Fallout 4 profile.
     assert slot_group("meshes/hat.nif", frozenset({130}), FALLOUT4_PROFILE) is None
+
+
+def test_fallout4_hair_folder_tiebreak_overrides_a_real_non_hair_slot():
+    # Unlike Skyrim's helmet/hair folder tiebreak (which only ever breaks a
+    # TIE between two real candidate groups), FO4's hair-folder check must
+    # win outright — a mesh filed under .../hair/ is hair regardless of
+    # whatever ARMA slot it happens to carry (here, body/33, which would
+    # otherwise dominate).
     assert slot_group("meshes/actors/character/characterassets/hair/x.nif",
-                      frozenset({33}), FALLOUT4_PROFILE) == "body"    # no folder override for FO4
+                      frozenset({33}), FALLOUT4_PROFILE) == "hair"
 
 
 def test_fallout4_base_body_is_wearable_without_a_weight_suffix():
