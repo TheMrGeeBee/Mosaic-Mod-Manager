@@ -140,7 +140,9 @@ def test_bone_segments_connect_to_the_nearest_bone_ancestor():
 
 
 # -- equipment groups and assembly ---------------------------------------------------------------
-from Utils.nif.character import GROUPS, LAYER_ORDER, assemble, slot_group, weight_variant  # noqa: E402
+from Utils.nif.character import (  # noqa: E402
+    GROUPS, LAYER_ORDER, assemble, guess_gender, paired_gender, slot_group, weight_variant,
+)
 
 
 @pytest.mark.parametrize("path,slots,want", [
@@ -297,3 +299,42 @@ def test_head_paths_include_the_eyes():
 ])
 def test_weight_variant(path, weight, want):
     assert weight_variant(path, weight) == want
+
+
+# -- gender from the f-suffix pair (Blades armour: bladesboots_1 male, bladesbootsf_1 female) -------------------
+BLADES = ["meshes/armor/blades/" + n for n in (
+    "bladesboots_0.nif", "bladesboots_1.nif", "bladesbootsf_0.nif", "bladesbootsf_1.nif",
+    "bladeshelmet.nif", "bladeshelmetf.nif", "bladesarmor.nif", "bladesarmor_1.nif")]
+
+
+@pytest.mark.parametrize("path,want", [
+    ("meshes/armor/blades/bladesbootsf_0.nif", "female"),
+    ("meshes/armor/blades/bladesbootsf_1.nif", "female"),
+    ("meshes/armor/blades/bladesboots_1.nif", "male"),                # has an f-counterpart → the male one
+    ("meshes/armor/blades/bladeshelmetf.nif", "female"),               # no weight suffix at all
+    ("meshes/armor/blades/bladeshelmet.nif", "male"),
+    ("meshes/armor/blades/bladesarmor_1.nif", None),                   # bladesarmorf isn't in this list
+    ("MESHES\\ARMOR\\BLADES\\BLADESBOOTSF_1.NIF", "female"),        # case / slashes
+])
+def test_paired_gender(path, want):
+    assert paired_gender(path, BLADES) == want
+
+
+def test_a_trailing_f_alone_proves_nothing():
+    assert paired_gender("meshes/armor/x/wolf_1.nif", ["meshes/armor/x/wolf_1.nif", "meshes/armor/x/scarf_1.nif"]) is None
+    assert paired_gender("meshes/armor/x/scarf_1.nif", ["meshes/armor/x/scarf_1.nif"]) is None
+    # A counterpart in ANOTHER folder doesn't count.
+    assert paired_gender("meshes/armor/a/bootsf_1.nif", ["meshes/armor/b/boots_1.nif"]) is None
+
+
+def test_guess_gender_prefers_explicit_markers_then_the_pair():
+    assert guess_gender("meshes/armor/iron/m/boots_1.nif", ["meshes/armor/iron/m/bootsf_1.nif"]) == "male"   # folder wins
+    assert guess_gender("meshes/armor/blades/bladesbootsf_1.nif", BLADES) == "female"
+    assert guess_gender("meshes/armor/blades/bladesbootsf_1.nif") is None                                   # no siblings given
+
+
+def test_auto_gender_uses_the_pair():
+    armor = NifScene([shape("b", [37, 38], [3])])
+    assert auto_gender("meshes/armor/blades/bladesboots_1.nif", armor, BLADES) == "male"
+    assert auto_gender("meshes/armor/blades/bladesbootsf_1.nif", armor, BLADES) == "female"
+    assert auto_gender("meshes/armor/blades/bladesboots_1.nif", armor) == "female"     # nothing known → default

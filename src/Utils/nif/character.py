@@ -10,6 +10,7 @@ asset catalog, so a body or skeleton replacer mod is picked up automatically.
 from __future__ import annotations
 
 from dataclasses import replace
+from typing import Iterable
 
 from array import array
 
@@ -35,6 +36,34 @@ def detect_gender(path: str) -> "str | None":
     return None
 
 
+def _stem(path: str) -> str:
+    """Lowercase file name without extension or ``_0``/``_1`` weight suffix."""
+    name = path.replace("\\", "/").lower().rsplit("/", 1)[-1].rsplit(".", 1)[0]
+    return name[:-2] if name.endswith(("_0", "_1")) else name
+
+
+def paired_gender(path: str, sibling_paths: "Iterable[str]") -> "str | None":
+    """Gender from the ``f``-suffix naming pair seen in Bethesda's own armour
+    (``bladesarmor_1.nif`` male, ``bladesarmorf_1.nif`` female, side by side in
+    one folder). A trailing "f" alone proves nothing (``wolf``), so it only counts
+    when a same-named file *without* it sits in the same folder — and a name with
+    no "f" is male only when a counterpart *with* one exists. None otherwise."""
+    folder = path.replace("\\", "/").lower().rpartition("/")[0]
+    names = {_stem(p) for p in sibling_paths
+             if p.replace("\\", "/").lower().rpartition("/")[0] == folder}
+    stem = _stem(path)
+    if stem.endswith("f") and stem[:-1] in names:
+        return "female"
+    if stem + "f" in names:
+        return "male"
+    return None
+
+
+def guess_gender(path: str, sibling_paths: "Iterable[str]" = ()) -> "str | None":
+    """detect_gender() first (folder/word markers), then the f-suffix pair."""
+    return detect_gender(path) or paired_gender(path, sibling_paths)
+
+
 def detect_weight(path: str) -> int:
     """Body-weight variant of a mesh (``..._0.nif`` slim, ``..._1.nif`` heavy);
     1 when the name doesn't say."""
@@ -42,16 +71,17 @@ def detect_weight(path: str) -> int:
     return 0 if stem.endswith("_0") else 1
 
 
-def auto_gender(path: str, scene: NifScene) -> "str | None":
+def auto_gender(path: str, scene: NifScene, sibling_paths: "Iterable[str]" = ()) -> "str | None":
     """Which base body to wear *scene* on when the choice is left on Auto: only
     wearable gear qualifies (armour/clothes or a body/hands/feet mesh, and
     skinned with body slots, so creatures and props get none); the gender comes
-    from the path, defaulting to female when it doesn't say."""
+    from the path or its f-suffix pair (see guess_gender), defaulting to female when
+    neither says."""
     p = path.replace("\\", "/").lower()
     wearable = p.startswith(("meshes/armor/", "meshes/clothes/")) or "character assets" in p
     if not wearable or not is_skinned(scene) or not covered_slots(scene):
         return None
-    return detect_gender(path) or "female"
+    return guess_gender(path, sibling_paths) or "female"
 
 
 def weight_variant(path: str, weight: int) -> "str | None":

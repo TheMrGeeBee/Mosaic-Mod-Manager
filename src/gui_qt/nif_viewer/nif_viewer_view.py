@@ -29,7 +29,7 @@ from Utils.dds_info import parse_dds_info
 from Utils.nif.asset_catalog import BASE, AssetCatalog, AssetEntry
 from Utils.nif.catalog_loader import build_catalog
 from Utils.nif.character import (
-    auto_gender, body_paths, compose, detect_gender, detect_weight,
+    auto_gender, body_paths, compose, detect_gender, detect_weight, guess_gender,
 )
 from Utils.nif.nif_reader import (
     NifError, NifUnsupported, format_label, read_nif, version_string,
@@ -336,7 +336,11 @@ class NifViewerView(QWidget):
                 if not scene.shapes and len(scene.nodes) >= 5:
                     skeleton = scene.nodes                    # a skeleton NIF: show its bones
                 else:
-                    gender = (auto_gender(entry.path, scene) if body_mode == _BODY_AUTO
+                    # The f-suffix pair (bladesboots / bladesbootsf) needs the folder's
+                    # other files, so look them up only when the path alone is silent.
+                    sib = ([e.path for e in cat.siblings(entry)]
+                           if detect_gender(entry.path) is None and body_mode != _BODY_NONE else [])
+                    gender = (auto_gender(entry.path, scene, sib) if body_mode == _BODY_AUTO
                               else None if body_mode == _BODY_NONE else body_mode)
                     if gender:
                         bodies = [b for b in (self._loader.nif(cat, p) for p in
@@ -346,7 +350,7 @@ class NifViewerView(QWidget):
                             scene, worn_on = compose(scene, bodies), gender
                     if want_skel:
                         skeleton = self._loader.skeleton(
-                            cat, gender or detect_gender(entry.path) or "female")
+                            cat, gender or guess_gender(entry.path, sib) or "female")
                 images: dict[int, object] = {}
                 missing: list[str] = []
                 if want_tex:

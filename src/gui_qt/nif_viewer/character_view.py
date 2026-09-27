@@ -26,7 +26,7 @@ from Utils.nif.asset_catalog import BASE, AssetCatalog, AssetEntry
 from Utils.nif.catalog_loader import build_catalog
 from Utils.nif.character import (
     GROUP_LABELS, GROUPS, assemble, body_paths, bone_transforms, covered_slots, detect_gender,
-    slot_group, weight_variant,
+    guess_gender, slot_group, weight_variant,
 )
 from Utils.nif.nif_reader import NifError, NifUnsupported, format_label, read_nif
 from gui_qt.nif_viewer.asset_loader import AssetLoader
@@ -124,13 +124,14 @@ class PickMeshDialog(QDialog):
 class CharacterView(QWidget):
     _catalog_ready = Signal(object)
     _build_ready = Signal(int, object)
-    _equip_ready = Signal(object, object, str)      # entry, group | None, message
+    _equip_ready = Signal(object, object, str, object)   # entry, group | None, message, gender | None
 
     def __init__(self, game, profile_dir, staging_dir, parent=None):
         super().__init__(parent)
         self._catalog: "AssetCatalog | None" = None
         self._loader = AssetLoader()
         self._pieces: dict[str, AssetEntry] = {}
+        self._piece_gender: dict[str, "str | None"] = {}   # group → the gender its mesh is made for
         self._pending: list[AssetEntry] = []          # equips requested before the catalog was ready
         self._gen = 0
         self._first_build = True
@@ -269,9 +270,9 @@ class CharacterView(QWidget):
                 sc = read_nif(cat.read(entry))
             except NifUnsupported as exc:
                 return entry, None, self.tr("{0} is in {1} format — only Skyrim SE meshes can be worn.").format(
-                    name, format_label(exc.version, exc.bsver))
+                    name, format_label(exc.version, exc.bsver)), None
             except (NifError, BsaReadError, OSError) as exc:
-                return entry, None, self.tr("Could not read {0}: {1}").format(name, exc)
+                return entry, None, self.tr("Could not read {0}: {1}").format(name, exc), None
             group = slot_group(entry.path, covered_slots(sc))
             if group is None:
                 # Usually an item's display/inventory model (unskinned); the worn
@@ -284,16 +285,19 @@ class CharacterView(QWidget):
                     return entry, None, self.tr(
                         "{0} has no body slots — it looks like an item's display model, "
                         "not a worn mesh. Worn versions in the same folder: {1}."
-                    ).format(name, ", ".join(worn))
+                    ).format(name, ", ".join(worn)), None
                 return entry, None, self.tr(
                     "{0} has no body slots, so it can't be worn (props, weapons and shields "
-                    "aren't supported yet).").format(name)
-            return entry, group, ""
+                    "aren't supported yet).").format(name), None
+            # Which body it is made for: folder/word markers, else the f-suffix pair
+            # (bladesboots_1 / bladesbootsf_1) read from the folder's other files.
+            sib = [] if detect_gender(entry.path) else [e.path for e in cat.siblings(entry)]
+            return entry, group, "", guess_gender(entry.path, sib)
 
         run_in_worker(job, self._equip_ready, unpack=True, name="character-equip",
-                      error_result=(entry, None, self.tr("Unexpected error")))
+                      error_result=(entry, None, self.tr("Unexpected error"), None))
 
-    def _on_equip_ready(self, entry, group, message):
+    def _on_equip_ready(self, entry, group, message, gender):
         if self._closing:
             return
         if group is None:
@@ -301,23 +305,25 @@ class CharacterView(QWidget):
             return
         # First piece: match the character to it (male armour on a male body).
         if not self._pieces:
-            g = detect_gender(entry.path)
-            if g and g != self._gender.currentData():
+            if gender and gender != self._gender.currentData():
                 self._gender.blockSignals(True)
-                self._gender.setCurrentIndex(self._gender.findData(g))
+                self._gender.setCurrentIndex(self._gender.findData(gender))
                 self._gender.blockSignals(False)
         self._pieces[group] = entry
+        self._piece_gender[group] = gender
         self._refresh_slots()
         self._rebuild(reframe=False)
 
     def _unequip(self, group: str):
         if self._pieces.pop(group, None) is not None:
+            self._piece_gender.pop(group, None)
             self._refresh_slots()
             self._rebuild(reframe=False)
 
     def _clear_all(self):
         if self._pieces:
             self._pieces.clear()
+            self._piece_gender.clear()
             self._refresh_slots()
             self._rebuild(reframe=False)
 
@@ -430,6 +436,12 @@ class CharacterView(QWidget):
                      + (self.tr(", {0} missing").format(len(miss)) if miss else ""))
         if res["matched"]:
             parts.append(self.tr("matched to body weight: {0}").format(", ".join(res["matched"])))
+        current = self._gender.currentData()
+        other = [self._pieces[g].path.rsplit("/", 1)[-1] for g, pg in self._piece_gender.items()
+                 if pg and pg != current and g in self._pieces]
+        if other:
+            parts.append(self.tr("⚠ made for the {0} body: {1}").format(
+                self.tr("female") if current == "male" else self.tr("male"), ", ".join(other)))
         if res["problems"]:
             parts.append(self.tr("could not load: {0}").format("; ".join(res["problems"])))
         self._info.setText(" · ".join(parts))

@@ -273,3 +273,25 @@ def test_worn_pieces_follow_the_body_weight(app, view, catalog):
     view._weight.setCurrentIndex(0)                                        # back to Heavy
     _wait(app, lambda: len(got) > n and "cuirass_f" in names() and "cuirass_f0" not in names())
     assert got[-1]["matched"] == []
+
+
+def test_the_first_piece_sets_the_gender_from_its_f_suffix_pair(app, view, catalog):
+    _ready(app, view)
+    assert view._gender.currentData() == "female"
+    view.equip(entry(catalog, "meshes/armor/blades/bladesarmor_1.nif"))     # male: bladesarmorf_1 sits beside it
+    _wait(app, lambda: "body" in view._pieces)
+    assert view._gender.currentData() == "male"
+    assert view._piece_gender["body"] == "male"
+
+
+def test_a_piece_for_the_other_gender_is_flagged(app, view, catalog):
+    _ready(app, view)
+    got = _capture_builds(view)
+    view.equip(entry(catalog, "meshes/armor/blades/bladesarmor_1.nif"))     # male
+    _wait(app, lambda: view._gender.currentData() == "male" and "body" in view._pieces)
+    view.equip(entry(catalog, "meshes/armor/iron/f/boots_1.nif"))           # a female (f/ folder) piece on the male body
+    _wait(app, lambda: "feet" in view._pieces)
+    _wait(app, lambda: "made for the female body: boots_1.nif" in view._info.text())
+    view._unequip("feet")
+    _wait(app, lambda: "made for" not in view._info.text() and "1 piece(s) worn" in view._info.text())
+    assert "feet" not in view._piece_gender
