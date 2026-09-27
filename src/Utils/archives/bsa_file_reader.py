@@ -1,12 +1,17 @@
-"""Random access to single files inside a Bethesda BSA (v104 / v105).
+"""Random access to single files inside a Bethesda BSA (v104 / v105) or BA2
+(Fallout 4 / FO4 VR / Fallout 76).
 
-``extract_bsa`` unpacks a whole archive; the asset viewers only ever want one
-mesh or texture at a time, out of archives holding tens of thousands of files.
-``BsaFile`` reads the table of contents once and then decompresses individual
-files on demand.
+``extract_bsa``/``extract_ba2`` unpack a whole archive; the asset viewers only
+ever want one mesh or texture at a time, out of archives holding tens of
+thousands of files. ``BsaFile`` reads the table of contents once (dispatching
+on the archive's magic bytes) and then decompresses individual files on
+demand, whichever format the archive turns out to be.
 
-v104 (Oblivion, Skyrim LE, Fallout 3/NV) stores files zlib-compressed; v105
-(Skyrim SE) uses LZ4 frames. Paths are lowercase with forward slashes.
+BSA v104 (Oblivion, Skyrim LE, Fallout 3/NV) stores files zlib-compressed;
+v105 (Skyrim SE) uses LZ4 frames. BA2 (Fallout 4+) has two record shapes —
+GNRL (general files, zlib) and DX10 (textures, one zlib chunk per mip,
+reassembled into a standalone .dds by _read_dx10). Paths are lowercase with
+forward slashes in both formats.
 """
 
 from __future__ import annotations
@@ -17,6 +22,8 @@ import zlib
 from pathlib import Path
 
 import lz4.frame
+
+from Utils.archives.ba2_extract import Ba2ExtractError, _make_dds_header
 
 _AF_HAS_DIR_NAMES = 0x1
 _AF_HAS_FILE_NAMES = 0x2
@@ -31,7 +38,7 @@ class BsaReadError(Exception):
 
 
 class BsaFile:
-    """An open BSA with its file table loaded.
+    """An open BSA or BA2 with its file table loaded.
 
         with BsaFile(path) as bsa:
             for p in bsa.paths(): ...
@@ -41,10 +48,13 @@ class BsaFile:
     def __init__(self, path: "Path | str"):
         self.path = Path(path)
         self._f = None
-        self._files: dict[str, tuple[int, int]] = {}
+        self._files: dict[str, tuple[int, int]] = {}   # BSA only
+        self._records: dict[str, dict] = {}             # BA2 only
         self._lock = threading.Lock()      # one shared file handle → serialise reads
         self.version = 0
         self._flags = 0
+        self._kind = ""                     # "bsa" or "ba2", set by _load_toc
+        self._ba2_type = ""                 # "GNRL" or "DX10", BA2 only
         try:
             self._f = self.path.open("rb")
             self._load_toc()
@@ -69,8 +79,18 @@ class BsaFile:
     # -- table of contents ------------------------------------------------------
     def _load_toc(self):
         f = self._f
-        if f.read(4) != b"BSA\x00":
-            raise BsaReadError(f"{self.path.name} is not a BSA archive")
+        magic = f.read(4)
+        if magic == b"BSA\x00":
+            self._kind = "bsa"
+            self._load_toc_bsa()
+        elif magic == b"BTDX":
+            self._kind = "ba2"
+            self._load_toc_ba2()
+        else:
+            raise BsaReadError(f"{self.path.name} is not a BSA or BA2 archive")
+
+    def _load_toc_bsa(self):
+        f = self._f
         (self.version, folder_off, self._flags, folder_count, file_count,
          _folder_names_len, file_names_len, _file_flags) = struct.unpack("<8I", f.read(32))
         if self.version not in (104, 105):
@@ -99,12 +119,71 @@ class BsaFile:
                 self._files[f"{folder}/{names[i]}" if folder else names[i]] = specs[i]
                 i += 1
 
+    def _load_toc_ba2(self):
+        """Same record layout as ba2_extract._extract, minus the writing —
+        see that module for the authoritative field-by-field reference
+        (verified against real vanilla FO4 archives)."""
+        f = self._f
+        rest = f.read(20)
+        if len(rest) < 20:
+            raise BsaReadError(f"{self.path.name}: truncated BA2 header")
+        self.version, type_tag, file_count, name_table_offset = struct.unpack("<I4sIQ", rest)
+        if type_tag not in (b"GNRL", b"DX10"):
+            raise BsaReadError(f"{self.path.name}: unsupported BA2 type {type_tag!r}")
+        self._ba2_type = type_tag.decode("ascii")
+
+        records: list[dict] = []
+        if self._ba2_type == "GNRL":
+            for _ in range(file_count):
+                buf = f.read(36)
+                if len(buf) < 36:
+                    raise BsaReadError(f"{self.path.name}: truncated GNRL record")
+                (_name_hash, _ext, _dir_hash, _flags, data_offset,
+                 packed_size, unpacked_size, _end_marker) = struct.unpack("<I4sIIQIII", buf)
+                records.append({"data_offset": data_offset, "packed_size": packed_size,
+                                "unpacked_size": unpacked_size})
+        else:  # DX10
+            for _ in range(file_count):
+                hdr = f.read(24)
+                if len(hdr) < 24:
+                    raise BsaReadError(f"{self.path.name}: truncated DX10 record header")
+                (_name_hash, _ext, _dir_hash, _unk1, num_chunks, _chunk_size,
+                 height, width, num_mips, dxgi_format,
+                 _unk16) = struct.unpack("<I4sIBBHHHBBH", hdr)
+                chunks = []
+                for _c in range(num_chunks):
+                    cb = f.read(24)
+                    if len(cb) < 24:
+                        raise BsaReadError(f"{self.path.name}: truncated DX10 chunk header")
+                    (data_offset, packed_size, unpacked_size,
+                     _start_mip, _end_mip, _end_marker) = struct.unpack("<QIIHHI", cb)
+                    chunks.append({"data_offset": data_offset, "packed_size": packed_size,
+                                   "unpacked_size": unpacked_size})
+                records.append({"height": height, "width": width, "num_mips": num_mips,
+                                "dxgi_format": dxgi_format, "chunks": chunks})
+
+        f.seek(name_table_offset)
+        names: list[str] = []
+        for _ in range(file_count):
+            ln_raw = f.read(2)
+            if len(ln_raw) < 2:
+                raise BsaReadError(f"{self.path.name}: truncated BA2 name table")
+            ln = struct.unpack("<H", ln_raw)[0]
+            nb = f.read(ln)
+            if len(nb) < ln:
+                raise BsaReadError(f"{self.path.name}: truncated BA2 name entry")
+            names.append(nb.decode("latin-1").replace("\\", "/").lower())
+        if len(names) != len(records):
+            raise BsaReadError(f"{self.path.name}: name/record count mismatch")
+        self._records = dict(zip(names, records))
+
     # -- access -------------------------------------------------------------------
     def paths(self) -> list[str]:
-        return list(self._files)
+        return list(self._files) if self._kind == "bsa" else list(self._records)
 
     def __contains__(self, path: str) -> bool:
-        return self._norm(path) in self._files
+        key = self._norm(path)
+        return key in (self._files if self._kind == "bsa" else self._records)
 
     @staticmethod
     def _norm(path: str) -> str:
@@ -120,6 +199,11 @@ class BsaFile:
         return self._read(path, n)
 
     def _read(self, path: str, limit: "int | None") -> bytes:
+        if self._kind == "ba2":
+            return self._read_ba2(path, limit)
+        return self._read_bsa(path, limit)
+
+    def _read_bsa(self, path: str, limit: "int | None") -> bytes:
         key = self._norm(path)
         spec = self._files.get(key)
         if spec is None:
@@ -148,3 +232,52 @@ class BsaFile:
             return zlib.decompressobj().decompress(body, limit)
         except (OSError, zlib.error, RuntimeError, ValueError) as exc:
             raise BsaReadError(f"cannot decompress {path}: {exc}") from exc
+
+    def _read_ba2(self, path: str, limit: "int | None") -> bytes:
+        key = self._norm(path)
+        rec = self._records.get(key)
+        if rec is None:
+            raise BsaReadError(f"{path} is not in {self.path.name}")
+        try:
+            with self._lock:
+                if self._ba2_type == "GNRL":
+                    data = self._read_ba2_gnrl(rec, limit)
+                else:
+                    data = self._read_ba2_dx10(rec, limit)
+        except (OSError, zlib.error, ValueError, Ba2ExtractError) as exc:
+            raise BsaReadError(f"cannot decompress {path}: {exc}") from exc
+        return data
+
+    def _read_ba2_gnrl(self, rec: dict, limit: "int | None") -> bytes:
+        f = self._f
+        f.seek(rec["data_offset"])
+        if rec["packed_size"] == 0:
+            n = rec["unpacked_size"] if limit is None else min(limit, rec["unpacked_size"])
+            return f.read(n)
+        body = f.read(rec["packed_size"])
+        if limit is None:
+            return zlib.decompress(body)
+        return zlib.decompressobj().decompress(body, limit)
+
+    def _read_ba2_dx10(self, rec: dict, limit: "int | None") -> bytes:
+        """DDS reassembly always needs every mip chunk (the header alone can't
+        be sliced out) — *limit* only trims the final buffer, same as
+        read_head() does for any other whole-file BSA read."""
+        f = self._f
+        payload_parts: list[bytes] = []
+        first_chunk_unpacked = 0
+        for i, chunk in enumerate(rec["chunks"]):
+            f.seek(chunk["data_offset"])
+            if chunk["packed_size"] == 0:
+                data = f.read(chunk["unpacked_size"])
+            else:
+                data = zlib.decompress(f.read(chunk["packed_size"]))
+            if i == 0:
+                first_chunk_unpacked = len(data)
+            payload_parts.append(data)
+        header = _make_dds_header(
+            height=rec["height"], width=rec["width"],
+            mip_count=max(rec["num_mips"], 1), dxgi_format=rec["dxgi_format"],
+            pitch_or_linear_size=first_chunk_unpacked)
+        whole = header + b"".join(payload_parts)
+        return whole if limit is None else whole[:limit]
