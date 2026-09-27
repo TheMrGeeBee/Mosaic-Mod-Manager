@@ -26,66 +26,133 @@ from Utils.nif.asset_catalog import BASE, AssetCatalog, AssetEntry
 from Utils.nif.catalog_loader import build_catalog
 from Utils.nif.character import (
     GROUP_LABELS, GROUPS, assemble, body_paths, bone_transforms, covered_slots, detect_gender,
-    guess_gender, slot_group, weight_variant,
+    fits_slot, gender_fits, guess_gender, is_race_variant, is_wearable_path, slot_group,
+    weight_variant,
 )
 from Utils.nif.nif_reader import NifError, NifUnsupported, format_label, read_nif
 from gui_qt.nif_viewer.asset_loader import AssetLoader
 from gui_qt.nif_viewer.gl_viewport import TEXTURED, MeshViewport
+from gui_qt.safe_emit import safe_emit
 from gui_qt.theme.theme_qt import _c, active_palette
 from gui_qt.worker import run_in_worker
 
-_WEARABLE_PREFIXES = ("meshes/armor/", "meshes/clothes/", "meshes/actors/character/character assets/")
 _MAX_LISTED = 400
 
 
 class PickMeshDialog(QDialog):
-    """Search the game's wearable meshes (armour, clothes, hair…) and pick one."""
+    """Pick a mesh that fits a slot.
 
-    def __init__(self, catalog: AssetCatalog, group: "str | None", parent=None):
+    Only meshes that really belong in *group* are listed: they must sit in a
+    wearable folder (armour, clothes, hairstyles, the base body parts a body mod
+    replaces) and their own body slots must place them in that group — which means
+    opening each candidate, on a worker thread with a progress line (a slots-only
+    read, ~0.2 ms a file, cached for next time). Meshes made for the other gender
+    are left out unless you untick the box, and a slim/heavy pair (_0/_1) is one
+    entry, since the character picks the matching weight itself."""
+
+    _progress = Signal(int, int)
+    _ready = Signal(object)
+
+    def __init__(self, catalog: AssetCatalog, group: "str | None", gender: "str | None" = None,
+                 parent=None):
         super().__init__(parent)
         self.setWindowTitle(self.tr("Choose a mesh") if group is None
                             else self.tr("Choose: {0}").format(GROUP_LABELS.get(group, group)))
-        self.resize(720, 520)
-        self._entries: list[AssetEntry] = []
+        self.resize(720, 540)
         self._catalog = catalog
+        self._group = group
+        self._gender = gender
+        self._fitting: list[AssetEntry] = []          # everything that fits the slot
+        self._entries: list[AssetEntry] = []          # …after the gender filter and weight pairs
         self._chosen: "AssetEntry | None" = None
+        self._closing = False
+        self._gender_ok: dict = {}
+        self.scanned = False                          # True once the fit check has finished
 
         v = QVBoxLayout(self)
         self._search = QLineEdit()
         self._search.setPlaceholderText(self.tr("Search by file name or mod…"))
         self._search.setClearButtonEnabled(True)
         v.addWidget(self._search)
+        self._only_gender = QCheckBox()
+        if gender:
+            self._only_gender.setText(self.tr("Only meshes for a {0} body (or not specified)").format(
+                self.tr("female") if gender == "female" else self.tr("male")))
+            self._only_gender.setChecked(True)
+            v.addWidget(self._only_gender)
         self._list = QListWidget()
         v.addWidget(self._list, 1)
-        self._count = QLabel()
+        self._count = QLabel(self.tr("Checking which meshes fit…"))
         v.addWidget(self._count)
         buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
         buttons.accepted.connect(self._accept)
         buttons.rejected.connect(self.reject)
         v.addWidget(buttons)
         self._ok = buttons.button(QDialogButtonBox.Ok)
+        self._ok.setEnabled(False)
 
-        want_hair = group == "hair"
-        for e in self._candidates():
-            is_hair = "/hair/" in e.path
-            if group is None or want_hair == is_hair:
-                self._entries.append(e)
-        self._entries.sort(key=lambda e: e.path)
         self._search.textChanged.connect(self._refill)
+        self._only_gender.toggled.connect(lambda _on: self._apply_filters())
         self._list.itemDoubleClicked.connect(lambda _i: self._accept())
-        self._list.currentItemChanged.connect(lambda *_: self._ok.setEnabled(self._list.currentItem() is not None))
-        self._refill()
+        self._list.currentItemChanged.connect(
+            lambda *_: self._ok.setEnabled(self._list.currentItem() is not None))
+        self._progress.connect(self._on_progress)
+        self._ready.connect(self._on_ready)
+        run_in_worker(self._scan, self._ready, name="character-picker", error_result=[])
 
-    def _candidates(self):
-        cat = self._catalog
+    # -- worker ---------------------------------------------------------------------------------
+    def _scan(self):
+        cat, group = self._catalog, self._group
+        cands: list[AssetEntry] = []
         for e in cat.base_entries():
-            if e.path.endswith(".nif") and e.path.startswith(_WEARABLE_PREFIXES) and e.is_winner:
-                yield e
+            if e.is_winner and is_wearable_path(e.path, group):
+                cands.append(e)
         for m in cat.mods():
             for e in cat.mod_entries(m):
-                if (e.path.endswith(".nif") and e.path.startswith(_WEARABLE_PREFIXES)
-                        and e.is_winner and cat.incompatible_label(e) is None):
-                    yield e
+                if (e.is_winner and is_wearable_path(e.path, group)
+                        and cat.incompatible_label(e) is None):
+                    cands.append(e)
+        fitting: list[AssetEntry] = []
+        total = len(cands)
+        for i, e in enumerate(cands):
+            if self._closing:
+                return []
+            if i % 150 == 0:
+                safe_emit(self._progress, i, total)
+            if fits_slot(e.path, cat.slots_of(e), group):
+                fitting.append(e)
+        return fitting
+
+    def _on_progress(self, done: int, total: int):
+        if total:
+            self._count.setText(self.tr("Checking which meshes fit… {0}%").format(done * 100 // total))
+
+    def _on_ready(self, fitting):
+        self.scanned = True
+        # Gender and race variants are read from the folder's other files
+        # (bladesboots / bladesbootsf, hatf / hatfk).
+        by_folder: dict[str, list[str]] = {}
+        for e in fitting or []:
+            by_folder.setdefault(e.path.rsplit("/", 1)[0], []).append(e.path)
+        self._fitting = [e for e in (fitting or [])
+                         if not is_race_variant(e.path, by_folder[e.path.rsplit("/", 1)[0]])]
+        self._gender_ok = {e: gender_fits(e.path, self._gender, by_folder[e.path.rsplit("/", 1)[0]])
+                           for e in self._fitting}
+        self._apply_filters()
+
+    # -- list ---------------------------------------------------------------------------------------
+    def _apply_filters(self):
+        only = self._gender is not None and self._only_gender.isChecked()
+        pool = [e for e in self._fitting if not only or self._gender_ok.get(e, True)]
+        # One entry per slim/heavy pair: the heavy (_1) one when both exist.
+        best: dict[tuple, AssetEntry] = {}
+        for e in pool:
+            key = (e.mod, e.path[:-6] if e.path.endswith(("_0.nif", "_1.nif")) else e.path)
+            cur = best.get(key)
+            if cur is None or e.path.endswith("_1.nif"):
+                best[key] = e
+        self._entries = sorted(best.values(), key=lambda e: e.path)
+        self._refill()
 
     def _label(self, e: AssetEntry) -> str:
         owner = self._catalog.base_name if e.mod == BASE else e.mod
@@ -94,28 +161,27 @@ class PickMeshDialog(QDialog):
     def _refill(self):
         text = self._search.text().strip().lower()
         self._list.clear()
-        shown = 0
-        for e in self._entries:
-            if text and text not in e.path and text not in e.mod.lower():
-                continue
-            if shown >= _MAX_LISTED:
-                break
+        matching = [e for e in self._entries
+                    if not text or text in e.path or text in e.mod.lower()]
+        for e in matching[:_MAX_LISTED]:
             item = QListWidgetItem(self._label(e))
             item.setData(Qt.UserRole, e)
             self._list.addItem(item)
-            shown += 1
-        total = sum(1 for e in self._entries if not text or text in e.path or text in e.mod.lower())
-        self._count.setText(self.tr("{0} match(es){1}").format(
-            total, self.tr(" — showing the first {0}").format(_MAX_LISTED) if total > shown else ""))
-        if shown:
+        note = self.tr(" — showing the first {0}").format(_MAX_LISTED) if len(matching) > _MAX_LISTED else ""
+        self._count.setText(self.tr("{0} mesh(es) fit{1}").format(len(matching), note))
+        if self._list.count():
             self._list.setCurrentRow(0)
-        self._ok.setEnabled(bool(shown))
+        self._ok.setEnabled(self._list.count() > 0)
 
     def _accept(self):
         item = self._list.currentItem()
         if item is not None:
             self._chosen = item.data(Qt.UserRole)
             self.accept()
+
+    def done(self, result):
+        self._closing = True                          # stops a running scan
+        super().done(result)
 
     def chosen(self) -> "AssetEntry | None":
         return self._chosen
@@ -334,7 +400,7 @@ class CharacterView(QWidget):
     def _choose(self, group: str):
         if self._catalog is None:
             return
-        dlg = PickMeshDialog(self._catalog, group, self)
+        dlg = PickMeshDialog(self._catalog, group, self._gender.currentData(), self)
         if dlg.exec() == QDialog.Accepted and dlg.chosen() is not None:
             self.equip(dlg.chosen())
 

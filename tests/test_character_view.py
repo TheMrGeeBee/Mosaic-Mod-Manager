@@ -14,6 +14,7 @@ from PySide6.QtWidgets import QApplication  # noqa: E402
 
 from Utils.nif.asset_catalog import AssetCatalog  # noqa: E402
 from Utils.nif.nif_reader import NifScene, NifShape, NifUnsupported  # noqa: E402
+from Utils.nif import asset_catalog as ac  # noqa: E402
 from gui_qt.nif_viewer import asset_loader, character_view as cv  # noqa: E402
 from test_character import shape  # noqa: E402
 
@@ -30,7 +31,7 @@ FILES = {
     "meshes/armor/blades/bladesarmor.nif": b"DISPLAY",              # an item's display model
     "meshes/armor/blades/bladesarmor_1.nif": b"CUIRASS_M",
     "meshes/armor/blades/bladesarmorf_1.nif": b"CUIRASS_F",
-    "meshes/armor/blades/bladeshelmet.nif": b"BOOTS",
+    "meshes/armor/blades/bladeshelmet.nif": b"HELM",
 }
 
 
@@ -42,6 +43,7 @@ def fake_read_nif(data, include_nodes=False):
         b"CUIRASS_ALT": NifScene([shape("cuirass_alt", [32], [2])]),
         b"BOOTS": NifScene([shape("boots", [37, 38], [2, 1])]),
         b"HAIR": NifScene([shape("hair", [131, 141], [2, 1])]),
+        b"HELM": NifScene([shape("helm", [131], [2])]),
         b"PROP": NifScene([shape("mug", skinned=False, slots=[])]),
         b"DISPLAY": NifScene([shape("display", skinned=False, slots=[])]),
     }
@@ -53,6 +55,20 @@ def fake_read_nif(data, include_nodes=False):
 @pytest.fixture(scope="module")
 def app():
     return QApplication.instance() or QApplication([])
+
+
+FAKE_SLOTS = {b"CUIRASS_F": {32, 34}, b"CUIRASS_M": {32, 34}, b"CUIRASS_ALT": {32}, b"CUIRASS_F0": {32, 34},
+              b"BOOTS": {37, 38}, b"HAIR": {131, 141}, b"HELM": {131}}
+
+
+@pytest.fixture(autouse=True)
+def fake_body_slots(monkeypatch):
+    """The catalog's slots-only reader sees fake marker bytes; give them slots."""
+    def fake(data):
+        if data == b"LE":
+            raise NifUnsupported("BS version 83", 0x14020007, 83)
+        return frozenset(FAKE_SLOTS.get(data, ()))
+    monkeypatch.setattr(ac, "read_body_slots", fake)
 
 
 def _wait(app, cond, sec=5.0):
@@ -181,35 +197,80 @@ def test_settings_changes_rebuild(app, view, catalog):
 
 
 # -- picker ---------------------------------------------------------------------------------------------------
-def test_picker_lists_wearable_winners_only(app, catalog):
+def _picker(app, catalog, group, gender=None):
+    dlg = cv.PickMeshDialog(catalog, group, gender)
+    _wait(app, lambda: dlg.scanned)
+    return dlg
+
+
+def _paths(dlg):
+    return [e.path for e in dlg._entries]
+
+
+def test_picker_lists_only_meshes_that_fit_the_slot(app, catalog):
     catalog.mark_incompatible(entry(catalog, "meshes/armor/le/le_cuirass.nif"), "Skyrim LE")
-    dlg = cv.PickMeshDialog(catalog, None)
-    paths = [e.path for e in dlg._entries]
-    assert "meshes/clutter/mug.nif" not in paths and "textures/armor/iron_d.dds" not in paths
-    assert "meshes/armor/le/le_cuirass.nif" not in paths                    # incompatible: hidden
-    assert "meshes/armor/iron/f/cuirass_1.nif" in paths and len(dlg._entries) == 10
-    assert paths == sorted(paths)
-
-
-def test_picker_splits_hair_from_the_rest(app, catalog):
-    hair = cv.PickMeshDialog(catalog, "hair")
-    assert [e.path for e in hair._entries] == \
+    body = _paths(_picker(app, catalog, "body"))
+    assert body == ["meshes/armor/blades/bladesarmor_1.nif", "meshes/armor/blades/bladesarmorf_1.nif",
+                    "meshes/armor/iron/cuirass_alt.nif", "meshes/armor/iron/f/cuirass_1.nif",
+                    "meshes/armor/iron/m/cuirass_1.nif"]
+    #  not listed: boots/helmet/hair (other slots), the mug and the display model (no slots), the
+    #  LE mesh (other format), the texture (not a mesh) — and cuirass_0 is folded into cuirass_1.
+    assert _paths(_picker(app, catalog, "feet")) == ["meshes/armor/iron/f/boots_1.nif"]
+    assert _paths(_picker(app, catalog, "head")) == ["meshes/armor/blades/bladeshelmet.nif"]
+    assert _paths(_picker(app, catalog, "hair")) == \
         ["meshes/actors/character/character assets/hair/female/hair01.nif"]
-    body = cv.PickMeshDialog(catalog, "body")
-    assert not any("/hair/" in e.path for e in body._entries)
+    assert _paths(_picker(app, catalog, "legs")) == []                      # nothing fits: an empty list, not everything
+
+
+def test_picker_shows_a_progress_line_then_the_count(app, catalog):
+    dlg = cv.PickMeshDialog(catalog, "feet")
+    assert "Checking which meshes fit" in dlg._count.text() and not dlg._ok.isEnabled()
+    _wait(app, lambda: dlg.scanned)
+    assert dlg._count.text() == "1 mesh(es) fit" and dlg._ok.isEnabled()
+
+
+def test_picker_offers_only_the_characters_gender_and_a_box_to_widen_it(app, catalog):
+    dlg = _picker(app, catalog, "body", "male")
+    assert _paths(dlg) == ["meshes/armor/blades/bladesarmor_1.nif",        # its f-pair marks it male
+                           "meshes/armor/iron/cuirass_alt.nif",              # unspecified: kept
+                           "meshes/armor/iron/m/cuirass_1.nif"]
+    assert dlg._only_gender.isChecked() and "male body" in dlg._only_gender.text()
+    dlg._only_gender.setChecked(False)
+    assert len(dlg._entries) == 5
+    female = _picker(app, catalog, "body", "female")
+    assert "meshes/armor/iron/m/cuirass_1.nif" not in _paths(female)
+    assert "meshes/armor/blades/bladesarmorf_1.nif" in _paths(female)
 
 
 def test_picker_search_and_choice(app, catalog):
-    dlg = cv.PickMeshDialog(catalog, "body")
-    dlg._search.setText("boots")
-    assert dlg._list.count() == 1 and "boots_1.nif" in dlg._list.item(0).text()
+    dlg = _picker(app, catalog, "body")
+    dlg._search.setText("blades")
+    assert dlg._list.count() == 2 and "bladesarmor_1.nif" in dlg._list.item(0).text()
     dlg._search.setText("modx")                                              # by mod name too
     assert dlg._list.count() == len(dlg._entries)
     dlg._search.setText("nothing-matches")
     assert dlg._list.count() == 0 and not dlg._ok.isEnabled()
-    dlg._search.setText("boots")
+    dlg._search.setText("cuirass_alt")
     dlg._accept()
-    assert dlg.chosen().path.endswith("boots_1.nif")
+    assert dlg.chosen().path.endswith("cuirass_alt.nif")
+
+
+def test_closing_the_picker_stops_the_scan(app, catalog):
+    dlg = cv.PickMeshDialog(catalog, "body")
+    dlg.reject()
+    assert dlg._closing
+
+
+def test_the_slot_check_is_cached_per_mesh(catalog, monkeypatch):
+    calls = []
+    real = ac.read_body_slots
+    monkeypatch.setattr(ac, "read_body_slots", lambda d: calls.append(d) or real(d))
+    e = entry(catalog, "meshes/armor/iron/f/boots_1.nif")
+    assert catalog.slots_of(e) == {37, 38} and catalog.slots_of(e) == {37, 38}
+    assert len(calls) == 1
+    assert catalog.slots_of(entry(catalog, "meshes/armor/le/le_cuirass.nif")) is None       # unreadable → None, cached
+    assert catalog.slots_of(entry(catalog, "meshes/armor/le/le_cuirass.nif")) is None
+    assert len(calls) == 2
 
 
 # -- 'Add to character' in the NIF Viewer -----------------------------------------------------------------------

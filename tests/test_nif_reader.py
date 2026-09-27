@@ -16,7 +16,7 @@ import pytest
 
 from Utils.nif.nif_reader import (
     NifError, NifUnsupported, format_label, normalize_texture_path, read_nif,
-    sniff_nif_format, version_string,
+    read_body_slots, sniff_nif_format, version_string,
 )
 
 _VF = (1 | 2 | 8) << 44                     # position + uv + normal
@@ -190,6 +190,20 @@ def test_dismember_slots_are_read_in_partition_order():
             + struct.pack("<I", 3)                           # three partitions: (flags, slot)
             + struct.pack("<HH", 1, 32) + struct.pack("<HH", 1, 34) + struct.pack("<HH", 1, 38))
     assert _read_dismember_slots(_R(body)) == (32, 34, 38)
+
+
+def test_read_body_slots_needs_no_geometry_and_unions_every_skin_instance():
+    def dismember(slots):
+        return (struct.pack("<iii", 5, 6, 7) + struct.pack("<I2i", 2, 8, 9)
+                + struct.pack("<I", len(slots)) + b"".join(struct.pack("<HH", 1, x) for x in slots))
+    blob = _nif([("BSFadeNode", _node(0, [])), ("BSDismemberSkinInstance", dismember([32, 34])),
+                 ("NiNode", _node(0, [])), ("BSDismemberSkinInstance", dismember([38, 32]))])
+    assert read_body_slots(blob) == frozenset({32, 34, 38})
+    assert read_body_slots(_simple()) == frozenset()                      # a prop: no skin instances
+    with pytest.raises(NifUnsupported):
+        read_body_slots(_nif([("NiNode", _node(0, []))], bsver=83))
+    with pytest.raises(NifError):
+        read_body_slots(b"nope")
 
 
 def test_sniff_and_label_formats():

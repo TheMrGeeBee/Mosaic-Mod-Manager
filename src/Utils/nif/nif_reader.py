@@ -497,6 +497,25 @@ def _read_skin(inst: _R, data_reader, names: dict) -> "tuple | None":
     return tuple(names.get(b, "") for b in bone_refs), tuple(xf), tuple(weights)
 
 
+def read_body_slots(data: bytes) -> frozenset:
+    """The body slots (32 body, 33 hands, 37 feet…) a mesh covers, without parsing
+    any geometry: just the header and the small BSDismemberSkinInstance blocks.
+    Empty for meshes with no such blocks (props, weapons, unskinned models).
+    Raises NifError/NifUnsupported like read_nif for files it can't read. Fast
+    enough to run over thousands of files (a picker's candidate list)."""
+    hdr = _read_header(data)
+    slots: set = set()
+    pos = hdr.body_start
+    for size, t in zip(hdr.sizes, hdr.block_type):
+        if t < len(hdr.types) and hdr.types[t] == "BSDismemberSkinInstance":
+            try:
+                slots.update(_read_dismember_slots(_R(data, pos, hdr.strings)))
+            except (struct.error, IndexError):
+                pass
+        pos += size
+    return frozenset(slots)
+
+
 def _read_texture_set(r: _R) -> list[str]:
     n = r.u32()
     return [normalize_texture_path(r.sized_str()) for _ in range(n)]

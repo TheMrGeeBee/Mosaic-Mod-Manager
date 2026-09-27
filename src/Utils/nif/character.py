@@ -9,6 +9,7 @@ asset catalog, so a body or skeleton replacer mod is picked up automatically.
 
 from __future__ import annotations
 
+import re
 from dataclasses import replace
 from typing import Iterable
 
@@ -42,21 +43,50 @@ def _stem(path: str) -> str:
     return name[:-2] if name.endswith(("_0", "_1")) else name
 
 
-def paired_gender(path: str, sibling_paths: "Iterable[str]") -> "str | None":
-    """Gender from the ``f``-suffix naming pair seen in Bethesda's own armour
-    (``bladesarmor_1.nif`` male, ``bladesarmorf_1.nif`` female, side by side in
-    one folder). A trailing "f" alone proves nothing (``wolf``), so it only counts
-    when a same-named file *without* it sits in the same folder — and a name with
-    no "f" is male only when a counterpart *with* one exists. None otherwise."""
+def _sibling_stems(path: str, sibling_paths: "Iterable[str]") -> set:
     folder = path.replace("\\", "/").lower().rpartition("/")[0]
-    names = {_stem(p) for p in sibling_paths
-             if p.replace("\\", "/").lower().rpartition("/")[0] == folder}
+    return {_stem(p) for p in sibling_paths
+            if p.replace("\\", "/").lower().rpartition("/")[0] == folder}
+
+
+def paired_gender(path: str, sibling_paths: "Iterable[str]") -> "str | None":
+    """Gender from the naming pairs Bethesda's own armour uses, read off the
+    folder's other files:
+
+    * ``bladesarmor_1`` (male) / ``bladesarmorf_1`` (female) — one side plain;
+    * ``bootsm_1`` / ``bootsf_1`` — both sides lettered.
+
+    A trailing letter alone proves nothing (``wolf``, ``helm``): it only counts
+    when the counterpart exists beside it, and a plain name is male only when an
+    ``f`` counterpart exists. None otherwise."""
+    names = _sibling_stems(path, sibling_paths)
     stem = _stem(path)
-    if stem.endswith("f") and stem[:-1] in names:
-        return "female"
-    if stem + "f" in names:
+    # prefix + gender letter + optional number: bootsf, body1f_1, circletf10
+    m = re.fullmatch(r"(.*?)([fm])(\d*)", stem)
+    if m and m.group(1):
+        prefix, letter, digits = m.groups()
+        other = "m" if letter == "f" else "f"
+        if prefix + digits in names or prefix + other + digits in names:
+            return "female" if letter == "f" else "male"
+    plain = re.fullmatch(r"(.*?)(\d*)", stem)
+    if plain and plain.group(1) + "f" + plain.group(2) in names:
         return "male"
     return None
+
+
+_RACE_WORDS = ("argonian", "khajiit", "khaajit", "khajit")      # Bethesda spells Khajiit three ways
+
+
+def is_race_variant(path: str, sibling_paths: "Iterable[str]") -> bool:
+    """A beast-race version of a piece of gear: the race spelled out in the name
+    (``circletargonianf1``), or Bethesda's race letter after the gender letter
+    (``hatfk`` Khajiit / ``hatma`` Argonian) with the plain ``hatf``/``hatm`` beside
+    it. The viewer's characters are human, so these never fit."""
+    name = path.replace("\\", "/").lower().rsplit("/", 1)[-1]
+    if any(w in name for w in _RACE_WORDS):
+        return True
+    m = re.fullmatch(r"(.+[fm])([ka])", _stem(path))
+    return bool(m) and m.group(1) in _sibling_stems(path, sibling_paths)
 
 
 def guess_gender(path: str, sibling_paths: "Iterable[str]" = ()) -> "str | None":
@@ -208,6 +238,50 @@ def assemble(base: list[NifScene], pieces: "dict[str, NifScene]",
         shapes = [k for k in (hide_covered(sh, covered) for sh in shapes) if k is not None]
         shapes.extend(scene.shapes)
     return NifScene(shapes)
+
+
+# -- the picker: which meshes can go in a slot ------------------------------------------------------------
+_BASE_PART = re.compile(r"^(male|female)(body|hands|feet)(_[01])?\.nif$")
+
+
+def is_wearable_path(path: str, group: "str | None" = None) -> bool:
+    """Whether *path* could be worn in *group* (any group when None), judged by
+    folder and name alone — the cheap first cut before the mesh is opened.
+
+    Armour and clothes folders qualify for every group; hairstyles only for
+    "hair"; the base body/hands/feet files (femalebody_1.nif…) — which a body
+    mod replaces — for the body-part groups. Everything else in the character
+    assets (heads, eyes, race and creature parts, first-person arms) and all other
+    actor folders never do."""
+    p = path.replace("\\", "/").lower()
+    name = p.rsplit("/", 1)[-1]
+    if not p.endswith(".nif") or name.startswith("1stperson") or "/1stperson" in p:
+        return False
+    if any(w in name for w in _RACE_WORDS) or "/child/" in p or "/children/" in p or name.startswith("child"):
+        return False                                   # beast races and child gear: not for the adult human character
+    if p.startswith(("meshes/armor/", "meshes/clothes/")):
+        return True
+    hair_dir = BODY_DIR + "hair/"
+    if p.startswith(hair_dir):
+        return group in (None, "hair")
+    if p.startswith(BODY_DIR) and "/" not in p[len(BODY_DIR):]:
+        return _BASE_PART.match(name) is not None and group in (None, "body", "hands", "feet", "arms", "legs")
+    return False
+
+
+def fits_slot(path: str, slots: "frozenset | None", group: "str | None") -> bool:
+    """Whether the mesh at *path* with body *slots* belongs in *group*: it must be
+    a wearable path and its slots must place it in that group (any group when None,
+    as long as it has slots at all)."""
+    if not slots or not is_wearable_path(path, group):
+        return False
+    return group is None or slot_group(path, slots) == group
+
+
+def gender_fits(path: str, gender: "str | None", sibling_paths: "Iterable[str]" = ()) -> bool:
+    """False only when the mesh is known to be made for the *other* gender."""
+    g = guess_gender(path, sibling_paths)
+    return gender is None or g is None or g == gender
 
 
 # -- skinning ---------------------------------------------------------------------------------------

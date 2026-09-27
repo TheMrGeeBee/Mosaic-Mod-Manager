@@ -25,7 +25,7 @@ from typing import Callable, Iterable, Mapping
 
 from Utils.archives.bsa_file_reader import BsaFile, BsaReadError
 from Utils.mods.file_providers import resolve_on_disk
-from Utils.nif.nif_reader import format_label, sniff_nif_format
+from Utils.nif.nif_reader import NifError, format_label, read_body_slots, sniff_nif_format
 
 BASE = ""          # AssetEntry.mod for the base game layer
 
@@ -95,6 +95,7 @@ class AssetCatalog:
         self._contested: "frozenset[str] | None" = None
         self._expected_format = expected_nif_format
         self._bad: dict[tuple, str] = {}       # entry key → format label
+        self._slots: dict[tuple, "frozenset | None"] = {}   # entry key → body slots (None: unreadable)
 
     # -- mods ---------------------------------------------------------------------
     def mods(self) -> list[str]:
@@ -231,6 +232,17 @@ class AssetCatalog:
             if key in ps:
                 return AssetEntry(key, mod, "bsa", arch, self._mod_winner(key) == (mod, "bsa", arch))
         return None
+
+    def slots_of(self, entry: AssetEntry) -> "frozenset | None":
+        """Body slots the mesh *entry* covers (empty for props/unskinned models),
+        or None if it can't be read. Cached — the first call reads the file."""
+        key = self._ekey(entry)
+        if key not in self._slots:
+            try:
+                self._slots[key] = read_body_slots(self.read(entry))
+            except (NifError, BsaReadError, OSError):
+                self._slots[key] = None
+        return self._slots[key]
 
     def siblings(self, entry: AssetEntry) -> list[AssetEntry]:
         """Other files in the same folder from the same layer (base game or mod),

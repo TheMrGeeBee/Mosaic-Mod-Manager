@@ -141,7 +141,8 @@ def test_bone_segments_connect_to_the_nearest_bone_ancestor():
 
 # -- equipment groups and assembly ---------------------------------------------------------------
 from Utils.nif.character import (  # noqa: E402
-    GROUPS, LAYER_ORDER, assemble, guess_gender, paired_gender, slot_group, weight_variant,
+    GROUPS, LAYER_ORDER, assemble, fits_slot, gender_fits, guess_gender, is_wearable_path,
+    paired_gender, slot_group, weight_variant,
 )
 
 
@@ -338,3 +339,102 @@ def test_auto_gender_uses_the_pair():
     assert auto_gender("meshes/armor/blades/bladesboots_1.nif", armor, BLADES) == "male"
     assert auto_gender("meshes/armor/blades/bladesbootsf_1.nif", armor, BLADES) == "female"
     assert auto_gender("meshes/armor/blades/bladesboots_1.nif", armor) == "female"     # nothing known → default
+
+
+# -- the picker's rules ---------------------------------------------------------------------------------------------
+CA = "meshes/actors/character/character assets/"
+
+
+@pytest.mark.parametrize("path,group,want", [
+    ("meshes/armor/iron/f/cuirass_1.nif", "body", True),
+    ("meshes/clothes/x/hat.nif", "head", True),
+    ("meshes/armor/iron/f/cuirass_1.nif", "hair", True),               # armour folders are fine for any group (slots decide)
+    (CA + "hair/female/hair01.nif", "hair", True),
+    (CA + "hair/female/hair01.nif", "body", False),                    # a hairstyle isn't a body part
+    (CA + "femalebody_1.nif", "body", True),                           # the base body a body mod replaces
+    (CA + "malehands_0.nif", "hands", True),
+    (CA + "femalefeet_1.nif", "feet", True),
+    (CA + "femalebody_1.nif", "head", False),
+    (CA + "femalehead.nif", "head", False),                            # faces are not gear
+    (CA + "eyesfemale.nif", None, False),
+    (CA + "femalehandsbeast_1.nif", "hands", False),                   # race variants
+    (CA + "altmalebody_0.nif", "body", False),
+    (CA + "1stpersonfemalebody_0.nif", "body", False),                 # first-person arms
+    ("meshes/armor/x/1stpersoncuirass_0.nif", "body", False),
+    ("meshes/actors/argonianfemale/rvxargwhiskers/argwhiskersf01.nif", "head", False),
+    ("meshes/clutter/mug.nif", None, False),
+    ("meshes/armor/x/readme.txt", None, False),
+])
+def test_is_wearable_path(path, group, want):
+    assert is_wearable_path(path, group) is want
+
+
+def test_fits_slot_needs_wearable_path_and_matching_slots():
+    assert fits_slot("meshes/armor/x/greaves_1.nif", frozenset({38}), "legs")
+    assert not fits_slot("meshes/armor/x/greaves_1.nif", frozenset({38}), "body")
+    assert not fits_slot("meshes/armor/x/greaves_1.nif", frozenset(), "legs")        # no slots: a prop
+    assert not fits_slot("meshes/armor/x/greaves_1.nif", None, "legs")               # unreadable
+    assert not fits_slot(CA + "femalehead.nif", frozenset({130, 143, 230}), "head")   # slots fit, path doesn't
+    assert fits_slot("meshes/armor/x/helm.nif", frozenset({131}), None)              # any group
+
+
+def test_gender_fits_only_rejects_known_mismatches():
+    sib = BLADES
+    assert gender_fits("meshes/armor/blades/bladesbootsf_1.nif", "female", sib)
+    assert not gender_fits("meshes/armor/blades/bladesbootsf_1.nif", "male", sib)
+    assert not gender_fits("meshes/armor/blades/bladesboots_1.nif", "female", sib)
+    assert gender_fits("meshes/armor/x/unisex_1.nif", "male", [])                     # unknown → kept
+    assert gender_fits("meshes/armor/iron/f/cuirass_1.nif", None, [])                 # no character gender → kept
+
+
+# -- more naming pairs: both sides lettered (bootsf/bootsm), numbers after the letter (circletf1) --------------------
+BANDIT = ["meshes/armor/bandit/" + n for n in (
+    "bootsf_0.nif", "bootsf_1.nif", "bootsm_0.nif", "bootsm_1.nif", "body1f_1.nif", "body1m_1.nif",
+    "hatf_1.nif", "hatm_1.nif", "hatfk_1.nif", "hatmk_1.nif", "hatma_1.nif", "helm_1.nif", "wolf_1.nif")]
+CIRCLETS = ["meshes/armor/circlets/" + n for n in (
+    "circletf1.nif", "circletm1.nif", "circletf10.nif", "circletm10.nif", "circlet1_go.nif")]
+
+
+@pytest.mark.parametrize("path,sibs,want", [
+    ("meshes/armor/bandit/bootsf_1.nif", BANDIT, "female"),
+    ("meshes/armor/bandit/bootsm_0.nif", BANDIT, "male"),
+    ("meshes/armor/bandit/body1f_1.nif", BANDIT, "female"),            # number BEFORE the letter
+    ("meshes/armor/bandit/body1m_1.nif", BANDIT, "male"),
+    ("meshes/armor/bandit/hatm_1.nif", BANDIT, "male"),
+    ("meshes/armor/circlets/circletf1.nif", CIRCLETS, "female"),       # number AFTER the letter
+    ("meshes/armor/circlets/circletm10.nif", CIRCLETS, "male"),
+    ("meshes/armor/bandit/helm_1.nif", BANDIT, None),                  # 'm' without a partner
+    ("meshes/armor/bandit/wolf_1.nif", BANDIT, None),                  # 'f' without a partner
+    ("meshes/armor/circlets/circlet1_go.nif", CIRCLETS, None),
+])
+def test_lettered_pairs(path, sibs, want):
+    assert paired_gender(path, sibs) == want
+
+
+@pytest.mark.parametrize("path,want", [
+    ("meshes/armor/bandit/hatfk_1.nif", True),                         # Khajiit female, beside hatf
+    ("meshes/armor/bandit/hatma_1.nif", True),                         # Argonian male, beside hatm
+    ("meshes/armor/bandit/hatf_1.nif", False),
+    ("meshes/armor/circlets/circletargonianf1.nif", True),             # race spelled out
+    ("meshes/armor/x/khajiitarmor_1.nif", True),
+    ("meshes/armor/bandit/wolf_1.nif", False),
+])
+def test_race_variants(path, want):
+    from Utils.nif.character import is_race_variant
+    assert is_race_variant(path, BANDIT + CIRCLETS + [path]) is want
+
+
+def test_a_k_or_a_ending_is_only_a_race_when_the_plain_version_is_beside_it():
+    from Utils.nif.character import is_race_variant
+    assert not is_race_variant("meshes/armor/x/shieldfa_1.nif", ["meshes/armor/x/shieldfa_1.nif"])
+    assert is_race_variant("meshes/armor/x/shieldfa_1.nif", ["meshes/armor/x/shieldf_1.nif"])
+
+
+def test_gear_for_beast_races_and_children_is_not_offered():
+    assert not is_wearable_path("meshes/armor/circlets/circletargonianf1.nif", "circlet")
+    assert not is_wearable_path("meshes/armor/x/khajiitboots_1.nif", "feet")
+    assert not is_wearable_path("meshes/armor/circlets/circletkhaajitm1.nif", "circlet")   # Bethesda's own misspelling
+    assert not is_wearable_path("meshes/armor/x/khajitboots_1.nif", "feet")
+    assert not is_wearable_path("meshes/clothes/child/dress_1.nif", "body")
+    assert not is_wearable_path("meshes/armor/x/childrensclothes_1.nif", "body")
+    assert is_wearable_path("meshes/armor/x/dress_1.nif", "body")
