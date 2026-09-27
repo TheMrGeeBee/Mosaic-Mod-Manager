@@ -12,6 +12,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6.QtWidgets import QApplication  # noqa: E402
 
+from Utils.archives.bsa_writer import write_bsa  # noqa: E402
 from Utils.nif.asset_catalog import AssetCatalog  # noqa: E402
 from Utils.nif.nif_reader import NifScene, NifShape, NifUnsupported  # noqa: E402
 from Utils.nif import asset_catalog as ac  # noqa: E402
@@ -51,6 +52,8 @@ def fake_read_nif(data, include_nodes=False):
         b"BOOTS": NifScene([shape("boots", [37, 38], [2, 1])]),
         b"HAIR": NifScene([shape("hair", [131, 141], [2, 1])]),
         b"HELM": NifScene([shape("helm", [131], [2])]),
+        b"BASE_BODY": NifScene([shape("base_body", skinned=False, slots=[])]),
+        b"MOD_BODY": NifScene([shape("mod_body", skinned=False, slots=[])]),
         b"PROP": NifScene([shape("mug", skinned=False, slots=[])]),
         b"DISPLAY": NifScene([shape("display", skinned=False, slots=[])]),
     }
@@ -485,3 +488,37 @@ def test_the_tab_pre_reads_body_slots_in_the_background(app, view, catalog):
     assert "textures/armor/iron_d.dds" not in keys
     dlg = _picker(app, catalog, "feet")
     assert _paths(dlg) == ["meshes/armor/iron/f/boots_1.nif"]
+
+
+def test_base_body_always_comes_from_the_base_game_even_when_a_mod_wins(app, tmp_path, monkeypatch):
+    # User report: the preview's nude body was actually a body-replacer mod's
+    # mesh (e.g. CBBE), not the vanilla base body — because base_paths()
+    # resolution used cat.resolve() (the winner), and a body mod winning the
+    # load order silently swapped in its own shape as the "base" the picker
+    # then builds and hides gear against. The base body must always be the
+    # base GAME's own copy, regardless of what any mod overrides it with.
+    monkeypatch.setattr(cv, "read_nif", fake_read_nif)
+    monkeypatch.setattr(asset_loader, "read_nif", fake_read_nif)
+    body_path = "meshes/actors/character/character assets/femalebody_1.nif"
+    base_bsa = tmp_path / "base.bsa"
+    src = tmp_path / "src_base"
+    (src / "meshes/actors/character/character assets").mkdir(parents=True, exist_ok=True)
+    (src / body_path).write_bytes(b"BASE_BODY")
+    write_bsa(base_bsa, src, version=105)
+    mod_dir = tmp_path / "mods" / "BodyMod"
+    (mod_dir / "meshes/actors/character/character assets").mkdir(parents=True, exist_ok=True)
+    (mod_dir / body_path).write_bytes(b"MOD_BODY")
+    cat = AssetCatalog(
+        base_name="Game", base_archives=[base_bsa], mod_order=["BodyMod"],
+        loose={"BodyMod": {body_path: body_path}}, bsas={}, loose_winner={}, bsa_winner={},
+        mod_dir_for=lambda m: tmp_path / "mods" / m, expected_nif_format=(0x14020007, 100))
+    assert cat.resolve(body_path).mod == "BodyMod"          # the mod really is the winner
+    monkeypatch.setattr(cv, "build_catalog", lambda *_a: cat)
+    v = cv.CharacterView(object(), tmp_path, tmp_path)
+    got = _capture_builds(v)
+    _wait(app, lambda: v._catalog is not None)
+    _wait(app, lambda: got)
+    names = [s.name for s in got[-1]["scene"].shapes]
+    assert "base_body" in names and "mod_body" not in names
+    v.deleteLater()
+    cat.close()

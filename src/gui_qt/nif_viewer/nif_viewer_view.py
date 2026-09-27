@@ -386,9 +386,13 @@ class NifViewerView(QWidget):
                     gender = (auto_gender(entry.path, scene, sib, self._profile) if body_mode == _BODY_AUTO
                               else None if body_mode == _BODY_NONE else body_mode)
                     if gender:
-                        bodies = [b for b in (self._loader.nif(cat, p) for p in
-                                              body_paths(gender, detect_weight(entry.path),
-                                                        profile=self._profile))
+                        # Always the base GAME's own body, never a mod's replacer —
+                        # this is a neutral backdrop for previewing *entry* itself,
+                        # matching the Character tab's own base-body resolution.
+                        bodies = [b for b in
+                                  (self._loader.nif_entry(cat, cat.entry_in_layer(BASE, p))
+                                   for p in body_paths(gender, detect_weight(entry.path),
+                                                       profile=self._profile))
                                   if b is not None]
                         if bodies:
                             scene, worn_on = compose(scene, bodies), gender

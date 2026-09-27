@@ -525,10 +525,14 @@ class CharacterView(QWidget):
             base = []
             # Base body/hands/feet come in slim and heavy files (Fallout 4: a
             # single file, so p0 == p1 below and no blend is attempted); head
-            # and eyes in one.
+            # and eyes in one. Always the base GAME's own copy, never a mod's
+            # replacer (a body mod winning the load order would otherwise
+            # silently swap in CBBE/whatever else instead of the vanilla body
+            # this preview is meant to show gear against) — user-requested,
+            # confirmed on a real profile where a body mod was overriding it.
             for p0, p1 in zip(body_paths(gender, 0, head=True, profile=self._profile),
                               body_paths(gender, 1, head=True, profile=self._profile)):
-                e0, e1 = cat.resolve(p0), cat.resolve(p1)
+                e0, e1 = cat.entry_in_layer(BASE, p0), cat.entry_in_layer(BASE, p1)
                 sc, _blended = load_weighted(e0, e1) if p0 != p1 else (self._loader.nif_entry(cat, e1), False)
                 if sc is not None:
                     base.append(sc)
