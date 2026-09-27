@@ -54,6 +54,17 @@ def auto_gender(path: str, scene: NifScene) -> "str | None":
     return detect_gender(path) or "female"
 
 
+def weight_variant(path: str, weight: int) -> "str | None":
+    """*path* with its body-weight suffix swapped to *weight* (``cuirass_1.nif`` →
+    ``cuirass_0.nif``), or None when the name carries no ``_0``/``_1`` suffix.
+    Skyrim ships most worn meshes in a slim (_0) and a heavy (_1) version that the
+    game blends by the actor's weight; the two must match the body underneath."""
+    base, dot, ext = path.rpartition(".")
+    if not dot or not (base.endswith("_0") or base.endswith("_1")):
+        return None
+    return f"{base[:-1]}{1 if weight else 0}.{ext}"
+
+
 def body_paths(gender: str, weight: int = 1, head: bool = False) -> list[str]:
     """The base game's body, hands and feet meshes for *gender* (plus the default
     head and eyes with head=True — they have no weight variants)."""

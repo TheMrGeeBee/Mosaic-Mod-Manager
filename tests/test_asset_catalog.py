@@ -219,3 +219,17 @@ def test_siblings_are_the_other_files_in_the_same_folder_and_layer(tmp_path):
     mod_worn = next(e for e in cat.mod_entries("modA") if e.path.endswith("bladesarmor_1.nif"))
     assert cat.siblings(mod_worn) == []                             # modA has nothing else in that folder
     cat.close()
+
+
+def test_entry_in_layer_finds_that_layers_own_copy_even_if_it_loses(world):
+    # MESH: base BSA, modA loose (wins), modB BSA (loses to the loose file).
+    b = world.entry_in_layer("modB", MESH)
+    assert (b.mod, b.kind, b.archive, b.is_winner) == ("modB", "bsa", "b.bsa", False)
+    a = world.entry_in_layer("modA", MESH)
+    assert (a.kind, a.is_winner) == ("loose", True)
+    base = world.entry_in_layer(BASE, MESH)
+    assert (base.mod, base.archive, base.is_winner) == (BASE, "Skyrim - Meshes0.bsa", False)
+    assert world.entry_in_layer("modA", NEW_IN_MOD) is None              # that layer doesn't ship it
+    assert world.entry_in_layer(BASE, NEW_IN_MOD) is None
+    assert world.entry_in_layer("modB", "MESHES\\ARMOR\\IRON\\CUIRASS.NIF").mod == "modB"   # normalised lookup
+    assert world.read(b) == b"B-bsa-mesh"

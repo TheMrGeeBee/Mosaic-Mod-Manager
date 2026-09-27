@@ -140,7 +140,7 @@ def test_bone_segments_connect_to_the_nearest_bone_ancestor():
 
 
 # -- equipment groups and assembly ---------------------------------------------------------------
-from Utils.nif.character import GROUPS, LAYER_ORDER, assemble, slot_group  # noqa: E402
+from Utils.nif.character import GROUPS, LAYER_ORDER, assemble, slot_group, weight_variant  # noqa: E402
 
 
 @pytest.mark.parametrize("path,slots,want", [
@@ -284,3 +284,16 @@ def test_head_paths_include_the_eyes():
     assert p[-2:] == ["meshes/actors/character/character assets/femalehead.nif",
                       "meshes/actors/character/character assets/eyesfemale.nif"]
     assert len(body_paths("male", 1)) == 3
+
+
+@pytest.mark.parametrize("path,weight,want", [
+    ("meshes/armor/iron/f/cuirass_1.nif", 0, "meshes/armor/iron/f/cuirass_0.nif"),
+    ("meshes/armor/iron/f/cuirass_0.nif", 1, "meshes/armor/iron/f/cuirass_1.nif"),
+    ("meshes/armor/iron/f/cuirass_1.nif", 1, "meshes/armor/iron/f/cuirass_1.nif"),   # already matching
+    ("Meshes\\Armor\\Blades\\BladesArmorF_1.NIF", 0, "Meshes\\Armor\\Blades\\BladesArmorF_0.NIF"),
+    ("meshes/armor/blades/bladeshelmet.nif", 0, None),                                # no weight suffix
+    ("meshes/armor/x/greaves_2.nif", 1, None),                                        # not a weight suffix
+    ("noextension_1", 0, None),
+])
+def test_weight_variant(path, weight, want):
+    assert weight_variant(path, weight) == want

@@ -26,7 +26,7 @@ from Utils.nif.asset_catalog import BASE, AssetCatalog, AssetEntry
 from Utils.nif.catalog_loader import build_catalog
 from Utils.nif.character import (
     GROUP_LABELS, GROUPS, assemble, body_paths, bone_transforms, covered_slots, detect_gender,
-    slot_group,
+    slot_group, weight_variant,
 )
 from Utils.nif.nif_reader import NifError, NifUnsupported, format_label, read_nif
 from gui_qt.nif_viewer.asset_loader import AssetLoader
@@ -363,7 +363,17 @@ class CharacterView(QWidget):
             base = [b for b in (self._loader.nif(cat, p) for p in body_paths(gender, weight, head=True))
                     if b is not None]
             scenes = {}
+            matched: list[str] = []
             for group, entry in pieces.items():
+                # Use the worn mesh's slim/heavy version that matches the body: the
+                # copy from the same mod (or the base game) if it ships one, else
+                # whichever copy wins.
+                vpath = weight_variant(entry.path, weight)
+                if vpath and vpath != entry.path:
+                    variant = cat.entry_in_layer(entry.mod, vpath) or cat.resolve(vpath)
+                    if variant is not None:
+                        matched.append(variant.path.rsplit("/", 1)[-1])
+                        entry = variant
                 try:
                     scenes[group] = read_nif(cat.read(entry))
                 except (NifError, BsaReadError, OSError) as exc:
@@ -386,7 +396,7 @@ class CharacterView(QWidget):
             skeleton = skel_nodes if want_skel else None
             return gen, {"scene": scene, "images": images, "missing": missing,
                          "skeleton": skeleton, "problems": problems, "reframe": reframe,
-                         "base_found": len(base), "pieces": len(scenes)}
+                         "base_found": len(base), "pieces": len(scenes), "matched": matched}
 
         run_in_worker(job, self._build_ready, unpack=True, name="character-build",
                       error_result=(gen, {"error": self.tr("Unexpected error")}))
@@ -418,6 +428,8 @@ class CharacterView(QWidget):
         miss = sorted(set(res["missing"]))
         parts.append(self.tr("textures: {0} found").format(len(images))
                      + (self.tr(", {0} missing").format(len(miss)) if miss else ""))
+        if res["matched"]:
+            parts.append(self.tr("matched to body weight: {0}").format(", ".join(res["matched"])))
         if res["problems"]:
             parts.append(self.tr("could not load: {0}").format("; ".join(res["problems"])))
         self._info.setText(" · ".join(parts))

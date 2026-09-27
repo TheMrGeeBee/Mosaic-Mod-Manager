@@ -21,6 +21,7 @@ FILES = {
     "meshes/armor/iron/f/cuirass_1.nif": b"CUIRASS_F",
     "meshes/armor/iron/m/cuirass_1.nif": b"CUIRASS_M",
     "meshes/armor/iron/f/boots_1.nif": b"BOOTS",
+    "meshes/armor/iron/f/cuirass_0.nif": b"CUIRASS_F0",               # the slim version of cuirass_1
     "meshes/armor/iron/cuirass_alt.nif": b"CUIRASS_ALT",
     "meshes/actors/character/character assets/hair/female/hair01.nif": b"HAIR",
     "meshes/clutter/mug.nif": b"PROP",
@@ -36,6 +37,7 @@ FILES = {
 def fake_read_nif(data, include_nodes=False):
     scenes = {
         b"CUIRASS_F": NifScene([shape("cuirass_f", [32, 34], [2, 1])]),
+        b"CUIRASS_F0": NifScene([shape("cuirass_f0", [32, 34], [2, 1])]),
         b"CUIRASS_M": NifScene([shape("cuirass_m", [32, 34], [2, 1])]),
         b"CUIRASS_ALT": NifScene([shape("cuirass_alt", [32], [2])]),
         b"BOOTS": NifScene([shape("boots", [37, 38], [2, 1])]),
@@ -185,7 +187,7 @@ def test_picker_lists_wearable_winners_only(app, catalog):
     paths = [e.path for e in dlg._entries]
     assert "meshes/clutter/mug.nif" not in paths and "textures/armor/iron_d.dds" not in paths
     assert "meshes/armor/le/le_cuirass.nif" not in paths                    # incompatible: hidden
-    assert "meshes/armor/iron/f/cuirass_1.nif" in paths and len(dlg._entries) == 9
+    assert "meshes/armor/iron/f/cuirass_1.nif" in paths and len(dlg._entries) == 10
     assert paths == sorted(paths)
 
 
@@ -240,3 +242,34 @@ def test_a_display_model_is_refused_with_its_worn_siblings_named(app, view, cata
     assert view._pieces == {}
     view.equip(entry(catalog, "meshes/clutter/mug.nif"))        # no similarly-named files → the plain message
     _wait(app, lambda: "props, weapons and shields" in view._info.text())
+
+
+def _capture_builds(view):
+    got = []
+    view._build_ready.connect(lambda gen, res: got.append(res))
+    return got
+
+
+def test_worn_pieces_follow_the_body_weight(app, view, catalog):
+    _ready(app, view)
+    got = _capture_builds(view)
+    view.equip(entry(catalog, "meshes/armor/iron/f/cuirass_1.nif"))        # equipped as the heavy version
+    view.equip(entry(catalog, "meshes/armor/iron/f/boots_1.nif"))           # has no slim version
+    _wait(app, lambda: len(view._pieces) == 2)
+    _wait(app, lambda: got and "boots" in [s.name for s in got[-1]["scene"].shapes])
+    names = lambda: [s.name for s in got[-1]["scene"].shapes]              # noqa: E731
+    assert "cuirass_f" in names() and not got[-1]["matched"]                # Heavy: as equipped
+
+    n = len(got)
+    view._weight.setCurrentIndex(1)                                        # Light (_0)
+    _wait(app, lambda: len(got) > n and "cuirass_f0" in names())
+    assert "cuirass_f" not in names()
+    assert "boots" in names()                                              # no boots_0: keeps the _1
+    assert got[-1]["matched"] == ["cuirass_0.nif"]
+    assert "matched to body weight: cuirass_0.nif" in view._info.text()
+    assert view._slot_labels["body"].text() == "cuirass_1.nif"             # the slot still shows what was chosen
+
+    n = len(got)
+    view._weight.setCurrentIndex(0)                                        # back to Heavy
+    _wait(app, lambda: len(got) > n and "cuirass_f" in names() and "cuirass_f0" not in names())
+    assert got[-1]["matched"] == []

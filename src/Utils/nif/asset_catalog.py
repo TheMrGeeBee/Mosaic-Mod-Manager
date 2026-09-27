@@ -216,6 +216,22 @@ class AssetCatalog:
             raise BsaReadError(f"cannot open {entry.archive or '?'} for {entry.path}")
         return bsa.read(entry.path)
 
+    def entry_in_layer(self, mod: str, path: str) -> "AssetEntry | None":
+        """*mod*'s own copy of *path* (BASE for the base game) — the file that
+        layer ships, whether or not it wins — or None if that layer lacks it."""
+        key = norm_key(path)
+        if mod == BASE:
+            arch = self._base_map().get(key)
+            if arch is None:
+                return None
+            return AssetEntry(key, BASE, "bsa", arch.name, self._mod_winner(key) is None)
+        if key in self._loose.get(mod, ()):
+            return AssetEntry(key, mod, "loose", "", self._mod_winner(key) == (mod, "loose", ""))
+        for arch, ps in reversed(self._bsas.get(mod, [])):
+            if key in ps:
+                return AssetEntry(key, mod, "bsa", arch, self._mod_winner(key) == (mod, "bsa", arch))
+        return None
+
     def siblings(self, entry: AssetEntry) -> list[AssetEntry]:
         """Other files in the same folder from the same layer (base game or mod),
         sorted by path — e.g. the worn versions of an item's display model."""
