@@ -619,3 +619,29 @@ def test_fallout4_assemble_uses_its_own_layer_order():
     hat = shape("hat", part_tris=(0,), slots={30})
     scene = assemble([NifScene([body])], {"head": NifScene([hat])}, profile=FALLOUT4_PROFILE)
     assert [s.name for s in scene.shapes] == ["body", "hat"]     # head drawn last, same as Skyrim's convention
+
+
+def test_fallout4_pieces_do_not_hide_each_other_on_a_coincidental_segment_match():
+    # Real bug: a real left-leg piece (m_leg_lite-pad_l.nif) and a real torso
+    # piece (f_torso_heavy.nif) both embed internal "Biped Object" id 3 in
+    # their own dismemberment segments (an internal per-mesh numbering, NOT
+    # the ARMA/BOD2 equip-slot numbers — verified on real files) — no part_tris,
+    # so hide_covered() used to drop the WHOLE torso shape the instant the leg
+    # was added, since {3} <= {2, 3, 6}. Reproduced here with the exact real
+    # slot sets found; both pieces must now survive.
+    torso = shape("torso", part_tris=(0,), slots={3})           # f_torso_heavy.nif's real embedded slots
+    leg = shape("leg", part_tris=(0,), slots={2, 3, 6})          # m_leg_lite-pad_l.nif's real embedded slots
+    scene = assemble([], {"torso": NifScene([torso]), "l_leg": NifScene([leg])}, profile=FALLOUT4_PROFILE)
+    assert {s.name for s in scene.shapes} == {"torso", "leg"}
+
+
+def test_skyrim_a_piece_can_still_hide_an_earlier_piece():
+    # The opposite profile setting (pieces_hide_each_other=True, the default)
+    # must still work — this is the existing helmet-hides-hair behaviour,
+    # exercised again here explicitly against the new two-list assemble()
+    # implementation, not just via the older, differently-named test above.
+    hair = shape("hair", [131, 141], [3, 2])
+    helmet = shape("helm", part_tris=(0,), slots={131})
+    scene = assemble([], {"hair": NifScene([hair]), "head": NifScene([helmet])})
+    assert [s.name for s in scene.shapes] == ["hair", "helm"]
+    assert scene.shapes[0].part_slots == (141,)          # the hair's 131 partition is gone, not the whole shape

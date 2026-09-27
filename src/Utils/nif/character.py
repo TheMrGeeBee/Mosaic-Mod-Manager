@@ -35,6 +35,23 @@ class GameProfile:
     has_weight_suffix: bool = True      # base body files come in _0/_1 pairs
     fold_duplicate_slots: bool = False  # Skyrim's "+100" duplicate slot range
     hair_needs_folder_tiebreak: bool = False   # Skyrim: helmet and hair share slot 131
+    # Whether one equipped piece can hide the covered partitions of an EARLIER
+    # equipped piece (not the base body — that's always hidden, unconditionally,
+    # by every piece). True for Skyrim, where a mesh's own embedded partition
+    # numbers ARE the real BOD2 equip-slot numbers (30 head/31 hair/… — verified,
+    # this is why a helmet correctly hides hair: its own partitions really do
+    # include slot 131). False for Fallout 4: its meshes embed a completely
+    # different, per-mesh "Biped Object" numbering for internal dismemberment,
+    # NOT the ARMA/BOD2 equip-slot numbers — two unrelated pieces can share a
+    # small Biped Object id by coincidence (verified: a real left-leg piece and
+    # a real torso piece both used internal id 3) and wrongly wipe each other
+    # out under the old single mechanism. Real ARMA-based per-slot equip
+    # exclusivity would be the fully correct fix, but the base-body hide
+    # already works via this same embedded-number comparison and must stay
+    # untouched, so for now this profile flag simply stops FO4 pieces from
+    # hiding each other, matching how the tab's UI already treats each group
+    # as its own independent slot the user picks directly.
+    pieces_hide_each_other: bool = True
     head_fmt: str = "{gender}head.nif"
     eyes_fmt: "str | None" = "eyes{gender}.nif"   # None: eyes are part of the head mesh itself
     # Equip groups the base body/hands file(s) alone can satisfy in the picker
@@ -117,7 +134,16 @@ FALLOUT4_PROFILE = GameProfile(
     base_parts=("body", "hands"), has_weight_suffix=False,
     head_fmt="base{gender}head.nif", eyes_fmt=None,
     base_part_groups=frozenset({"body", "hands", "torso", "l_arm", "r_arm", "l_leg", "r_leg"}),
-    hair_needs_folder_tiebreak=True)
+    hair_needs_folder_tiebreak=True,
+    # A mesh's own embedded segment numbers are an internal per-mesh "Biped
+    # Object" numbering, NOT the ARMA/BOD2 equip-slot numbers (verified: a
+    # real left-leg piece and a real torso piece both happened to embed
+    # internal id 3) — comparing them across two DIFFERENT equipped pieces
+    # produced false collisions (equipping a left leg silently made an
+    # already-equipped torso vanish). See pieces_hide_each_other's own
+    # docstring for why the base-body hide (which uses this same comparison
+    # and does work) is left untouched.
+    pieces_hide_each_other=False)
 
 
 def profile_for_game(game_id: "str | None") -> GameProfile:
@@ -332,21 +358,26 @@ def assemble(base: list[NifScene], pieces: "dict[str, NifScene]",
              bones: "dict | None" = None, profile: GameProfile = SKYRIM_PROFILE) -> NifScene:
     """The base parts (body, hands, feet, head) plus the equipped *pieces*
     (group → scene), posed on *bones* when given (see skin_shape). Layers are
-    applied in profile.layer_order: each piece removes the
-    partitions it covers from everything drawn before it — so boots hide the
-    calves, a helmet hides the hair it overlaps — and adds its own shapes."""
+    applied in profile.layer_order: each piece always removes the partitions
+    it covers from the base body (so a boot hides the base calves), and —
+    only when profile.pieces_hide_each_other — also from every piece drawn
+    before it (so a Skyrim helmet correctly hides the hair it overlaps).
+    Fallout 4 turns that second part off (see the flag's own docstring)."""
     if bones:                                    # pose everything on the skeleton first
         base = [skin_scene(b, bones) for b in base]
         pieces = {g: skin_scene(sc, bones) for g, sc in pieces.items()}
-    shapes = [sh for b in base for sh in b.shapes]
+    base_shapes = [sh for b in base for sh in b.shapes]
+    piece_shapes: list[NifShape] = []
     layer_order = profile.layer_order
     ordered = sorted(pieces.items(),
                      key=lambda kv: layer_order.index(kv[0]) if kv[0] in layer_order else -1)
     for _group, scene in ordered:
         covered = covered_slots(scene)
-        shapes = [k for k in (hide_covered(sh, covered) for sh in shapes) if k is not None]
-        shapes.extend(scene.shapes)
-    return NifScene(shapes)
+        base_shapes = [k for k in (hide_covered(sh, covered) for sh in base_shapes) if k is not None]
+        if profile.pieces_hide_each_other:
+            piece_shapes = [k for k in (hide_covered(sh, covered) for sh in piece_shapes) if k is not None]
+        piece_shapes.extend(scene.shapes)
+    return NifScene(base_shapes + piece_shapes)
 
 
 # -- the picker: which meshes can go in a slot ------------------------------------------------------------
