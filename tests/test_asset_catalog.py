@@ -120,6 +120,56 @@ def test_missing_loose_file_and_unreadable_archive_raise(tmp_path):
     assert cat.base_entries() == []                     # unreadable base archive ignored
 
 
+def test_resolve_readable_falls_back_past_a_winner_whose_file_is_not_really_there(tmp_path):
+    # Real bug: a mod's index claimed a path (e.g. an un-stripped Data/
+    # wrapper folder its installer never flattened), but the file isn't
+    # actually there on disk at the path the index promises. resolve()
+    # still returns that broken winner; resolve_readable() must skip it and
+    # fall through to the next lower-priority provider, exactly like the
+    # game engine does for a loose override that isn't really on disk.
+    base = _bsa(tmp_path, "base.bsa", {TEX: b"base-tex"})
+    mods = tmp_path / "mods"
+    # "broken" claims to ship TEX loose, but nothing is written to disk for it.
+    (mods / "broken").mkdir(parents=True, exist_ok=True)
+    cat = AssetCatalog(
+        base_name="G", base_archives=[base], mod_order=["broken"],
+        loose={"broken": {TEX: TEX}}, bsas={}, loose_winner={TEX: "broken"}, bsa_winner={},
+        mod_dir_for=lambda m: mods / m)
+    winner = cat.resolve(TEX)
+    assert winner.mod == "broken"
+    with pytest.raises(OSError):
+        cat.read(winner)
+    fallback = cat.resolve_readable(TEX)
+    assert fallback.mod == BASE
+    assert cat.read(fallback) == b"base-tex"
+    cat.close()
+
+
+def test_resolve_readable_is_the_winner_when_it_is_actually_fine(world):
+    assert world.resolve_readable(MESH).mod == world.resolve(MESH).mod
+
+
+def test_resolve_readable_fallback_still_prefers_loose_over_bsa(tmp_path):
+    # "broken" is the (unreadable) loose winner. Of the two real fallbacks,
+    # "bsa_mod" is higher mod-priority but only has a BSA copy; "loose_mod" is
+    # lower-priority but has a genuine loose copy — loose must still win.
+    base = _bsa(tmp_path, "base.bsa", {TEX: b"base-tex"})
+    mods = tmp_path / "mods"
+    _put(mods / "loose_mod", {TEX: b"loose-tex"})
+    mods.joinpath("bsa_mod").mkdir(parents=True, exist_ok=True)
+    mods.joinpath("bsa_mod", "b.bsa").write_bytes(_bsa(tmp_path, "b.bsa", {TEX: b"bsa-tex"}).read_bytes())
+    (mods / "broken").mkdir(parents=True, exist_ok=True)
+    cat = AssetCatalog(
+        base_name="G", base_archives=[base], mod_order=["loose_mod", "bsa_mod", "broken"],
+        loose={"broken": {TEX: TEX}, "loose_mod": {TEX: TEX}},
+        bsas={"bsa_mod": [("b.bsa", [TEX])]},
+        loose_winner={TEX: "broken"}, bsa_winner={}, mod_dir_for=lambda m: mods / m)
+    fallback = cat.resolve_readable(TEX)
+    assert fallback.mod == "loose_mod" and fallback.kind == "loose"
+    assert cat.read(fallback) == b"loose-tex"
+    cat.close()
+
+
 def test_contested_keys_are_paths_more_than_one_layer_provides(world):
     # MESH: base + modA + modB; TEX: base + modA + modB. ONLY_BASE / NEW_IN_MOD: one layer.
     assert world.contested_keys() == {MESH, TEX}

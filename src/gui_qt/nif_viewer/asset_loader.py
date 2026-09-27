@@ -24,11 +24,15 @@ class AssetLoader:
         self._lock = threading.Lock()
 
     def image(self, cat: AssetCatalog, path: str):
-        """The decoded QImage of texture *path* (through the catalog's winners), or None."""
+        """The decoded QImage of texture *path* (through the catalog's winners,
+        falling back to a lower-priority provider — down to the base game —
+        if the winner's own file turns out not to really be there, e.g. a
+        mod's index disagreeing with what it actually shipped on disk), or
+        None."""
         with self._lock:
             if path in self._img_cache:
                 return self._img_cache[path]
-        e = cat.resolve(path)
+        e = cat.resolve_readable(path)
         try:
             img = load_qimage_bytes(cat.read(e)) if e else None
         except (OSError, BsaReadError):

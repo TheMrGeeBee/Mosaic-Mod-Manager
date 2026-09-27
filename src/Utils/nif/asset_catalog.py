@@ -217,6 +217,62 @@ class AssetCatalog:
             return AssetEntry(key, BASE, "bsa", arch.name, True)
         return None
 
+    def resolve_readable(self, path: str) -> "AssetEntry | None":
+        """Like resolve(), but a winning copy that turns out to be unreadable —
+        a mod's index disagreeing with what's actually on disk, e.g. a mod
+        shipping its files under an unstripped wrapper folder its own install
+        never flattened (verified on a real profile: a face-texture mod's
+        index claimed a path it ships only under an extra ``Data/`` prefix,
+        so the real game engine would silently fall through to the base
+        game's own copy of that exact texture, which is right there and
+        reads fine) — is skipped in favour of the next lower-priority
+        provider of the same path, all the way down to the base game. This is
+        exactly what the engine itself does for a loose override that isn't
+        really on disk; it never happens for a genuinely present file, so the
+        extra read attempts are rare in practice.
+
+        Keeps the same "loose beats bsa, whatever the mod order" engine rule
+        resolve() itself follows: every mod's loose copy is tried (highest
+        priority first) before any mod's bsa copy, not just a per-mod walk —
+        otherwise a lower-priority mod's bsa copy could jump ahead of a
+        higher-priority mod's (also broken) loose copy."""
+        key = norm_key(path)
+        tried: set = set()
+
+        def try_entry(e: "AssetEntry | None") -> "AssetEntry | None":
+            if e is None:
+                return None
+            ident = (e.mod, e.kind, e.archive)
+            if ident in tried:
+                return None
+            tried.add(ident)
+            try:
+                self.read(e)
+            except (OSError, BsaReadError):
+                return None
+            return e
+
+        found = try_entry(self.resolve(path))
+        if found is not None:
+            return found
+        for m in reversed(self.mod_order):
+            if key in self._loose.get(m, ()):
+                found = try_entry(AssetEntry(key, m, "loose", "", False))
+                if found is not None:
+                    return found
+        for m in reversed(self.mod_order):
+            for arch, ps in reversed(self._bsas.get(m, [])):
+                if key in ps:
+                    found = try_entry(AssetEntry(key, m, "bsa", arch, False))
+                    if found is not None:
+                        return found
+        arch = self._base_map().get(key)
+        if arch is not None:
+            found = try_entry(AssetEntry(key, BASE, "bsa", arch.name, False))
+            if found is not None:
+                return found
+        return None
+
     def read(self, entry: AssetEntry) -> bytes:
         """Bytes of *entry*'s file. Raises OSError / BsaReadError if unreadable."""
         if entry.kind == "loose":
