@@ -498,13 +498,12 @@ class MainWindow(QMainWindow):
             except Exception:
                 pass
 
-        # Header+body+footer go in a vertical splitter with the log text area
-        # so the log is drag-resizable; the log control bar stays fixed below.
+        # Body+footer go in a vertical splitter with the log text area so the
+        # log is drag-resizable; the log control bar stays fixed below.
         main_content = QWidget()
         mc = QVBoxLayout(main_content)
         mc.setContentsMargins(0, 0, 0, 0)
         mc.setSpacing(0)
-        mc.addWidget(self._build_header_row())
         mc.addWidget(self._build_body_row(), 1)
         # (The tool footers now live inside each panel — see _build_body_row /
         # _build_modlist_area — not in a separate window-wide row.)
@@ -539,6 +538,12 @@ class MainWindow(QMainWindow):
         outer = QVBoxLayout(central)
         outer.setContentsMargins(0, 0, 0, 0)
         outer.setSpacing(0)
+        # The header (game/profile selectors + action buttons) sits above the
+        # tab widget itself, not inside the "Mods" tab's own page — it used to
+        # be nested in main_content, which meant it vanished on every other
+        # tab (NIF Viewer, Character, …) since only the active tab's page is
+        # shown. As a true sibling of self._tabs it stays visible everywhere.
+        outer.addWidget(self._build_header_row())
         outer.addWidget(self._vsplit, 1)
         outer.addWidget(self._build_log_bar())   # fixed control bar
         self.setCentralWidget(central)
