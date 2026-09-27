@@ -10,18 +10,103 @@ asset catalog, so a body or skeleton replacer mod is picked up automatically.
 from __future__ import annotations
 
 import re
-from dataclasses import replace
+from dataclasses import dataclass, field as dc_field, replace
 from typing import Iterable
 
 from array import array
 
 from Utils.nif.nif_reader import NifNode, NifScene, NifShape, compose_transform
 
+
+@dataclass(frozen=True)
+class GameProfile:
+    """Everything about how a game lays out its character assets and slots
+    that the functions below need — so the same assembly/skinning/hiding
+    logic works for a second game without duplicating it. Defaults (the bare
+    module-level constants, and every function's default parameter) are
+    Skyrim's; pass a different profile — currently only FALLOUT4_PROFILE — to
+    use another game's conventions instead."""
+    body_dir: str
+    skeletons: dict                    # {"male"/"female": path}
+    groups: list                       # [(key, label), ...], display order
+    layer_order: list                  # group keys, base-to-outermost draw order
+    slot_groups: dict                  # {group_key: frozenset of slot numbers}
+    base_parts: tuple                  # body-file components ("body", "hands", …)
+    has_weight_suffix: bool = True      # base body files come in _0/_1 pairs
+    fold_duplicate_slots: bool = False  # Skyrim's "+100" duplicate slot range
+    hair_needs_folder_tiebreak: bool = False   # Skyrim: helmet and hair share slot 131
+    head_fmt: str = "{gender}head.nif"
+    eyes_fmt: "str | None" = "eyes{gender}.nif"   # None: eyes are part of the head mesh itself
+    # Equip groups the base body/hands file(s) alone can satisfy in the picker
+    # (a "body" file's own partitions also cover arms/legs, even though the
+    # file itself isn't named after them).
+    base_part_groups: frozenset = dc_field(default_factory=lambda: frozenset(
+        {"body", "hands", "feet", "arms", "legs"}))
+
+
 BODY_DIR = "meshes/actors/character/character assets/"
 SKELETONS = {
     "male": BODY_DIR + "skeleton.nif",
     "female": "meshes/actors/character/character assets female/skeleton_female.nif",
 }
+
+
+
+# -- equipment slots ----------------------------------------------------------------------------
+# What a character can wear, in the order the slot list shows them. Each piece
+# belongs to exactly one group; equipping into a group replaces what was there.
+GROUPS = [("head", "Head"), ("hair", "Hair"), ("circlet", "Circlet"), ("ears", "Ears"),
+          ("amulet", "Amulet"), ("body", "Body"), ("arms", "Forearms"), ("hands", "Hands"),
+          ("ring", "Ring"), ("legs", "Calves"), ("feet", "Feet")]
+GROUP_LABELS = dict(GROUPS)
+
+# Layering when pieces overlap: later entries are drawn "on top" and hide the
+# covered partitions of everything before them (base body first, hair lowest).
+LAYER_ORDER = ["hair", "ears", "body", "arms", "legs", "hands", "feet", "amulet", "ring",
+               "head", "circlet"]
+
+SKYRIM_PROFILE = GameProfile(
+    body_dir=BODY_DIR, skeletons=SKELETONS, groups=GROUPS, layer_order=LAYER_ORDER,
+    slot_groups={"body": frozenset({32}), "hands": frozenset({33}), "feet": frozenset({37}),
+                "head": frozenset({30, 31}), "circlet": frozenset({42}), "amulet": frozenset({35}),
+                "ring": frozenset({36}), "ears": frozenset({43}), "arms": frozenset({34}),
+                "legs": frozenset({38})},
+    base_parts=("body", "hands", "feet"), fold_duplicate_slots=True, hair_needs_folder_tiebreak=True)
+
+# Fallout 4: verified against real Fallout4.esm ARMA records (BOD2 masks), not
+# guessed — see the NIF/character viewer memory note for the worked examples
+# (Glasses always 47, Pip-Boy always 60, Torso/L-Arm/R-Arm/L-Leg/R-Leg exactly
+# 41-45, Body always 33, gloves 34+35). FO4 has no Skyrim-style "+100"
+# duplicate slot range and no helmet/hair slot collision (30 vs 31 are already
+# distinct), so neither of those Skyrim quirks apply. No separate feet mesh
+# (boots replace part of the body/legs coverage instead) and no per-NPC
+# body-weight morph — base body/hands ship as a single file, not a _0/_1 pair
+# (confirmed on a real CBBE-replaced body). Torso(41)/L-Arm(42)/R-Arm(43)/
+# L-Leg(44)/R-Leg(45) are folded into the same "body"/"arms"/"legs" groups as
+# the more common 33/34-35 slots (both represent the same body region in
+# different outfit-construction styles) rather than given their own rows.
+FALLOUT4_BODY_DIR = "meshes/actors/character/characterassets/"
+FALLOUT4_SKELETONS = {"male": FALLOUT4_BODY_DIR + "skeleton.nif",
+                      "female": FALLOUT4_BODY_DIR + "skeleton.nif"}   # one skeleton, both genders
+FALLOUT4_GROUPS = [("head", "Head"), ("hair", "Hair"), ("body", "Body"), ("arms", "Arms"),
+                   ("hands", "Hands"), ("legs", "Legs"), ("eyes", "Eyes/Glasses"),
+                   ("pipboy", "Pip-Boy"), ("backpack", "Backpack")]
+FALLOUT4_LAYER_ORDER = ["hair", "body", "arms", "legs", "hands", "eyes", "pipboy", "backpack", "head"]
+FALLOUT4_PROFILE = GameProfile(
+    body_dir=FALLOUT4_BODY_DIR, skeletons=FALLOUT4_SKELETONS, groups=FALLOUT4_GROUPS,
+    layer_order=FALLOUT4_LAYER_ORDER,
+    slot_groups={"head": frozenset({30}), "hair": frozenset({31}), "body": frozenset({33, 41}),
+                "arms": frozenset({42, 43}), "hands": frozenset({34, 35}), "legs": frozenset({44, 45}),
+                "eyes": frozenset({47}), "pipboy": frozenset({60}), "backpack": frozenset({61})},
+    base_parts=("body", "hands"), has_weight_suffix=False,
+    head_fmt="base{gender}head.nif", eyes_fmt=None,
+    base_part_groups=frozenset({"body", "hands", "arms", "legs"}))
+
+
+def profile_for_game(game_id: "str | None") -> GameProfile:
+    """The GameProfile matching *game_id* — Fallout4's if it says so, Skyrim's
+    (the historical default) for anything else, including None."""
+    return FALLOUT4_PROFILE if game_id == "Fallout4" else SKYRIM_PROFILE
 
 
 def detect_gender(path: str) -> "str | None":
@@ -101,14 +186,16 @@ def detect_weight(path: str) -> int:
     return 0 if stem.endswith("_0") else 1
 
 
-def auto_gender(path: str, scene: NifScene, sibling_paths: "Iterable[str]" = ()) -> "str | None":
+def auto_gender(path: str, scene: NifScene, sibling_paths: "Iterable[str]" = (),
+                profile: GameProfile = SKYRIM_PROFILE) -> "str | None":
     """Which base body to wear *scene* on when the choice is left on Auto: only
     wearable gear qualifies (armour/clothes or a body/hands/feet mesh, and
     skinned with body slots, so creatures and props get none); the gender comes
     from the path or its f-suffix pair (see guess_gender), defaulting to female when
     neither says."""
     p = path.replace("\\", "/").lower()
-    wearable = p.startswith(("meshes/armor/", "meshes/clothes/")) or "character assets" in p
+    body_dir = profile.body_dir.rstrip("/").lower()
+    wearable = p.startswith(("meshes/armor/", "meshes/clothes/")) or body_dir in p
     if not wearable or not is_skinned(scene) or not covered_slots(scene):
         return None
     return guess_gender(path, sibling_paths) or "female"
@@ -125,12 +212,18 @@ def weight_variant(path: str, weight: int) -> "str | None":
     return f"{base[:-1]}{1 if weight else 0}.{ext}"
 
 
-def body_paths(gender: str, weight: int = 1, head: bool = False) -> list[str]:
-    """The base game's body, hands and feet meshes for *gender* (plus the default
-    head and eyes with head=True — they have no weight variants)."""
-    paths = [f"{BODY_DIR}{gender}{part}_{weight}.nif" for part in ("body", "hands", "feet")]
+def body_paths(gender: str, weight: int = 1, head: bool = False,
+               profile: GameProfile = SKYRIM_PROFILE) -> list[str]:
+    """The base game's body/hands(/feet) meshes for *gender* (plus the default
+    head, and eyes when the game keeps them separate, with head=True). Games
+    without a body-weight morph (profile.has_weight_suffix False) have no
+    _0/_1 suffix at all — *weight* is then ignored."""
+    suffix = f"_{weight}" if profile.has_weight_suffix else ""
+    paths = [f"{profile.body_dir}{gender}{part}{suffix}.nif" for part in profile.base_parts]
     if head:
-        paths += [f"{BODY_DIR}{gender}head.nif", f"{BODY_DIR}eyes{gender}.nif"]
+        paths.append(f"{profile.body_dir}{profile.head_fmt.format(gender=gender)}")
+        if profile.eyes_fmt:
+            paths.append(f"{profile.body_dir}{profile.eyes_fmt.format(gender=gender)}")
     return paths
 
 
@@ -184,55 +277,42 @@ def compose(selected: NifScene, bodies: list[NifScene]) -> NifScene:
     return NifScene(shapes)
 
 
-# -- equipment slots ----------------------------------------------------------------------------
-# What a character can wear, in the order the slot list shows them. Each piece
-# belongs to exactly one group; equipping into a group replaces what was there.
-GROUPS = [("head", "Head"), ("hair", "Hair"), ("circlet", "Circlet"), ("ears", "Ears"),
-          ("amulet", "Amulet"), ("body", "Body"), ("arms", "Forearms"), ("hands", "Hands"),
-          ("ring", "Ring"), ("legs", "Calves"), ("feet", "Feet")]
-GROUP_LABELS = dict(GROUPS)
-
-# Layering when pieces overlap: later entries are drawn "on top" and hide the
-# covered partitions of everything before them (base body first, hair lowest).
-LAYER_ORDER = ["hair", "ears", "body", "arms", "legs", "hands", "feet", "amulet", "ring",
-               "head", "circlet"]
-
-
-def slot_group(path: str, slots: frozenset) -> "str | None":
+def slot_group(path: str, slots: frozenset, profile: GameProfile = SKYRIM_PROFILE) -> "str | None":
     """Which equipment group a mesh belongs to, from its body slots and path;
     None when it has no body slots (props, weapons, shields are not wearable yet).
 
-    Slot numbers are the game's BSDismemberBodyPartType: 30 head, 31 hair,
-    32 body, 33 hands, 34 forearms, 35 amulet, 36 ring, 37 feet, 38 calves,
-    42 circlet, 43 ears; +100 for the 'Skyrim' duplicates (130 head, 131 hair…).
-    A helmet and a hairstyle both use 131, so the folder breaks that tie."""
+    Slot numbers are the game's BSDismemberBodyPartType (Skyrim: 30 head,
+    31 hair, 32 body, 33 hands, 34 forearms, 35 amulet, 36 ring, 37 feet,
+    38 calves, 42 circlet, 43 ears; +100 for the 'Skyrim' duplicates — 130
+    head, 131 hair…; a helmet and a hairstyle both use 131, so the folder
+    breaks that tie. Fallout 4 uses a different, non-overlapping set — see
+    FALLOUT4_PROFILE — with no such duplicate range or tie to break)."""
     p = path.replace("\\", "/").lower()
     if not slots:
         return None
-    if "character assets/hair/" in p or "/hair/" in p:
+    if profile.hair_needs_folder_tiebreak and ("character assets/hair/" in p or "/hair/" in p):
         return "hair"
-    s = {x % 100 if x >= 100 else x for x in slots}
-    for group, keys in (("body", {32}), ("hands", {33}), ("feet", {37}),
-                        ("head", {30, 31}), ("circlet", {42}), ("amulet", {35}),
-                        ("ring", {36}), ("ears", {43}), ("arms", {34}), ("legs", {38})):
+    s = {x % 100 if profile.fold_duplicate_slots and x >= 100 else x for x in slots}
+    for group, keys in profile.slot_groups.items():
         if s & keys:
             return group
     return None
 
 
 def assemble(base: list[NifScene], pieces: "dict[str, NifScene]",
-             bones: "dict | None" = None) -> NifScene:
+             bones: "dict | None" = None, profile: GameProfile = SKYRIM_PROFILE) -> NifScene:
     """The base parts (body, hands, feet, head) plus the equipped *pieces*
     (group → scene), posed on *bones* when given (see skin_shape). Layers are
-    applied in LAYER_ORDER: each piece removes the
+    applied in profile.layer_order: each piece removes the
     partitions it covers from everything drawn before it — so boots hide the
     calves, a helmet hides the hair it overlaps — and adds its own shapes."""
     if bones:                                    # pose everything on the skeleton first
         base = [skin_scene(b, bones) for b in base]
         pieces = {g: skin_scene(sc, bones) for g, sc in pieces.items()}
     shapes = [sh for b in base for sh in b.shapes]
+    layer_order = profile.layer_order
     ordered = sorted(pieces.items(),
-                     key=lambda kv: LAYER_ORDER.index(kv[0]) if kv[0] in LAYER_ORDER else -1)
+                     key=lambda kv: layer_order.index(kv[0]) if kv[0] in layer_order else -1)
     for _group, scene in ordered:
         covered = covered_slots(scene)
         shapes = [k for k in (hide_covered(sh, covered) for sh in shapes) if k is not None]
@@ -241,7 +321,12 @@ def assemble(base: list[NifScene], pieces: "dict[str, NifScene]",
 
 
 # -- the picker: which meshes can go in a slot ------------------------------------------------------------
-_BASE_PART = re.compile(r"^(male|female)(body|hands|feet)(_[01])?\.nif$")
+def _is_base_part(name: str, profile: GameProfile) -> bool:
+    """Matches e.g. femalebody_1.nif (Skyrim) or femalebody.nif (Fallout 4, no
+    weight suffix at all) against *profile*'s own base_parts."""
+    parts_alt = "|".join(re.escape(p) for p in profile.base_parts)
+    suffix = r"(_[01])?" if profile.has_weight_suffix else ""
+    return re.fullmatch(rf"(male|female)({parts_alt}){suffix}\.nif", name) is not None
 
 
 # Top-level mesh folders that hold scenery, not gear — skipped only to save the
@@ -252,7 +337,8 @@ _SCENERY_ROOTS = frozenset({
     "shadertest", "fx", "grass", "trees", "rocks", "ships", "ui", "textures", "sound"})
 
 
-def is_wearable_path(path: str, group: "str | None" = None) -> bool:
+def is_wearable_path(path: str, group: "str | None" = None,
+                     profile: GameProfile = SKYRIM_PROFILE) -> bool:
     """Whether *path* could be worn in *group* (any group when None), judged by
     folder and name alone — the cheap first cut before the mesh is opened; the
     mesh's own body slots make the real decision (fits_slot).
@@ -260,7 +346,7 @@ def is_wearable_path(path: str, group: "str | None" = None) -> bool:
     Everything outside an ``actors`` folder qualifies except scenery folders —
     which covers armour and clothes wherever they live (``meshes/armor``, the DLC
     and Creation Club folders, a mod's own folder). Under ``meshes/actors`` only two
-    things do: hairstyles (for "hair") and the base body/hands/feet files
+    things do: hairstyles (for "hair") and the base body/hands(/feet) files
     (femalebody_1.nif…), which a body mod replaces (for the body-part slots).
     Heads, eyes, race and creature parts, first-person arms, child gear and
     beast-race variants never do."""
@@ -272,22 +358,23 @@ def is_wearable_path(path: str, group: "str | None" = None) -> bool:
         return False
     if any(w in name for w in _RACE_WORDS) or "/child/" in p or "/children/" in p or name.startswith("child"):
         return False                                   # beast races and child gear: not for the adult human character
-    if p.startswith(BODY_DIR + "hair/"):
+    if p.startswith(profile.body_dir + "hair/"):
         return group in (None, "hair")
-    if p.startswith(BODY_DIR) and "/" not in p[len(BODY_DIR):]:
-        return _BASE_PART.match(name) is not None and group in (None, "body", "hands", "feet", "arms", "legs")
+    if p.startswith(profile.body_dir) and "/" not in p[len(profile.body_dir):]:
+        return _is_base_part(name, profile) and group in (None, *profile.base_part_groups)
     if "/actors/" in p:                                # creature/race parts, also inside DLC/CC/mod folders
         return False
     return p.split("/")[1] not in _SCENERY_ROOTS
 
 
-def fits_slot(path: str, slots: "frozenset | None", group: "str | None") -> bool:
+def fits_slot(path: str, slots: "frozenset | None", group: "str | None",
+             profile: GameProfile = SKYRIM_PROFILE) -> bool:
     """Whether the mesh at *path* with body *slots* belongs in *group*: it must be
     a wearable path and its slots must place it in that group (any group when None,
     as long as it has slots at all)."""
-    if not slots or not is_wearable_path(path, group):
+    if not slots or not is_wearable_path(path, group, profile):
         return False
-    return group is None or slot_group(path, slots) == group
+    return group is None or slot_group(path, slots, profile) == group
 
 
 def gender_fits(path: str, gender: "str | None", sibling_paths: "Iterable[str]" = ()) -> bool:

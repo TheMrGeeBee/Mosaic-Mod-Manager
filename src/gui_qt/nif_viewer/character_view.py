@@ -27,9 +27,9 @@ from Utils.archives.bsa_file_reader import BsaReadError
 from Utils.nif.asset_catalog import BASE, AssetCatalog, AssetEntry
 from Utils.nif.catalog_loader import build_catalog
 from Utils.nif.character import (
-    GROUP_LABELS, GROUPS, assemble, blend_scene, body_paths, bone_transforms, covered_slots, detect_gender,
-    fits_slot, gender_fits, guess_gender, is_race_variant, is_wearable_path, slot_group,
-    weight_variant,
+    SKYRIM_PROFILE, GameProfile, assemble, blend_scene, body_paths, bone_transforms, covered_slots,
+    detect_gender, fits_slot, gender_fits, guess_gender, is_race_variant, is_wearable_path,
+    profile_for_game, slot_group, weight_variant,
 )
 from Utils.nif.nif_reader import NifError, NifUnsupported, format_label, read_nif
 from gui_qt.nif_viewer.asset_loader import AssetLoader
@@ -56,13 +56,15 @@ class PickMeshDialog(QDialog):
     _ready = Signal(object)
 
     def __init__(self, catalog: AssetCatalog, group: "str | None", gender: "str | None" = None,
-                 parent=None):
+                 parent=None, profile: GameProfile = SKYRIM_PROFILE):
         super().__init__(parent)
+        group_labels = dict(profile.groups)
         self.setWindowTitle(self.tr("Choose a mesh") if group is None
-                            else self.tr("Choose: {0}").format(GROUP_LABELS.get(group, group)))
+                            else self.tr("Choose: {0}").format(group_labels.get(group, group)))
         self.resize(720, 540)
         self._catalog = catalog
         self._group = group
+        self._profile = profile
         self._gender = gender
         self._fitting: list[AssetEntry] = []          # everything that fits the slot
         self._entries: list[AssetEntry] = []          # …after the gender filter and weight pairs
@@ -104,14 +106,14 @@ class PickMeshDialog(QDialog):
 
     # -- worker ---------------------------------------------------------------------------------
     def _scan(self):
-        cat, group = self._catalog, self._group
+        cat, group, profile = self._catalog, self._group, self._profile
         cands: list[AssetEntry] = []
         for e in cat.base_entries():
-            if e.is_winner and is_wearable_path(e.path, group):
+            if e.is_winner and is_wearable_path(e.path, group, profile):
                 cands.append(e)
         for m in cat.mods():
             for e in cat.mod_entries(m):
-                if (e.is_winner and is_wearable_path(e.path, group)
+                if (e.is_winner and is_wearable_path(e.path, group, profile)
                         and cat.incompatible_label(e) is None):
                     cands.append(e)
         fitting: list[AssetEntry] = []
@@ -121,7 +123,7 @@ class PickMeshDialog(QDialog):
                 return []
             if i % 150 == 0:
                 safe_emit(self._progress, i, total)
-            if fits_slot(e.path, cat.slots_of(e), group):
+            if fits_slot(e.path, cat.slots_of(e), group, profile):
                 fitting.append(e)
         return fitting
 
@@ -197,6 +199,7 @@ class CharacterView(QWidget):
 
     def __init__(self, game, profile_dir, staging_dir, parent=None):
         super().__init__(parent)
+        self._profile = profile_for_game(getattr(game, "game_id", None))
         self._catalog: "AssetCatalog | None" = None
         self._loader = AssetLoader()
         self._pieces: dict[str, AssetEntry] = {}
@@ -232,6 +235,12 @@ class CharacterView(QWidget):
             "pieces between their _0 and _1 meshes in the same way."))
         form.addWidget(self._weight, 1, 1)
         self._show_weight()
+        if not self._profile.has_weight_suffix:
+            # This game has no per-actor body-weight morph at all (verified on
+            # Fallout 4: base body/hands ship as a single file, no _0/_1 pair) —
+            # the slider would just be dead weight in the UI.
+            self._weight_label.setVisible(False)
+            self._weight.setVisible(False)
         self._skel = QCheckBox(self.tr("Show skeleton"))
         form.addWidget(self._skel, 2, 0, 1, 2)
         lv.addLayout(form)
@@ -243,7 +252,7 @@ class CharacterView(QWidget):
         grid.setColumnStretch(1, 1)
         self._slot_labels: dict[str, QLabel] = {}
         self._slot_clear: dict[str, QPushButton] = {}
-        for row, (group, label) in enumerate(GROUPS):
+        for row, (group, label) in enumerate(self._profile.groups):
             grid.addWidget(QLabel(label), row, 0)
             name = QLabel(self.tr("— none —"))
             name.setStyleSheet(f"color:{_c(pal, 'TEXT_DIM')};")
@@ -264,13 +273,18 @@ class CharacterView(QWidget):
         self._remove_all.setEnabled(False)
         self._remove_all.clicked.connect(self._clear_all)
         lv.addWidget(self._remove_all)
-        hint = QLabel(self.tr(
+        hint_text = (self.tr(
             "Add pieces from the NIF Viewer (select an armour, clothing or hair mesh and press "
             "“Add to character”), or choose them here. A piece goes into the slot its "
             "mesh belongs to and hides the body parts it covers.\n\n"
-            "Drag to rotate · right-drag to pan · scroll to zoom · double-click to re-frame.\n\n"
-            "The head is not welded to the body the way the game does it (it builds each "
-            "character's head at runtime), so a seam can show at the neck, most at Light weight."))
+            "Drag to rotate · right-drag to pan · scroll to zoom · double-click to re-frame.\n\n")
+            + (self.tr(
+                "The head is not welded to the body the way the game does it (it builds each "
+                "character's head at runtime), so a seam can show at the neck, most at Light weight.")
+               if self._profile.has_weight_suffix else self.tr(
+                "The head is not welded to the body the way the game does it (it builds each "
+                "character's head at runtime), so a seam can show at the neck.")))
+        hint = QLabel(hint_text)
         hint.setWordWrap(True)
         hint.setStyleSheet(f"color:{_c(pal, 'TEXT_DIM')}; padding-top:8px;")
         lv.addWidget(hint)
@@ -358,7 +372,7 @@ class CharacterView(QWidget):
             for e in entries:
                 if self._closing or self._catalog is not cat:
                     return
-                if e.is_winner and is_wearable_path(e.path) and cat.incompatible_label(e) is None:
+                if e.is_winner and is_wearable_path(e.path, profile=self._profile) and cat.incompatible_label(e) is None:
                     cat.slots_of(e)
                     n += 1
                     if n % 500 == 0:
@@ -383,7 +397,15 @@ class CharacterView(QWidget):
                     name, format_label(exc.version, exc.bsver)), None
             except (NifError, BsaReadError, OSError) as exc:
                 return entry, None, self.tr("Could not read {0}: {1}").format(name, exc), None
-            group = slot_group(entry.path, covered_slots(sc))
+            # cat.slots_of() prefers an active plugin's own ARMA record (ground
+            # truth) over the mesh's own embedded slots — the two agree for
+            # Skyrim (Bethesda kept the numbering aligned there) but not for
+            # Fallout 4, where a mesh's own segment data uses a different,
+            # non-equip-slot numbering (verified: a real vault suit's own
+            # segments report {1..6}, not the {33, 41...} its ARMA record
+            # actually declares) — so the raw mesh-parsed covered_slots(sc)
+            # would put every FO4 piece in the wrong group, or none at all.
+            group = slot_group(entry.path, cat.slots_of(entry) or covered_slots(sc), self._profile)
             if group is None:
                 # Usually an item's display/inventory model (unskinned); the worn
                 # meshes sit beside it, named after it (bladesarmor.nif →
@@ -423,7 +445,7 @@ class CharacterView(QWidget):
         self._pieces[group] = entry
         self._piece_gender[group] = gender
         self.equip_result.emit(self.tr("Added {0} to the character ({1})").format(
-            entry.path.rsplit("/", 1)[-1], GROUP_LABELS.get(group, group)), True)
+            entry.path.rsplit("/", 1)[-1], dict(self._profile.groups).get(group, group)), True)
         self._refresh_slots()
         self._rebuild(reframe=False)
 
@@ -443,13 +465,13 @@ class CharacterView(QWidget):
     def _choose(self, group: str):
         if self._catalog is None:
             return
-        dlg = PickMeshDialog(self._catalog, group, self._gender.currentData(), self)
+        dlg = PickMeshDialog(self._catalog, group, self._gender.currentData(), self, profile=self._profile)
         if dlg.exec() == QDialog.Accepted and dlg.chosen() is not None:
             self.equip(dlg.chosen())
 
     def _refresh_slots(self):
         pal = active_palette()
-        for group, _label in GROUPS:
+        for group, _label in self._profile.groups:
             e = self._pieces.get(group)
             lab = self._slot_labels[group]
             if e is None:
@@ -501,8 +523,11 @@ class CharacterView(QWidget):
         def job():
             problems: list[str] = []
             base = []
-            # Base body/hands/feet come in slim and heavy files; head and eyes in one.
-            for p0, p1 in zip(body_paths(gender, 0, head=True), body_paths(gender, 1, head=True)):
+            # Base body/hands/feet come in slim and heavy files (Fallout 4: a
+            # single file, so p0 == p1 below and no blend is attempted); head
+            # and eyes in one.
+            for p0, p1 in zip(body_paths(gender, 0, head=True, profile=self._profile),
+                              body_paths(gender, 1, head=True, profile=self._profile)):
                 e0, e1 = cat.resolve(p0), cat.resolve(p1)
                 sc, _blended = load_weighted(e0, e1) if p0 != p1 else (self._loader.nif_entry(cat, e1), False)
                 if sc is not None:
@@ -536,8 +561,9 @@ class CharacterView(QWidget):
                         matched.append(used.path.rsplit("/", 1)[-1])
             # The skeleton poses every piece (hair and eyes are stored relative to a
             # bone and only land on the head that way); it is drawn only if asked.
-            skel_nodes = self._loader.skeleton(cat, gender)
-            scene = assemble(base, scenes, bone_transforms(skel_nodes) if skel_nodes else None)
+            skel_nodes = self._loader.skeleton(cat, gender, self._profile.skeletons)
+            scene = assemble(base, scenes, bone_transforms(skel_nodes) if skel_nodes else None,
+                             self._profile)
             images: dict[int, object] = {}
             missing: list[str] = []
             for i, sh in enumerate(scene.shapes):

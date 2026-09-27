@@ -8,7 +8,7 @@ import threading
 
 from Utils.archives.bsa_file_reader import BsaFile, BsaReadError  # noqa: F401  (BsaReadError re-exported for callers)
 from Utils.nif.asset_catalog import AssetCatalog, AssetEntry
-from Utils.nif.character import SKELETONS
+from Utils.nif.character import SKELETONS as _DEFAULT_SKELETONS
 from Utils.nif.nif_reader import NifError, NifScene, read_nif
 from gui_qt.image_preview import load_qimage_bytes
 
@@ -70,12 +70,14 @@ class AssetLoader:
                 self._nif_cache.pop(next(iter(self._nif_cache)))
         return scene
 
-    def skeleton(self, cat: AssetCatalog, gender: str):
-        """The game's skeleton nodes for *gender* (cached), or None."""
+    def skeleton(self, cat: AssetCatalog, gender: str, skeletons: dict = _DEFAULT_SKELETONS):
+        """The game's skeleton nodes for *gender* (cached), or None. *skeletons*
+        is a GameProfile.skeletons dict — Skyrim's by default, so existing
+        callers that don't pass one keep working unchanged."""
         with self._lock:
             if gender in self._skel_cache:
                 return self._skel_cache[gender]
-        sc = self.nif(cat, SKELETONS[gender], include_nodes=True)
+        sc = self.nif(cat, skeletons[gender], include_nodes=True)
         nodes = sc.nodes if sc is not None and sc.nodes else None
         with self._lock:
             self._skel_cache[gender] = nodes

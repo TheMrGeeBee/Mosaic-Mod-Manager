@@ -506,3 +506,71 @@ def test_blend_scene_pairs_shapes_by_name_and_keeps_extras():
     assert out.shapes[0].positions[0] == 1.0                                  # blended
     assert out.shapes[1].positions[0] == 5.0                                  # no slim counterpart: as is
     assert blend_scene(slim, heavy, 0.0) is slim and blend_scene(slim, heavy, 1.0) is heavy
+
+
+# -- Fallout 4 GameProfile ------------------------------------------------------------------
+from Utils.nif.character import (  # noqa: E402
+    FALLOUT4_PROFILE, SKYRIM_PROFILE, GameProfile, assemble, fits_slot, is_wearable_path,
+    profile_for_game, slot_group,
+)
+
+
+def test_profile_for_game():
+    assert profile_for_game("Fallout4") is FALLOUT4_PROFILE
+    assert profile_for_game("skyrim_se") is SKYRIM_PROFILE
+    assert profile_for_game(None) is SKYRIM_PROFILE
+    assert profile_for_game("some_other_game") is SKYRIM_PROFILE   # unknown: Skyrim's the historical default
+
+
+def test_fallout4_body_paths_have_no_weight_suffix_and_a_different_head_name():
+    paths = body_paths("female", 1, head=True, profile=FALLOUT4_PROFILE)
+    assert paths == [
+        "meshes/actors/character/characterassets/femalebody.nif",
+        "meshes/actors/character/characterassets/femalehands.nif",
+        "meshes/actors/character/characterassets/basefemalehead.nif",
+    ]
+    # weight is ignored entirely — 0 and 1 give the same paths (no _0/_1 pair to choose between)
+    assert body_paths("female", 0, profile=FALLOUT4_PROFILE) == body_paths("female", 1, profile=FALLOUT4_PROFILE)
+
+
+# Slot numbers verified against real Fallout4.esm ARMA (BOD2) records while
+# building this — see the worked examples in the NIF/character viewer memory
+# note (Glasses always 47, Pip-Boy always 60, Torso/arms/legs exactly 41-45,
+# Body always 33, gloves 34+35).
+@pytest.mark.parametrize("slots,want", [
+    ({30}, "head"), ({31}, "hair"), ({33}, "body"), ({41}, "body"),
+    ({34, 35}, "hands"), ({42, 43}, "arms"), ({44, 45}, "legs"),
+    ({47}, "eyes"), ({60}, "pipboy"), ({61}, "backpack"),
+])
+def test_fallout4_slot_group_matches_real_arma_data(slots, want):
+    assert slot_group("meshes/armor/vault/piece.nif", frozenset(slots), FALLOUT4_PROFILE) == want
+
+
+def test_fallout4_has_no_skyrim_duplicate_range_or_hair_tiebreak():
+    # Skyrim's "+100" duplicate slots and the helmet/hair folder tiebreak are
+    # Skyrim-only quirks; Fallout 4's own slots (30-61) never collide, and 130
+    # (a Skyrim "duplicate head") means nothing in the Fallout 4 profile.
+    assert slot_group("meshes/hat.nif", frozenset({130}), FALLOUT4_PROFILE) is None
+    assert slot_group("meshes/actors/character/characterassets/hair/x.nif",
+                      frozenset({33}), FALLOUT4_PROFILE) == "body"    # no folder override for FO4
+
+
+def test_fallout4_base_body_is_wearable_without_a_weight_suffix():
+    p = "meshes/actors/character/characterassets/femalebody.nif"
+    assert is_wearable_path(p, "body", FALLOUT4_PROFILE)
+    assert is_wearable_path(p, "arms", FALLOUT4_PROFILE)     # the body file also covers arms/legs
+    assert not is_wearable_path(p, "eyes", FALLOUT4_PROFILE)  # never satisfies an FO4-only group
+    assert fits_slot(p, frozenset({33}), "body", FALLOUT4_PROFILE)
+
+
+def test_fallout4_hair_folder_still_restricts_to_the_hair_group():
+    p = "meshes/actors/character/characterassets/hair/female/femalehair01.nif"
+    assert is_wearable_path(p, "hair", FALLOUT4_PROFILE)
+    assert not is_wearable_path(p, "body", FALLOUT4_PROFILE)
+
+
+def test_fallout4_assemble_uses_its_own_layer_order():
+    body = shape("body", part_tris=(0,), slots={33})
+    hat = shape("hat", part_tris=(0,), slots={30})
+    scene = assemble([NifScene([body])], {"head": NifScene([hat])}, profile=FALLOUT4_PROFILE)
+    assert [s.name for s in scene.shapes] == ["body", "hat"]     # head drawn last, same as Skyrim's convention

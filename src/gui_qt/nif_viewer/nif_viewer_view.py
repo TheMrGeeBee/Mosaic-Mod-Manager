@@ -29,7 +29,7 @@ from Utils.dds_info import parse_dds_info
 from Utils.nif.asset_catalog import BASE, AssetCatalog, AssetEntry
 from Utils.nif.catalog_loader import build_catalog
 from Utils.nif.character import (
-    auto_gender, body_paths, compose, detect_gender, detect_weight, guess_gender,
+    auto_gender, body_paths, compose, detect_gender, detect_weight, guess_gender, profile_for_game,
 )
 from Utils.nif.nif_reader import (
     NifError, NifUnsupported, format_label, read_nif, version_string,
@@ -58,6 +58,7 @@ class NifViewerView(QWidget):
 
     def __init__(self, game, profile_dir, staging_dir, parent=None):
         super().__init__(parent)
+        self._profile = profile_for_game(getattr(game, "game_id", None))
         self._catalog: "AssetCatalog | None" = None
         self._gen = 0
         self._entry: "AssetEntry | None" = None
@@ -382,17 +383,19 @@ class NifViewerView(QWidget):
                     # other files, so look them up only when the path alone is silent.
                     sib = ([e.path for e in cat.siblings(entry)]
                            if detect_gender(entry.path) is None and body_mode != _BODY_NONE else [])
-                    gender = (auto_gender(entry.path, scene, sib) if body_mode == _BODY_AUTO
+                    gender = (auto_gender(entry.path, scene, sib, self._profile) if body_mode == _BODY_AUTO
                               else None if body_mode == _BODY_NONE else body_mode)
                     if gender:
                         bodies = [b for b in (self._loader.nif(cat, p) for p in
-                                              body_paths(gender, detect_weight(entry.path)))
+                                              body_paths(gender, detect_weight(entry.path),
+                                                        profile=self._profile))
                                   if b is not None]
                         if bodies:
                             scene, worn_on = compose(scene, bodies), gender
                     if want_skel:
                         skeleton = self._loader.skeleton(
-                            cat, gender or guess_gender(entry.path, sib) or "female")
+                            cat, gender or guess_gender(entry.path, sib) or "female",
+                            self._profile.skeletons)
                 images: dict[int, object] = {}
                 missing: list[str] = []
                 if want_tex:
