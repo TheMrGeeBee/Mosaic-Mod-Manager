@@ -448,13 +448,27 @@ def _read_skin_partition(r: _R):
     return pos, uvs, nrm, tris, tuple(counts)
 
 
-def _read_shape(r: _R, ptype: str, bsver: int = 0):
+def _read_shape(r: _R, ptype: str, bsver: int = 0, block_end: "int | None" = None):
     """Parse a BSTriShape-family block into a dict of raw geometry.
 
     Fallout 4's Num Triangles field is a uint32 (Skyrim's is a uint16) and its
     BSSubIndexTriShape has no particle-data trailer — instead, once the
     vertex/triangle arrays end, its own dismemberment segment data follows
-    (see _read_fo4_segments)."""
+    (see _read_fo4_segments).
+
+    *block_end* (the block's own byte-exact end, from the header's own size
+    table — always trustworthy, that's the whole point of the table) bounds
+    every count read from inside the block itself. A real malformed file
+    (found via live testing on a large real mod collection: a 2-byte pad
+    before the file's own root-list footer threw every offset after it off
+    by 2) can otherwise misread ntris/nverts as huge-but-technically-in-range
+    garbage that a plain equality check against Fallout 4's own leniently-
+    trusted computed size doesn't catch — the vertex-decode loop then runs
+    for a very long time (not infinite, but indistinguishable from a hang on
+    a large mesh) before finally erroring out once it truly overflows the
+    buffer. Checked unconditionally (not just for the FO4 leniency path)
+    since any bsver's stored fields could in principle be corrupt the same
+    way."""
     name = _object_net(r, r.strings)
     local = _av_object(r)
     r.skip(16)                           # bounding sphere
@@ -470,6 +484,8 @@ def _read_shape(r: _R, ptype: str, bsver: int = 0):
     idx = array("H")
     if data_size and nverts and vsize:
         expected = vsize * nverts + ntris * 6
+        if block_end is not None and r.p + expected > block_end:
+            raise NifError(f"BSTriShape geometry overruns its own block in {name!r}")
         # Fallout 4's own "Data Size" is a documented calc'd field (nifxml),
         # and real-world exporters (Outfit Studio/CBBE, verified on an actual
         # 1st-person body mesh) write a stale value that doesn't match it —
@@ -492,7 +508,7 @@ def _read_shape(r: _R, ptype: str, bsver: int = 0):
         if ptype == "BSSubIndexTriShape" and data_size:
             try:
                 fo4_segments = _read_fo4_segments(r)
-            except (struct.error, IndexError):
+            except (struct.error, IndexError, NifError):
                 pass
     else:
         # Trailer: particle-data size (always present in BS 100), then the
@@ -539,6 +555,12 @@ def _read_fo4_segments(r: "_R") -> list:
     r.u32()                                             # num primitives (== the shape's own triangle count)
     num_segments = r.u32()
     total_segments = r.u32()
+    # A real mesh has at most a few dozen segments/sub-segments; a corrupt or
+    # misaligned read (see _read_shape's block_end check for the geometry
+    # equivalent of this) can otherwise turn into a very long, technically-
+    # bounded-but-effectively-hanging loop before it finally errors out.
+    if num_segments > 10_000 or total_segments > 10_000 or total_segments < num_segments:
+        raise NifError("Fallout 4 segment counts look corrupt")
     # (start_tri, num_tris, own top-level segment index) for every leaf, plus
     # the flat declaration-order slot (including zero-triangle self entries)
     # so the shared table below can be zipped back onto the right leaf.
@@ -694,7 +716,7 @@ def read_body_slots(data: bytes) -> frozenset:
         elif hdr.bsver >= FALLOUT4_BSVER and t < len(hdr.types) and hdr.types[t] == "BSSubIndexTriShape":
             try:
                 slots.update(_read_fo4_shape_slots(_R(data, pos, hdr.strings)))
-            except (struct.error, IndexError):
+            except (struct.error, IndexError, NifError):
                 pass
         pos += size
     return frozenset(slots)
@@ -888,7 +910,7 @@ def read_nif(data: bytes, include_nodes: bool = False) -> NifScene:
                     reader(i), lambda ref: reader(ref) if 0 <= ref < hdr.nblocks
                     and tname[ref] == "NiTriShapeData" else None)
             else:
-                g = _read_shape(reader(i), tname[i], hdr.bsver)
+                g = _read_shape(reader(i), tname[i], hdr.bsver, starts[i] + hdr.sizes[i])
         except (struct.error, IndexError, NifError):
             return
         part_tris: tuple = ()
@@ -912,6 +934,17 @@ def read_nif(data: bytes, include_nodes: bool = False) -> NifScene:
             return
         if not all(math.isfinite(v) for v in pos):
             return                               # NaN/inf vertices would poison framing and bounds
+        if max(g["indices"]) >= len(pos) // 3:
+            # A real file's own authored data can be internally inconsistent
+            # (found via live testing: a third-party-converted hair mesh
+            # whose triangle indices reference vertices past its own decoded
+            # count — the vertex/triangle counts each parse correctly and
+            # self-consistently, this isn't a reader misalignment, the source
+            # content itself is just broken). Every downstream consumer
+            # (the GL viewport, hide_covered, skin_shape) assumes indices fit
+            # inside positions, so this must be caught here rather than
+            # crash or corrupt rendering further down the line.
+            return
         r9, sc, t = _compose(world, g["local"])
         wp = array("f", bytes(4 * len(pos)))
         for k in range(0, len(pos), 3):
@@ -995,12 +1028,24 @@ def read_nif(data: bytes, include_nodes: bool = False) -> NifScene:
             part_slots=part_slots if part_tris else (), part_tris=part_tris, skin=skin_data))
 
     nodes: list[NifNode] = []
+    seen_nodes: set[int] = set()
 
     def walk(i: int, world, depth=0, parent=-1):
         if not 0 <= i < hdr.nblocks or depth > 64:
             return
         t = tname[i]
         if t in _NODE_TYPES:
+            # A node is walked at most once, full stop — not just depth-limited.
+            # A real malformed file (found via live testing: a large real mod
+            # collection) had a child list that revisits an ancestor, and the
+            # depth cap alone doesn't stop that: at branching factor 2 it's
+            # 2**64 node visits before the cap finally bites, which in
+            # practice is indistinguishable from a permanent hang. This
+            # matches how emit()/seen_shapes already treats shapes — visit
+            # once, not once per reachable path.
+            if i in seen_nodes:
+                return
+            seen_nodes.add(i)
             w = _compose(world, locals_.get(i, _IDENT))
             me = parent
             if include_nodes:

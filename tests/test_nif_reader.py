@@ -531,3 +531,51 @@ def test_real_fallout4_meshes_parse():
                 assert nv and max(sh.indices) < nv, path
                 shapes += 1
         assert shapes > 20
+
+
+# -- robustness: found via live testing on a large real mod collection -------------------
+def test_a_node_cycle_does_not_hang_or_blow_up_exponentially():
+    """Real bug, found via live testing: a NiNode graph where a child list
+    revisits an already-walked node used to be bounded only by depth (64
+    levels), which at branching factor 2 is 2**64 node visits — in practice
+    indistinguishable from a permanent hang. A node must now be walked at
+    most once, full stop, the same way emit()/seen_shapes already treats
+    shapes."""
+    # 0 -> 1 -> 0 -> 1 -> ... : a plain two-node cycle.
+    blob = _nif([("NiNode", _node(0, [1])), ("NiNode", _node(0, [0]))])
+    sc = read_nif(blob, include_nodes=True)
+    assert len(sc.nodes) == 2                       # each node counted once, not 64 times
+
+
+def test_a_shape_whose_geometry_would_overrun_its_own_block_is_dropped():
+    """Real bug, found via live testing: a malformed real mod file had a
+    stray 2-byte pad before its root-list footer, throwing every subsequent
+    block's own internal field reads off — Fallout 4's lenient (trust-the-
+    computed-size) path then decoded a huge-but-technically-in-range vertex
+    count for several minutes before finally erroring out. The block's own
+    declared size (from the header's size table, always trustworthy) must
+    reject this immediately instead."""
+    verts = [((0, 0, 0), (0, 0), (0, 0, 1), (0, 1, 0, 0), (1.0, 0.0, 0.0, 0.0))] * 3
+    shape_bytes = _fo4_shape(1, verts, [(0, 1, 2)], 2, -1)
+    # Truncate the block's own declared size well below what the real vertex
+    # count needs — the header's size table is what block_end is built from.
+    blocks = [("BSFadeNode", _node(0, [1])), ("BSSubIndexTriShape", shape_bytes[:40])]
+    sc = read_nif(_nif(blocks, bsver=130))
+    assert sc.shapes == []
+
+
+def test_a_shape_whose_triangles_reference_out_of_range_vertices_is_dropped():
+    """Real bug, found via live testing: a real third-party-converted hair
+    mesh had internally self-consistent (not misaligned) vertex/triangle
+    counts whose triangle indices nonetheless referenced vertices past the
+    decoded position array — a content bug in that file, not a reader
+    misalignment, but every downstream consumer (GL viewport, hide_covered,
+    skin_shape) assumes indices fit inside positions."""
+    bad_tris = [(0, 1, 2), (0, 1, 50)]               # vertex 50 doesn't exist (only 3 verts)
+    blob = _nif([
+        ("BSFadeNode", _node(0, [1])),
+        ("BSTriShape", _shape(1, TRI, bad_tris, 2)),
+        ("BSLightingShaderProperty", _lighting_shader(3)),
+        ("BSShaderTextureSet", _texture_set(["Textures\\Armor\\Iron_d.DDS", ""])),
+    ])
+    assert read_nif(blob).shapes == []
