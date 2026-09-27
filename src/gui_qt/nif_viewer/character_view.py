@@ -192,8 +192,10 @@ class CharacterView(QWidget):
         hint = QLabel(self.tr(
             "Add pieces from the NIF Viewer (select an armour, clothing or hair mesh and press "
             "“Add to character”), or choose them here. A piece goes into the slot its "
-            "mesh belongs to and hides the body parts it covers.\\n\\n"
-            "Drag to rotate · right-drag to pan · scroll to zoom · double-click to re-frame."))
+            "mesh belongs to and hides the body parts it covers.\n\n"
+            "Drag to rotate · right-drag to pan · scroll to zoom · double-click to re-frame.\n\n"
+            "The head is not welded to the body the way the game does it (it builds each "
+            "character's head at runtime), so a seam can show at the neck, most at Light weight."))
         hint.setWordWrap(True)
         hint.setStyleSheet(f"color:{_c(pal, 'TEXT_DIM')}; padding-top:8px;")
         lv.addWidget(hint)
