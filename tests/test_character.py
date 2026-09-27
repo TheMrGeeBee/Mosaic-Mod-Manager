@@ -364,6 +364,17 @@ CA = "meshes/actors/character/character assets/"
     ("meshes/actors/argonianfemale/rvxargwhiskers/argwhiskersf01.nif", "head", False),
     ("meshes/clutter/mug.nif", None, False),
     ("meshes/armor/x/readme.txt", None, False),
+    # gear wherever it lives — DLC, Creation Club, a mod's own folder …
+    ("meshes/dlc02/armor/nordiccarved/nordiccarvedbootsm_1.nif", "feet", True),
+    ("meshes/dlc01/clothes/blindmothpriest/blindmothpriestrobesf_0.nif", "body", True),
+    ("meshes/creationclub/bgssse003/armor/x/cuirass_1.nif", "body", True),
+    ("meshes/somemodauthor/outfits/dress_1.nif", "body", True),
+    # … but not creatures or scenery, even inside those folders
+    ("meshes/creationclub/bgssse067/actors/wight/wightboot01.nif", "legs", False),
+    ("meshes/actors/dragon/dragonarmor.nif", "body", False),
+    ("meshes/actors/draugr/character assets/midarmorf.nif", "body", False),
+    ("meshes/architecture/whiterun/wrhouse01.nif", None, False),
+    ("meshes/dungeons/x/door.nif", None, False),
 ])
 def test_is_wearable_path(path, group, want):
     assert is_wearable_path(path, group) is want

@@ -424,3 +424,16 @@ def test_the_character_tab_reports_each_equip_for_a_toast(app, view, catalog):
     view.equip(entry(catalog, "meshes/clutter/mug.nif"))
     _wait(app, lambda: len(got) == 2)
     assert got[-1][1] is False and "no body slots" in got[-1][0]
+
+
+def test_the_tab_pre_reads_body_slots_in_the_background(app, view, catalog):
+    assert catalog._slots == {}
+    _ready(app, view)
+    # Every wearable candidate is read on a worker soon after the tab opens, so the
+    # slot pickers find their answers cached. (The mug and the texture aren't candidates.)
+    _wait(app, lambda: len(catalog._slots) >= 11)
+    keys = {k[3] for k in catalog._slots}
+    assert "meshes/armor/iron/f/boots_1.nif" in keys and "meshes/clutter/mug.nif" not in keys
+    assert "textures/armor/iron_d.dds" not in keys
+    dlg = _picker(app, catalog, "feet")
+    assert _paths(dlg) == ["meshes/armor/iron/f/boots_1.nif"]

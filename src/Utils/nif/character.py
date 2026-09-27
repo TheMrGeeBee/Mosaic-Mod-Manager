@@ -244,29 +244,41 @@ def assemble(base: list[NifScene], pieces: "dict[str, NifScene]",
 _BASE_PART = re.compile(r"^(male|female)(body|hands|feet)(_[01])?\.nif$")
 
 
+# Top-level mesh folders that hold scenery, not gear — skipped only to save the
+# picker from opening files that can never be worn; the slots decide everything else.
+_SCENERY_ROOTS = frozenset({
+    "architecture", "landscape", "lod", "terrain", "plants", "dungeons", "effects", "clutter",
+    "furniture", "weapons", "sky", "traps", "magic", "interface", "water", "markers", "cameras",
+    "shadertest", "fx", "grass", "trees", "rocks", "ships", "ui", "textures", "sound"})
+
+
 def is_wearable_path(path: str, group: "str | None" = None) -> bool:
     """Whether *path* could be worn in *group* (any group when None), judged by
-    folder and name alone — the cheap first cut before the mesh is opened.
+    folder and name alone — the cheap first cut before the mesh is opened; the
+    mesh's own body slots make the real decision (fits_slot).
 
-    Armour and clothes folders qualify for every group; hairstyles only for
-    "hair"; the base body/hands/feet files (femalebody_1.nif…) — which a body
-    mod replaces — for the body-part groups. Everything else in the character
-    assets (heads, eyes, race and creature parts, first-person arms) and all other
-    actor folders never do."""
+    Everything outside an ``actors`` folder qualifies except scenery folders —
+    which covers armour and clothes wherever they live (``meshes/armor``, the DLC
+    and Creation Club folders, a mod's own folder). Under ``meshes/actors`` only two
+    things do: hairstyles (for "hair") and the base body/hands/feet files
+    (femalebody_1.nif…), which a body mod replaces (for the body-part slots).
+    Heads, eyes, race and creature parts, first-person arms, child gear and
+    beast-race variants never do."""
     p = path.replace("\\", "/").lower()
     name = p.rsplit("/", 1)[-1]
-    if not p.endswith(".nif") or name.startswith("1stperson") or "/1stperson" in p:
+    if not p.startswith("meshes/") or not p.endswith(".nif"):
+        return False
+    if name.startswith("1stperson") or "/1stperson" in p:
         return False
     if any(w in name for w in _RACE_WORDS) or "/child/" in p or "/children/" in p or name.startswith("child"):
         return False                                   # beast races and child gear: not for the adult human character
-    if p.startswith(("meshes/armor/", "meshes/clothes/")):
-        return True
-    hair_dir = BODY_DIR + "hair/"
-    if p.startswith(hair_dir):
+    if p.startswith(BODY_DIR + "hair/"):
         return group in (None, "hair")
     if p.startswith(BODY_DIR) and "/" not in p[len(BODY_DIR):]:
         return _BASE_PART.match(name) is not None and group in (None, "body", "hands", "feet", "arms", "legs")
-    return False
+    if "/actors/" in p:                                # creature/race parts, also inside DLC/CC/mod folders
+        return False
+    return p.split("/")[1] not in _SCENERY_ROOTS
 
 
 def fits_slot(path: str, slots: "frozenset | None", group: "str | None") -> bool:

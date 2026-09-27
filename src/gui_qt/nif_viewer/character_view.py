@@ -14,6 +14,8 @@ game reads them from the armour records in the plugins.
 
 from __future__ import annotations
 
+import time
+
 from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtWidgets import (
     QCheckBox, QComboBox, QDialog, QDialogButtonBox, QGridLayout, QHBoxLayout, QLabel,
@@ -320,6 +322,25 @@ class CharacterView(QWidget):
             self.equip(e)
         if not pending:
             self._rebuild(reframe=True)
+        run_in_worker(self._prewarm, None, name="character-prewarm")
+
+    def _prewarm(self):
+        """Read the body slots of every candidate mesh in the background, so a
+        slot picker opens instantly (the results are cached in the catalog)."""
+        cat = self._catalog
+        if cat is None:
+            return
+        n = 0
+        for m in [BASE] + cat.mods():
+            entries = cat.base_entries() if m == BASE else cat.mod_entries(m)
+            for e in entries:
+                if self._closing or self._catalog is not cat:
+                    return
+                if e.is_winner and is_wearable_path(e.path) and cat.incompatible_label(e) is None:
+                    cat.slots_of(e)
+                    n += 1
+                    if n % 500 == 0:
+                        time.sleep(0.001)              # stay out of the UI thread's way
 
     # -- equipping ---------------------------------------------------------------------------------
     def equip(self, entry: AssetEntry):
