@@ -154,13 +154,30 @@ def profile_for_game(game_id: "str | None") -> GameProfile:
 
 def detect_gender(path: str) -> "str | None":
     """'female' / 'male' from a mesh path (``.../f/cuirass_1.nif``,
-    ``femalebody_0.nif``…), or None when the path doesn't say."""
+    ``femalebody_0.nif``, Fallout 4's ``f_torso_heavy.nif``…), or None when the
+    path doesn't say.
+
+    The ``f_``/``m_`` filename-prefix check exists for Fallout 4, whose whole
+    modular-armor scene names files this way (``f_torso_heavy.nif``,
+    ``m_leg_lite_pad_l.nif``) rather than Skyrim's folder/suffix conventions —
+    verified as a real gap: a real profile had female-prefixed pieces (a
+    female left-arm/left-leg pair) passing the "only meshes for a male body"
+    filter and showing up equippable on a male character, because neither
+    existing check (word in name, exact folder segment, folder starting with
+    "female"/"male") ever looks at a filename's own leading prefix. Also seen,
+    harmlessly, on a handful of real Skyrim mods that happen to use the same
+    prefix convention (a Telvanni-style gauntlets/boots set) — correctly
+    gendered there too, not just for Fallout 4."""
     p = path.replace("\\", "/").lower()
     name = p.rsplit("/", 1)[-1]
     parts = p.split("/")[:-1]
     if "female" in name or "f" in parts or any(x.startswith("female") for x in parts):
         return "female"
     if "male" in name or "m" in parts or any(x.startswith("male") for x in parts):
+        return "male"
+    if name.startswith("f_"):
+        return "female"
+    if name.startswith("m_"):
         return "male"
     return None
 

@@ -33,6 +33,12 @@ def shape(name, part_slots=(), part_tris=(), skinned=True, slots=None):
     ("meshes/armor/ebony/femalecuirass.nif", "female"),       # "female" is checked before "male"
     ("meshes/armor/thing/cuirass.nif", None),
     ("meshes/clutter/mug.nif", None),
+    # Fallout 4's own filename-prefix convention (no folder or suffix marker
+    # at all) — a real profile had these passing the "male body only" filter
+    # uncaught, because none of the other checks look at a leading prefix.
+    ("meshes/armor/combatarmor/f_torso_heavy.nif", "female"),
+    ("meshes/armor/dcpolice/f_dcpolice_arm_heavy_l.nif", "female"),
+    ("meshes/armor/dcscout/m_dcscout_leg_r_heavy.nif", "male"),
 ])
 def test_detect_gender(path, want):
     assert detect_gender(path) == want
