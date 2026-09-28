@@ -5,7 +5,7 @@ import pytest
 
 from Utils.archives.bsa_writer import write_bsa
 from Utils.nif.asset_catalog import (
-    BASE, AssetCatalog, is_viewable, norm_key,
+    BASE, AssetCatalog, is_material, is_viewable, norm_key,
 )
 
 MESH = "meshes/armor/iron/cuirass.nif"
@@ -61,6 +61,9 @@ def test_helpers():
     assert is_viewable("meshes/a.nif") and is_viewable("textures/a.dds")
     assert not is_viewable("meshes/a.dds") and not is_viewable("sounds/a.nif")
     assert not is_viewable("interface/a.dds")
+    assert is_material("materials/cross/coa/coa_02.bgsm") and is_material("materials/x.bgem")
+    assert not is_material("materials/x.dds") and not is_material("textures/x.bgsm")
+    assert not is_viewable("materials/x.bgsm") and not is_material("meshes/a.nif")
 
 
 def test_mods_lists_only_mods_with_assets_in_load_order(world):
@@ -167,6 +170,25 @@ def test_resolve_readable_fallback_still_prefers_loose_over_bsa(tmp_path):
     fallback = cat.resolve_readable(TEX)
     assert fallback.mod == "loose_mod" and fallback.kind == "loose"
     assert cat.read(fallback) == b"loose-tex"
+    cat.close()
+
+
+def test_materials_are_resolvable_but_never_listed(tmp_path):
+    # A .bgsm a shape's shader references must be readable through the same
+    # catalog (see Utils.nif.material_reader) but never appear in the asset
+    # tree or picker — it isn't a mesh or texture a user views/equips.
+    mat = "materials/cross/coa/coa_02.bgsm"
+    mods = tmp_path / "mods"
+    _put(mods / "modA", {mat: b"BGSM-DATA", MESH: b"mesh-data"})
+    cat = AssetCatalog(
+        base_name="G", base_archives=[], mod_order=["modA"],
+        loose={"modA": {mat: mat, MESH: MESH}}, bsas={}, loose_winner={}, bsa_winner={},
+        mod_dir_for=lambda m: mods / m)
+    e = cat.resolve(mat)
+    assert e is not None and cat.read(e) == b"BGSM-DATA"
+    assert cat.resolve_readable(mat) is not None
+    assert all(x.path != mat for x in cat.mod_entries("modA"))
+    assert any(x.path == MESH for x in cat.mod_entries("modA"))     # the mesh still is listed
     cat.close()
 
 

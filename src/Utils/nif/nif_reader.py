@@ -129,6 +129,16 @@ class NifShape:
     part_slots: tuple = ()
     part_tris: tuple = ()
     skin: "SkinData | None" = None
+    # The external .bgsm/.bgem file (BSLightingShaderProperty's own Name
+    # field) this shape's shader references, normalised like a texture path
+    # but rooted where it actually lives — "materials/..." — or "" when the
+    # shape has no material reference (most Skyrim content, and any FO4 shape
+    # that embeds its own full texture set directly). A real Fallout 4 shape
+    # can leave its embedded BSShaderTextureSet's diffuse slot blank and rely
+    # entirely on this file for it (verified: real CROSS Collection armor
+    # pieces) — see Utils.nif.material_reader, which resolves it through the
+    # asset catalog since this module never reads a second file itself.
+    material_name: str = ""
 
 
 @dataclass
@@ -271,14 +281,25 @@ def _compose(parent, local):
 compose_transform = _compose
 
 
-def normalize_texture_path(p: str) -> str:
-    """Lowercase, forward slashes, rooted at ``textures/`` ("" stays "")."""
+def _normalize_rooted_path(p: str, root: str) -> str:
     p = p.replace("\\", "/").strip().lower()
     while p.startswith("/"):
         p = p[1:]
     if not p:
         return ""
-    return p if p.startswith("textures/") else "textures/" + p
+    return p if p.startswith(root) else root + p
+
+
+def normalize_texture_path(p: str) -> str:
+    """Lowercase, forward slashes, rooted at ``textures/`` ("" stays "")."""
+    return _normalize_rooted_path(p, "textures/")
+
+
+def normalize_material_path(p: str) -> str:
+    """Lowercase, forward slashes, rooted at ``materials/`` ("" stays "") —
+    a BSLightingShaderProperty's own Name field, when it references an
+    external .bgsm/.bgem file (see Utils.nif.material_reader)."""
+    return _normalize_rooted_path(p, "materials/")
 
 
 # -- header ---------------------------------------------------------------------
@@ -818,13 +839,15 @@ def _read_texture_set(r: _R) -> list[str]:
     return [normalize_texture_path(r.sized_str()) for _ in range(n)]
 
 
-def _read_lighting_shader(r: _R) -> int:
-    """→ block index of the BSShaderTextureSet (or -1)."""
+def _read_lighting_shader(r: _R) -> "tuple[int, str]":
+    """→ (block index of the BSShaderTextureSet (or -1), the property's own
+    Name field normalised as a material path — non-empty only when this
+    shape's real texture set lives in an external .bgsm/.bgem file)."""
     r.u32()                              # shader type
-    _object_net(r, r.strings)
+    name = normalize_material_path(_object_net(r, r.strings))
     r.skip(8)                            # shader flags 1 + 2
     r.skip(16)                           # uv offset + uv scale
-    return r.i32()
+    return r.i32(), name
 
 
 def _read_effect_shader(r: _R) -> str:
@@ -884,21 +907,22 @@ def read_nif(data: bytes, include_nodes: bool = False) -> NifScene:
     shapes: list[NifShape] = []
     seen_shapes: set[int] = set()
 
-    def textures_for(shader_ref: int) -> "tuple[list[str], bool]":
+    def textures_for(shader_ref: int) -> "tuple[list[str], bool, str]":
         if not 0 <= shader_ref < hdr.nblocks:
-            return [], False
+            return [], False, ""
         st = tname[shader_ref]
         try:
             if st == "BSLightingShaderProperty":
-                ts = _read_lighting_shader(reader(shader_ref))
+                ts, material_name = _read_lighting_shader(reader(shader_ref))
                 if 0 <= ts < hdr.nblocks and tname[ts] == "BSShaderTextureSet":
-                    return _read_texture_set(reader(ts)), False
+                    return _read_texture_set(reader(ts)), False, material_name
+                return [], False, material_name
             elif st == "BSEffectShaderProperty":
                 src = _read_effect_shader(reader(shader_ref))
-                return ([src] if src else []), True
+                return ([src] if src else []), True, ""
         except (struct.error, IndexError, UnicodeDecodeError):
             pass
-        return [], False
+        return [], False, ""
 
     def emit(i: int, world):
         if i in seen_shapes:
@@ -963,7 +987,7 @@ def read_nif(data: bytes, include_nodes: bool = False) -> NifScene:
                 nz = r9[6] * x + r9[7] * y + r9[8] * z
                 ln = (nx * nx + ny * ny + nz * nz) ** 0.5 or 1.0
                 wn[k], wn[k + 1], wn[k + 2] = nx / ln, ny / ln, nz / ln
-        tex, is_fx = textures_for(g["shader"])
+        tex, is_fx, material_name = textures_for(g["shader"])
         part_slots: tuple = ()
         if g["skin"] >= 0 and tname[g["skin"]] == "BSDismemberSkinInstance":
             try:
@@ -1025,7 +1049,8 @@ def read_nif(data: bytes, include_nodes: bool = False) -> NifScene:
             name=g["name"], positions=wp, normals=wn, uvs=g["uvs"],
             indices=g["indices"], textures=tex,
             is_skinned=g["skin"] >= 0, is_effect=is_fx, slots=frozenset(part_slots),
-            part_slots=part_slots if part_tris else (), part_tris=part_tris, skin=skin_data))
+            part_slots=part_slots if part_tris else (), part_tris=part_tris, skin=skin_data,
+            material_name=material_name))
 
     nodes: list[NifNode] = []
     seen_nodes: set[int] = set()

@@ -10,7 +10,7 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-from Utils.nif.asset_catalog import AssetCatalog, is_viewable, norm_key
+from Utils.nif.asset_catalog import AssetCatalog, is_material, is_viewable, norm_key
 from Utils.nif.nif_reader import FALLOUT4_FORMAT, SKYRIM_SE_FORMAT
 
 # Games whose meshes the NIF reader understands (Skyrim SE: NIF 20.2.0.7, BS
@@ -105,11 +105,17 @@ def build_catalog(game, profile_dir: "Path | None", staging_dir: "Path | None") 
     full_index = (read_mod_index(index_path) if index_path is not None else None) or {}
     bsa_index = (read_bsa_index(bsa_index_path) if bsa_index_path is not None else None) or {}
 
+    # Materials (.bgsm/.bgem) are included alongside meshes/textures — a
+    # Fallout 4 shape's real diffuse/normal/specular can live entirely in one
+    # of these instead of its own embedded texture set (verified on a real
+    # armor mod), so they must be resolvable through the catalog. They're
+    # never listed as "viewable" (asset_catalog.is_material, not is_viewable),
+    # so the asset tree and picker never show them.
     loose: dict[str, dict[str, str]] = {}
     for m in mod_order:
         entry = full_index.get(m)
         if entry:
-            files = {k: rs for k, rs in entry[0].items() if is_viewable(k)}
+            files = {k: rs for k, rs in entry[0].items() if is_viewable(k) or is_material(k)}
             if files:
                 loose[m] = files
     bsas: dict[str, list[tuple[str, list[str]]]] = {}
@@ -121,7 +127,7 @@ def build_catalog(game, profile_dir: "Path | None", staging_dir: "Path | None") 
             continue
         keep = []
         for arch, _mt, paths in archives:
-            v = [norm_key(p) for p in paths if is_viewable(norm_key(p))]
+            v = [norm_key(p) for p in paths if is_viewable(norm_key(p)) or is_material(norm_key(p))]
             if v:
                 keep.append((arch, v))
         if keep:
@@ -144,7 +150,7 @@ def build_catalog(game, profile_dir: "Path | None", staging_dir: "Path | None") 
             index_path, False)
         for p, m in win.items():
             k = norm_key(p)
-            if is_viewable(k):
+            if is_viewable(k) or is_material(k):
                 bsa_winner[k] = m
 
     data_dir = None

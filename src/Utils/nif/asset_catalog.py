@@ -40,6 +40,14 @@ def is_viewable(key: str) -> bool:
             or (key.startswith("textures/") and key.endswith(".dds")))
 
 
+def is_material(key: str) -> bool:
+    """Bethesda material files (.bgsm/.bgem under materials/) — resolvable
+    through the catalog like any other file (see resolve_readable() and
+    Utils.nif.material_reader), but never shown in the asset tree or picker:
+    they aren't something a user views or equips directly."""
+    return key.startswith("materials/") and key.endswith((".bgsm", ".bgem"))
+
+
 @dataclass(frozen=True)
 class AssetEntry:
     path: str            # normalised: lowercase, forward slashes
@@ -173,12 +181,20 @@ class AssetCatalog:
         return None
 
     def mod_entries(self, mod: str) -> list[AssetEntry]:
+        """*mod*'s viewable files — meshes and textures only. Materials
+        (.bgsm/.bgem), when this mod ships any, are resolvable through
+        resolve_readable() but never listed here (see is_material's own
+        docstring for why)."""
         out: list[AssetEntry] = []
         for key in self._loose.get(mod, ()):
+            if not is_viewable(key):
+                continue
             w = self._mod_winner(key)
             out.append(AssetEntry(key, mod, "loose", "", w == (mod, "loose", "")))
         for arch, ps in self._bsas.get(mod, []):
             for key in ps:
+                if not is_viewable(key):
+                    continue
                 w = self._mod_winner(key)
                 out.append(AssetEntry(key, mod, "bsa", arch, w == (mod, "bsa", arch)))
         return out
@@ -193,17 +209,18 @@ class AssetCatalog:
                     if bsa is None:
                         continue
                     for p in bsa.paths():
-                        if is_viewable(p):
+                        if is_viewable(p) or is_material(p):
                             files[p] = arch
                 self._base_files = files
             return self._base_files
 
     def base_entries(self) -> list[AssetEntry]:
         """The base game's meshes and textures (reads the archives' tables of
-        contents on first use). ``is_winner`` is False where a mod overrides."""
+        contents on first use). ``is_winner`` is False where a mod overrides.
+        Materials are resolvable (resolve_readable()) but not listed here."""
         mod_keys = self._mod_key_set()
         return [AssetEntry(k, BASE, "bsa", arch.name, k not in mod_keys)
-                for k, arch in self._base_map().items()]
+                for k, arch in self._base_map().items() if is_viewable(k)]
 
     # -- resolution ---------------------------------------------------------------
     def resolve(self, path: str) -> "AssetEntry | None":

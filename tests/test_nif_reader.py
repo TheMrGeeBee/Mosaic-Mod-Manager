@@ -54,8 +54,8 @@ def _shape(name_idx, verts, tris, shader_ref, **xf) -> bytes:
             + vdata + tdata + struct.pack("<I", 0))
 
 
-def _lighting_shader(texture_set_ref) -> bytes:
-    return (struct.pack("<I", 0) + _object_net(-1) + struct.pack("<II", 0, 0)
+def _lighting_shader(texture_set_ref, name_idx=-1) -> bytes:
+    return (struct.pack("<I", 0) + _object_net(name_idx) + struct.pack("<II", 0, 0)
             + b"\0" * 16 + struct.pack("<i", texture_set_ref))
 
 
@@ -146,6 +146,26 @@ def test_missing_shader_gives_no_textures_and_bounds_work():
     assert sc.shapes[0].textures == []
     assert sc.bounds() == ((0.0, 0.0, 0.0), (1.0, 1.0, 0.0))
     assert read_nif(_nif([("NiNode", _node(0, []))])).bounds() is None
+
+
+def test_shape_captures_its_shaders_material_name():
+    # A BSLightingShaderProperty's own Name field, when set, is the shape's
+    # external .bgsm/.bgem — verified on real Fallout 4 armor whose own
+    # embedded texture set is left mostly blank in favour of this (see
+    # Utils.nif.material_reader). Index 2 in the strings table below.
+    blob = _nif([
+        ("BSFadeNode", _node(0, [1])),
+        ("BSTriShape", _shape(1, TRI, [(0, 1, 2)], 2)),
+        ("BSLightingShaderProperty", _lighting_shader(3, name_idx=2)),
+        ("BSShaderTextureSet", _texture_set([""])),
+    ], strings=("Root", "Shape", "Materials\\CROSS\\CoA\\Default\\coa_02.bgsm"))
+    sc = read_nif(blob)
+    assert sc.shapes[0].material_name == "materials/cross/coa/default/coa_02.bgsm"
+
+
+def test_shape_with_no_material_reference_has_an_empty_material_name():
+    sc = read_nif(_simple())
+    assert sc.shapes[0].material_name == ""
 
 
 def test_bounding_sphere_and_sample_points():
