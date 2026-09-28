@@ -1,11 +1,9 @@
-# Signing the AppImage
-
-Separate task from the git-tag and Flatpak signing fixes (see
-signing-fix-instructions.md) — different mechanism, different key,
-lower urgency. Do not start this until the Flatpak signing fix has been
-verified working (test-build.yml green, GPGKey= present, etc.).
-
 ---
+name: appimage-signing
+description: Set up GPG signing for the AppImage release build (new dedicated key, wiring into make-appimage.sh/CI, verification). Use when asked to add AppImage signing, or when working on AppImage build/release signing specifically. Separate from the already-done git-tag and Flatpak signing (see the fix-signing skill) — different mechanism, different key, lower urgency. Do not start this until the Flatpak signing fix has been verified working (test-build.yml green, GPGKey= present, etc.).
+---
+
+# Signing the AppImage
 
 ## Context
 

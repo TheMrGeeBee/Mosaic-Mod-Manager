@@ -1,3 +1,8 @@
+---
+name: fix-signing
+description: Fix git-tag signing ("Unverified" on GitHub) and Flatpak repo signing ("untrusted" warning on install) — two separate, unrelated problems. Use when asked to fix release/tag signing, Flatpak repo trust warnings, or when investigating why a tag or Flatpak install shows unsigned/untrusted.
+---
+
 # Fixing Signing: Git Tags + Flatpak Repo
 
 Two separate signing problems, two separate fixes. Do not conflate them.
