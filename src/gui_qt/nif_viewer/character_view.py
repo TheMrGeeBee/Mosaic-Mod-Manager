@@ -397,6 +397,22 @@ class CharacterView(QWidget):
                     name, format_label(exc.version, exc.bsver)), None
             except (NifError, BsaReadError, OSError) as exc:
                 return entry, None, self.tr("Could not read {0}: {1}").format(name, exc), None
+            # PickMeshDialog's own candidate scan already filters through
+            # is_wearable_path() before a mesh ever reaches the picker list,
+            # but this method is also reached directly — "Add to character"
+            # from the NIF Viewer's own tree, or a right-click elsewhere —
+            # bypassing that filter entirely. Real bug: a first-person-only
+            # glove mesh (verified: it carries a real ARMA slot, same as its
+            # normal counterpart, since the game itself equips both together)
+            # was accepted and rendered with visibly wrong first-person hand/
+            # arm geometry. Applying the same check here closes that gap for
+            # every path is_wearable_path already knows about (first-person,
+            # creature/race variants, child gear, scenery folders).
+            if not is_wearable_path(entry.path, None, self._profile):
+                return entry, None, self.tr(
+                    "{0} isn't a wearable armor/clothing mesh (a first-person-only, "
+                    "creature/race, child, or scenery file)."
+                ).format(name), None
             # cat.slots_of() prefers an active plugin's own ARMA record (ground
             # truth) over the mesh's own embedded slots — the two agree for
             # Skyrim (Bethesda kept the numbering aligned there) but not for

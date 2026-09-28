@@ -27,6 +27,7 @@ FILES = {
     "meshes/armor/iron/cuirass_alt.nif": b"CUIRASS_ALT",
     "meshes/actors/character/character assets/hair/female/hair01.nif": b"HAIR",
     "meshes/clutter/mug.nif": b"PROP",
+    "meshes/armor/misc/decoritem.nif": b"PROP2",       # no body slots, but NOT a scenery-root path
     "meshes/armor/le/le_cuirass.nif": b"LE",
     "textures/armor/iron_d.dds": b"TEX",
     "meshes/armor/blades/bladesarmor.nif": b"DISPLAY",              # an item's display model
@@ -55,6 +56,7 @@ def fake_read_nif(data, include_nodes=False):
         b"BASE_BODY": NifScene([shape("base_body", skinned=False, slots=[])]),
         b"MOD_BODY": NifScene([shape("mod_body", skinned=False, slots=[])]),
         b"PROP": NifScene([shape("mug", skinned=False, slots=[])]),
+        b"PROP2": NifScene([shape("decoritem", skinned=False, slots=[])]),
         b"DISPLAY": NifScene([shape("display", skinned=False, slots=[])]),
     }
     if data == b"LE":
@@ -157,11 +159,27 @@ def test_equipping_the_same_group_replaces_the_piece(app, view, catalog):
 
 def test_a_prop_or_an_unconverted_mesh_is_refused_with_a_reason(app, view, catalog):
     _ready(app, view)
-    view.equip(entry(catalog, "meshes/clutter/mug.nif"))
+    view.equip(entry(catalog, "meshes/armor/misc/decoritem.nif"))
     _wait(app, lambda: "no body slots" in view._info.text())
     assert view._pieces == {}
     view.equip(entry(catalog, "meshes/armor/le/le_cuirass.nif"))
     _wait(app, lambda: "Skyrim LE format" in view._info.text())
+    assert view._pieces == {}
+
+
+def test_a_scenery_folder_mesh_is_refused_before_the_slot_check(app, view, catalog):
+    # Real bug: equip() (reached directly from the NIF Viewer's "Add to
+    # character", not just through the picker's own pre-filtered list) never
+    # ran is_wearable_path() at all — so a first-person-only mesh with a real
+    # ARMA slot (verified on a real file: the game itself equips a
+    # first-person variant alongside its normal counterpart, so it DOES
+    # carry a real slot) was accepted and rendered with visibly wrong
+    # geometry. A scenery-root file is the simplest repro available with
+    # this fake catalog; the real first-person/race/child checks are already
+    # covered by is_wearable_path's own tests in test_character.py.
+    _ready(app, view)
+    view.equip(entry(catalog, "meshes/clutter/mug.nif"))
+    _wait(app, lambda: "isn't a wearable armor/clothing mesh" in view._info.text())
     assert view._pieces == {}
 
 
@@ -377,7 +395,7 @@ def test_a_display_model_is_refused_with_its_worn_siblings_named(app, view, cata
     assert "bladesarmor_1.nif" in text and "bladesarmorf_1.nif" in text
     assert "bladeshelmet.nif" not in text                       # a different item, not a sibling by name
     assert view._pieces == {}
-    view.equip(entry(catalog, "meshes/clutter/mug.nif"))        # no similarly-named files → the plain message
+    view.equip(entry(catalog, "meshes/armor/misc/decoritem.nif"))   # no similarly-named files → the plain message
     _wait(app, lambda: "props, weapons and shields" in view._info.text())
 
 
@@ -472,7 +490,7 @@ def test_the_character_tab_reports_each_equip_for_a_toast(app, view, catalog):
     view.equip(entry(catalog, "meshes/armor/iron/f/boots_1.nif"))
     _wait(app, lambda: got)
     assert got[-1] == ("Added boots_1.nif to the character (Feet)", True)
-    view.equip(entry(catalog, "meshes/clutter/mug.nif"))
+    view.equip(entry(catalog, "meshes/armor/misc/decoritem.nif"))
     _wait(app, lambda: len(got) == 2)
     assert got[-1][1] is False and "no body slots" in got[-1][0]
 
