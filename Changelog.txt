@@ -4,6 +4,13 @@ reset to v1.0.0; they keep Amethyst Mod Manager's original numbering, which
 overlaps the numbers above, and the prefix is what keeps the two apart (and
 keeps release tooling from matching the wrong section).
 
+- v1.6.0
+### Additions
+- Added a NIF Viewer and Character tab (Wizard menu -> "NIF Viewer..." and "Character Viewer...", Skyrim SE, Skyrim LE and Fallout 4) so you can see what a mesh actually looks like without launching the game: a tree of every mesh and texture the game would load (base game first, then every mod in load order) next to a 3D preview, with the mesh drawn using the textures and materials the game would really apply, including Fallout 4's external .bgsm/.bgem material files. The Character tab dresses a full character on the game's own skeleton from your active profile's armour, clothing and hair, with a body weight slider (0-100%) that blends the slim and heavy meshes and worn pieces that follow it; the NIF Viewer's own "Add to character" puts a selected mesh straight into its slot. A body-covering slot always previews against the base game's own body, never a mod's replacer, so what you are equipping stays the reference point; equipped gear itself still shows exactly what your own mods provide. Right-click any file the tree shows as overridden for "Jump to override (<mod>)" to go straight to the copy that actually wins, instead of searching the tree by hand -- built for Collection and modlist authors checking what overrides what
+- Added Fallout 4 support to the archive/mesh readers behind the NIF Viewer: BA2 archives (Bethesda's replacement for BSA, GNRL and DX10/DDS-reassembly) and NIF format BS 130, including its embedded per-vertex skin weights and BSSkin skinning, plus real slot data read from plugins' own ARMA/BOD2 records (not guessed from the mesh) so a picker shows what a piece actually equips to
+
+---
+
 - v1.5.1
 ### Bug Fixes
 - Fixed the new "enabled plugin(s) are missing" check before Play crying wolf on collections that ship ESL-ified replacements. Gate To Sovngarde lists both 1WR.esl and 1WR.esp (and 11 more pairs, plus a few optional plugins) as enabled, but the original .esp files sit in ESP/ or Optional/ subfolders of their mods and never reach Data/, so every Play said the deployment was out of date and Deploy could not clear it. The check now only counts a plugin that some mod is meant to place directly in Data/ (from the profile filemap and the last-deployed filemap); an enabled entry that nothing provides is a stale plugins.txt line the game ignores, not a deploy problem. Dangling links left by renamed or removed mods are still caught
