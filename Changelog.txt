@@ -4,6 +4,15 @@ reset to v1.0.0; they keep Amethyst Mod Manager's original numbering, which
 overlaps the numbers above, and the prefix is what keeps the two apart (and
 keeps release tooling from matching the wrong section).
 
+- v1.7.0
+### Additions
+- Added batch downloading to the Nexus browser: a select checkbox on every mod card (survives paging and switching sections, shown in a bar above the footer with Clear selection / Download selected). A Nexus mod can ship several files (versions, variants, optionals), so Download selected fetches every selected mod's file list and opens one review overlay: a mod with exactly one MAIN file has it ticked already, a mod with several MAIN files (SE/AE, 1K/2K, male/female, ...) needs one chosen, optional/misc files can be ticked on top, and a mod left with nothing ticked is skipped (named as such). Premium accounts download files in parallel, capped by the collections' concurrency setting, and install each mod's files together once they've all landed; free accounts get one file's Nexus download page opened at a time, moving on once the folder watcher picks it up, times out, or is cancelled -- "Stop after this file" drops the rest without cancelling the one already in flight
+### Bug Fixes
+- Fixed the NIF Viewer and Character tab keeping the previous game's (or profile's) meshes on screen after switching game or profile -- both tabs index the game/profile they were opened for and never re-pointed themselves at a new one. Switching now always closes them, like every other game/profile-scoped tab already did; switching via the game/profile selector itself first asks ("Switching game"/"Switching profile", naming which view(s) it will close) since closing a view you were actively using deserves a chance to back out, unlike the other scoped tabs this switch already closes silently. A switch triggered programmatically (e.g. Nexus opening a mod from a different game) still closes them without asking, since several such call sites act right after assuming the switch is already done
+- Fixed the Nexus browser's "Clear selection" and "Download selected" buttons (new in this release) being flat and hard to spot against the selection bar's background; they now match the colour and weight of each mod card's own View/Install buttons
+
+---
+
 - v1.6.1
 ### Bug Fixes
 - Fixed the NIF Viewer and Character tab (added in v1.6.0) showing a fully blank white window in the AppImage build the moment either tab was opened -- not just the 3D preview area, the whole window. The AppImage build forced software rendering in a way that didn't just prefer it: it told Qt to never attempt any GL context at all (hardware or software) and excluded Mesa's own GL driver from the bundle entirely, a setting left over from before Mosaic had any feature that touched real OpenGL. Opening either tab's 3D preview then failed to get a GL context, which took the whole window's renderer down with it. Removed; the AppImage now gets the same GL behaviour as running from source or the Flatpak. Confirmed working end to end against a real 1,965-mod Skyrim profile after the fix, in the exact AppImage build
