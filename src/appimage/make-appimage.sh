@@ -93,14 +93,29 @@ fi
 #                   libQt6Core never enters the wrapper's ldd trace. We force
 #                   it here AND hand quick-sharun the Qt libs/plugins directly
 #                   (see the resolution block before the quick-sharun call).
-# ALWAYS_SOFTWARE=1 forces software rendering (matches upstream)
 # ANYLINUX_LIB=1    builds anylinux.so (LD_PRELOAD env-scrubber for child procs)
+#
+# ALWAYS_SOFTWARE was set (matching the pkgforge-dev AppImage template this
+# build script was based on) back when nothing in Mosaic touched real OpenGL.
+# It doesn't just prefer software rendering — quick-sharun's ALWAYS_SOFTWARE=1
+# sets QT_XCB_GL_INTEGRATION=none / QT_WAYLAND_CLIENT_BUFFER_INTEGRATION=none
+# (Qt is told to never attempt ANY GL context, hardware or software) AND
+# excludes libgallium-* (Mesa's GL driver, including the CPU-only llvmpipe
+# software rasterizer) from the bundle via ANYLINUX_DO_NOT_LOAD_LIBS — so a
+# QOpenGLWidget can never get a context under any circumstances. Fine while
+# true, but the NIF Viewer / Character tab (landed v1.6.0) need a real
+# QOpenGLWidget; with this set, opening either tab fails to create a GL
+# context and takes the whole window's Qt backing-store renderer down with
+# it ("Failed to create QRhi for QBackingStoreRhiSupport") — not just that
+# tab's 3D pane, the ENTIRE window goes blank. Removed for v1.6.1 so the
+# AppImage gets normal Qt GL behaviour (hardware-accelerated where
+# available, same as running from source) — nothing else in Mosaic uses GL,
+# so this only actually matters for those two tabs.
 export ARCH VERSION OUTPATH APPDIR
 export ICON="${ASSETS_DIR}/mod-manager.png"
 export DESKTOP="${ASSETS_DIR}/mod-manager.desktop"
 export DEPLOY_PYTHON=1
 export DEPLOY_QT=1
-export ALWAYS_SOFTWARE=1
 export ANYLINUX_LIB=1
 
 # SteamOS strips glibc headers from /usr/include; quick-sharun's anylinux.so
