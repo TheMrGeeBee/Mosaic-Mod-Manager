@@ -374,7 +374,7 @@ class NifViewerView(QWidget):
                     info = parse_dds_info(data[:148], len(data))
                     return gen, {"kind": "texture", "image": load_qimage_bytes(data),
                                  "info": info.summary() if info else ""}
-                scene = read_nif(data, include_nodes=True)
+                scene = self._loader.apply_materials(cat, read_nif(data, include_nodes=True))
                 skeleton, worn_on = None, None
                 if not scene.shapes and len(scene.nodes) >= 5:
                     skeleton = scene.nodes                    # a skeleton NIF: show its bones

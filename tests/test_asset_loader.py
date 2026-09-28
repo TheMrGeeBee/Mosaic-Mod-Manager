@@ -88,10 +88,10 @@ def test_the_same_material_is_only_read_once_across_shapes(tmp_path, monkeypatch
     real_read = cat.read
     monkeypatch.setattr(cat, "read", lambda e: (reads.append(e.path), real_read(e))[1])
 
-    sc = loader._apply_materials(cat, read_nif(mesh_bytes))     # first: a real cache miss
+    sc = loader.apply_materials(cat, read_nif(mesh_bytes))     # first: a real cache miss
     after_first = reads.count(MAT)
     assert after_first > 0
-    sc2 = loader._apply_materials(cat, read_nif(mesh_bytes))    # second: same material, must be cached
+    sc2 = loader.apply_materials(cat, read_nif(mesh_bytes))    # second: same material, must be cached
     assert sc.shapes[0].textures[0] == sc2.shapes[0].textures[0] == "textures/cross/coa/coa_02_d.dds"
     assert reads.count(MAT) == after_first     # no additional reads: served from _mat_cache
     cat.close()

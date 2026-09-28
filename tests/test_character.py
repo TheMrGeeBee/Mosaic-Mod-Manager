@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from array import array
+from dataclasses import replace
 
 import pytest
 
@@ -265,10 +266,20 @@ def test_normals_rotate_with_the_bone():
     assert [round(v, 5) for v in out.normals[0:3]] == [0.0, 1.0, 0.0]
 
 
-def test_a_missing_bone_leaves_the_shape_alone():
+def test_a_missing_bone_only_leaves_its_own_vertices_unposed():
+    # Real bug: a shape can reference bones that exist on NO static skeleton
+    # anywhere (verified: a real armor's dangling-coat cloth-physics rig used
+    # 30 bones that are pure runtime cloth-sim joints, never written to a
+    # skeleton.nif) — requiring every referenced bone to be present used to
+    # void the WHOLE shape, leaving even its real body vertices unposed and
+    # rendering as a giant misplaced mesh. Only vertices actually weighted by
+    # a missing bone should stay put; everything else must still pose.
     sh = skinned([0, 0, 0, 1, 0, 0, 0, 1, 0], [([0], [1]), ([1], [1])], ["Head", "Cape"],
                  [(IDENT, 1.0, (0, 0, 0))] * 2)
-    assert skin_shape(sh, {"Head": (IDENT, 1.0, (0, 0, 5))}) is sh            # "Cape" not on this skeleton
+    posed = skin_shape(sh, {"Head": (IDENT, 1.0, (0, 0, 5))})            # "Cape" not on this skeleton
+    assert list(posed.positions) == [0, 0, 5, 1, 0, 0, 0, 1, 0]           # v0: posed by Head
+                                                                           # v1: Cape missing, kept its spot
+                                                                           # v2: never weighted, kept its spot
     plain = NifShape("p", array("f", [0] * 9), None, None, array("H", [0, 1, 2]))
     assert skin_shape(plain, {"Head": (IDENT, 1.0, (0, 0, 5))}) is plain
     assert skin_scene(NifScene([plain]), {}).shapes[0] is plain
@@ -367,6 +378,13 @@ CA = "meshes/actors/character/character assets/"
     (CA + "altmalebody_0.nif", "body", False),
     (CA + "1stpersonfemalebody_0.nif", "body", False),                 # first-person arms
     ("meshes/armor/x/1stpersoncuirass_0.nif", "body", False),
+    # Fallout 4's own first-person conventions — a real gap: "1stperson" as a
+    # filename SUFFIX (not just a prefix) and a bare "_1st" suffix both used
+    # to slip through, e.g. a real f_arm_mid_r_1stperson.nif (verified) got
+    # a picker entry with the wrong (1st-person) texture/geometry.
+    ("meshes/armor/combatarmor/f_arm_mid_r_1stperson.nif", "r_arm", False),
+    ("meshes/armor/armoredcoat/glovesf1stperson.nif", "hands", False),
+    ("meshes/actors/powerarmor/characterassets/mods/pa_t60_larm_1st.nif", "l_arm", False),
     ("meshes/actors/argonianfemale/rvxargwhiskers/argwhiskersf01.nif", "head", False),
     ("meshes/clutter/mug.nif", None, False),
     ("meshes/armor/x/readme.txt", None, False),
@@ -517,7 +535,7 @@ def test_blend_scene_pairs_shapes_by_name_and_keeps_extras():
 # -- Fallout 4 GameProfile ------------------------------------------------------------------
 from Utils.nif.character import (  # noqa: E402
     FALLOUT4_PROFILE, SKYRIM_PROFILE, GameProfile, assemble, fits_slot, is_wearable_path,
-    profile_for_game, slot_group,
+    profile_for_game, rigid_attach_shape, slot_group,
 )
 
 
@@ -589,6 +607,18 @@ def test_fallout4_a_reservation_slot_does_not_steal_the_group():
     assert slot_group("meshes/clothes/x/outfit.nif", frozenset({33, 60}), FALLOUT4_PROFILE) == "body"
 
 
+def test_fallout4_a_torso_pieces_head_reservation_does_not_steal_the_group():
+    # Real bug: a real chest/backpack rig (slots {30, 41}, a torso piece that
+    # also reserves Head to hide clipping with a separate helmet) was showing
+    # up as "Head" in the picker — slot_groups happens to list "head" before
+    # "torso", so the old plain dict-order match picked whichever group came
+    # first in the dict rather than the piece's real, primary role. Core
+    # body-coverage groups must win over reservation-only ones regardless of
+    # slot_groups' own dict order.
+    assert slot_group("meshes/cross/tra/tra_ghoul_armor_chest.nif",
+                      frozenset({32, 41, 30, 31}), FALLOUT4_PROFILE) == "torso"
+
+
 def test_fallout4_has_no_skyrim_duplicate_slot_range():
     # Skyrim's "+100" duplicate-head-slot range is a Skyrim-only quirk;
     # Fallout 4's own slots (30-61) never collide, and 130 (a Skyrim
@@ -651,3 +681,30 @@ def test_skyrim_a_piece_can_still_hide_an_earlier_piece():
     scene = assemble([], {"hair": NifScene([hair]), "head": NifScene([helmet])})
     assert [s.name for s in scene.shapes] == ["hair", "helm"]
     assert scene.shapes[0].part_slots == (141,)          # the hair's 131 partition is gone, not the whole shape
+
+
+def test_rigid_attach_shape_moves_an_unskinned_prop_to_the_bones_world_position():
+    # Real bug: FO4's own vanilla pipboy.nif has zero skinned shapes at all —
+    # skin_shape() has nothing to pose it with, so it stayed at its raw
+    # near-origin file-space coordinates (visibly at the character's feet
+    # instead of the wrist). Verified against a real skinned alternate of
+    # the same item that DOES carry real skin weights to "PipboyBone" and
+    # renders correctly — rigidly attaching the unskinned mesh to that same
+    # bone must land it in the same region.
+    sh = NifShape("pipboy", array("f", [1, 0, 0]), array("f", [0, 0, 1]), None, array("H", [0]))
+    moved = rigid_attach_shape(sh, (IDENT, 1.0, (10, 20, 30)))
+    assert list(moved.positions) == [11, 20, 30]      # rotate (identity) + translate
+    assert list(moved.normals) == [0, 0, 1]            # normals rotate but don't translate
+
+
+def test_rigid_attach_shape_is_a_no_op_for_an_already_skinned_shape():
+    sh = skinned([1, 0, 0], [([0], [1])], ["Head"], [(IDENT, 1.0, (0, 0, 0))])
+    assert rigid_attach_shape(sh, (IDENT, 1.0, (10, 20, 30))) is sh
+
+
+def test_fallout4_assemble_rigidly_attaches_an_unskinned_pipboy_prop():
+    profile = replace(FALLOUT4_PROFILE, rigid_attach={"pipboy": "Wrist"})
+    prop = NifShape("pipboy_prop", array("f", [1, 0, 0]), None, None, array("H", [0]), is_skinned=False)
+    bones = {"Wrist": (IDENT, 1.0, (100, 0, 0))}
+    scene = assemble([], {"pipboy": NifScene([prop])}, bones, profile)
+    assert list(scene.shapes[0].positions) == [101, 0, 0]

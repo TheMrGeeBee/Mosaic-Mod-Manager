@@ -45,7 +45,7 @@ class AssetLoader:
                 self._mat_cache.pop(next(iter(self._mat_cache)))
         return mt
 
-    def _apply_materials(self, cat: AssetCatalog, scene: "NifScene | None") -> "NifScene | None":
+    def apply_materials(self, cat: AssetCatalog, scene: "NifScene | None") -> "NifScene | None":
         """*scene* with every shape's diffuse slot replaced by its own
         material_name's diffuse, when it has one — verified on real Fallout 4
         armor (CROSS Collection): a shape with a material reference always
@@ -58,7 +58,14 @@ class AssetLoader:
         this viewer reads (see character_view.py/nif_viewer_view.py's own
         `sh.textures[0]`). A material with no diffuse of its own (a handful
         of real decal/neon materials, verified) leaves the shape's embedded
-        value alone rather than blanking it."""
+        value alone rather than blanking it.
+
+        Public: every direct `read_nif()` call site in the NIF Viewer/
+        Character tab must route its scene through this before displaying it
+        — a real gap found live (`nif_viewer_view.py`'s main selected-mesh
+        scene used to call `read_nif()` straight, bypassing this entirely,
+        so any mesh relying on a material showed no texture there even
+        though the Character tab's equivalent path was already fixed)."""
         if scene is None:
             return None
         changed = False
@@ -102,7 +109,7 @@ class AssetLoader:
             scene = read_nif(cat.read(e), include_nodes=include_nodes)
         except (NifError, BsaReadError, OSError):
             return None
-        return self._apply_materials(cat, scene)
+        return self.apply_materials(cat, scene)
 
     def nif_entry(self, cat: AssetCatalog, entry: "AssetEntry | None") -> "NifScene | None":
         """Parse *entry* (that exact copy), cached: dragging the weight slider
@@ -116,7 +123,7 @@ class AssetLoader:
             if key in self._nif_cache:
                 return self._nif_cache[key]
         try:
-            scene = self._apply_materials(cat, read_nif(cat.read(entry)))
+            scene = self.apply_materials(cat, read_nif(cat.read(entry)))
         except (NifError, BsaReadError, OSError):
             scene = None
         with self._lock:

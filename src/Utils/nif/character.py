@@ -59,6 +59,31 @@ class GameProfile:
     # file itself isn't named after them).
     base_part_groups: frozenset = dc_field(default_factory=lambda: frozenset(
         {"body", "hands", "feet", "arms", "legs"}))
+    # Which group wins when a mesh's slots match more than one group's keys —
+    # checked in this order, first match wins; groups not listed keep falling
+    # back to slot_groups' own dict order. None (Skyrim's default) means
+    # "just use slot_groups' dict order", unchanged from before this field
+    # existed. Fallout 4 needs an explicit order: a real "torso" armor piece
+    # legitimately reserves slot 30 (head) too, purely to hide clipping with
+    # a separate helmet — but slot_groups happens to list "head" before
+    # "torso", so the old dict-order matching put it in the Head picker
+    # instead, a real bug (verified: a real chest/back rig equipped into
+    # "Head"). Reservation-only slots (head/eyes/pipboy/backpack) are listed
+    # last so whatever piece a mesh actually covers always wins over a slot
+    # it's merely reserving.
+    group_priority: "tuple | None" = None
+    # {group_key: bone name} — a group whose real vanilla mesh can ship with
+    # NO skin data at all (verified: every shape in FO4's own pipboy.nif has
+    # is_skinned=False) and instead relies on a runtime engine convention
+    # (attach the whole mesh rigidly to this one bone) that no static NIF
+    # field records — skin_shape() has nothing to pose such a shape with, so
+    # it was left at its raw file-local coordinates (near the world origin,
+    # i.e. visibly at the character's feet instead of the wrist). Verified
+    # against a real skinned alternate of the same item (pipboylowvault81.nif,
+    # which DOES carry real skin weights to "PipboyBone" and renders
+    # correctly): rigidly attaching the unskinned vanilla mesh to that same
+    # bone lands it in the same wrist-height region.
+    rigid_attach: dict = dc_field(default_factory=dict)
 
 
 BODY_DIR = "meshes/actors/character/character assets/"
@@ -143,7 +168,10 @@ FALLOUT4_PROFILE = GameProfile(
     # already-equipped torso vanish). See pieces_hide_each_other's own
     # docstring for why the base-body hide (which uses this same comparison
     # and does work) is left untouched.
-    pieces_hide_each_other=False)
+    pieces_hide_each_other=False,
+    group_priority=("body", "torso", "l_arm", "r_arm", "hands", "l_leg", "r_leg",
+                    "head", "eyes", "pipboy", "backpack"),
+    rigid_attach={"pipboy": "PipboyBone"})
 
 
 def profile_for_game(game_id: "str | None") -> GameProfile:
@@ -365,8 +393,10 @@ def slot_group(path: str, slots: "frozenset | None", profile: GameProfile = SKYR
     if not slots:
         return None
     s = {x % 100 if profile.fold_duplicate_slots and x >= 100 else x for x in slots}
-    for group, keys in profile.slot_groups.items():
-        if s & keys:
+    order = profile.group_priority or profile.slot_groups.keys()
+    for group in order:
+        keys = profile.slot_groups.get(group)
+        if keys and s & keys:
             return group
     return None
 
@@ -383,6 +413,12 @@ def assemble(base: list[NifScene], pieces: "dict[str, NifScene]",
     if bones:                                    # pose everything on the skeleton first
         base = [skin_scene(b, bones) for b in base]
         pieces = {g: skin_scene(sc, bones) for g, sc in pieces.items()}
+        for g in list(pieces):                   # a group's own unskinned prop convention, if any
+            bone_name = profile.rigid_attach.get(g)
+            if bone_name and bone_name in bones:
+                sc_ = pieces[g]
+                pieces[g] = NifScene(
+                    [rigid_attach_shape(sh, bones[bone_name]) for sh in sc_.shapes], sc_.nodes)
     base_shapes = [sh for b in base for sh in b.shapes]
     piece_shapes: list[NifShape] = []
     layer_order = profile.layer_order
@@ -431,7 +467,7 @@ def is_wearable_path(path: str, group: "str | None" = None,
     name = p.rsplit("/", 1)[-1]
     if not p.startswith("meshes/") or not p.endswith(".nif"):
         return False
-    if name.startswith("1stperson") or "/1stperson" in p:
+    if "1stperson" in name or "/1stperson" in p or name.endswith("_1st.nif"):
         return False
     if any(w in name for w in _RACE_WORDS) or "/child/" in p or "/children/" in p or name.startswith("child"):
         return False                                   # beast races and child gear: not for the adult human character
@@ -537,10 +573,19 @@ def skin_shape(shape: NifShape, bones: dict) -> NifShape:
     transforms from the file. Armour and bodies are authored so this equals
     where the file already places them; hair, eyes and other head-attached
     meshes are stored relative to a bone and only land in the right place this
-    way. Returned unchanged when the shape has no skin data or the skeleton
-    lacks any of its bones (a partial pose would distort it)."""
+    way. Returned unchanged when the shape has no skin data at all. A bone
+    the skeleton doesn't have simply contributes nothing (as if its weight
+    were zero) rather than voiding the whole shape — verified against a real
+    file (a raider body with a dangling-coat cloth-physics rig): 30 of its
+    87 bones are pure runtime cloth-sim bones with no entry in any static
+    skeleton.nif, ever (there's nothing to load — they don't exist outside
+    a physics engine), so requiring every bone used left the ~60 real body
+    bones unposed too, rendering the whole body as one giant unposed mesh
+    sitting at its raw file-space coordinates. A vertex weighted entirely by
+    missing bones still keeps its old spot (wsum stays 0, already handled
+    below) — only the physics-only cloth tips are affected, not the body."""
     sk = shape.skin
-    if sk is None or not all(name in bones for name in sk.bone_names):
+    if sk is None:
         return shape
     lp, ln = sk.local_positions, sk.local_normals
     nv = len(lp) // 3
@@ -548,6 +593,8 @@ def skin_shape(shape: NifShape, bones: dict) -> NifShape:
     nacc = [0.0] * (nv * 3) if ln is not None else None
     wsum = [0.0] * nv
     for name, s_xf, (ids, ws) in zip(sk.bone_names, sk.bone_xf, sk.weights):
+        if name not in bones:
+            continue
         r, sc, t = compose_transform(bones[name], s_xf)
         for vid, w in zip(ids, ws):
             if vid >= nv or w <= 0.0:
@@ -579,3 +626,31 @@ def skin_shape(shape: NifShape, bones: dict) -> NifShape:
 
 def skin_scene(scene: NifScene, bones: dict) -> NifScene:
     return NifScene([skin_shape(sh, bones) for sh in scene.shapes])
+
+
+def rigid_attach_shape(shape: NifShape, bone_xf) -> NifShape:
+    """*shape* rigidly transformed as if it were a permanently-fused child of
+    the bone whose (rotation, scale, translation) is *bone_xf* — for a prop
+    mesh with no skin data at all, so skin_shape() has nothing to pose it
+    with (see GameProfile.rigid_attach's own docstring for why this is
+    needed and how it was verified). A no-op for an already-skinned shape."""
+    if shape.is_skinned:
+        return shape
+    r, sc, t = bone_xf
+    pos = array("f", shape.positions)
+    for i in range(0, len(pos), 3):
+        x, y, z = pos[i], pos[i + 1], pos[i + 2]
+        pos[i] = t[0] + sc * (r[0] * x + r[1] * y + r[2] * z)
+        pos[i + 1] = t[1] + sc * (r[3] * x + r[4] * y + r[5] * z)
+        pos[i + 2] = t[2] + sc * (r[6] * x + r[7] * y + r[8] * z)
+    nrm = shape.normals
+    if nrm is not None:
+        nrm = array("f", nrm)
+        for i in range(0, len(nrm), 3):
+            a, b, c = nrm[i], nrm[i + 1], nrm[i + 2]
+            nx = r[0] * a + r[1] * b + r[2] * c
+            ny = r[3] * a + r[4] * b + r[5] * c
+            nz = r[6] * a + r[7] * b + r[8] * c
+            ln = (nx * nx + ny * ny + nz * nz) ** 0.5 or 1.0
+            nrm[i], nrm[i + 1], nrm[i + 2] = nx / ln, ny / ln, nz / ln
+    return replace(shape, positions=pos, normals=nrm)
