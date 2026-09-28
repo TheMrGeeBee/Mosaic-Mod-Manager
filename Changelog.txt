@@ -4,6 +4,13 @@ reset to v1.0.0; they keep Amethyst Mod Manager's original numbering, which
 overlaps the numbers above, and the prefix is what keeps the two apart (and
 keeps release tooling from matching the wrong section).
 
+- v1.6.1
+### Bug Fixes
+- Fixed the NIF Viewer and Character tab (added in v1.6.0) showing a fully blank white window in the AppImage build the moment either tab was opened -- not just the 3D preview area, the whole window. The AppImage build forced software rendering in a way that didn't just prefer it: it told Qt to never attempt any GL context at all (hardware or software) and excluded Mesa's own GL driver from the bundle entirely, a setting left over from before Mosaic had any feature that touched real OpenGL. Opening either tab's 3D preview then failed to get a GL context, which took the whole window's renderer down with it. Removed; the AppImage now gets the same GL behaviour as running from source or the Flatpak. Confirmed working end to end against a real 1,965-mod Skyrim profile after the fix, in the exact AppImage build
+- Added a "Check for Updates" button to Settings -> General: a manual check now bypasses the usual 1-hour throttle and always says what happened (up to date, an update found, or a network error) instead of the automatic startup check's silence when there's nothing to report
+
+---
+
 - v1.6.0
 ### Additions
 - Added a NIF Viewer and Character tab (Wizard menu -> "NIF Viewer..." and "Character Viewer...", Skyrim SE, Skyrim LE and Fallout 4) so you can see what a mesh actually looks like without launching the game: a tree of every mesh and texture the game would load (base game first, then every mod in load order) next to a 3D preview, with the mesh drawn using the textures and materials the game would really apply, including Fallout 4's external .bgsm/.bgem material files. The Character tab dresses a full character on the game's own skeleton from your active profile's armour, clothing and hair, with a body weight slider (0-100%) that blends the slim and heavy meshes and worn pieces that follow it; the NIF Viewer's own "Add to character" puts a selected mesh straight into its slot. A body-covering slot always previews against the base game's own body, never a mod's replacer, so what you are equipping stays the reference point; equipped gear itself still shows exactly what your own mods provide. Right-click any file the tree shows as overridden for "Jump to override (<mod>)" to go straight to the copy that actually wins, instead of searching the tree by hand -- built for Collection and modlist authors checking what overrides what
