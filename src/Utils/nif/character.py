@@ -152,10 +152,21 @@ FALLOUT4_PROFILE = GameProfile(
     # suit liner, even a creature mesh) purely to hide the hair underneath —
     # confirmed on real ARMA data. Only the hair-folder check (below)
     # identifies "hair" for this game.
+    # Slot 46 folded into "eyes": real data shows it's the same face-gear
+    # cluster as 47 (full masks/helmets carry both, e.g. a hazmat helmet's
+    # real ARMA is {30,31,32,46,47,48,49,50}) — a standalone mask piece with
+    # just {46} alone is real and legitimately equippable, but previously had
+    # no group at all, so equip() treated it as "no body slots" (an item's
+    # display model) — a real, misleading bug: the "worn version" it then
+    # suggested from the same folder was itself just as unmapped, so
+    # following the suggestion chain never actually found a wearable item.
+    # FO4's real BOD2 range is 30-61; this profile still only covers the
+    # slots verified so far — another standalone item using one of the
+    # untouched ones (32, 36-40, 48-59) would hit the same "no slots" report.
     slot_groups={"head": frozenset({30}), "body": frozenset({33}),
                 "torso": frozenset({41}), "l_arm": frozenset({42}), "r_arm": frozenset({43}),
                 "hands": frozenset({34, 35}), "l_leg": frozenset({44}), "r_leg": frozenset({45}),
-                "eyes": frozenset({47}), "pipboy": frozenset({60}), "backpack": frozenset({61})},
+                "eyes": frozenset({46, 47}), "pipboy": frozenset({60}), "backpack": frozenset({61})},
     base_parts=("body", "hands"), has_weight_suffix=False,
     head_fmt="base{gender}head.nif", eyes_fmt=None,
     base_part_groups=frozenset({"body", "hands", "torso", "l_arm", "r_arm", "l_leg", "r_leg"}),

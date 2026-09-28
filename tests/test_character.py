@@ -570,6 +570,14 @@ def test_fallout4_body_paths_have_no_weight_suffix_and_a_different_head_name():
     ({34, 35}, "hands"), ({42}, "l_arm"), ({43}, "r_arm"),
     ({44}, "l_leg"), ({45}, "r_leg"),
     ({47}, "eyes"), ({60}, "pipboy"), ({61}, "backpack"),
+    # Slot 46: real mask/gas-mask/helmet ARMAs mix it with 47 (e.g. a real
+    # hazmat helmet is {30,31,32,46,47,48,49,50}), but a real standalone mask
+    # can carry ONLY {46} — previously unmapped, so equip() treated a real,
+    # legitimately wearable item as "no body slots" (an item's display
+    # model), and the "worn version" it suggested from the same folder was
+    # itself just as unmapped, going in circles without ever finding a real
+    # wearable file.
+    ({46}, "eyes"),
 ])
 def test_fallout4_slot_group_matches_real_arma_data(slots, want):
     assert slot_group("meshes/armor/vault/piece.nif", frozenset(slots), FALLOUT4_PROFILE) == want
