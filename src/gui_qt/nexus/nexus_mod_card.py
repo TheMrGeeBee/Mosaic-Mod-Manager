@@ -21,7 +21,7 @@ from datetime import datetime, timezone
 from PySide6.QtCore import Qt, QObject, Signal, QCoreApplication
 from PySide6.QtGui import QPixmap, QImage, QFontMetrics, QTextLayout
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QFrame,
+    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QFrame, QCheckBox,
 )
 
 from gui_qt.theme.theme_qt import active_palette, _c, contrast_text
@@ -259,10 +259,13 @@ class NexusModCard(QFrame):
         on_view(entry)     — open the mod's Nexus page
         on_install(entry)  — download + install
         on_context(entry, global_pos) — show a right-click menu (optional)
+        on_select(entry, bool) — the corner "select" checkbox was toggled
+                                 (optional; no checkbox without it)
     """
 
     def __init__(self, entry, on_view, on_install, on_context=None,
-                 is_installed: bool = False, parent=None):
+                 is_installed: bool = False, on_select=None,
+                 selected: bool = False, parent=None):
         super().__init__(parent)
         self.setObjectName("GameCard")
         self.setFixedSize(CARD_W, CARD_H)
@@ -288,6 +291,22 @@ class NexusModCard(QFrame):
             f" color:{dim};")
         self._img.setText("…")
         v.addWidget(self._img)
+
+        # Multi-select checkbox, pinned to the cover's top-left corner on a
+        # dark chip so it stays visible over any thumbnail.
+        self._select_cb = None
+        if on_select is not None:
+            cb = QCheckBox(self._img)
+            cb.setObjectName("CardSelect")
+            cb.setToolTip(self.tr("Select for \"Download selected\""))
+            cb.setCursor(Qt.PointingHandCursor)
+            cb.setStyleSheet(
+                "#CardSelect { background: rgba(0,0,0,150);"
+                " border-radius: 4px; padding: 4px; }")
+            cb.setChecked(bool(selected))
+            cb.toggled.connect(lambda on: on_select(entry, bool(on)))
+            cb.move(8, 8)
+            self._select_cb = cb
 
         # --- body ----------------------------------------------------------
         body = QWidget()
@@ -374,6 +393,14 @@ class NexusModCard(QFrame):
             return
         self._installed = bool(installed)
         self._apply_install_style()
+
+    def set_selected(self, selected: bool) -> None:
+        """Reflect the view's selection without re-firing on_select."""
+        if self._select_cb is None:
+            return
+        self._select_cb.blockSignals(True)
+        self._select_cb.setChecked(bool(selected))
+        self._select_cb.blockSignals(False)
 
     def set_watching(self, watching: bool) -> None:
         """A non-premium install is waiting for this mod's browser download —

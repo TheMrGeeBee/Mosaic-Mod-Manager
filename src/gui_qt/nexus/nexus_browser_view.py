@@ -80,7 +80,8 @@ class NexusBrowserView(QWidget):
     _premium_checked = Signal(object, object)       # (entry, is_premium|None)
     _files_ready = Signal(object, object)           # (entry, list[NexusModFile])
     _manual_files_ready = Signal(object, object)    # (entry, list[NexusModFile]|None)
-    _manual_watch_ended = Signal(int)               # (mod_id) — found or timed out
+    _manual_watch_ended = Signal(int, str)          # (mod_id, dl_key) — found or timed out
+    _batch_ready = Signal(object, object, int)      # ([(entry, files|None)]|None, is_premium, token)
     _download_done = Signal(object, object, object)      # (archive_path|None, meta|None, dl_key)
     _download_progress = Signal(object, object, "qlonglong", "qlonglong")  # (dl_key, name, downloaded, total bytes; 64-bit: >2GB)
 
@@ -143,6 +144,22 @@ class NexusBrowserView(QWidget):
         # folders. The destroyed hook must not touch self (C++ side is gone
         # by then), so it captures the dict + progress_fn directly.
         self._manual_watchers: dict = {}
+
+        # "Download selected": mod_id → entry, in the order the user ticked
+        # them. Survives paging/section switches (cards are rebuilt per page);
+        # cleared on game switch and once a batch is confirmed.
+        self._selected: dict = {}
+        self._batch_busy = False        # file lists being fetched / chooser open
+        self._batch_token = 0           # invalidates a batch prep on game switch
+        self._batch_ready.connect(self._on_batch_ready)
+        # Premium batch: dl_key → shared group dict for mods with more than one
+        # file, so a mod's files install together in chooser order (main
+        # before its optionals) rather than in download-completion order.
+        self._batch_groups: dict = {}
+        # Non-premium batch: files still to open, one browser page at a time.
+        self._manual_batch: list = []   # pending (entry, file)
+        self._manual_batch_total = 0
+        self._manual_batch_key = ""     # dl_key of the file being watched now
 
         def _stop_watchers(*_, w=self._manual_watchers, pf=self._progress_fn):
             for watcher, key in list(w.values()):
@@ -354,6 +371,29 @@ class NexusBrowserView(QWidget):
         # gets ~1000px, so 3 cards fit. 300 was just over the threshold → 2.
         self._body_split.setSizes([260, 1020])
         outer.addWidget(self._body_split, 1)
+
+        # --- selection bar (only while mods are selected / a batch runs) ----
+        self._sel_bar = QWidget()
+        self._sel_bar.setObjectName("HeaderBar")
+        sl = QHBoxLayout(self._sel_bar)
+        sl.setContentsMargins(10, 6, 10, 6)
+        sl.setSpacing(6)
+        self._sel_label = QLabel("")
+        self._sel_label.setWordWrap(True)
+        sl.addWidget(self._sel_label, 1)
+        self._sel_clear_btn = QToolButton()
+        self._sel_clear_btn.setText(self.tr("Clear selection"))
+        self._sel_clear_btn.setObjectName("ActionButton")
+        self._sel_clear_btn.setCursor(Qt.PointingHandCursor)
+        self._sel_clear_btn.clicked.connect(self._clear_selection)
+        sl.addWidget(self._sel_clear_btn)
+        self._sel_dl_btn = QToolButton()
+        self._sel_dl_btn.setObjectName("ActionButton")
+        self._sel_dl_btn.setCursor(Qt.PointingHandCursor)
+        self._sel_dl_btn.clicked.connect(self._on_selection_action)
+        sl.addWidget(self._sel_dl_btn)
+        self._sel_bar.setVisible(False)
+        outer.addWidget(self._sel_bar)
 
         # --- yellow footer --------------------------------------------------
         footer = QWidget()
@@ -723,8 +763,17 @@ class NexusBrowserView(QWidget):
         is open). Resets navigation + filters (categories differ per game) and
         re-fetches categories + the Browse grid for the new domain."""
         # Pending browser-download watches would install into the NEW game's
-        # modlist — stop them (and their progress cards) instead.
+        # modlist — stop them (and their progress cards) instead. Stop the
+        # browser-download batch first, or cancelling its current watch would
+        # open the next file's page.
+        self._stop_manual_batch(quiet=True)
         self._cancel_manual_watches()
+        # A selection (or a batch still fetching file lists) belongs to the
+        # old game's mods.
+        self._batch_token += 1
+        self._batch_busy = False
+        self._selected.clear()
+        self._update_selection_bar()
         self._game = game
         self._domain = domain or ""
         # Reset navigation + search + filter state to the new game's defaults.
@@ -921,7 +970,9 @@ class NexusBrowserView(QWidget):
         for e in self._visible_entries():
             card = NexusModCard(e, self._on_view, self._on_install,
                                 on_context=self._show_card_menu,
-                                is_installed=e.mod_id in installed)
+                                is_installed=e.mod_id in installed,
+                                on_select=self._on_card_selected,
+                                selected=e.mod_id in self._selected)
             if e.mod_id in self._manual_watchers:
                 card.set_watching(True)
             self._cards.append(card)
@@ -1062,6 +1113,172 @@ class NexusBrowserView(QWidget):
 
         threading.Thread(target=worker, daemon=True).start()
 
+    # -- multi-select + "Download selected" -----------------------------------
+    def _on_card_selected(self, entry, on: bool):
+        if on:
+            self._selected[entry.mod_id] = entry
+        else:
+            self._selected.pop(entry.mod_id, None)
+        self._update_selection_bar()
+
+    def _clear_selection(self):
+        self._selected.clear()
+        for card in self._cards:
+            card.set_selected(False)
+        self._update_selection_bar()
+
+    def _update_selection_bar(self):
+        n = len(self._selected)
+        running = bool(self._manual_batch_key)
+        parts = []
+        if n:
+            parts.append(self.tr("{0} mod(s) selected").format(n))
+        if running:
+            at = self._manual_batch_total - len(self._manual_batch)
+            parts.append(self.tr(
+                "Browser downloads: file {0} of {1}. Click download on the "
+                "Nexus page that opened; the next page opens once it has "
+                "arrived.").format(at, self._manual_batch_total))
+        elif self._batch_busy:
+            parts.append(self.tr("Preparing the download…"))
+        self._sel_label.setText("   ·   ".join(parts))
+        self._sel_clear_btn.setVisible(n > 0)
+        if running:
+            self._sel_dl_btn.setText(self.tr("Stop after this file"))
+            self._sel_dl_btn.setEnabled(True)
+        else:
+            self._sel_dl_btn.setText(self.tr("Download selected"))
+            self._sel_dl_btn.setEnabled(n > 0 and not self._batch_busy)
+        self._sel_bar.setVisible(bool(n or running or self._batch_busy))
+
+    def _on_selection_action(self):
+        if self._manual_batch_key:
+            self._stop_manual_batch()
+        else:
+            self._download_selected()
+
+    def _download_selected(self):
+        """Fetch every selected mod's file list (and the premium status) on a
+        worker, then open the batch chooser."""
+        if self._batch_busy or not self._selected:
+            return
+        entries = list(self._selected.values())
+        self._batch_busy = True
+        self._batch_token += 1
+        token = self._batch_token
+        default_domain = self._domain
+        self._update_selection_bar()
+        self._log(f"Nexus: fetching file lists for {len(entries)} mod(s)…")
+
+        def files_for(entry):
+            dom = getattr(entry, "domain_name", "") or default_domain
+            try:
+                return list(self._api.get_mod_files(dom, entry.mod_id).files)
+            except Exception as exc:
+                self._log(f"Nexus: couldn't fetch files for "
+                          f"{entry.name or entry.mod_id}: {exc}")
+                return None
+
+        def work():
+            from concurrent.futures import ThreadPoolExecutor
+            premium = self._resolve_premium()
+            with ThreadPoolExecutor(max_workers=4) as pool:
+                files = list(pool.map(files_for, entries))
+            return (list(zip(entries, files)), premium, token)
+
+        run_in_worker(work, self._batch_ready, name="nexus-batch-files",
+                      unpack=True, error_result=(None, None, token))
+
+    def _on_batch_ready(self, mods, premium, token):
+        if token != self._batch_token:
+            return                       # game switched meanwhile
+        if mods is None:
+            self._batch_busy = False
+            self._log("Nexus: couldn't prepare the download.")
+            self._update_selection_bar()
+            return
+        from gui_qt.nexus.nexus_batch_chooser import NexusBatchChooser
+
+        def _done(plan):
+            self._batch_busy = False
+            if token != self._batch_token:
+                self._update_selection_bar()
+                return
+            if not plan:
+                self._log("Nexus: download selected cancelled.")
+                self._update_selection_bar()
+                return
+            self._clear_selection()
+            if premium:
+                self._start_batch_downloads(plan)
+            else:
+                self._start_manual_batch(plan)
+            self._update_selection_bar()
+
+        NexusBatchChooser.show_over(self, mods, _done)
+
+    def _start_batch_downloads(self, plan):
+        """Premium: download every picked file, a few at a time (the
+        collections' concurrency setting). A mod's files install together once
+        all of them are in; single-file mods install as soon as they land."""
+        try:
+            from Utils.ui_config import load_collection_settings
+            limit = max(1, int(load_collection_settings().get("max_concurrent", 8)))
+        except Exception:
+            limit = 4
+        sem = threading.BoundedSemaphore(limit)
+        n_files = sum(len(files) for _e, files in plan)
+        self._log(f"Nexus: downloading {n_files} file(s) from {len(plan)} "
+                  f"mod(s), up to {limit} at a time…")
+        for entry, files in plan:
+            keys = [self._start_download(entry, f, sem=sem) for f in files]
+            if len(keys) > 1:
+                # Safe to register after starting: completions reach
+                # _on_download_done through a queued signal, which can't run
+                # until this UI-thread method returns.
+                group = {"keys": keys, "results": {},
+                         "name": entry.name or f"Mod {entry.mod_id}"}
+                for k in keys:
+                    self._batch_groups[k] = group
+
+    def _start_manual_batch(self, plan):
+        """Non-premium: Nexus needs a click on its site for every file, so open
+        one file's download page at a time and move on once the folder watcher
+        has picked it up (or it was cancelled / timed out)."""
+        self._manual_batch = [(e, f) for e, files in plan for f in files]
+        self._manual_batch_total = len(self._manual_batch)
+        self._log(f"Nexus: {self._manual_batch_total} file(s) to download in "
+                  f"your browser, one at a time.")
+        self._advance_manual_batch()
+
+    def _advance_manual_batch(self):
+        self._manual_batch_key = ""
+        if not self._manual_batch:
+            if self._manual_batch_total:
+                self._log("Nexus: browser download batch finished.")
+            self._manual_batch_total = 0
+            self._update_selection_bar()
+            return
+        entry, file = self._manual_batch.pop(0)
+        # Set the key only after _open_manual_file: it cancels any older watch
+        # for the same mod first, and that must not count as this file ending.
+        key = self._open_manual_file(entry, file)
+        self._manual_batch_key = key or ""
+        self._update_selection_bar()
+
+    def _stop_manual_batch(self, quiet: bool = False):
+        """Drop the files not yet opened. The current file's watch keeps
+        running — its download may already be under way in the browser."""
+        pending = len(self._manual_batch)
+        was_running = bool(self._manual_batch_key)
+        self._manual_batch = []
+        self._manual_batch_total = 0
+        self._manual_batch_key = ""
+        if was_running and not quiet:
+            self._log(f"Nexus: stopped the browser download batch "
+                      f"({pending} file(s) not opened).")
+        self._update_selection_bar()
+
     # -- install (premium check → file pick → download → install queue) ----
     def _on_install(self, entry):
         if entry.mod_id in self._manual_watchers:
@@ -1079,36 +1296,37 @@ class NexusBrowserView(QWidget):
         name = entry.name or f"Mod {mod_id}"
         self._log(f"Nexus: preparing install for {name}…")
 
-        def _check_premium():
-            from Utils.ui_config import load_nexus_last_premium, save_nexus_last_premium
-            try:
-                premium = bool(self._api.validate().is_premium)
-                try:
-                    save_nexus_last_premium(premium)
-                except Exception:
-                    pass
-            except Exception as exc:
-                # GH#278: a transient validate() failure (network hiccup, rate
-                # limit — most likely to hit the very first Nexus call of a
-                # session, racing _ensure_nexus_api()'s own startup validate())
-                # must not silently demote a premium user to manual mode —
-                # fall back to the last successfully-validated status.
-                premium = bool(load_nexus_last_premium())
-                self._log(f"Nexus: premium check failed: {exc} — using "
-                          f"last-known status ({'premium' if premium else 'not premium'})")
-            if premium:
-                # [dev] force_manual_install = true → exercise the manual
-                # browser-download flow (same switch the collections use).
-                from Utils.ui_config import load_force_manual_install
-                if load_force_manual_install():
-                    self._log("Nexus: [dev] force_manual_install — using the "
-                              "manual browser-download flow.")
-                    premium = False
-            return (entry, premium)
-
-        run_in_worker(_check_premium,
+        run_in_worker(lambda: (entry, self._resolve_premium()),
                       self._premium_checked, name="nexus-premium-check",
                       unpack=True, error_result=(entry, None))
+
+    def _resolve_premium(self) -> bool:
+        """Worker thread: is this account premium (direct downloads)?"""
+        from Utils.ui_config import load_nexus_last_premium, save_nexus_last_premium
+        try:
+            premium = bool(self._api.validate().is_premium)
+            try:
+                save_nexus_last_premium(premium)
+            except Exception:
+                pass
+        except Exception as exc:
+            # GH#278: a transient validate() failure (network hiccup, rate
+            # limit — most likely to hit the very first Nexus call of a
+            # session, racing _ensure_nexus_api()'s own startup validate())
+            # must not silently demote a premium user to manual mode —
+            # fall back to the last successfully-validated status.
+            premium = bool(load_nexus_last_premium())
+            self._log(f"Nexus: premium check failed: {exc} — using "
+                      f"last-known status ({'premium' if premium else 'not premium'})")
+        if premium:
+            # [dev] force_manual_install = true → exercise the manual
+            # browser-download flow (same switch the collections use).
+            from Utils.ui_config import load_force_manual_install
+            if load_force_manual_install():
+                self._log("Nexus: [dev] force_manual_install — using the "
+                          "manual browser-download flow.")
+                premium = False
+        return premium
 
     def _on_premium_checked(self, entry, is_premium):
         domain = getattr(entry, "domain_name", "") or self._domain
@@ -1197,7 +1415,7 @@ class NexusBrowserView(QWidget):
             if not _claim():
                 return
             safe_emit(self._download_done, str(path), meta, dl_key)
-            safe_emit(self._manual_watch_ended, mod_id)
+            safe_emit(self._manual_watch_ended, mod_id, dl_key)
 
         def on_progress(done, total):
             safe_emit(self._download_progress, dl_key, name, int(done), int(total))
@@ -1209,7 +1427,7 @@ class NexusBrowserView(QWidget):
                       f"{name} (nothing arrived — install it from the "
                       f"Downloads tab once downloaded).")
             safe_emit(self._download_done, None, None, dl_key)
-            safe_emit(self._manual_watch_ended, mod_id)
+            safe_emit(self._manual_watch_ended, mod_id, dl_key)
 
         watcher, _already = start_manual_install(
             api=self._api, game_domain=domain, mod_id=mod_id, files=[file],
@@ -1220,6 +1438,7 @@ class NexusBrowserView(QWidget):
             on_timeout=on_timeout)
         watchers[mod_id] = (watcher, dl_key)
         self._set_card_watching(mod_id, True)
+        return dl_key
 
     def cancel_manual_watch(self, mod_id: int):
         """Stop a pending browser-download watch (no-op if none). Called on
@@ -1231,13 +1450,19 @@ class NexusBrowserView(QWidget):
             watcher.stop()
             self._progress_fn(dl_key, "", 0, -1)
             self._set_card_watching(int(mod_id or 0), False)
+            # The batch's current file was cancelled (card Cancel, or its
+            # nxm:// link arrived and that flow installs it) → next file.
+            if dl_key and dl_key == self._manual_batch_key:
+                self._advance_manual_batch()
 
     def _cancel_manual_watches(self):
         for mod_id in list(self._manual_watchers):
             self.cancel_manual_watch(mod_id)
 
-    def _on_manual_watch_ended(self, mod_id: int):
+    def _on_manual_watch_ended(self, mod_id: int, dl_key: str):
         self._set_card_watching(mod_id, False)
+        if dl_key and dl_key == self._manual_batch_key:
+            self._advance_manual_batch()
 
     def _set_card_watching(self, mod_id: int, watching: bool):
         for card in self._cards:
@@ -1258,14 +1483,24 @@ class NexusBrowserView(QWidget):
                     self._log("Nexus: install cancelled.")
                     self._installing = False
                     return
-                self._start_download(entry, chosen)
+                self._begin_single_download(entry, chosen)
 
             NexusFileChooser.show_over(
                 self, entry.name or f"Mod {entry.mod_id}", picks, _picked)
         else:
-            self._start_download(entry, picks[0])
+            self._begin_single_download(entry, picks[0])
 
-    def _start_download(self, entry, file):
+    def _begin_single_download(self, entry, file):
+        self._start_download(entry, file)
+        # The download is underway on its own thread with its own progress
+        # card — release the guard so the user can queue up the next mod
+        # while this one downloads/installs (installs serialise in the app's
+        # pending-install queue).
+        self._installing = False
+
+    def _start_download(self, entry, file, sem=None) -> str:
+        """Download *file* on a worker thread; returns its progress key. With
+        *sem* (a batch's semaphore) the worker waits for a free slot first."""
         domain = getattr(entry, "domain_name", "") or self._domain
         name = entry.name or f"Mod {entry.mod_id}"
         dl_label = file.file_name or name
@@ -1279,6 +1514,8 @@ class NexusBrowserView(QWidget):
         def worker():
             archive = None
             meta = None
+            if sem is not None:
+                sem.acquire()
             try:
                 from Nexus.nexus_download import NexusDownloader
                 from Utils.config_paths import get_download_cache_dir_for_game
@@ -1311,14 +1548,13 @@ class NexusBrowserView(QWidget):
                               f"{result.error or 'unknown error'}")
             except Exception as exc:
                 self._log(f"Nexus: download error: {exc}")
+            finally:
+                if sem is not None:
+                    sem.release()
             safe_emit(self._download_done, archive, meta, dl_key)
 
         threading.Thread(target=worker, daemon=True).start()
-        # The download is underway on its own thread with its own progress
-        # card — release the guard so the user can queue up the next mod
-        # while this one downloads/installs (installs serialise in the app's
-        # pending-install queue).
-        self._installing = False
+        return dl_key
 
     def _on_download_progress(self, key, name, downloaded, total):
         """UI thread: forward download bytes to this download's progress card."""
@@ -1329,6 +1565,25 @@ class NexusBrowserView(QWidget):
         app's install queue."""
         # Hide this download's card (the install queue shows its own progress).
         self._progress_fn(dl_key, "", 0, -1)
+        group = self._batch_groups.pop(dl_key, None)
+        if group is not None:
+            # One file of a multi-file batch mod: wait for its siblings, then
+            # install them together in chooser order (main before optionals).
+            group["results"][dl_key] = (archive, meta)
+            if len(group["results"]) < len(group["keys"]):
+                return
+            paths, metas = [], {}
+            for k in group["keys"]:
+                a, m = group["results"][k]
+                if a:
+                    paths.append(a)
+                    if m is not None:
+                        metas[a] = m
+            if paths:
+                self._log(f"Nexus: downloaded {len(paths)} file(s) for "
+                          f"{group['name']}; installing…")
+                self._install_fn(paths, metas or None)
+            return
         if not archive:
             return
         self._log(f"Nexus: downloaded → {archive}; installing…")
