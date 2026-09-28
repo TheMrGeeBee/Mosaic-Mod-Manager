@@ -908,7 +908,18 @@ class NexusAPI:
     # -- Mods ---------------------------------------------------------------
 
     def get_mod(self, game_domain: str, mod_id: int) -> NexusModInfo:
-        """Retrieve details about a specific mod."""
+        """Retrieve details about a specific mod.
+
+        A live 200 response has been seen to omit "name" (and, in principle,
+        "mod_id") for a mod — real case: a rename-dialog "Fetch name from
+        Nexus" fetch surfaced this as a bare `KeyError: 'name'` shown
+        verbatim to the user ("Fetch failed: 'name'"). Every other field
+        here already uses .get() defensively; these two were the only hard
+        `d[...]` indexes, inconsistent with the rest of this method and with
+        `_parse_mod_info`'s identical fields — falls back to the requested
+        *mod_id* and an empty name (callers already treat an empty name as
+        "Nexus returned no name for this mod", a clear message instead of a
+        crash)."""
         d = self._get(f"/games/{game_domain}/mods/{mod_id}")
         try:
             cat_id = int(d.get("category_id", 0) or 0)
@@ -931,8 +942,8 @@ class NexusAPI:
             except Exception:
                 pass
         return NexusModInfo(
-            mod_id=d["mod_id"],
-            name=d["name"],
+            mod_id=d.get("mod_id", mod_id),
+            name=d.get("name", ""),
             summary=d.get("summary", ""),
             description=d.get("description", ""),
             version=d.get("version", ""),
