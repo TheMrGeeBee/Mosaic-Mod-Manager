@@ -732,6 +732,16 @@ class SettingsView(QWidget):
                  "toggling the pre-release setting."))
 
         row = self._next_row(g)
+        check_updates_btn = QPushButton(self.tr("Check for Updates"))
+        check_updates_btn.setCursor(Qt.PointingHandCursor)
+        check_updates_btn.clicked.connect(self._on_check_for_app_updates)
+        g.addWidget(check_updates_btn, row, 0, 1, 2, Qt.AlignLeft)
+        self._add_help(g, self.tr(
+            "Check right now instead of waiting for the next automatic "
+            "check — bypasses the throttle that normally limits how often "
+            "Mosaic asks GitHub, so this always gets a fresh answer."))
+
+        row = self._next_row(g)
         nxm_fix_btn = QPushButton(self.tr("Fix NXM Handler…"))
         nxm_fix_btn.setCursor(Qt.PointingHandCursor)
         nxm_fix_btn.clicked.connect(self._on_fix_nxm_handler)
@@ -950,6 +960,14 @@ class SettingsView(QWidget):
                     "Failed to register — xdg-mime not found?"), "error")
         except Exception as exc:
             self._notify(self.tr("NXM handler error: {0}").format(exc), "error")
+
+    def _on_check_for_app_updates(self):
+        """Manual re-check (Settings button): always resolves with an outcome
+        (up to date / found / error) via a sticky toast, unlike the silent
+        automatic startup check."""
+        check = getattr(self._window, "_check_for_app_update", None)
+        if callable(check):
+            check(force_fresh=True, manual=True)
 
     def _on_prerelease_toggle(self, value: bool):
         """Re-run the app update check immediately (Tk parity).

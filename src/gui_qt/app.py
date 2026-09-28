@@ -283,6 +283,10 @@ class MainWindow(QMainWindow):
     # App self-update check worker → UI thread
     # ((current, latest, mode, is_prerelease, is_downgrade)).
     _app_update_found = Signal(object)
+    # Manual "Check for Updates" (Settings) worker → UI thread: dismisses the
+    # sticky "Checking…" toast with the outcome (text, state) — the update
+    # banner itself (_app_update_found) still fires separately when one is found.
+    _app_update_checked = Signal(str, str)
     # Endorse/abstain worker → UI thread ({"ok": n, "endorse": bool}).
     _endorse_done = Signal(object)
     # Endorse-Mosaic worker → UI thread ({"endorsed": bool, "notify": bool, "error": str|None}).
@@ -673,6 +677,8 @@ class MainWindow(QMainWindow):
         # compare against GitHub releases, everything else against the AUR.
         self._update_overlay = None
         self._app_update_found.connect(self._on_app_update_found)
+        self._app_update_toast = None
+        self._app_update_checked.connect(self._on_app_update_checked)
         QTimer.singleShot(2000, self._check_for_app_update)
         # First-run onboarding: show it (as a fullscreen tab) when the flag is
         # unset/0 OR no games are configured (Tk parity — re-appears after the
@@ -2478,7 +2484,7 @@ class MainWindow(QMainWindow):
         threading.Thread(target=_run, name="mm-trash-sweep", daemon=True).start()
 
     def _check_for_app_update(self, force_downgrade_prompt: bool = False,
-                              force_fresh: bool = False):
+                              force_fresh: bool = False, manual: bool = False):
         """Run in background: fetch latest version and prompt if newer.
 
         AppImage installs compare against GitHub releases and offer the
@@ -2490,9 +2496,16 @@ class MainWindow(QMainWindow):
         branches will surface the latest stable even if it's older than the
         currently-running version, with downgrade-aware copy.
 
-        When *force_fresh* is True (or implied by force_downgrade_prompt), the
-        ETag-cache throttle is bypassed so a manual user action triggers an
-        immediate re-check instead of waiting out the 1-hour throttle window.
+        When *force_fresh* is True (or implied by *force_downgrade_prompt* or
+        *manual*), the ETag-cache throttle is bypassed so a manual user action
+        triggers an immediate re-check instead of waiting out the 1-hour
+        throttle window.
+
+        When *manual* is True (the Settings "Check for Updates" button), a
+        sticky "Checking…" toast is shown up front and always resolved with an
+        outcome — up to date, an error, or (briefly, alongside the full
+        banner) that an update was found — instead of the automatic startup
+        check's silence when there is nothing to report.
         """
         import threading
         from gui_qt.safe_emit import safe_emit
@@ -2505,14 +2518,15 @@ class MainWindow(QMainWindow):
             _fetch_latest_version, _fetch_aur_version, _is_newer_version,
         )
 
-        force_fresh = bool(force_fresh or force_downgrade_prompt)
+        force_fresh = bool(force_fresh or force_downgrade_prompt or manual)
 
         # Opted out of update notifications (overlay checkbox / Settings):
         # skip the AUTOMATIC startup check (no API call, no banner). User-
-        # initiated re-checks (pre-release toggle → force_fresh) still run, so
-        # channel switching keeps working while muted. The flatpak origin
-        # tidy-up must still happen though — a fresh bundle install recreates
-        # its no-enumerate origin remote and relies on startup to heal it.
+        # initiated re-checks (pre-release toggle → force_fresh, or the
+        # manual button) still run, so channel switching and a manual check
+        # keep working while muted. The flatpak origin tidy-up must still
+        # happen though — a fresh bundle install recreates its no-enumerate
+        # origin remote and relies on startup to heal it.
         if not force_fresh and not load_update_notifications():
             if is_flatpak():
                 def _polish_only():
@@ -2520,6 +2534,14 @@ class MainWindow(QMainWindow):
                     polish_flatpak_origin()
                 threading.Thread(target=_polish_only, daemon=True).start()
             return
+
+        if manual:
+            self._app_update_toast = self._notify(
+                self.tr("Checking for updates…"), "info", sticky=True)
+
+        def _manual_done(text: str, state: str):
+            if manual:
+                safe_emit(self._app_update_checked, text, state)
 
         def _do_check():
             allow_pre = load_allow_prerelease()
@@ -2534,6 +2556,8 @@ class MainWindow(QMainWindow):
                 result = _fetch_latest_version(
                     allow_prerelease=allow_pre, force=force_fresh)
                 if result is None:
+                    _manual_done(self.tr("Could not check for updates — "
+                                          "GitHub may be unreachable."), "warning")
                     return
                 latest, is_pre = result
                 newer = _is_newer_version(__version__, latest)
@@ -2557,18 +2581,41 @@ class MainWindow(QMainWindow):
                             # beta-branch updates — no branch hopping needed.
                             branch = "beta" if allow_pre else "stable"
                             if flatpak_remote_update_ready(branch) is False:
+                                _manual_done(self.tr(
+                                    "{0} is out on GitHub, but not published "
+                                    "to your update channel yet.").format(latest),
+                                    "info")
                                 return
+                    _manual_done(self.tr("Update available: {0}").format(latest),
+                                 "success")
                     safe_emit(self._app_update_found,
                               (__version__, latest, mode, is_pre, not newer))
+                else:
+                    _manual_done(self.tr("Mosaic is up to date ({0}).").format(
+                        __version__), "info")
             else:
                 aur_ver = _fetch_aur_version(force=force_fresh)
                 if aur_ver is None:
+                    _manual_done(self.tr("Could not check for updates — "
+                                          "the AUR may be unreachable."), "warning")
                     return
                 if _is_newer_version(__version__, aur_ver):
+                    _manual_done(self.tr("Update available: {0}").format(aur_ver),
+                                 "success")
                     safe_emit(self._app_update_found,
                               (__version__, aur_ver, "aur", False, False))
+                else:
+                    _manual_done(self.tr("Mosaic is up to date ({0}).").format(
+                        __version__), "info")
 
         threading.Thread(target=_do_check, daemon=True).start()
+
+    def _on_app_update_checked(self, text: str, state: str):
+        """Resolve the manual "Check for Updates" sticky toast (UI thread)."""
+        toast = self._app_update_toast
+        self._app_update_toast = None
+        if toast is not None:
+            toast.dismiss(text, state=state)
 
     def _on_app_update_found(self, payload):
         """Show the update banner over the modlist panel (UI thread)."""
