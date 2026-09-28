@@ -116,6 +116,28 @@ class AssetTreeModel(QAbstractItemModel):
     def match_count(self) -> int:
         return self._match_count
 
+    def index_for_entry(self, entry: AssetEntry) -> QModelIndex:
+        """The tree row for exactly *entry* (same mod, and path within it),
+        loading that root's children first if they were not loaded yet —
+        used to jump from an overridden copy straight to the one that wins.
+        An invalid index if that root or file can't be found (e.g. still
+        hidden by an active text/only-overridden filter the caller forgot
+        to clear first)."""
+        root_node = next((n for n in self._root.children if n.root_key == entry.mod), None)
+        if root_node is None:
+            return QModelIndex()
+        root_index = self.index(root_node.row(), 0, QModelIndex())
+        if self.canFetchMore(root_index):
+            self.fetchMore(root_index)
+        node, index = root_node, root_index
+        for seg in entry.path.split("/"):
+            found = next((c for c in node.children if c.name == seg), None)
+            if found is None:
+                return QModelIndex()
+            index = self.index(found.row(), 0, index)
+            node = found
+        return index
+
     def _root_entries(self, key: str) -> list[AssetEntry]:
         if key not in self._entries:
             cat = self._catalog

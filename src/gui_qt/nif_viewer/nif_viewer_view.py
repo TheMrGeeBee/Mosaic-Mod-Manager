@@ -331,16 +331,26 @@ class NifViewerView(QWidget):
         self._equip_btn.setStyleSheet("")
 
     def _build_tree_menu(self, index: QModelIndex) -> "QMenu | None":
-        """Right-click menu for the tree row at *index*: None unless it is a mesh
-        that can be worn."""
+        """Right-click menu for the tree row at *index*: "Add to character" for
+        a wearable mesh, plus "Jump to override" when this copy loses to
+        another layer — jumping straight to whichever mod/base copy actually
+        wins, instead of hunting for it by hand (the tooltip already names it,
+        this just gets you there)."""
         entry = index.data(EntryRole) if index.isValid() else None
-        if entry is None or not entry.path.endswith(".nif"):
+        if entry is None:
             return None
         menu = QMenu(self)
-        act = menu.addAction(self.tr("Add to character"))
-        act.setToolTip(self.tr("Put this mesh on the Character tab, in the slot it belongs to"))
-        act.triggered.connect(lambda _=False, e=entry: self._request_equip(e))
-        return menu
+        if entry.path.endswith(".nif"):
+            act = menu.addAction(self.tr("Add to character"))
+            act.setToolTip(self.tr("Put this mesh on the Character tab, in the slot it belongs to"))
+            act.triggered.connect(lambda _=False, e=entry: self._request_equip(e))
+        if not entry.is_winner and self._catalog is not None:
+            winner = self._catalog.resolve(entry.path)
+            if winner is not None:
+                owner = self._catalog.base_name if winner.mod == BASE else winner.mod
+                act = menu.addAction(self.tr("Jump to override ({0})").format(owner))
+                act.triggered.connect(lambda _=False, w=winner: self._jump_to_entry(w))
+        return menu if menu.actions() else None
 
     def _on_tree_menu(self, pos):
         # The row under the cursor, not the selection: right-clicking must not
@@ -348,6 +358,34 @@ class NifViewerView(QWidget):
         menu = self._build_tree_menu(self._tree.indexAt(pos))
         if menu is not None:
             menu.exec(self._tree.viewport().mapToGlobal(pos))
+
+    def _jump_to_entry(self, entry: AssetEntry):
+        """Select and reveal *entry* in the tree — clearing any active
+        text/only-overridden filter first, since the winning copy may live in
+        a mod the current filter hides."""
+        if self._catalog is None:
+            return
+        if self._search.text():
+            self._search.blockSignals(True)
+            self._search.setText("")
+            self._search.blockSignals(False)
+            self._search_timer.stop()
+            self._apply_search()
+        if self._only_over.isChecked():
+            self._only_over.setChecked(False)
+        idx = self._model.index_for_entry(entry)
+        if not idx.isValid():
+            self._info.setText(self.tr("Could not find that file in the tree."))
+            return
+        chain = []
+        p = idx.parent()
+        while p.isValid():
+            chain.append(p)
+            p = p.parent()
+        for anc in reversed(chain):
+            self._tree.expand(anc)
+        self._tree.setCurrentIndex(idx)
+        self._tree.scrollTo(idx)
 
     def _source(self) -> str:
         return self._sources.currentData()
