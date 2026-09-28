@@ -28,7 +28,7 @@ from PySide6.QtWidgets import (
     QSplitter,
 )
 
-from gui_qt.theme.theme_qt import active_palette, _c
+from gui_qt.theme.theme_qt import active_palette, _c, contrast_text
 from gui_qt.safe_emit import safe_emit
 from gui_qt.worker import run_in_worker
 from gui_qt.selector_button import SelectorButton
@@ -383,12 +383,20 @@ class NexusBrowserView(QWidget):
         sl.addWidget(self._sel_label, 1)
         self._sel_clear_btn = QToolButton()
         self._sel_clear_btn.setText(self.tr("Clear selection"))
-        self._sel_clear_btn.setObjectName("ActionButton")
         self._sel_clear_btn.setCursor(Qt.PointingHandCursor)
         self._sel_clear_btn.clicked.connect(self._clear_selection)
+        # Blue, like each card's own "View" button (GameAddBtn's colour, but
+        # with real horizontal padding — that QSS class assumes a width-
+        # stretched button, which this content-sized one isn't).
+        _pal0 = active_palette()
+        _accent = _c(_pal0, "ACCENT")
+        _accent_hov = _c(_pal0, "ACCENT_HOV")
+        self._sel_clear_btn.setStyleSheet(
+            f"QToolButton{{background:{_accent}; color:{contrast_text(_accent)};"
+            f" font-weight:600; border:none; border-radius:4px; padding:4px 10px;}}"
+            f"QToolButton:hover{{background:{_accent_hov};}}")
         sl.addWidget(self._sel_clear_btn)
         self._sel_dl_btn = QToolButton()
-        self._sel_dl_btn.setObjectName("ActionButton")
         self._sel_dl_btn.setCursor(Qt.PointingHandCursor)
         self._sel_dl_btn.clicked.connect(self._on_selection_action)
         sl.addWidget(self._sel_dl_btn)
@@ -1143,11 +1151,29 @@ class NexusBrowserView(QWidget):
             parts.append(self.tr("Preparing the download…"))
         self._sel_label.setText("   ·   ".join(parts))
         self._sel_clear_btn.setVisible(n > 0)
+        pal = active_palette()
         if running:
             self._sel_dl_btn.setText(self.tr("Stop after this file"))
             self._sel_dl_btn.setEnabled(True)
+            # Red — this button now stops the in-flight batch, same as a
+            # card's own Install button turning into a red Cancel while
+            # watching a browser download.
+            danger = _c(pal, "BTN_DANGER")
+            self._sel_dl_btn.setStyleSheet(
+                f"QToolButton{{background:{danger}; color:{contrast_text(danger)};"
+                f" font-weight:600; border:none; border-radius:4px; padding:4px 10px;}}"
+                f"QToolButton:hover{{background:{danger};}}")
         else:
             self._sel_dl_btn.setText(self.tr("Download selected"))
+            # Green — the primary action, same weight as a card's Install button.
+            success = _c(pal, "BTN_SUCCESS")
+            success_hov = _c(pal, "BTN_SUCCESS_HOV")
+            grey = _c(pal, "BTN_GREY")
+            self._sel_dl_btn.setStyleSheet(
+                f"QToolButton{{background:{success}; color:{contrast_text(success)};"
+                f" font-weight:600; border:none; border-radius:4px; padding:4px 10px;}}"
+                f"QToolButton:hover{{background:{success_hov};}}"
+                f"QToolButton:disabled{{background:{grey}; color:{_c(pal, 'TEXT_DIM')};}}")
             self._sel_dl_btn.setEnabled(n > 0 and not self._batch_busy)
         self._sel_bar.setVisible(bool(n or running or self._batch_busy))
 
