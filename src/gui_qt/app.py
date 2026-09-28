@@ -1896,7 +1896,7 @@ class MainWindow(QMainWindow):
             items=[],
             current=self.tr("Add game"),
             actions=self._game_actions(),
-            on_select=self._on_game_changed,
+            on_select=self._confirm_game_change,
         )
         self._game_selector.setFixedHeight(self._BTN_H)
         h.addWidget(self._game_selector)
@@ -1908,7 +1908,7 @@ class MainWindow(QMainWindow):
             prefix=self.tr("Profile: "),
             min_width=150,
             actions=self._profile_actions(),
-            on_select=self._on_profile_changed,
+            on_select=self._confirm_profile_change,
         )
         self._profile_selector.setFixedHeight(self._BTN_H)
         # Rebuild the pinned actions on every open (like the Wizard menu): the
@@ -2039,6 +2039,13 @@ class MainWindow(QMainWindow):
     def _on_game_changed(self, name):
         if name == self._gs.game_name:
             return
+        # The NIF Viewer / Character tabs index the previous game — close them
+        # (see _close_nif_character_tabs) like every other game-scoped tab
+        # below. The confirmation this warrants for a user-initiated switch is
+        # the selector's own job (_confirm_game_change) — this method itself
+        # stays synchronous since several callers (Nexus auto-switch-on-
+        # download, Add Game, collection-cancel cleanup) depend on that.
+        self._close_nif_character_tabs()
         self._gs.set_game(name)
         # The Profile Settings tab is scoped to the previous game — close it.
         if self._tabs.has_key("profile_settings"):
@@ -2124,6 +2131,12 @@ class MainWindow(QMainWindow):
     def _on_profile_changed(self, name):
         if name == self._gs.profile:
             return
+        # The NIF Viewer / Character tabs index the previous profile — close
+        # them (see _close_nif_character_tabs) like the other profile-scoped
+        # UI below. Confirming this for a user-initiated switch is the
+        # selector's own job (_confirm_profile_change) — this method stays
+        # synchronous since callers (collection-cancel cleanup) depend on that.
+        self._close_nif_character_tabs()
         from Utils import perftrace
         # End-to-end switch latency: the switch "feels done" only when the async
         # milestones land (meta → plugins → conflicts → final plugin pass), so
@@ -8703,6 +8716,69 @@ class MainWindow(QMainWindow):
         if self._tabs.has_key("exe_settings"):
             self._tabs.close_tab("exe_settings")
         self._exe_settings_view = None
+
+    def _close_nif_character_tabs(self):
+        """The NIF Viewer / Character tabs index the game and profile they were
+        opened for (see _open_nif_viewer_tab/_open_character_tab) and never
+        re-point themselves at a new one — close both on a game/profile switch
+        so they don't keep showing a previous game's (or profile's) meshes."""
+        for key in ("nif_viewer", "character_viewer"):
+            if self._tabs.has_key(key):
+                self._tabs.close_tab(key)
+        self._character_view = None
+
+    def _confirm_nif_character_close(self, title: str, proceed):
+        """Ask before a user-initiated action that will close the NIF Viewer
+        and/or Character tab (a game/profile switch made via the selector
+        buttons — see _confirm_game_change/_confirm_profile_change) — calls
+        *proceed* immediately if neither is open, otherwise only after the
+        user confirms. Declining calls nothing: the caller hasn't touched
+        game/profile state or the selector's displayed value yet
+        (SelectorButton only updates its own label when set_current() is
+        called, not on selection), so nothing needs to be undone.
+
+        Only the selector buttons route through this — every other caller of
+        _on_game_changed/_on_profile_changed (Nexus auto-switch-on-download,
+        Add Game, collection-cancel cleanup, ...) calls them directly and
+        synchronously, with the tabs closed silently like any other
+        game/profile-scoped tab; gating those behind an async confirmation
+        would break callers that act right after assuming the switch is done."""
+        nif_open = self._tabs.has_key("nif_viewer")
+        char_open = self._tabs.has_key("character_viewer")
+        if not (nif_open or char_open):
+            proceed()
+            return
+        from gui_qt.overlays.confirm_overlay import ConfirmOverlay
+        if nif_open and char_open:
+            what = self.tr("NIF Viewer and Character")
+        elif nif_open:
+            what = self.tr("NIF Viewer")
+        else:
+            what = self.tr("Character")
+        ConfirmOverlay.show_over(
+            self, title,
+            self.tr("This will close the current {0} view.").format(what),
+            lambda ok: proceed() if ok else None,
+            confirm_label=self.tr("Switch"),
+            cancel_label=self.tr("Cancel"),
+            danger=False,
+        )
+
+    def _confirm_game_change(self, name):
+        """SelectorButton's on_select for the game button — confirms first if
+        it would close the NIF Viewer / Character tab, then switches."""
+        if name == self._gs.game_name:
+            return
+        self._confirm_nif_character_close(
+            self.tr("Switching game"), lambda: self._on_game_changed(name))
+
+    def _confirm_profile_change(self, name):
+        """SelectorButton's on_select for the profile button — confirms first
+        if it would close the NIF Viewer / Character tab, then switches."""
+        if name == self._gs.profile:
+            return
+        self._confirm_nif_character_close(
+            self.tr("Switching profile"), lambda: self._on_profile_changed(name))
 
     # ------------------------------------------------------------- deploy/restore
     def _ensure_feedback(self):
