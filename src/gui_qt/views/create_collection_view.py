@@ -495,10 +495,21 @@ class CreateCollectionView(QWidget):
                     target=self._fetch_versions, args=(data_idx,),
                     daemon=True, name="collection-versions").start()
             elif row.get("is_modio") and row.get("modio_mod_id"):
-                row["versions_fetched"] = True
-                threading.Thread(
-                    target=self._fetch_modio_versions, args=(data_idx,),
-                    daemon=True, name="collection-modio-versions").start()
+                # Load the key on THIS (main) thread rather than inside the
+                # worker — keyring backends (D-Bus/secret-service on Linux)
+                # aren't guaranteed safe to touch off-thread, and a failure
+                # there would silently leave the picker showing just the one
+                # placeholder entry with nothing logged.
+                api_key = _load_bg3_modio("modio_key").load_modio_key()
+                if api_key:
+                    row["versions_fetched"] = True
+                    threading.Thread(
+                        target=self._fetch_modio_versions,
+                        args=(data_idx, api_key),
+                        daemon=True, name="collection-modio-versions").start()
+                else:
+                    self._log("[collection] no mod.io API key configured — "
+                              "can't fetch the file list (Wizard ▸ mod.io API Key).")
         self._open_version_dialog(data_idx)
 
     def _open_version_dialog(self, data_idx: int):
@@ -546,25 +557,25 @@ class CreateCollectionView(QWidget):
         ]
         self._versions_ready.emit(data_idx, options)
 
-    def _fetch_modio_versions(self, data_idx: int):
+    def _fetch_modio_versions(self, data_idx: int, api_key: str):
         row = self._all_rows[data_idx]
         options = []
         try:
-            modio_key = _load_bg3_modio("modio_key")
-            api_key = modio_key.load_modio_key()
-            if api_key:
-                modio_api = _load_bg3_modio("modio_api")
-                api = modio_api.ModioAPI(api_key)
-                files = api.get_mod_files(row["modio_mod_id"])
-                options = [
-                    {
-                        "label": f.version or f.filename or str(f.file_id),
-                        "name": f.filename,
-                        "size_bytes": f.filesize,
-                        "modio_file_id": f.file_id,
-                    }
-                    for f in files if f.file_id
-                ]
+            modio_api = _load_bg3_modio("modio_api")
+            api = modio_api.ModioAPI(api_key)
+            files = api.get_mod_files(row["modio_mod_id"])
+            options = [
+                {
+                    "label": f.version or f.filename or str(f.file_id),
+                    "name": f.filename,
+                    "size_bytes": f.filesize,
+                    "modio_file_id": f.file_id,
+                }
+                for f in files if f.file_id
+            ]
+            if not options:
+                self._log(f"[collection] mod.io returned no files for "
+                          f"'{row['name']}'.")
         except Exception as exc:
             self._log(f"[collection] could not fetch mod.io files for "
                       f"'{row['name']}': {exc}")
