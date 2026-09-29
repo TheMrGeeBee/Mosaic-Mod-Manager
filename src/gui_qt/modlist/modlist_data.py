@@ -210,7 +210,12 @@ def read_meta_for_entries(entries: list[ModEntry], staging_dir: Path,
                 _lfid = int(cp.get("General", "modioLatestFileId", fallback="0") or "0")
                 _lver = cp.get("General", "modioLatestVersion", fallback="")
                 _ignored_ver = cp.get("General", "modioIgnoredVersion", fallback="")
-                if _lfid and _fid and _lfid != _fid and _lver != _ignored_ver:
+                # ">" not "!=" -- mod.io's live-release file id can be BELOW
+                # what's installed (a newer upload was never promoted to
+                # live, or the live release was rolled back — see
+                # modio_update_checker.py's matching fix); a lower latest_id
+                # is not an available update.
+                if _lfid and _fid and _lfid > _fid and _lver != _ignored_ver:
                     bits |= FLAG_MODIO_UPDATE
                     updates.add(e.name)
                 if cp.get("General", "modioLiked", fallback="0") == "1":
