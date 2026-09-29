@@ -336,6 +336,18 @@ class VersionOverlay(CardOverlay):
 
         self._list = QListWidget()
         self._list.setSelectionMode(QAbstractItemView.SingleSelection)
+        self.set_options(options, current_label)
+        self._list.itemDoubleClicked.connect(lambda _i: self._apply())
+        self._body.addWidget(self._list, 1)
+        self._body.addLayout(card_button_bar(self, self.tr("Select"), self._apply))
+        self._show_over()
+
+    def set_options(self, options, current_label):
+        """(Re)populate the list — also used to refresh a still-open overlay
+        when a background fetch completes after it was already shown (the
+        first open always shows a single placeholder entry immediately,
+        since the fetch hasn't had time to complete yet)."""
+        self._list.clear()
         for opt in options:
             it = QListWidgetItem(opt.get("label", "—"))
             it.setData(Qt.UserRole, opt)
@@ -344,10 +356,6 @@ class VersionOverlay(CardOverlay):
                 self._list.setCurrentItem(it)
         if self._list.currentRow() < 0 and self._list.count():
             self._list.setCurrentRow(0)
-        self._list.itemDoubleClicked.connect(lambda _i: self._apply())
-        self._body.addWidget(self._list, 1)
-        self._body.addLayout(card_button_bar(self, self.tr("Select"), self._apply))
-        self._show_over()
 
     def _apply(self):
         it = self._list.currentItem()

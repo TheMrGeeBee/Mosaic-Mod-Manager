@@ -115,6 +115,11 @@ class ExportProfileView(QWidget):
         self._rows: list[dict] = []   # filtered/sorted view
         self._search_text = ""
         self._hide_no_fileid = False
+        # (data_idx, overlay) for the currently-open Version dialog, if any —
+        # lets a fetch that completes after the dialog is already showing
+        # push a live update into it instead of leaving it stuck on the
+        # single placeholder entry it opened with.
+        self._version_overlay = None
 
         self.setObjectName("ExportProfileView")
         self._versions_ready.connect(self._on_versions_ready)
@@ -339,8 +344,10 @@ class ExportProfileView(QWidget):
                 pass
             self._refresh_visible_row(di)
 
-        _VersionOverlay(self.window(), row["name"], options,
-                        row.get("ver_label", "—"), _picked)
+        overlay = _VersionOverlay(self.window(), row["name"], options,
+                                  row.get("ver_label", "—"), _picked)
+        self._version_overlay = (data_idx, overlay)
+        overlay.destroyed.connect(lambda: setattr(self, "_version_overlay", None))
 
     def _fetch_versions(self, data_idx: int):
         """Worker thread: fetch the mod's file list from Nexus, marshal back via a
@@ -368,6 +375,13 @@ class ExportProfileView(QWidget):
             return
         row = self._all_rows[data_idx]
         row["ver_options"] = options
+        if self._version_overlay is not None:
+            open_idx, overlay = self._version_overlay
+            if open_idx == data_idx:
+                try:
+                    overlay.set_options(options, row.get("ver_label", "—"))
+                except RuntimeError:
+                    pass  # underlying Qt widget already gone
         # Only auto-select if the current label is still a placeholder — opening the
         # picker must not silently change the file_id (port of _apply_versions).
         cur_label = row["ver_label"]

@@ -72,6 +72,16 @@ def test_modio_row_has_mod_id_and_seeded_version(qapp, tmp_path):
     assert row["ver_label"] == "2.0.0.61"
 
 
+def test_modio_row_defaults_to_modio_source_not_bundle(qapp, tmp_path):
+    """profile_export.load_rows() defaults a mod.io mod to "bundle" (the
+    right call for Export Profile's self-contained sharing) -- Create
+    Collection has a real mod.io page/file list to reference instead, so it
+    should override that default rather than requiring a manual switch."""
+    host, view = _make_view(qapp, tmp_path)
+    row = view._all_rows[0]
+    assert row["source"] == "modio"
+
+
 def test_modio_versions_ready_does_not_auto_jump_to_newest(qapp, tmp_path):
     """A fetch completing must not silently change the pinned version --
     mod.io's newest upload isn't necessarily the live/intended release."""
@@ -111,3 +121,26 @@ def test_picking_a_modio_version_updates_version_not_nexus_file_id(qapp, tmp_pat
     # Nexus's file_id field must stay untouched -- a mod.io file id is a
     # different id space and has no meaning there.
     assert row["file_id"] == 0
+
+
+def test_open_dialog_then_fetch_completing_refreshes_the_open_overlay(qapp, tmp_path):
+    """Caught live: the dialog opens immediately with just the placeholder
+    entry (the fetch hasn't had time to complete yet), and previously had no
+    way to pick up the real list once the fetch DID complete a moment later
+    -- the user had to close and reopen it. set_options()/_version_overlay
+    tracking must push a live update into the still-open dialog instead."""
+    host, view = _make_view(qapp, tmp_path)
+
+    view._open_version_dialog(0)
+    qapp.processEvents()
+    overlay = host.findChild(VersionOverlay)
+    assert overlay is not None
+    assert overlay._list.count() == 1  # just the placeholder so far
+
+    view._on_versions_ready(0, [
+        {"label": "2.0.0.63", "name": "f63.zip", "size_bytes": 1000, "modio_file_id": 7430399},
+        {"label": "2.0.0.61", "name": "f61.zip", "size_bytes": 900, "modio_file_id": 7430300},
+    ])
+    qapp.processEvents()
+
+    assert overlay._list.count() == 2

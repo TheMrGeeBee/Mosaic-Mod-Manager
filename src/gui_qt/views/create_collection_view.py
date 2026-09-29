@@ -190,6 +190,11 @@ class CreateCollectionView(QWidget):
         self._log = log_fn or (lambda _m: None)
         self._game_domain = getattr(game, "nexus_game_domain", "") or ""
         self._my_collections: list = []
+        # (data_idx, overlay) for the currently-open Version dialog, if any —
+        # lets a fetch that completes after the dialog is already showing
+        # push a live update into it instead of leaving it stuck on the
+        # single placeholder entry it opened with.
+        self._version_overlay = None
 
         self._all_rows: list[dict] = []
         self._rows: list[dict] = []   # filtered/sorted view
@@ -357,6 +362,13 @@ class CreateCollectionView(QWidget):
             row.setdefault("update_policy", "exact")
             row.setdefault("instructions", "")
             row.setdefault("is_variant", False)
+            if row.get("is_modio") and row.get("source") == "bundle":
+                # profile_export.load_rows() defaults a mod.io mod to
+                # "bundle" -- the right call for Export Profile's
+                # self-contained .mosaic sharing, but here we have a real
+                # mod.io page URL and file list, so default to referencing
+                # it instead of bloating the archive with bundled files.
+                row["source"] = "modio"
         self._all_rows = rows
 
         seeded = collection_export.read_profile_manifest(pd)
@@ -535,8 +547,10 @@ class CreateCollectionView(QWidget):
                     pass
             self._apply_filter()
 
-        VersionOverlay(self.window(), row["name"], options,
-                       row.get("ver_label", "—"), _picked)
+        overlay = VersionOverlay(self.window(), row["name"], options,
+                                 row.get("ver_label", "—"), _picked)
+        self._version_overlay = (data_idx, overlay)
+        overlay.destroyed.connect(lambda: setattr(self, "_version_overlay", None))
 
     def _fetch_versions(self, data_idx: int):
         row = self._all_rows[data_idx]
@@ -586,6 +600,13 @@ class CreateCollectionView(QWidget):
             return
         row = self._all_rows[data_idx]
         row["ver_options"] = options
+        if self._version_overlay is not None:
+            open_idx, overlay = self._version_overlay
+            if open_idx == data_idx:
+                try:
+                    overlay.set_options(options, row.get("ver_label", "—"))
+                except RuntimeError:
+                    pass  # underlying Qt widget already gone
         if row.get("is_modio"):
             # ver_label/version already reflect what's actually installed
             # (seeded by profile_export.load_rows from meta.ini) and mod.io
