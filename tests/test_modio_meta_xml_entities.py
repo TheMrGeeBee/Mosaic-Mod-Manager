@@ -56,3 +56,19 @@ def test_parse_publish_handle_decodes_other_common_entities():
     _handle, name = modio_meta.parse_publish_handle(meta_xml)
 
     assert name == 'A & B "Mod" <Test>'
+
+
+def test_read_modio_meta_decodes_a_name_already_stored_undecoded(tmp_path):
+    """Retroactive fix: a meta.ini written before the _attr() decode fix
+    existed already has the undecoded "&apos;" baked in -- reinstalling to
+    get a fresh resolve isn't reasonable to ask for a purely cosmetic bug,
+    so read_modio_meta() must decode on the way out too."""
+    modio_meta = _load_bg3("modio_meta")
+    meta_path = tmp_path / "meta.ini"
+    meta_path.write_text(
+        "[General]\nmodioModId = 1\nmodioName = Better Hotbar [Vova&apos;s Edition]\n",
+        encoding="utf-8")
+
+    meta = modio_meta.read_modio_meta(meta_path)
+
+    assert meta.name == "Better Hotbar [Vova's Edition]"

@@ -369,7 +369,11 @@ def read_modio_meta(meta_ini_path: Path) -> ModioMeta:
     meta.version = cp.get(_SECTION, _KEY_VERSION, fallback="")
     meta.latest_file_id = _int(_KEY_LATEST_FILE_ID)
     meta.latest_version = cp.get(_SECTION, _KEY_LATEST_VERSION, fallback="")
-    meta.name = cp.get(_SECTION, _KEY_NAME, fallback="")
+    # html.unescape() here (not just at the _attr() extraction site) also
+    # retroactively fixes a name stored before that fix existed — no
+    # reinstall/re-resolve needed for a mod that already shows "&apos;".
+    import html
+    meta.name = html.unescape(cp.get(_SECTION, _KEY_NAME, fallback=""))
     meta.profile_url = cp.get(_SECTION, _KEY_PROFILE_URL, fallback="")
     meta.uploader = cp.get(_SECTION, _KEY_UPLOADER, fallback="")
     meta.tags = cp.get(_SECTION, _KEY_TAGS, fallback="")
