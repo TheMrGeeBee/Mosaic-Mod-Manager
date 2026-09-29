@@ -206,3 +206,101 @@ def test_pack_collection_round_trip(tmp_path):
 
     roundtripped = json.loads((extract_dir / "collection.json").read_text(encoding="utf-8"))
     assert roundtripped == manifest
+
+
+# ---------------------------------------------------------------------------
+# Per-mod instructions / update_policy (Phase 2: per-mod authoring controls)
+# ---------------------------------------------------------------------------
+
+def test_build_collection_manifest_writes_instructions(tmp_path):
+    game, _profile_dir = _game(tmp_path)
+
+    manifest, _bundle_jobs, warnings = collection_export.build_collection_manifest(
+        _rows(instructions="Install only if you also have the base mod."),
+        game, {"name": "My Collection"})
+
+    mod = manifest["mods"][0]
+    assert mod["source"]["instructions"] == "Install only if you also have the base mod."
+    assert warnings == []
+
+
+def test_build_collection_manifest_omits_instructions_when_blank(tmp_path):
+    game, _profile_dir = _game(tmp_path)
+
+    manifest, _bundle_jobs, _warnings = collection_export.build_collection_manifest(
+        _rows(instructions=""), game, {"name": "My Collection"})
+
+    assert "instructions" not in manifest["mods"][0]["source"]
+
+
+@pytest.mark.parametrize("policy", ["exact", "prefer", "latest"])
+def test_build_collection_manifest_update_policy_values(tmp_path, policy):
+    game, _profile_dir = _game(tmp_path)
+
+    manifest, _bundle_jobs, _warnings = collection_export.build_collection_manifest(
+        _rows(update_policy=policy), game, {"name": "My Collection"})
+
+    assert manifest["mods"][0]["source"]["updatePolicy"] == policy
+
+
+def test_build_collection_manifest_invalid_update_policy_falls_back_to_exact(tmp_path):
+    game, _profile_dir = _game(tmp_path)
+
+    manifest, _bundle_jobs, _warnings = collection_export.build_collection_manifest(
+        _rows(update_policy="not-a-real-policy"), game, {"name": "My Collection"})
+
+    assert manifest["mods"][0]["source"]["updatePolicy"] == "exact"
+
+
+def test_build_collection_manifest_browse_source_no_manual_alias(tmp_path):
+    """collection_install.py's off-site branch only recognizes "browse", not
+    the vestigial "manual" string an earlier version of the exporter wrote."""
+    game, _profile_dir = _game(tmp_path)
+
+    manifest, _bundle_jobs, _warnings = collection_export.build_collection_manifest(
+        _rows(source="browse", direct_url="https://example.com/mod"),
+        game, {"name": "My Collection"})
+
+    source = manifest["mods"][0]["source"]
+    assert source["type"] == "browse"
+    assert source["url"] == "https://example.com/mod"
+    # Browse is off-site/manual-only — no updatePolicy (nothing to auto-update).
+    assert "updatePolicy" not in source
+
+
+def test_build_collection_manifest_synthetic_variant_row(tmp_path):
+    """A row added via the "+ Variant" picker (Utils.collections.collection_export
+    consumer: gui_qt.views.create_collection_view._add_variant_row) has no
+    meta.ini/staged folder behind it — name/mod_id/file_id/version are set
+    directly on the row instead. Confirms build_collection_manifest handles
+    that shape without needing a staging lookup to succeed."""
+    game, _profile_dir = _game(tmp_path)
+    variant_row = {
+        "name": "Texture Pack (2K)",
+        "mod_id": 123,
+        "file_id": 789,
+        "version": "2K",
+        "optional": True,
+        "has_fomod": False,
+        "has_bain": False,
+        "fomod_export": False,
+        "size_bytes": 4096,
+        "root_folder": False,
+        "enabled": True,
+        "source": "nexus",
+        "direct_url": "",
+        "update_policy": "exact",
+        "instructions": "",
+        "is_variant": True,
+    }
+
+    manifest, _bundle_jobs, warnings = collection_export.build_collection_manifest(
+        [variant_row], game, {"name": "My Collection"})
+
+    assert len(manifest["mods"]) == 1
+    mod = manifest["mods"][0]
+    assert mod["name"] == "Texture Pack (2K)"
+    assert mod["optional"] is True
+    assert mod["source"]["modId"] == 123
+    assert mod["source"]["fileId"] == 789
+    assert warnings == []

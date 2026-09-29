@@ -466,8 +466,8 @@ def build_collection_manifest(rows, game, info: dict, *,
                              md5 or row.get("direct_url", ""))
             if row_source == "direct":
                 source = {"type": "direct", "url": row.get("direct_url", "")}
-            elif row_source in ("browse", "manual"):
-                source = {"type": row_source}
+            elif row_source == "browse":
+                source = {"type": "browse"}
                 if row.get("direct_url"):
                     source["url"] = row["direct_url"]
             else:
@@ -481,9 +481,12 @@ def build_collection_manifest(rows, game, info: dict, *,
                 source["md5"] = md5
             if file_size:
                 source["fileSize"] = file_size
-            if row_source not in ("browse", "manual"):
+            if row_source != "browse":
                 source["updatePolicy"] = policy
             source["tag"] = tag
+
+        if row.get("instructions"):
+            source["instructions"] = row["instructions"]
 
         mod_entry: dict = {
             "name": name,
