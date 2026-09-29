@@ -10,6 +10,7 @@ Mod structure:
   Staged mods live in Profiles/Mount & Blade II: Bannerlord/mods/
 """
 
+import shutil
 from pathlib import Path
 
 from Games.base_game import BaseGame, WizardTool
@@ -247,8 +248,40 @@ class MountAndBlade2Bannerlord(BaseGame):
             f"= {linked_mod + linked_core} total file(s) in {modules_dir.name}/."
         )
 
+        self._ensure_direct_blse_harmony_dll(_log)
+
         # Capture runtime files generated outside Modules/ on the next restore.
         self.snapshot_root_for_runtime_capture(log_fn=_log)
+
+    def _ensure_direct_blse_harmony_dll(self, log_fn) -> None:
+        """Keep a direct copy of 0Harmony.dll in bin/Win64_Shipping_Client/.
+
+        BLSE's launcher does its own default CLR assembly probing (same
+        folder as its own exe) before it ever sets up a search path into
+        Modules/ — without 0Harmony.dll sitting there directly, it throws a
+        TypeLoadException on startup ("Could not load file or assembly
+        '0Harmony'..."), even though Bannerlord's own module system is
+        perfectly happy with Harmony living only under
+        Modules/Bannerlord.Harmony/. Confirmed necessary in practice
+        (2026-09-29) across two different collections/BLSE versions — a
+        fresh collection install or Harmony update both drop this copy, so
+        it's reapplied on every deploy rather than left as a one-off manual
+        fix. A no-op when no Harmony module is installed (non-BLSE setups).
+        """
+        if self._game_path is None:
+            return
+        src = self._game_path / self.mods_dir / "Bannerlord.Harmony" / self._BLSE_SUBDIR / "0Harmony.dll"
+        if not src.is_file():
+            return
+        dst = self._game_path / self._BLSE_SUBDIR / "0Harmony.dll"
+        try:
+            if dst.is_file() and dst.stat().st_size == src.stat().st_size:
+                return
+            dst.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(src, dst)
+            log_fn(f"  Copied 0Harmony.dll → {self._BLSE_SUBDIR}/ (BLSE bootstrap requirement).")
+        except OSError as exc:
+            log_fn(f"  Could not copy 0Harmony.dll for BLSE: {exc}")
 
     def restore(self, log_fn=None, progress_fn=None) -> None:
         """Restore Modules/ to vanilla: clear deployed mods and move Modules_Core/ back."""
