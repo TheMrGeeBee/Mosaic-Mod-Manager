@@ -14,11 +14,17 @@ Rows come from Utils.profile.profile_export.load_rows plus per-row export
 flags (source / direct_url / optional). All functions are toolkit-free; the
 Qt view drives them from a worker thread.
 
+FOMOD/BAIN installer choices are embedded via
+Utils.profile.profile_export.resolve_installer_choices (the same sidecar
+resolution the .mosaic manifest uses) when a sidecar exists; otherwise the
+mod is exported without choices and a warning is raised, since it will be
+asked interactively on reimport.
+
 Deliberately deferred for this first version (not ported): binary-patch
-file-edit diffs (bsdiff4), FOMOD/BAIN installer-choice export, INI-tweak
-bundling, and conflict-derived modRules (Mosaic has no equivalent of the
-reference implementation's FileGraphService). modRules here are a minimal
-adjacent-mod chain instead — see build_mod_rules.
+file-edit diffs (bsdiff4), INI-tweak bundling, and conflict-derived modRules
+(Mosaic has no equivalent of the reference implementation's
+FileGraphService). modRules here are a minimal adjacent-mod chain instead —
+see build_mod_rules.
 """
 
 from __future__ import annotations
@@ -31,6 +37,7 @@ from pathlib import Path
 
 from Nexus.nexus_meta import normalise_game_domain
 from Utils.config_paths import get_download_cache_dir
+from Utils.profile.profile_export import resolve_installer_choices
 
 PHASE_META = "meta"
 PHASE_HASH = "hash"
@@ -490,9 +497,13 @@ def build_collection_manifest(rows, game, info: dict, *,
         if author:
             mod_entry["author"] = author
         if row.get("has_fomod"):
-            warnings.append(
-                f"'{name}': installer choices are not exported yet — users "
-                "will be asked to choose interactively.")
+            choices = resolve_installer_choices(row, game_name, profile_dir)
+            if choices is not None:
+                mod_entry["choices"] = choices
+            else:
+                warnings.append(
+                    f"'{name}': installer choices could not be found to "
+                    "export — users will be asked to choose interactively.")
 
         logical_names.append(name)
         mods.append(mod_entry)

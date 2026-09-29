@@ -236,6 +236,37 @@ def nexus_missing_file_ids(rows) -> list[str]:
     ]
 
 
+def resolve_installer_choices(row: dict, game_name: str, profile_dir=None) -> "dict | None":
+    """The FOMOD/BAIN installer-choice sidecar for *row*, in manifest ``choices``
+    shape (``{"type": "fomod_selections"|"bain_selections", "selections": ...}``),
+    or None if the mod has no sidecar / export is turned off. Prefers the
+    profile-local copy (``<profile_dir>/fomod|bain/<name>.json``) so exports stay
+    profile-specific even if the global installer settings differ. Shared by both
+    the ``.mosaic`` manifest (this module) and Nexus collection export
+    (Utils.collections.collection_export)."""
+    if not row.get("has_fomod") or not row.get("fomod_export", True) or not game_name:
+        return None
+    if row.get("has_bain"):
+        sub_dir, choices_type, path_fn = "bain", "bain_selections", get_bain_selections_path
+    else:
+        sub_dir, choices_type, path_fn = "fomod", "fomod_selections", get_fomod_selections_path
+    choices_path = None
+    if profile_dir:
+        candidate = Path(profile_dir) / sub_dir / f"{row['name']}.json"
+        if candidate.is_file():
+            choices_path = candidate
+    if choices_path is None:
+        choices_path = path_fn(game_name, row["name"])
+    if not choices_path.is_file():
+        return None
+    try:
+        with choices_path.open("r", encoding="utf-8") as fh:
+            choices_data = json.load(fh)
+        return {"type": choices_type, "selections": choices_data}
+    except Exception:
+        return None
+
+
 def build_manifest(rows, game_domain: str, app_version: str, *,
                    game_name=None, profile_dir=None) -> dict:
     """Build the ``manifest.json`` dict from the export *rows*. Mods with
@@ -303,33 +334,9 @@ def build_manifest(rows, game_domain: str, app_version: str, *,
             if cat_name:
                 mod_entry["category"]["name"] = cat_name
 
-        if row["has_fomod"] and row.get("fomod_export", True) and game_name:
-            # Prefer the profile-local copy so exports stay profile-specific even
-            # if the global installer settings differ. A mod is either BAIN or
-            # FOMOD — pick the right sidecar + type.
-            if row.get("has_bain"):
-                sub_dir, choices_type, path_fn = (
-                    "bain", "bain_selections", get_bain_selections_path)
-            else:
-                sub_dir, choices_type, path_fn = (
-                    "fomod", "fomod_selections", get_fomod_selections_path)
-            choices_path = None
-            if profile_dir:
-                candidate = Path(profile_dir) / sub_dir / f"{row['name']}.json"
-                if candidate.is_file():
-                    choices_path = candidate
-            if choices_path is None:
-                choices_path = path_fn(game_name, row["name"])
-            if choices_path.is_file():
-                try:
-                    with choices_path.open("r", encoding="utf-8") as fh:
-                        choices_data = json.load(fh)
-                    mod_entry["choices"] = {
-                        "type":       choices_type,
-                        "selections": choices_data,
-                    }
-                except Exception:
-                    pass
+        choices = resolve_installer_choices(row, game_name, profile_dir)
+        if choices is not None:
+            mod_entry["choices"] = choices
 
         mods.append(mod_entry)
 
