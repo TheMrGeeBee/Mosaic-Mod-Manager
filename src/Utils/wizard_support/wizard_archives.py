@@ -157,10 +157,16 @@ def _strip_single_top_dir(tmp: Path) -> Path:
     return tmp
 
 
-def extract_archive(archive: Path, dest: Path) -> list[Path]:
+def extract_archive(archive: Path, dest: Path, strip_top_dir: bool = True) -> list[Path]:
     """Extract *archive* into *dest*, stripping a single top-level wrapper
     directory if present (e.g. ``f4se_0_07_07/`` -> contents go straight
     into *dest*).
+
+    Pass ``strip_top_dir=False`` for an archive whose single top-level folder
+    is itself a meaningful part of the destination layout (e.g. BLSE's ``bin/``
+    or a Bannerlord requirement's ``Modules/``) rather than a throwaway
+    version-named wrapper — stripping it there would silently drop a required
+    path component.
 
     Returns created paths in **reverse depth order** (deepest first) so
     callers can delete files before their parent directories.
@@ -169,7 +175,7 @@ def extract_archive(archive: Path, dest: Path) -> list[Path]:
     tmp = Path(tempfile.mkdtemp())
     try:
         extract_to_dir(archive, tmp)
-        src = _strip_single_top_dir(tmp)
+        src = _strip_single_top_dir(tmp) if strip_top_dir else tmp
 
         created: list[Path] = []
         for root, _dirs, files in os.walk(src):
@@ -206,6 +212,7 @@ def install_archive_payload(
     modlist_path: "Path | None" = None,
     restore_first: bool = True,
     delete_archive: bool = True,
+    strip_top_dir: bool = True,
     log_fn: Callable[[str], None] = _noop,
 ) -> tuple[str, int, "str | None"]:
     """Extract *archive* into the wizard-standard destination for *mode*.
@@ -215,6 +222,10 @@ def install_archive_payload(
     via derive_mod_name, registered in the modlist AND indexed so it deploys
     without a manual Refresh — the Tk wizards relied on the mod panel's
     reload for that).
+
+    *strip_top_dir* forwards to :func:`extract_archive` — set False for an
+    archive whose single top-level folder is a meaningful destination path
+    component, not a throwaway version wrapper.
 
     Returns (dest_label, file_count, mod_name-or-None). Raises on failure.
     Blocking; call from a worker thread. Does NO UI work — the caller reloads
@@ -260,7 +271,7 @@ def install_archive_payload(
     }[mode if mode in ("mod", "root") else "game"]
     log_fn(f"Wizard: extracting {archive.name} → {dest}")
 
-    paths = extract_archive(archive, dest)
+    paths = extract_archive(archive, dest, strip_top_dir=strip_top_dir)
     file_count = len([p for p in paths if p.is_file()])
     log_fn(f"Wizard: extracted {file_count} file(s).")
 

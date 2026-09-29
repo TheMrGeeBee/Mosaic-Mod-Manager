@@ -949,16 +949,48 @@ def scan_drives_for_exe(exe_names: list[str],
     Walks every real (non-pseudo) mount point from /proc/mounts, fanning the
     top-level subtree walks out across a thread pool so a big multi-drive scan
     doesn't run serially. Matching is on the bare filename (case-sensitive, to
-    match the Tk behaviour); *exe_names* entries with sub-paths are matched on
-    their final component. Returns the directory holding the exe, or None.
+    match the Tk behaviour). For an *exe_names* entry with sub-paths (e.g.
+    ``"bin/Win64_Shipping_Client/Bannerlord.Native.exe"``), a bare-filename
+    match is only accepted once the matched directory's trailing path
+    components confirm the subdir (case-insensitively) — the returned
+    directory is then walked back up to the true game ROOT, not the exe's own
+    subfolder. Returns None (and keeps walking) on a same-name file sitting in
+    an unrelated folder structure.
 
     Pass *stop_event* to allow an external caller (e.g. a closing dialog) to
     abort the walk early.
     """
     import concurrent.futures
 
-    names = {Path(e.replace("\\", "/")).name for e in exe_names if e}
+    # basename -> list of lowercased subdir-part tuples that must match the
+    # containing directory's tail (empty tuple = exe expected at the root
+    # itself). Sorted longest-first so a more specific subdir match is
+    # verified before falling back to a bare no-subdir acceptance.
+    basename_map: dict[str, list[tuple[str, ...]]] = {}
+    for e in exe_names:
+        if not e:
+            continue
+        parts = e.replace("\\", "/").split("/")
+        basename_map.setdefault(parts[-1], []).append(
+            tuple(p.lower() for p in parts[:-1]))
+    for lst in basename_map.values():
+        lst.sort(key=len, reverse=True)
+
+    names = set(basename_map.keys())
     if not names:
+        return None
+
+    def _resolve_root(dirpath: Path, basename: str) -> "Path | None":
+        dp_parts = dirpath.parts
+        for subdir_parts in basename_map.get(basename, [()]):
+            if not subdir_parts:
+                return dirpath
+            n = len(subdir_parts)
+            if len(dp_parts) < n:
+                continue
+            tail = tuple(p.lower() for p in dp_parts[-n:])
+            if tail == subdir_parts:
+                return dirpath.parents[n - 1]
         return None
 
     skip_types = {"sysfs", "proc", "devtmpfs", "devpts", "tmpfs", "cgroup",
@@ -994,8 +1026,10 @@ def scan_drives_for_exe(exe_names: list[str],
             if stop_event.is_set():
                 return None
             dirnames[:] = [d for d in dirnames if d not in skip_dirs]
-            if names & set(filenames):
-                return Path(dirpath)
+            for basename in names & set(filenames):
+                root = _resolve_root(Path(dirpath), basename)
+                if root is not None:
+                    return root
         return None
 
     scan_roots: list[Path] = []

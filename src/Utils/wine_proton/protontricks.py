@@ -325,6 +325,14 @@ def _install_via_winetricks(
 
     env = strip_appimage_env(os.environ.copy())
     env["WINEPREFIX"] = str(prefix_path)
+    # Legacy MSI/.NET Framework bootstrap installers are locale-sensitive
+    # under Wine and can abort under a non-English system locale (observed
+    # with dotnet472's dotnet40 sub-installer on an sv_SE/en_SE locale).
+    # Forcing English here doesn't change what gets installed — winetricks
+    # verbs are locale-independent — just what language the installer UI
+    # (and its internal locale checks) run in.
+    env["LANG"] = "en_US.UTF-8"
+    env["LC_ALL"] = "en_US.UTF-8"
 
     path_prefix = str(_get_tools_dir())
     proton_bin = wine_bin_dir_for_prefix(prefix_path, env) or _get_proton_bin()
@@ -368,8 +376,12 @@ def _install_via_protontricks(
     # regsvr32 popups, silent verb installers.
     cmd = cmd + ["-q", component]
     log_fn(f"Installing {component} via protontricks (this may take a minute) …")
+    # See the matching comment in _install_via_winetricks — same locale fix.
+    env = os.environ.copy()
+    env["LANG"] = "en_US.UTF-8"
+    env["LC_ALL"] = "en_US.UTF-8"
     try:
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, env=env)
         if result.returncode == 0:
             log_fn(f"{component} installed successfully.")
             return True

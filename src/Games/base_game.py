@@ -411,6 +411,31 @@ class BaseGame(ABC):
         return set()
 
     @property
+    def mod_root_folder_signal_dirs(self) -> set[str]:
+        """
+        Lowercase top-level folder names that, when they make up the ENTIRE
+        top level of a mod archive (aside from incidental loose files like a
+        readme), mean the mod must install into the game ROOT rather than
+        this game's normal mods folder — auto-setting the same Root Folder
+        install flag the "Enable Root Folder install" context-menu action
+        sets manually.
+
+        Unlike mod_required_top_level_folders (which lists roots a NORMAL
+        mod may legitimately use), a signal dir here is one this game's own
+        mods never place at an archive's true top level — only a root-folder
+        payload does. Example: Bannerlord Modules always nest their own
+        bin/ one level under the module's own folder
+        (<ModuleName>/bin/...); an archive whose top level IS bin/ directly
+        (BLSE, BUTR tools, ...) is unambiguously a root-folder payload, not a
+        Module — declaring {"bin"} here detects that from the archive's own
+        structure instead of depending on a Nexus collection manifest's
+        install_type tag (not every collection curator sets it).
+
+        Return an empty set (the default) to disable this detection.
+        """
+        return set()
+
+    @property
     def mod_auto_strip_until_required(self) -> bool:
         """
         When True and mod_required_top_level_folders is non-empty, the

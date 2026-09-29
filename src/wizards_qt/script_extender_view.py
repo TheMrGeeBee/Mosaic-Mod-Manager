@@ -54,7 +54,8 @@ class ScriptExtenderView(QWidget):
     def __init__(self, game: "BaseGame", log_fn=None, on_close=None, ctx=None,
                  github_api_url: str = "", download_url: str = "",
                  archive_keywords: list | None = None,
-                 direct_download_url: str = "", versions: list | None = None):
+                 direct_download_url: str = "", versions: list | None = None,
+                 strip_top_dir: bool = True):
         super().__init__()
         self._game = game
         self._log = log_fn or (lambda _m: None)
@@ -66,6 +67,7 @@ class ScriptExtenderView(QWidget):
         self._direct_download_url = direct_download_url or ""
         self._archive_keywords = [k.lower() for k in (archive_keywords or [])]
         self._versions = list(versions or [])
+        self._strip_top_dir = strip_top_dir
 
         self._archive_path: Path | None = None
         self._install_ok = False       # extraction succeeded
@@ -448,6 +450,7 @@ class ScriptExtenderView(QWidget):
                 dest_label, file_count, _mod = install_archive_payload(
                     game, archive, mode,
                     mod_fallback_name="Script Extender",
+                    strip_top_dir=self._strip_top_dir,
                     log_fn=lambda m: self._log(str(m)))
                 safe_emit(self._ex_status_sig,
                     self.tr("Script extender installed successfully!\n"

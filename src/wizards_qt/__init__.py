@@ -164,6 +164,8 @@ REGISTRY: dict[str, QtWizardSpec] = {
     "wizards.pandora.PandoraWizard": QtWizardSpec(_pandora),
     "wizards.reshade.ReShadeWizard": QtWizardSpec(_reshade),
     "wizards.script_extender.ScriptExtenderWizard": QtWizardSpec(_script_extender),
+    "wizards.winetricks_verb.WinetricksVerbWizard":
+        QtWizardSpec(_simple("wizards_qt.winetricks_verb_view", "WinetricksVerbView")),
     "wizards.sseedit.SSEEditWizard": QtWizardSpec(_xedit),
     "wizards.sseedit.SSEEditQACWizard": QtWizardSpec(_xedit_qac),
     "wizards.sseedit.XEditDiscordWizard": QtWizardSpec(_xedit_discord),

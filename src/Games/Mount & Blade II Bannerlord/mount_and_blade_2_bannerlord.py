@@ -12,7 +12,7 @@ Mod structure:
 
 from pathlib import Path
 
-from Games.base_game import BaseGame
+from Games.base_game import BaseGame, WizardTool
 from Utils.deploy.deploy import (
     LinkMode,
     deploy_core,
@@ -70,6 +70,86 @@ class MountAndBlade2Bannerlord(BaseGame):
     @property
     def mod_folder_strip_prefixes(self) -> set[str]:
         return {"modules"}
+
+    @property
+    def mod_root_folder_signal_dirs(self) -> set[str]:
+        # A Bannerlord Module always nests its own bin/ one level under the
+        # module's own folder (<ModuleName>/bin/...) — a mod archive whose
+        # top level IS bin/ directly (BLSE, other BUTR tools) can only be a
+        # root-folder payload, never a Module. Catches this even when a
+        # Nexus collection's manifest doesn't tag the mod as install_type
+        # "dinput" itself (not every collection curator sets it).
+        return {"bin"}
+
+    # -----------------------------------------------------------------------
+    # Script extender (BLSE)
+    # -----------------------------------------------------------------------
+    # BLSE ships two loader exes side by side with the real Bannerlord.Native.exe
+    # in bin/Win64_Shipping_Client/ — unlike the Bethesda xSE games it does NOT
+    # replace the launcher on disk, so this uses framework_launch_exes (extra
+    # Run-dropdown entries) rather than swap_launcher.
+    _BLSE_SUBDIR = "bin/Win64_Shipping_Client"
+    _BLSE_LAUNCHER_EXE = f"{_BLSE_SUBDIR}/Bannerlord.BLSE.Launcher.exe"
+    _BLSE_LAUNCHER_EX_EXE = f"{_BLSE_SUBDIR}/Bannerlord.BLSE.LauncherEx.exe"
+
+    @property
+    def frameworks(self) -> dict[str, str]:
+        return {"BLSE": self._BLSE_LAUNCHER_EXE}
+
+    @property
+    def framework_launch_exes(self) -> dict[str, str]:
+        return {
+            "BLSE (Vanilla Launcher)": self._BLSE_LAUNCHER_EXE,
+            "BLSE (Extended Launcher)": self._BLSE_LAUNCHER_EX_EXE,
+        }
+
+    @property
+    def wizard_tools(self) -> list[WizardTool]:
+        return self._base_wizard_tools() + [
+            WizardTool(
+                id="install_blse",
+                label="Install Script Extender (BLSE)",
+                description=(
+                    "Download and install BLSE into the game folder. "
+                    "Also install Harmony below — BLSE requires it."
+                ),
+                dialog_class_path="wizards.script_extender.ScriptExtenderWizard",
+                extra={
+                    "download_url": "https://www.nexusmods.com/mountandblade2bannerlord/mods/1",
+                    "archive_keywords": ["blse"],
+                    # BLSE's zip top level IS "bin/" (containing
+                    # Win64_Shipping_Client/ and the Game Pass variant) —
+                    # meaningful, not a throwaway version wrapper.
+                    "strip_top_dir": False,
+                },
+            ),
+            WizardTool(
+                id="install_harmony_bannerlord",
+                label="Install Harmony (BLSE requirement)",
+                description="Download and install Harmony, required by BLSE, into the game folder.",
+                dialog_class_path="wizards.script_extender.ScriptExtenderWizard",
+                extra={
+                    "download_url": "https://www.nexusmods.com/mountandblade2bannerlord/mods/2006",
+                    "archive_keywords": ["harmony"],
+                    # Zip top level IS "Modules/" (containing
+                    # Bannerlord.Harmony/) — meaningful, not a wrapper.
+                    "strip_top_dir": False,
+                },
+            ),
+            WizardTool(
+                id="install_dotnet472_bannerlord",
+                label="Install .NET Framework 4.7.2 (required by BLSE)",
+                description=(
+                    "Install the legacy .NET Framework 4.7.2 into this game's "
+                    "Proton prefix — BLSE's launcher needs it and crashes on "
+                    "startup without it, separately from Bannerlord's own "
+                    "bundled Mono runtime."
+                ),
+                dialog_class_path="wizards.winetricks_verb.WinetricksVerbWizard",
+                extra={"verb": "dotnet472", "label": ".NET Framework 4.7.2",
+                       "timeout": 1800},
+            ),
+        ]
 
     # -----------------------------------------------------------------------
     # Paths

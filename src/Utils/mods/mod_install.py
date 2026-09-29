@@ -235,6 +235,32 @@ def resolve_direct_files(extract_dir: str) -> list[tuple[str, str, bool]]:
     return result
 
 
+_ROOT_SIGNAL_INCIDENTAL_EXTS = {".txt", ".md", ".nfo"}
+
+
+def detect_root_folder_signal(file_list: list[tuple[str, str, bool]],
+                              signal_dirs: set[str]) -> bool:
+    """True when every top-level path segment in *file_list* is one of
+    *signal_dirs* (case-insensitive) or an incidental loose file (readme/
+    license/...) — see BaseGame.mod_root_folder_signal_dirs. An archive
+    containing anything else at the top level (a real Module folder, an
+    unrelated top-level dir) is NOT a match, so this stays conservative."""
+    if not signal_dirs or not file_list:
+        return False
+    signal_lower = {s.lower() for s in signal_dirs}
+    saw_signal = False
+    for _src, dst, _is_folder in file_list:
+        dst = dst.replace("\\", "/")
+        top = dst.split("/", 1)[0]
+        if top.lower() in signal_lower:
+            saw_signal = True
+            continue
+        if "/" not in dst and Path(top).suffix.lower() in _ROOT_SIGNAL_INCIDENTAL_EXTS:
+            continue
+        return False
+    return saw_signal
+
+
 def unwrap_single_folder(extract_dir: str) -> str:
     """If *extract_dir* has exactly one subdirectory and no files, return that
     subdirectory (archives wrapped in a single ModName/ folder)."""
@@ -1030,11 +1056,12 @@ class PreparedInstall:
         self.bundle_root = None
         self.multi_mods = None
         # Set by finish_install when the user chose to Replace an existing mod:
-        # keep its modlist position + carry its endorsed flag and per-requirement
-        # ignore list onto the new install.
+        # keep its modlist position + carry its endorsed flag, per-requirement
+        # ignore list, and root-folder-install flag onto the new install.
         self._preserve_position = False
         self._preserved_endorsed = False
         self._preserved_ignored_reqs = ""
+        self._preserved_root_folder = False
         # Bytes claimed from the shared /tmp reservation pool while extract_dir
         # lives there (0 when extracted to disk) — released by cleanup().
         self._tmp_reserved = 0
@@ -1437,6 +1464,7 @@ def finish_install(prepared: "PreparedInstall", fomod_selections, *,
                 p._preserved_endorsed = bool(_old.endorsed)
                 p._preserved_ignored_reqs = \
                     getattr(_old, "ignored_requirements", "") or ""
+                p._preserved_root_folder = bool(getattr(_old, "root_folder", False))
             except Exception:
                 p._preserved_endorsed = False
             if p.is_bundle():
@@ -1465,6 +1493,7 @@ def finish_install(prepared: "PreparedInstall", fomod_selections, *,
                         p._preserved_endorsed = bool(_old.endorsed)
                         p._preserved_ignored_reqs = \
                             getattr(_old, "ignored_requirements", "") or ""
+                        p._preserved_root_folder = bool(getattr(_old, "root_folder", False))
                     except Exception:
                         p._preserved_endorsed = False
                     if p.is_bundle():
@@ -1570,6 +1599,14 @@ def finish_install(prepared: "PreparedInstall", fomod_selections, *,
             # ships everything under bin/x64/, and staging from an unwrapped root
             # would have stripped the required bin/ folder.
             stage_root = str(p.extract_dir)
+            if not is_root:
+                _signal_dirs = getattr(p.game, "mod_root_folder_signal_dirs", set())
+                if _signal_dirs and detect_root_folder_signal(
+                        resolve_direct_files(stage_root), _signal_dirs):
+                    is_root = True
+                    log_fn("Detected a root-folder-only archive structure — "
+                           "installing as a Root Folder mod.")
+            p._preserved_root_folder = p._preserved_root_folder or is_root
             file_list = stage_file_list(
                 p.game, stage_root, is_root_install=is_root,
                 mod_name=p.mod_name, on_need_prefix=p.on_need_prefix, log_fn=log_fn)
@@ -1615,6 +1652,7 @@ def finish_install(prepared: "PreparedInstall", fomod_selections, *,
                         prebuilt_meta=getattr(p, "prebuilt_meta", None),
                         endorsed=getattr(p, "_preserved_endorsed", False),
                         ignored_reqs=getattr(p, "_preserved_ignored_reqs", ""),
+                        root_folder=getattr(p, "_preserved_root_folder", False),
                         is_fomod=p.is_fomod(),
                         is_bain=bain_selected is not None,
                         fomod_pending_deps=fomod_pending_deps,
@@ -2115,13 +2153,16 @@ def install_collection_archive(
         # ---- stage --------------------------------------------------------
         dest_root = staging_root / prepared.mod_name
         _preserved_endorsed = False
+        _preserved_root_folder = False
         old_bundle_spec = None
         if dest_root.exists():
             # Collections pre-disambiguate folder names, so a collision means a
             # genuine replace: silent when overwrite_existing is True/None.
             try:
                 from Nexus.nexus_meta import read_meta
-                _preserved_endorsed = bool(read_meta(dest_root / "meta.ini").endorsed)
+                _old_meta = read_meta(dest_root / "meta.ini")
+                _preserved_endorsed = bool(_old_meta.endorsed)
+                _preserved_root_folder = bool(getattr(_old_meta, "root_folder", False))
             except Exception:
                 _preserved_endorsed = False
             if prepared.is_bundle():
@@ -2164,6 +2205,15 @@ def install_collection_archive(
             # Plain (non-FOMOD/BAIN) mod: normalise structure like the Tk direct
             # path. dinput mods (prebuilt_meta.root_folder) install verbatim.
             is_root = bool(getattr(prebuilt_meta, "root_folder", False))
+            if not is_root:
+                _signal_dirs = getattr(game, "mod_root_folder_signal_dirs", set())
+                if _signal_dirs and detect_root_folder_signal(
+                        resolve_direct_files(stage_src_root), _signal_dirs):
+                    is_root = True
+                    log_fn(f"'{prepared.mod_name}': detected a root-folder-only "
+                           f"archive structure — installing as a Root Folder mod "
+                           f"(collection manifest didn't flag it).")
+            _preserved_root_folder = _preserved_root_folder or is_root
             staged = stage_file_list(
                 game, stage_src_root, is_root_install=is_root,
                 mod_name=prepared.mod_name, on_need_prefix=None, log_fn=log_fn)
@@ -2213,6 +2263,7 @@ def install_collection_archive(
 
     _write_install_meta(dest_root, archive, game, log_fn,
                         prebuilt_meta=prebuilt_meta, endorsed=_preserved_endorsed,
+                        root_folder=_preserved_root_folder,
                         is_fomod=is_fomod_install,
                         fomod_pending_deps=fomod_pending_deps,
                         fomod_active_deps=fomod_active_deps)
@@ -2697,6 +2748,7 @@ def _clear_meta_key(meta_path: Path, ini_key: str) -> None:
 def _write_install_meta(dest_root: Path, archive: Path, game, log_fn: LogFn,
                         prebuilt_meta=None, endorsed: bool = False,
                         ignored_reqs: str = "",
+                        root_folder: bool = False,
                         is_fomod: bool = False,
                         is_bain: bool = False,
                         fomod_pending_deps: str = "",
@@ -2740,6 +2792,11 @@ def _write_install_meta(dest_root: Path, archive: Path, game, log_fn: LogFn,
         # ignored requirements survive a reinstall/update.
         if ignored_reqs and not getattr(meta, "ignored_requirements", ""):
             meta.ignored_requirements = ignored_reqs
+        # Carry a manually-set Root Folder install flag from a replaced install
+        # (Change Version / Reinstall Mod) — otherwise it silently reverts to
+        # the default on every update, undoing the user's toggle each time.
+        if root_folder:
+            meta.root_folder = True
         # Stamp the FOMOD / BAIN install-method flags so the modlist FOMOD/BAIN
         # filters (and is_fomod / is_bain sets) pick them up (Tk parity).
         if is_fomod:
