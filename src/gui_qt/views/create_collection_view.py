@@ -459,8 +459,10 @@ class CreateCollectionView(QWidget):
             r["direct_url"] = url
             self._apply_filter()
 
+        allowed = ("nexus", "modio", "direct", "browse", "bundle", "ignore") if row.get("is_modio") \
+            else ("nexus", "direct", "browse", "bundle", "ignore")
         SourceOverlay(self.window(), row["name"], row.get("source", "nexus"),
-                      row.get("direct_url", ""), _picked)
+                      row.get("direct_url", ""), _picked, allowed_sources=allowed)
 
     def _pick_version(self, data_idx: int):
         row = self._all_rows[data_idx]

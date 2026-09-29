@@ -466,7 +466,12 @@ def build_collection_manifest(rows, game, info: dict, *,
                              md5 or row.get("direct_url", ""))
             if row_source == "direct":
                 source = {"type": "direct", "url": row.get("direct_url", "")}
-            elif row_source == "browse":
+            elif row_source in ("browse", "modio"):
+                # "modio" is a Mosaic-only pseudo-source (mod.io has no
+                # equivalent in the real Nexus/Vortex collection schema) —
+                # write it as a real "browse" entry (off-site webpage, the
+                # user fetches it themselves), just sourced from a row the UI
+                # labeled distinctly as mod.io rather than a generic browse URL.
                 source = {"type": "browse"}
                 if row.get("direct_url"):
                     source["url"] = row["direct_url"]
@@ -481,7 +486,7 @@ def build_collection_manifest(rows, game, info: dict, *,
                 source["md5"] = md5
             if file_size:
                 source["fileSize"] = file_size
-            if row_source != "browse":
+            if row_source not in ("browse", "modio"):
                 source["updatePolicy"] = policy
             source["tag"] = tag
 

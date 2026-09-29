@@ -29,6 +29,7 @@ from gui_qt.theme.theme_qt import active_palette, _c, contrast_text
 
 SOURCE_LABELS = {
     "nexus":  QT_TRANSLATE_NOOP("ModRowWidgets", "Nexus"),
+    "modio":  QT_TRANSLATE_NOOP("ModRowWidgets", "mod.io"),
     "direct": QT_TRANSLATE_NOOP("ModRowWidgets", "Direct"),
     "browse": QT_TRANSLATE_NOOP("ModRowWidgets", "Browse"),
     "bundle": QT_TRANSLATE_NOOP("ModRowWidgets", "Bundle"),
@@ -36,10 +37,12 @@ SOURCE_LABELS = {
 }
 
 # Per-source button colours — matched to the Tk workshop (_source_btn_style):
-# Nexus orange, Direct green, Bundle purple, Ignore grey. Browse (new) gets a
-# distinct blue so it isn't confused with Direct. Text is white on all.
+# Nexus orange, Direct green, Bundle purple, Ignore grey. Browse and mod.io
+# (new) get their own distinct colours so neither is confused with Direct or
+# each other. Text is white on all.
 SOURCE_COLORS = {
     "nexus":  ("#c77a3a", "#d98c4c"),   # (base, hover)
+    "modio":  ("#1f8a70", "#2ba384"),
     "direct": ("#5a7a5a", "#6b8b6b"),
     "browse": ("#3a6a7a", "#4c8a9a"),
     "bundle": ("#7a5a7a", "#8b6b8b"),
@@ -223,6 +226,8 @@ def card_button_bar(overlay, ok_text, on_ok, cancel_text=None):
 _SOURCE_OPTIONS = (
     ("nexus",  QT_TRANSLATE_NOOP("ModRowWidgets", "Nexus Mods"),
      QT_TRANSLATE_NOOP("ModRowWidgets", "Download mod from Nexus")),
+    ("modio",  QT_TRANSLATE_NOOP("ModRowWidgets", "mod.io"),
+     QT_TRANSLATE_NOOP("ModRowWidgets", "This mod's real mod.io page — the user downloads it from there")),
     ("direct", QT_TRANSLATE_NOOP("ModRowWidgets", "Direct URL"),
      QT_TRANSLATE_NOOP("ModRowWidgets", "For off-site mods with a directly downloadable link")),
     ("browse", QT_TRANSLATE_NOOP("ModRowWidgets", "Browse"),
@@ -233,16 +238,19 @@ _SOURCE_OPTIONS = (
      QT_TRANSLATE_NOOP("ModRowWidgets", "Exclude this mod from the export entirely")),
 )
 
+_URL_VISIBLE_SOURCES = ("direct", "browse", "modio")
+
 
 class SourceOverlay(CardOverlay):
     """Borderless in-window overlay: pick a mod's download source
-    (Nexus / Direct+URL / Browse / Bundle / Ignore). ``on_pick(source, url)``
-    on Apply. *allowed_sources* restricts which options are shown (default:
-    all five) — Export Profile has no use for "browse", so it passes the
-    original four."""
+    (Nexus / mod.io / Direct+URL / Browse / Bundle / Ignore). ``on_pick(source,
+    url)`` on Apply. *allowed_sources* restricts which options are shown
+    (default: everything but "modio", which only makes sense for a
+    mod.io-identified row — Export Profile passes its original four, Create
+    Collection adds "modio" only for rows where it applies)."""
 
     CARD_W = 480
-    CARD_H = 440
+    CARD_H = 480
 
     def __init__(self, host, mod_name, current_source, current_url, on_pick,
                 allowed_sources=("nexus", "direct", "browse", "bundle", "ignore")):
@@ -292,11 +300,11 @@ class SourceOverlay(CardOverlay):
         return "nexus"
 
     def _on_toggle(self):
-        self._url_row_w.setVisible(self._current() in ("direct", "browse"))
+        self._url_row_w.setVisible(self._current() in _URL_VISIBLE_SOURCES)
 
     def _apply(self):
         src = self._current()
-        url = self._url.text().strip() if src in ("direct", "browse") else ""
+        url = self._url.text().strip() if src in _URL_VISIBLE_SOURCES else ""
         cb = self._on_pick
         self._finish()
         if cb:

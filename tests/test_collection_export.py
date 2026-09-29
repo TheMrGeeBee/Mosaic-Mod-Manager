@@ -268,6 +268,23 @@ def test_build_collection_manifest_browse_source_no_manual_alias(tmp_path):
     assert "updatePolicy" not in source
 
 
+def test_build_collection_manifest_modio_source_maps_to_browse(tmp_path):
+    """"modio" is a Mosaic-only UI label (real Nexus/Vortex collections have
+    no concept of mod.io) — it must write as a real "browse" source type,
+    same as an off-site webpage, or collection_install.py's off-site branch
+    (which only recognizes "nexus"/"bundle"/"browse"/"direct") won't see it."""
+    game, _profile_dir = _game(tmp_path)
+
+    manifest, _bundle_jobs, _warnings = collection_export.build_collection_manifest(
+        _rows(source="modio", direct_url="https://mod.io/g/baldursgate3/m/my-mod"),
+        game, {"name": "My Collection"})
+
+    source = manifest["mods"][0]["source"]
+    assert source["type"] == "browse"
+    assert source["url"] == "https://mod.io/g/baldursgate3/m/my-mod"
+    assert "updatePolicy" not in source
+
+
 def test_build_collection_manifest_synthetic_variant_row(tmp_path):
     """A row added via the "+ Variant" picker (Utils.collections.collection_export
     consumer: gui_qt.views.create_collection_view._add_variant_row) has no

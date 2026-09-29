@@ -42,6 +42,7 @@ def test_modio_mod_defaults_to_bundle_source_with_seeded_direct_url(tmp_path):
         "fileid": "0",
         "modioModId": "12345",
         "modioProfileUrl": "https://mod.io/g/baldursgate3/m/my-modio-mod",
+        "modioVersion": "2.0.0.61",
     })
     game = _FakeGame(staging, profile_dir)
 
@@ -51,6 +52,24 @@ def test_modio_mod_defaults_to_bundle_source_with_seeded_direct_url(tmp_path):
     row = rows[0]
     assert row["source"] == "bundle"
     assert row["direct_url"] == "https://mod.io/g/baldursgate3/m/my-modio-mod"
+    assert row["is_modio"] is True
+    # No Nexus file_id to build a "fileid — version" label from, but the
+    # mod.io version string should still show instead of a bare "—".
+    assert row["version"] == "2.0.0.61"
+    assert row["ver_label"] == "2.0.0.61"
+
+
+def test_non_modio_mod_has_is_modio_false(tmp_path):
+    staging = tmp_path / "staging"
+    profile_dir = tmp_path / "profile"
+    _write_meta_ini(staging / "Nexus Mod" / "meta.ini", {
+        "modid": "111", "fileid": "222", "version": "1.0",
+    })
+    game = _FakeGame(staging, profile_dir)
+
+    rows = profile_export.load_rows([_entry("Nexus Mod")], game)
+
+    assert rows[0]["is_modio"] is False
 
 
 def test_modio_mod_without_profile_url_still_defaults_to_bundle(tmp_path):

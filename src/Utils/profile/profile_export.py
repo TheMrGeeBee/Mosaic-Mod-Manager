@@ -31,8 +31,14 @@ A *row* is a plain dict describing one mod's export configuration::
         "root_folder":   bool,  # deploys to game root (meta.ini rootFolder)
         "enabled":       bool,  # modlist enabled state of the source entry
         "locked":        bool,  # reorder-locked (Utils.profile.profile_state mod_locks)
-        "source":        str,   # "nexus" | "direct" | "bundle" | "ignore"
-        "direct_url":    str,
+        "source":        str,   # "nexus" | "direct" | "bundle" | "ignore" |
+                                 # "modio" (Create Collection panel only —
+                                 # collection_export.py maps it to "browse")
+        "direct_url":    str,   # seeded from meta.ini's modioProfileUrl for a
+                                 # mod.io mod, else "" until the user sets one
+        "is_modio":      bool,  # mod.io-identified (no Nexus mod_id); lets a
+                                 # view offer a "mod.io" source option and use
+                                 # the mod.io version for display
     }
 """
 
@@ -82,6 +88,7 @@ def load_rows(entries, game) -> list[dict]:
         root_folder = False
         is_modio = False
         modio_url = ""
+        modio_version = ""
         if staging_root:
             meta_path = Path(staging_root) / name / "meta.ini"
             if meta_path.is_file():
@@ -112,6 +119,7 @@ def load_rows(entries, game) -> list[dict]:
                         is_modio = int(_cp.get("General", "modioModId", fallback="0") or "0") > 0
                         if is_modio:
                             modio_url = _cp.get("General", "modioProfileUrl", fallback="") or ""
+                            modio_version = _cp.get("General", "modioVersion", fallback="") or ""
                     except Exception:
                         is_modio = False
 
@@ -119,6 +127,13 @@ def load_rows(entries, game) -> list[dict]:
             ver_label = f"{file_id} — {version}"
         elif file_id:
             ver_label = str(file_id)
+        elif is_modio and modio_version:
+            # No Nexus file id to key a "fileid — version" label off of, but
+            # mod.io does have its own version string — show that instead of
+            # a bare "—" (Nexus's Change Version fetch doesn't apply here,
+            # since this isn't a Nexus mod_id/file_id).
+            version = modio_version
+            ver_label = modio_version
         else:
             ver_label = "—"
 
@@ -154,6 +169,7 @@ def load_rows(entries, game) -> list[dict]:
             "locked":           bool(mod_locks.get(name)),
             "source":           "bundle" if is_modio else "nexus",
             "direct_url":       modio_url,
+            "is_modio":         is_modio,
         })
 
     return rows
