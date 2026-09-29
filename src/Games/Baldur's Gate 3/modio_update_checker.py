@@ -187,7 +187,15 @@ def check_for_updates(
         if meta.file_id <= 0:
             info.unknown = True
             results.append(info)
-        elif s.latest_file_id != meta.file_id:
+        elif s.latest_file_id > meta.file_id:
+            # ">" not "!=": mod.io file ids are assigned sequentially, so a
+            # LOWER live-modfile id than what's installed means the author's
+            # current live release is actually older than the installed file
+            # (e.g. a newer upload exists but was never made the public
+            # release, or the live release was deliberately rolled back) --
+            # not something to "update" to. Confirmed live: with "!=" this
+            # silently downgraded an install to an older file under the
+            # "Update" banner.
             info.has_update = True
             results.append(info)
 

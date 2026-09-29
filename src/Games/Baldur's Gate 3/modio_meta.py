@@ -284,7 +284,10 @@ def resolve_modio_meta(
     if matched is not None:
         meta.file_id = matched.file_id
         meta.version = matched.version
-        up = " (update available)" if matched.file_id != latest_file_id else ""
+        # ">" not "!=" -- see modio_update_checker.py's matching comparison:
+        # a live release with a LOWER id than what was just matched isn't an
+        # available update, so don't log it as one.
+        up = " (update available)" if latest_file_id > matched.file_id else ""
         _log(f"mod.io: matched file {matched.file_id} v{matched.version}{up}.")
     else:
         # Can't pin the installed version; record the mod + latest anyway.

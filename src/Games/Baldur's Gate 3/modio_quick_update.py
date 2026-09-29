@@ -54,7 +54,11 @@ def resolve_modio_quick_update_target(api, staging_root: Path,
         return ("skipped", "no mod.io mod id in metadata")
     if meta.latest_file_id <= 0:
         return ("skipped", "latest file unknown")
-    if meta.latest_file_id == meta.file_id:
+    if meta.latest_file_id <= meta.file_id:
+        # "<=" not "==": a live-modfile id at or below what's already
+        # installed is not an update, whether equal or (an author having
+        # rolled back their live release, or a stale meta.ini) lower --
+        # never queue what would actually be a downgrade.
         return ("skipped", "already up to date")
     try:
         file = api.get_file(meta.mod_id, meta.latest_file_id)
