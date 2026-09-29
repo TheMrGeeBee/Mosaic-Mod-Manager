@@ -43,6 +43,27 @@ from Utils.collections import collection_export
 from Utils.profile import profile_export
 
 
+def _load_bg3_modio(stem: str):
+    """Load a Games/Baldur's Gate 3/<stem>.py module by file path (the folder
+    name has a space, so it isn't importable by dotted path). Cached in
+    sys.modules under f"{stem}_bg3" — the same key gui_qt/app.py's own
+    _load_bg3_modio uses, so this shares that cache rather than loading a
+    second copy; duplicated here (not imported from gui_qt.app) to avoid a
+    circular import (app.py imports this module to open the tab)."""
+    import importlib.util
+    import sys
+    mod_name = f"{stem}_bg3"
+    cached = sys.modules.get(mod_name)
+    if cached is not None:
+        return cached
+    bg3_dir = Path(__file__).resolve().parent.parent.parent / "Games" / "Baldur's Gate 3"
+    spec = importlib.util.spec_from_file_location(mod_name, str(bg3_dir / f"{stem}.py"))
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[mod_name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
 # Column indices for the per-mod table.
 (_COL_NAME, _COL_SOURCE, _COL_VERSION, _COL_OPTIONAL, _COL_FOMOD,
  _COL_POLICY, _COL_INSTRUCTIONS, _COL_ACTIONS) = range(8)
@@ -466,12 +487,18 @@ class CreateCollectionView(QWidget):
 
     def _pick_version(self, data_idx: int):
         row = self._all_rows[data_idx]
-        if (not row.get("versions_fetched") and row.get("mod_id")
-                and self._api is not None and row.get("source", "nexus") == "nexus"):
-            row["versions_fetched"] = True
-            threading.Thread(
-                target=self._fetch_versions, args=(data_idx,),
-                daemon=True, name="collection-versions").start()
+        if not row.get("versions_fetched"):
+            if (row.get("mod_id") and self._api is not None
+                    and row.get("source", "nexus") == "nexus"):
+                row["versions_fetched"] = True
+                threading.Thread(
+                    target=self._fetch_versions, args=(data_idx,),
+                    daemon=True, name="collection-versions").start()
+            elif row.get("is_modio") and row.get("modio_mod_id"):
+                row["versions_fetched"] = True
+                threading.Thread(
+                    target=self._fetch_modio_versions, args=(data_idx,),
+                    daemon=True, name="collection-modio-versions").start()
         self._open_version_dialog(data_idx)
 
     def _open_version_dialog(self, data_idx: int):
@@ -483,10 +510,18 @@ class CreateCollectionView(QWidget):
             r = self._all_rows[di]
             r["ver_label"] = sel.get("label", r["ver_label"])
             r["size_bytes"] = sel.get("size_bytes", 0)
-            try:
-                r["file_id"] = int(r["ver_label"].split(" — ")[0])
-            except (ValueError, IndexError):
-                pass
+            if r.get("is_modio"):
+                # mod.io labels are bare version strings, not Nexus's
+                # "fileid — version" — there's no Mosaic file_id concept for
+                # a mod.io file, just the version string itself.
+                r["version"] = sel.get("label", r.get("version", ""))
+                if sel.get("modio_file_id"):
+                    r["modio_file_id"] = sel["modio_file_id"]
+            else:
+                try:
+                    r["file_id"] = int(r["ver_label"].split(" — ")[0])
+                except (ValueError, IndexError):
+                    pass
             self._apply_filter()
 
         VersionOverlay(self.window(), row["name"], options,
@@ -511,11 +546,42 @@ class CreateCollectionView(QWidget):
         ]
         self._versions_ready.emit(data_idx, options)
 
+    def _fetch_modio_versions(self, data_idx: int):
+        row = self._all_rows[data_idx]
+        options = []
+        try:
+            modio_key = _load_bg3_modio("modio_key")
+            api_key = modio_key.load_modio_key()
+            if api_key:
+                modio_api = _load_bg3_modio("modio_api")
+                api = modio_api.ModioAPI(api_key)
+                files = api.get_mod_files(row["modio_mod_id"])
+                options = [
+                    {
+                        "label": f.version or f.filename or str(f.file_id),
+                        "name": f.filename,
+                        "size_bytes": f.filesize,
+                        "modio_file_id": f.file_id,
+                    }
+                    for f in files if f.file_id
+                ]
+        except Exception as exc:
+            self._log(f"[collection] could not fetch mod.io files for "
+                      f"'{row['name']}': {exc}")
+        self._versions_ready.emit(data_idx, options)
+
     def _on_versions_ready(self, data_idx: int, options):
         if not options:
             return
         row = self._all_rows[data_idx]
         row["ver_options"] = options
+        if row.get("is_modio"):
+            # ver_label/version already reflect what's actually installed
+            # (seeded by profile_export.load_rows from meta.ini) and mod.io
+            # labels are plain version strings the VersionOverlay already
+            # matches directly against the current label — nothing to
+            # auto-select here, unlike Nexus's fileid-prefix scheme below.
+            return
         cur_label = row["ver_label"]
         is_placeholder = (not cur_label or cur_label == "—" or " — " not in cur_label)
         if is_placeholder:

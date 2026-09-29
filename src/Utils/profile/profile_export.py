@@ -39,6 +39,10 @@ A *row* is a plain dict describing one mod's export configuration::
         "is_modio":      bool,  # mod.io-identified (no Nexus mod_id); lets a
                                  # view offer a "mod.io" source option and use
                                  # the mod.io version for display
+        "modio_mod_id":  int,   # mod.io's own numeric mod id (separate id
+                                 # space from Nexus's mod_id/file_id above) —
+                                 # needed to query mod.io's file list; 0 if
+                                 # not a mod.io mod
     }
 """
 
@@ -87,6 +91,7 @@ def load_rows(entries, game) -> list[dict]:
         size_bytes = 0
         root_folder = False
         is_modio = False
+        modio_mod_id = 0
         modio_url = ""
         modio_version = ""
         if staging_root:
@@ -116,7 +121,8 @@ def load_rows(entries, game) -> list[dict]:
                         import configparser as _cp_modio
                         _cp = _cp_modio.ConfigParser(interpolation=None)
                         _cp.read(str(meta_path), encoding="utf-8")
-                        is_modio = int(_cp.get("General", "modioModId", fallback="0") or "0") > 0
+                        modio_mod_id = int(_cp.get("General", "modioModId", fallback="0") or "0")
+                        is_modio = modio_mod_id > 0
                         if is_modio:
                             modio_url = _cp.get("General", "modioProfileUrl", fallback="") or ""
                             modio_version = _cp.get("General", "modioVersion", fallback="") or ""
@@ -170,6 +176,7 @@ def load_rows(entries, game) -> list[dict]:
             "source":           "bundle" if is_modio else "nexus",
             "direct_url":       modio_url,
             "is_modio":         is_modio,
+            "modio_mod_id":     modio_mod_id,
         })
 
     return rows
