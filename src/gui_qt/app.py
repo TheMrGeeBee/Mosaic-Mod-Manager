@@ -6126,28 +6126,46 @@ class MainWindow(QMainWindow):
         self._install_paths(paths, preferred_names=preferred, on_all_done=_done)
 
     def _stamp_modio_meta(self, meta_path, meta, file):
-        """Overwrite meta.ini's mod.io keys with the file we KNOW we just
-        fetched for a Quick Update, instead of trusting the install
+        """Overwrite meta.ini's mod.io file_id/version with the file we KNOW
+        we just fetched for a Quick Update, instead of trusting the install
         pipeline's own resolve_modio_meta re-identification (md5/uncompressed
         -size heuristics against the archive), which can mismatch when
         another release happens to share the same uncompressed pak size.
-        Non-destructive merge (write_modio_meta), so nothing else in
-        meta.ini is touched. Never raises — a failure here just leaves the
-        heuristic's guess in place, same as before this existed."""
+
+        Re-reads meta.ini fresh rather than reusing *meta* (resolved BEFORE
+        the download started, by resolve_modio_quick_update_target) — the
+        generic install pipeline's own resolve_modio_meta() call already ran
+        moments ago, post-install, with a fresh mod.io query, and may have
+        found a newer latest_file_id than existed when this update was
+        resolved. Blindly setting latest_file_id=file.file_id here would
+        stomp that fresher value back down to "no update," and previously
+        also silently reset liked/ignore_update/ignored_version to their
+        dataclass defaults since a freshly-constructed ModioMeta doesn't
+        carry them — see modio_meta.py's _KEY_LIKED comment for why a caller
+        must round-trip these instead of rebuilding from scratch. Only
+        file_id/version/installed are facts this call is actually confident
+        about; everything else comes from the current on-disk state.
+
+        Never raises — a failure here just leaves the heuristic's guess in
+        place, same as before this existed."""
         try:
             modio_meta = _load_bg3_modio("modio_meta")
             from datetime import datetime, timezone
+            current = modio_meta.read_modio_meta(meta_path)
             new_meta = modio_meta.ModioMeta(
                 mod_id=meta.mod_id,
                 file_id=file.file_id,
                 version=file.version,
-                name=meta.name,
-                profile_url=meta.profile_url,
-                uploader=meta.uploader,
-                tags=meta.tags,
-                latest_file_id=file.file_id,
-                latest_version=file.version,
+                name=current.name or meta.name,
+                profile_url=current.profile_url or meta.profile_url,
+                uploader=current.uploader or meta.uploader,
+                tags=current.tags or meta.tags,
+                latest_file_id=current.latest_file_id or file.file_id,
+                latest_version=current.latest_version or file.version,
                 installed=datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S"),
+                ignore_update=current.ignore_update,
+                ignored_version=current.ignored_version,
+                liked=current.liked,
             )
             modio_meta.write_modio_meta(meta_path, new_meta)
         except Exception as e:
