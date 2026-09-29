@@ -81,6 +81,7 @@ def load_rows(entries, game) -> list[dict]:
         size_bytes = 0
         root_folder = False
         is_modio = False
+        modio_url = ""
         if staging_root:
             meta_path = Path(staging_root) / name / "meta.ini"
             if meta_path.is_file():
@@ -99,12 +100,18 @@ def load_rows(entries, game) -> list[dict]:
                     # No Nexus identification — check whether this is a
                     # mod.io-identified mod instead, which has no downloadable
                     # reference on export and must be bundled (its files zipped
-                    # into the .mosaic package) rather than blocked.
+                    # into the .mosaic package) rather than blocked. mod.io
+                    # meta is stamped by Games/Baldur's Gate 3/modio_meta.py
+                    # (write_modio_meta) into the same meta.ini Nexus uses,
+                    # under modio-prefixed keys — read those keys directly
+                    # rather than importing that BG3-sibling-loaded module.
                     try:
                         import configparser as _cp_modio
                         _cp = _cp_modio.ConfigParser(interpolation=None)
                         _cp.read(str(meta_path), encoding="utf-8")
                         is_modio = int(_cp.get("General", "modioModId", fallback="0") or "0") > 0
+                        if is_modio:
+                            modio_url = _cp.get("General", "modioProfileUrl", fallback="") or ""
                     except Exception:
                         is_modio = False
 
@@ -146,7 +153,7 @@ def load_rows(entries, game) -> list[dict]:
             "enabled":          bool(getattr(entry, "enabled", True)),
             "locked":           bool(mod_locks.get(name)),
             "source":           "bundle" if is_modio else "nexus",
-            "direct_url":       "",
+            "direct_url":       modio_url,
         })
 
     return rows
