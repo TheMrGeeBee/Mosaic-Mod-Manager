@@ -119,8 +119,17 @@ _ATTR_RE_TMPL = r'<attribute\s+id="{name}"\s+type="[^"]*"\s+value="([^"]*)"\s*/>
 
 
 def _attr(block: str, name: str) -> str:
+    """One ModuleInfo attribute's raw value, XML-entity-decoded.
+
+    BG3's own LSX serializer escapes attribute values (an apostrophe in a
+    mod's Name becomes ``&apos;``), so the raw regex match must be decoded
+    before use — confirmed live: an undecoded Name showed as literal
+    "Vova&apos;s Edition" everywhere this value is displayed."""
     m = re.search(_ATTR_RE_TMPL.format(name=re.escape(name)), block)
-    return m.group(1) if m else ""
+    if not m:
+        return ""
+    import html
+    return html.unescape(m.group(1))
 
 
 def parse_publish_handle(meta_xml: str) -> tuple[int, str]:
