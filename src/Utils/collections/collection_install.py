@@ -733,6 +733,69 @@ def verify_download_md5(result, expected_md5: str, redownload=None,
               "download). Try this mod again later.")
 
 
+def _load_bg3_modio(stem: str):
+    """Load a Games/Baldur's Gate 3/<stem>.py module by file path (the folder
+    name has a space, so it isn't importable by dotted path). Cached in
+    sys.modules under f"{stem}_bg3" — the same key every other caller of this
+    same pattern uses (gui_qt/app.py, create_collection_view.py, …), so this
+    shares that cache rather than loading a second copy. Duplicated here
+    rather than imported, same reasoning as create_collection_view.py's own
+    copy: avoids pulling a Qt-adjacent module into this toolkit-neutral one."""
+    import importlib.util
+    import sys
+    mod_name = f"{stem}_bg3"
+    cached = sys.modules.get(mod_name)
+    if cached is not None:
+        return cached
+    bg3_dir = Path(__file__).resolve().parent.parent.parent / "Games" / "Baldur's Gate 3"
+    spec = importlib.util.spec_from_file_location(mod_name, str(bg3_dir / f"{stem}.py"))
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[mod_name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+_MODIO_BROWSE_RE = re.compile(r"^https?://mod\.io/g/([^/]+)/m/([^/?#]+)", re.I)
+
+
+def _resolve_modio_browse_url(url: str, game_domain: str, log_fn=_noop) -> str:
+    """A "browse"-type off-site source whose URL is a mod.io mod page can
+    actually be auto-installed: the real Nexus Collection schema has no
+    mod.io source type, so Mosaic's own exporter downgrades a mod.io row to
+    "browse" with its page URL (collection_export.py) — but that page's slug
+    is enough to resolve the mod through mod.io's own read-only API and fetch
+    its live file directly, the same way Quick Update does, instead of
+    leaving it for the user to download by hand.
+
+    Returns the file's real, pre-signed binary_url on success, or "" (falls
+    back to the normal manual-download path, same as any other browse entry)
+    on anything unresolved — no API key configured, network failure, mod not
+    found, or a non-BG3 game (mod.io support in this codebase is BG3-only).
+    Never raises: a mod.io hiccup here must not break the rest of the
+    collection install.
+    """
+    if game_domain != "baldursgate3":
+        return ""
+    m = _MODIO_BROWSE_RE.match(url or "")
+    if not m:
+        return ""
+    slug = m.group(2)
+    try:
+        api_key = _load_bg3_modio("modio_key").load_modio_key()
+        if not api_key:
+            return ""
+        modio_api = _load_bg3_modio("modio_api")
+        api = modio_api.ModioAPI(api_key)
+        summary = api.get_mod_by_slug(slug)
+        if summary is None or not summary.mod_id or not summary.latest_file_id:
+            return ""
+        file = api.get_file(summary.mod_id, summary.latest_file_id)
+        return file.binary_url if file else ""
+    except Exception as exc:
+        log_fn(f"mod.io off-site resolution failed for '{slug}': {exc}")
+        return ""
+
+
 # ---------------------------------------------------------------------------
 # Orchestrator
 # ---------------------------------------------------------------------------
@@ -1683,6 +1746,13 @@ def run_collection_install(
                 continue
             _osname = _osmod.get("name") or ""
             _osurl = _osrc.get("url") or _osrc.get("fileUrl") or ""
+            if _ostype == "browse" and _osurl:
+                _omodio_url = _resolve_modio_browse_url(_osurl, game_domain, log)
+                if _omodio_url:
+                    log(f"Off-site mod '{_osname}' is a mod.io page — "
+                        f"resolved its live file, fetching automatically.")
+                    _osurl = _omodio_url
+                    _ostype = "direct"
             if _ostype != "direct" or not _osurl:
                 if _osurl:
                     _offsite_unresolved.append((_osname, _osurl))

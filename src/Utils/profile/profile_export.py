@@ -500,30 +500,48 @@ def write_amethyst(out_path, manifest: dict, *, staging_root=None,
 # Import side
 # ---------------------------------------------------------------------------
 
+def _pick_manifest_member(names: "list[str]") -> "str | None":
+    for cand in ("manifest.json", "collection.json"):
+        if cand in names:
+            return cand
+    return next(
+        (n for n in names if n.rsplit("/", 1)[-1] in ("manifest.json", "collection.json")),
+        None)
+
+
 def read_manifest(src_path) -> dict:
-    """Parse the manifest from a ``.mosaic``/``.amethyst``/``.zip`` archive
-    (extracts the inner ``manifest.json``) or a bare ``.json`` file. Returns
-    the parsed dict. Raises on read/parse failure."""
+    """Parse the manifest from a ``.mosaic``/``.amethyst``/``.zip``/``.7z``
+    archive (extracts the inner ``manifest.json`` or ``collection.json``) or
+    a bare ``.json`` file. Returns the parsed dict. Raises on read/parse
+    failure.
+
+    A real Nexus Collection downloads as a ``.7z`` (this app's own Export
+    Collection produces the same format) — unlike ``.mosaic``/``.amethyst``,
+    which are zips, so the zip branch below never sees them."""
     src_path = Path(src_path)
     import json as _json
     import zipfile as _zip
     if _zip.is_zipfile(src_path):
         with _zip.ZipFile(src_path, "r") as zf:
-            # Prefer a top-level manifest.json; else the first *manifest.json.
-            names = zf.namelist()
-            member = None
-            for cand in ("manifest.json", "collection.json"):
-                if cand in names:
-                    member = cand
-                    break
+            member = _pick_manifest_member(zf.namelist())
             if member is None:
-                member = next(
-                    (n for n in names if n.rsplit("/", 1)[-1] == "manifest.json"),
-                    None)
-            if member is None:
-                raise ValueError("No manifest.json found in archive.")
+                raise ValueError("No manifest.json/collection.json found in archive.")
             with zf.open(member) as fh:
                 return _json.loads(fh.read().decode("utf-8"))
+    try:
+        import py7zr
+    except ImportError:
+        py7zr = None
+    if py7zr is not None and py7zr.is_7zfile(src_path):
+        import tempfile
+        with py7zr.SevenZipFile(src_path, "r") as zf:
+            member = _pick_manifest_member(zf.getnames())
+            if member is None:
+                raise ValueError("No manifest.json/collection.json found in archive.")
+            with tempfile.TemporaryDirectory() as tmp:
+                zf.extract(path=tmp, targets=[member])
+                return _json.loads(
+                    (Path(tmp) / member).read_text(encoding="utf-8"))
     return _json.loads(src_path.read_text(encoding="utf-8"))
 
 

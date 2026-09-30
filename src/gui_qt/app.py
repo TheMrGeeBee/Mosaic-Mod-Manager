@@ -7961,8 +7961,8 @@ class MainWindow(QMainWindow):
         pick_file(
             "Import profile",
             lambda p: self._import_file_picked.emit(p),
-            filters=[("Mosaic Manifest (*.mosaic *.amethyst *.zip *.json)",
-                      ["*.mosaic", "*.amethyst", "*.zip", "*.json"]),
+            filters=[("Mosaic Manifest (*.mosaic *.amethyst *.zip *.7z *.json)",
+                      ["*.mosaic", "*.amethyst", "*.zip", "*.7z", "*.json"]),
                      ("All files", ["*"])])
 
     def _on_import_file_picked(self, picked):

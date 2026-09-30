@@ -280,6 +280,30 @@ class ModioAPI:
                     out[s.mod_id] = s
         return out
 
+    def get_mod_by_slug(self, name_id: str) -> "ModioModSummary | None":
+        """Resolve a mod page's slug (the ``.../m/<slug>`` part of its
+        profile_url — the only identifier a "browse"-type Collection source
+        carries, since the real schema has no numeric mod.io id field) to its
+        mod + live file. Returns None if not found or on any error — callers
+        already have a manual-download fallback for this."""
+        name_id = (name_id or "").strip().lower()
+        if not name_id:
+            return None
+        url = f"{_API_ROOT}/games/{_GAME}/mods"
+        params = {"api_key": self._api_key, "name_id": name_id, "_limit": 1}
+        try:
+            resp = self._get(url, params)
+            if resp.status_code != 200:
+                return None
+            data = resp.json().get("data", [])
+        except (requests.RequestException, ValueError) as e:
+            app_log(f"mod.io: slug lookup failed for '{name_id}': {e}")
+            return None
+        if not data:
+            return None
+        s = ModioModSummary.from_json(data[0])
+        return s if s.mod_id else None
+
     def get_mod_profile_url(self, mod_id: int) -> str:
         """Return the mod's public mod.io page URL (its ``profile_url``).
 
