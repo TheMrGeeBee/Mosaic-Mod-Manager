@@ -16,6 +16,20 @@ from gui_qt.worker import run_in_worker
 from Utils.collections.collection_manifest import fmt_size
 
 
+def _is_modio_auto_offsite(url: str, domain: str) -> bool:
+    """True when a "browse"-type off-site source's URL is a mod.io mod page
+    Mosaic can actually resolve and auto-install, rather than one the user
+    has to fetch by hand. collection_export.py downgrades a mod.io-sourced
+    row to source.type "browse" on export (the real Nexus Collection schema
+    has no mod.io type) but keeps its page URL; collection_install.py
+    resolves that URL back through mod.io's own API at install time. Only a
+    pattern/domain check here, same as "direct" entries get no pre-check
+    either — this just decides which bucket the preview panel shows it in,
+    not whether the install will actually succeed."""
+    from Utils.collections.collection_install import _MODIO_BROWSE_RE
+    return domain == "baldursgate3" and bool(_MODIO_BROWSE_RE.match(url or ""))
+
+
 class _SizeItem(QTableWidgetItem):
     """Size cell: shows the humanized string (DisplayRole only) but sorts by the
     raw byte count stashed in UserRole. Setting EditRole to an int made the view
@@ -168,8 +182,11 @@ class CollectionDetailView(QWidget):
             if src_type in ("browse", "direct"):
                 url = src.get("url") or src.get("fileUrl") or ""
                 if url:
-                    # "direct" is downloaded + installed by Mosaic itself.
-                    (offsite_auto if src_type == "direct" else offsite).append((mod_name, url))
+                    # "direct" is downloaded + installed by Mosaic itself,
+                    # and so is a resolvable mod.io "browse" page.
+                    is_auto = src_type == "direct" or \
+                        _is_modio_auto_offsite(url, self._domain)
+                    (offsite_auto if is_auto else offsite).append((mod_name, url))
                 continue
             cat = m.get("category") or {}
             mods.append(_NCM(
