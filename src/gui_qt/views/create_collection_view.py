@@ -65,8 +65,8 @@ def _load_bg3_modio(stem: str):
 
 
 # Column indices for the per-mod table.
-(_COL_NAME, _COL_SOURCE, _COL_VERSION, _COL_OPTIONAL, _COL_FOMOD,
- _COL_POLICY, _COL_INSTRUCTIONS, _COL_ACTIONS) = range(8)
+(_COL_NAME, _COL_SELECT, _COL_SOURCE, _COL_VERSION, _COL_OPTIONAL, _COL_FOMOD,
+ _COL_POLICY, _COL_INSTRUCTIONS, _COL_ACTIONS) = range(9)
 
 _POLICY_ORDER = ("exact", "prefer", "latest")
 _POLICY_LABELS = {
@@ -199,6 +199,11 @@ class CreateCollectionView(QWidget):
         self._all_rows: list[dict] = []
         self._rows: list[dict] = []   # filtered/sorted view
         self._search_text = ""
+        # Checked rows for the bulk-action toolbar (set/apply Optional or
+        # Update Policy across several mods at once) — data_idx values into
+        # self._all_rows. Purely a UI-selection concept, not part of the
+        # exported row schema.
+        self._selected: set[int] = set()
 
         self.setObjectName("CreateCollectionView")
         self._my_collections_ready.connect(self._on_my_collections_ready)
@@ -308,10 +313,55 @@ class CreateCollectionView(QWidget):
         tl.addWidget(self._count_label)
         root.addWidget(tb)
 
+        # Bulk-action toolbar: check several rows (Select column), then apply
+        # Optional or Update Policy to all of them at once — a long modlist
+        # makes doing that one row at a time impractical.
+        bulk = QWidget(); bulk.setObjectName("CCToolbar")
+        bl2 = QHBoxLayout(bulk); bl2.setContentsMargins(12, 6, 12, 6); bl2.setSpacing(8)
+        select_all_btn = QPushButton(self.tr("Select all"))
+        select_all_btn.setObjectName("FormButton")
+        select_all_btn.setCursor(Qt.PointingHandCursor)
+        select_all_btn.clicked.connect(self._select_all_visible)
+        bl2.addWidget(select_all_btn)
+        select_none_btn = QPushButton(self.tr("Select none"))
+        select_none_btn.setObjectName("FormButton")
+        select_none_btn.setCursor(Qt.PointingHandCursor)
+        select_none_btn.clicked.connect(self._select_none)
+        bl2.addWidget(select_none_btn)
+        self._selected_count_label = QLabel(self.tr("0 selected"))
+        bl2.addWidget(self._selected_count_label)
+        bl2.addSpacing(16)
+
+        bl2.addWidget(QLabel(self.tr("Optional:")))
+        mark_optional_btn = QPushButton(self.tr("Yes"))
+        mark_optional_btn.setObjectName("FormButton")
+        mark_optional_btn.setCursor(Qt.PointingHandCursor)
+        mark_optional_btn.clicked.connect(lambda: self._bulk_set_optional(True))
+        bl2.addWidget(mark_optional_btn)
+        mark_required_btn = QPushButton(self.tr("No"))
+        mark_required_btn.setObjectName("FormButton")
+        mark_required_btn.setCursor(Qt.PointingHandCursor)
+        mark_required_btn.clicked.connect(lambda: self._bulk_set_optional(False))
+        bl2.addWidget(mark_required_btn)
+        bl2.addSpacing(16)
+
+        bl2.addWidget(QLabel(self.tr("Update Policy:")))
+        self._bulk_policy_combo = QComboBox()
+        for value in _POLICY_ORDER:
+            self._bulk_policy_combo.addItem(self.tr(_POLICY_LABELS[value]), value)
+        bl2.addWidget(self._bulk_policy_combo)
+        apply_policy_btn = QPushButton(self.tr("Apply"))
+        apply_policy_btn.setObjectName("FormButton")
+        apply_policy_btn.setCursor(Qt.PointingHandCursor)
+        apply_policy_btn.clicked.connect(self._bulk_apply_update_policy)
+        bl2.addWidget(apply_policy_btn)
+        bl2.addStretch(1)
+        root.addWidget(bulk)
+
         # Per-mod table.
-        self._table = QTableWidget(0, 8)
+        self._table = QTableWidget(0, 9)
         self._table.setHorizontalHeaderLabels([
-            self.tr("Mod Name"), self.tr("Source"), self.tr("File"),
+            self.tr("Mod Name"), self.tr("Select"), self.tr("Source"), self.tr("File"),
             self.tr("Optional"), self.tr("Fomod"), self.tr("Update Policy"),
             self.tr("Instructions"), self.tr(""),
         ])
@@ -320,7 +370,7 @@ class CreateCollectionView(QWidget):
         self._table.setEditTriggers(QAbstractItemView.NoEditTriggers)
         hh = self._table.horizontalHeader()
         hh.setSectionResizeMode(_COL_NAME, QHeaderView.Stretch)
-        for col in (_COL_SOURCE, _COL_VERSION, _COL_OPTIONAL, _COL_FOMOD,
+        for col in (_COL_SELECT, _COL_SOURCE, _COL_VERSION, _COL_OPTIONAL, _COL_FOMOD,
                    _COL_POLICY, _COL_INSTRUCTIONS, _COL_ACTIONS):
             hh.setSectionResizeMode(col, QHeaderView.ResizeToContents)
         root.addWidget(self._table, 1)
@@ -412,6 +462,11 @@ class CreateCollectionView(QWidget):
             name_item.setFlags(Qt.ItemIsEnabled)
             t.setItem(i, _COL_NAME, name_item)
 
+            select_chk = center_checkbox(
+                data_idx in self._selected,
+                lambda ch, di=data_idx: self._set_selected(di, ch))
+            t.setCellWidget(i, _COL_SELECT, select_chk)
+
             src = row.get("source", "nexus")
             src_btn = QPushButton(self.tr(SOURCE_LABELS.get(src, "Nexus")))
             src_btn.setCursor(Qt.PointingHandCursor)
@@ -472,6 +527,8 @@ class CreateCollectionView(QWidget):
                 dash2.setTextAlignment(Qt.AlignCenter)
                 t.setItem(i, _COL_ACTIONS, dash2)
 
+        self._update_selected_count_label()
+
     # -- cell actions -------------------------------------------------------
     def _set_optional(self, data_idx: int, checked: bool):
         self._all_rows[data_idx]["optional"] = bool(checked)
@@ -482,6 +539,49 @@ class CreateCollectionView(QWidget):
     def _set_update_policy(self, data_idx: int, value):
         if value:
             self._all_rows[data_idx]["update_policy"] = value
+
+    # -- bulk selection / actions --------------------------------------------
+    def _set_selected(self, data_idx: int, checked: bool):
+        if checked:
+            self._selected.add(data_idx)
+        else:
+            self._selected.discard(data_idx)
+        self._update_selected_count_label()
+
+    def _update_selected_count_label(self):
+        label = getattr(self, "_selected_count_label", None)
+        if label is not None:
+            label.setText(self.tr("{0} selected").format(len(self._selected)))
+
+    def _select_all_visible(self):
+        """Selects every currently-VISIBLE (search-filtered) row, not every
+        row in the modlist — matches what the user can actually see checked."""
+        for row in self._rows:
+            self._selected.add(self._all_rows.index(row))
+        self._apply_filter()
+
+    def _select_none(self):
+        self._selected.clear()
+        self._apply_filter()
+
+    def _bulk_set_optional(self, optional: bool):
+        if not self._selected:
+            self._notify(self.tr("No mods selected."), "warning")
+            return
+        for data_idx in self._selected:
+            self._all_rows[data_idx]["optional"] = optional
+        self._apply_filter()
+
+    def _bulk_apply_update_policy(self):
+        if not self._selected:
+            self._notify(self.tr("No mods selected."), "warning")
+            return
+        value = self._bulk_policy_combo.currentData()
+        if not value:
+            return
+        for data_idx in self._selected:
+            self._all_rows[data_idx]["update_policy"] = value
+        self._apply_filter()
 
     def _pick_source(self, data_idx: int):
         row = self._all_rows[data_idx]
@@ -705,6 +805,11 @@ class CreateCollectionView(QWidget):
         if not row.get("is_variant"):
             return
         self._all_rows.remove(row)
+        # self._selected holds indices into self._all_rows -- removing an
+        # entry shifts everything after it, so re-index (and drop the
+        # removed row itself) or the bulk toolbar could act on the wrong mod.
+        self._selected = {i if i < data_idx else i - 1
+                          for i in self._selected if i != data_idx}
         # Deferred: this runs from the row's own "Remove" button click, and a
         # synchronous rebuild here would delete that button mid-signal.
         QTimer.singleShot(0, self._apply_filter)
