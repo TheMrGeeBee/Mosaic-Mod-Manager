@@ -154,9 +154,9 @@ class BG3InsightsView(WizardViewBase):
         rh.addWidget(self._rescan_btn)
         self._clear_decisions_btn = self._orange_btn(self.tr("Clear Decisions"))
         self._clear_decisions_btn.setToolTip(self.tr(
-            "Discard every saved winner and ignored finding for this profile "
-            "(e.g. to clear a stale \"Your rule is broken\") — Never Together "
-            "markings are kept"))
+            "Discard every saved winner, ignored finding, and Never Together "
+            "marking for this profile (e.g. to clear a stale \"Your rule is "
+            "broken\")"))
         self._clear_decisions_btn.clicked.connect(
             lambda _c=False: self._clear_decisions())
         rh.addWidget(self._clear_decisions_btn)
@@ -241,6 +241,8 @@ class BG3InsightsView(WizardViewBase):
         if f.never_together:
             return self.tr("Marked — never together")
         if f.rule_violated:
+            if f.kind == "author_note":
+                return self.tr("Accepted — reorder to apply it")
             return self.tr("Your rule is broken")
         if f.intended:
             if f.intended_by == "author rule":
@@ -307,7 +309,7 @@ class BG3InsightsView(WizardViewBase):
             return
         lines = [f"{m}" + (f"   (load position {self._insights.load_rank[m] + 1})"
                            if m in self._insights.load_rank else
-                           "   (not in the load order)")
+                           "   (installed, but not tracked by modsettings.lsx)")
                  for m in f.mods]
         text = "\n".join(lines)
         if f.note:
@@ -496,9 +498,9 @@ class BG3InsightsView(WizardViewBase):
         from gui_qt.overlays.confirm_overlay import ConfirmOverlay
         ConfirmOverlay.show_over(
             self, self.tr("Clear Decisions"),
-            self.tr("Discard every saved winner and ignored finding for this "
-                    "profile? Findings will need to be decided again on the "
-                    "next scan.\n\n\"Never Together\" markings are kept."),
+            self.tr("Discard every saved winner, ignored finding, and Never "
+                    "Together marking for this profile? All of it will need "
+                    "to be decided again on the next scan."),
             lambda ok: self._do_clear_decisions() if ok else None,
             confirm_label=self.tr("Clear"))
 
@@ -506,5 +508,5 @@ class BG3InsightsView(WizardViewBase):
         from Utils.mods.bg3_pak_index import clear_decisions
         clear_decisions(self._profile_dir)
         self._log("BG3 Insights: cleared all saved decisions "
-                  "(never-together markings kept)")
+                  "(including Never Together markings)")
         self._rescan()

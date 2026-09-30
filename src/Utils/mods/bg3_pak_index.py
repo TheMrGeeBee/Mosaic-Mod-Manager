@@ -568,6 +568,21 @@ def analyse(enabled: list[ModEntry], index: dict[str, list[dict]],
                         winner=_winner(list(m), rank))
                 for (k, m), keys in groups.items()]
 
+    # A mod with no winner because one of its files is override-only (no own
+    # Public/<mod> folder, so BG3 loads it directly instead of through
+    # modsettings.lsx) is still installed and enabled — say so, instead of
+    # the bare "not in the load order" reading as "not installed".
+    override_only = {mod for mod, recs in index.items()
+                     if any((r.get("meta") or {}).get("is_override_only")
+                            for r in recs)}
+    for f in findings:
+        if f.winner is None and not f.note and any(
+                m in override_only and m not in rank for m in f.mods):
+            f.note = ("BG3 loads override-only content (no dedicated mod "
+                      "folder of its own) directly, outside modsettings.lsx "
+                      "— its priority against other mods here isn't "
+                      "something Mosaic controls or can predict.")
+
     for mod, conflict_uuid in declared:
         other = uuid_owner.get(conflict_uuid)
         if other and other != mod:
@@ -828,19 +843,13 @@ def unmark_never_together(finding: "Finding", profile_dir: Path) -> None:
 
 
 def clear_decisions(profile_dir: Path) -> None:
-    """Discard every saved winner/keep-current-order rule and ignored
-    finding for this profile — lets a stale "Your rule is broken" state
-    (e.g. after mods were reordered for an unrelated reason, or a rule was
-    made against a modlist that's since changed a lot) be wiped and
-    re-decided from scratch on the next scan, rather than accumulating
-    conflicting rules with no way back to a clean slate.
-
-    Deliberately preserves never_together markings — those are durable,
-    deliberate facts about which mods are alternatives, not per-order
-    decisions that go stale the way winner/loser rules do."""
-    data = read_rules(profile_dir)
-    write_rules(profile_dir, {"rules": [], "ignored": [],
-                              "never_together": data["never_together"]})
+    """Discard every saved winner/keep-current-order rule, ignored finding,
+    and Never Together marking for this profile — lets a stale "Your rule
+    is broken" state (e.g. after mods were reordered for an unrelated
+    reason, or a rule was made against a modlist that's since changed a
+    lot) be wiped and re-decided from scratch on the next scan, rather than
+    accumulating conflicting rules with no way back to a clean slate."""
+    write_rules(profile_dir, {"rules": [], "ignored": [], "never_together": []})
 
 
 def _apply_never_together_status(findings: "list[Finding]",

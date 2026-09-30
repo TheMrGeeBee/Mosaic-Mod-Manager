@@ -226,7 +226,10 @@ def test_never_together_survives_alongside_existing_rules_and_ignored(tmp_path):
     assert state["never_together"] == [["A", "B"]]
 
 
-def test_clear_decisions_wipes_rules_and_ignored_but_keeps_never_together(tmp_path):
+def test_clear_decisions_wipes_rules_ignored_and_never_together(tmp_path):
+    # "Clear Decisions" resets everything, including Never Together marks --
+    # user feedback after living with an earlier design that kept them: a
+    # button named "Clear Decisions" should not have a silent exception.
     prof = _profile(tmp_path, ["A", "B", "C"])
     bx.write_rules(prof, {
         "rules": [{"winner": "A", "loser": "B"}],
@@ -239,7 +242,7 @@ def test_clear_decisions_wipes_rules_and_ignored_but_keeps_never_together(tmp_pa
     state = bx.read_rules(prof)
     assert state["rules"] == []
     assert state["ignored"] == []
-    assert state["never_together"] == [["A", "B"]]
+    assert state["never_together"] == []
 
 
 def test_patch_that_depends_on_the_loser_is_intended(tmp_path):
@@ -482,3 +485,25 @@ def test_dividers_are_not_same_module(tmp_path):
     index = {"Dividers A": [div("d1", "001.pak")], "Dividers B": [div("d1", "001.pak")]}
     assert [x for x in bx.analyse(enabled, index, tmp_path)[0]
             if x.kind == "same_module"] == []
+
+
+def test_override_only_mod_gets_explanatory_note_not_fake_winner(tmp_path):
+    # Real case: "Distinctive Dyes v2.2" ships all its files under Public/
+    # Shared/... (no own Public/<mod> folder), so it's classified override-
+    # only and load_order_eligible() drops it from modsettings.lsx entirely
+    # -- the game loads it directly. It still overlaps on a file with a
+    # normal, ranked mod, and the user (rightly) expects to be told why
+    # Mosaic can't say who wins, not to be told it's "not in the load order"
+    # in a way that reads as "not installed".
+    enabled = _entries("Distinctive Dyes", "Addon For UI")
+    override = _rec("u-dye", "dye", files=["public/shared/assets/x.dds"])
+    override["meta"]["is_override_only"] = True
+    normal = _rec("u-ui", "ui", files=["public/shared/assets/x.dds"])
+    index = {"Distinctive Dyes": [override], "Addon For UI": [normal]}
+    findings, rank = bx.analyse(enabled, index, tmp_path)
+    [f] = findings
+    assert f.kind == "same_file"
+    assert f.winner is None
+    assert "Distinctive Dyes" not in rank
+    assert "Addon For UI" in rank
+    assert "override-only" in f.note
