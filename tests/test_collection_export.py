@@ -321,3 +321,62 @@ def test_build_collection_manifest_synthetic_variant_row(tmp_path):
     assert mod["source"]["modId"] == 123
     assert mod["source"]["fileId"] == 789
     assert warnings == []
+
+
+# ---- build_mod_rules: reuse original modRules across a file rename --------
+# Real bug, confirmed against a real profile: a collection curated with one
+# Nexus file under the label "All-In-One" was re-exported after the author
+# relabeled that same file (same md5) to "Enhanced World Tooltips - AIO" on
+# Nexus. The original collection's modRules still say "All-In-One" -- a
+# pure name match against the current export's mod names silently dropped
+# every rule touching it (3 of the profile's 8 real rules), even though the
+# underlying file (same md5) was still exported under its new name.
+
+def _write_original_collection(profile_dir, mod_rules):
+    (profile_dir / "collection.json").write_text(
+        json.dumps({"modRules": mod_rules}), encoding="utf-8")
+
+
+def test_reused_rule_survives_a_file_rename_via_md5_match(tmp_path):
+    _write_original_collection(tmp_path, [{
+        "type": "after",
+        "reference": {"logicalFileName": "Hide Looted - Preview",
+                     "fileMD5": "aaa"},
+        "source": {"logicalFileName": "All-In-One", "fileMD5": "bbb"},
+    }])
+
+    rules = collection_export.build_mod_rules(
+        ["Hide Looted - Preview", "Enhanced World Tooltips - AIO"], tmp_path,
+        {"bbb": "Enhanced World Tooltips - AIO"})
+
+    assert len(rules) == 1
+    assert rules[0]["source"]["logicalFileName"] == "Enhanced World Tooltips - AIO"
+    assert rules[0]["reference"]["logicalFileName"] == "Hide Looted - Preview"
+
+
+def test_rule_still_dropped_when_neither_name_nor_md5_match(tmp_path):
+    _write_original_collection(tmp_path, [{
+        "type": "after",
+        "reference": {"logicalFileName": "Gone Mod", "fileMD5": "aaa"},
+        "source": {"logicalFileName": "All-In-One", "fileMD5": "bbb"},
+    }])
+
+    rules = collection_export.build_mod_rules(
+        ["Enhanced World Tooltips - AIO"], tmp_path,
+        {"bbb": "Enhanced World Tooltips - AIO"})
+
+    assert rules == []
+
+
+def test_unrenamed_rule_still_matches_by_name_with_no_md5_lookup(tmp_path):
+    _write_original_collection(tmp_path, [{
+        "type": "after",
+        "reference": {"logicalFileName": "B"},
+        "source": {"logicalFileName": "A"},
+    }])
+
+    rules = collection_export.build_mod_rules(["A", "B"], tmp_path)
+
+    assert len(rules) == 1
+    assert rules[0]["source"]["logicalFileName"] == "A"
+    assert rules[0]["reference"]["logicalFileName"] == "B"

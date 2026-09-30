@@ -338,20 +338,36 @@ def _plugin_rules_block(profile_dir, known_plugins=None) -> "dict | None":
 # back to the current order on reimport, without an O(n^2) pairwise blowup).
 # ---------------------------------------------------------------------------
 
-def build_mod_rules(ordered_logical_names: list, profile_dir) -> list:
+def build_mod_rules(ordered_logical_names: list, profile_dir,
+                    name_by_md5: "dict[str, str] | None" = None) -> list:
     """*ordered_logical_names* — manifest mod ``name`` values, HIGHEST
     priority first (matches ``load_rows``/``rows`` order — the modlist's own
-    top-to-bottom order)."""
+    top-to-bottom order). *name_by_md5* — this export's own {file md5:
+    mod name}, for resolving a reused rule whose endpoint was renamed since
+    the original collection was curated (a Nexus author relabeling a file,
+    or a user's own rename) — a real case: "All-In-One" in an original
+    Collection's rules vs. the same file (same md5) re-exported today as
+    "Enhanced World Tooltips - AIO". Without this, every rule touching a
+    renamed file silently vanishes (name match fails, md5 was never
+    checked) rather than falling back to name-only matching."""
     original = read_profile_manifest(profile_dir).get("modRules") or []
     names = set(ordered_logical_names)
+    name_by_md5 = name_by_md5 or {}
     if original:
         reused = []
         for rule in original:
-            ref = ((rule.get("reference") or {}).get("logicalFileName")
-                   or (rule.get("reference") or {}).get("logicalFilename"))
-            src = ((rule.get("source") or {}).get("logicalFileName")
-                   or (rule.get("source") or {}).get("logicalFilename"))
+            ref_block = rule.get("reference") or {}
+            src_block = rule.get("source") or {}
+            ref = ref_block.get("logicalFileName") or ref_block.get("logicalFilename")
+            src = src_block.get("logicalFileName") or src_block.get("logicalFilename")
+            if ref not in names:
+                ref = name_by_md5.get((ref_block.get("fileMD5") or "").lower())
+            if src not in names:
+                src = name_by_md5.get((src_block.get("fileMD5") or "").lower())
             if ref in names and src in names:
+                rule = json.loads(json.dumps(rule))  # deep copy before rewriting
+                rule.setdefault("reference", {})["logicalFileName"] = ref
+                rule.setdefault("source", {})["logicalFileName"] = src
                 reused.append(rule)
         if reused:
             return reused
@@ -527,7 +543,10 @@ def build_collection_manifest(rows, game, info: dict, *,
             "gameVersions": list(info.get("gameVersions") or []),
         },
         "mods": mods,
-        "modRules": build_mod_rules(logical_names, profile_dir),
+        "modRules": build_mod_rules(logical_names, profile_dir, {
+            md5.lower(): m["name"] for m in mods
+            if (md5 := m.get("source", {}).get("md5"))
+        }),
         "collectionConfig": {
             "recommendNewProfile": bool(info.get("recommendNewProfile", True)),
             "excludePluginRules": bool(info.get("excludePluginRules", False)),
