@@ -23,6 +23,7 @@ collection_export module.
 
 from __future__ import annotations
 
+import json
 import threading
 from pathlib import Path
 
@@ -204,6 +205,10 @@ class CreateCollectionView(QWidget):
         # self._all_rows. Purely a UI-selection concept, not part of the
         # exported row schema.
         self._selected: set[int] = set()
+        # A category_id restored from a draft before the real category list
+        # (fetched async) has arrived — applied once _on_categories_ready fires.
+        self._pending_category_id = None
+        self._autosave_timer = None
 
         self.setObjectName("CreateCollectionView")
         self._my_collections_ready.connect(self._on_my_collections_ready)
@@ -213,7 +218,18 @@ class CreateCollectionView(QWidget):
         self._versions_ready.connect(self._on_versions_ready)
         self._variant_files_ready.connect(self._on_variant_files_ready)
         self._build()
-        self._load_rows()
+        # Resume exactly where a previous session left off (settings, notes,
+        # per-mod source/version/instructions edits) rather than re-scanning
+        # the modlist from scratch and losing all of that -- requested
+        # directly after closing this tab mid-edit discarded everything.
+        draft = self._load_draft()
+        if draft:
+            self._all_rows = list(draft.get("rows") or [])
+            self._apply_draft_info(draft.get("info") or {})
+            self._log(f"[collection] Restored a saved draft "
+                      f"({len(self._all_rows)} mod row(s)).")
+        else:
+            self._load_rows()
         self._apply_filter()
         if self._api is not None:
             threading.Thread(target=self._fetch_my_collections,
@@ -268,34 +284,42 @@ class CreateCollectionView(QWidget):
 
         self._name = QLineEdit()
         self._name.setPlaceholderText(self.tr("3–36 characters"))
+        self._name.textChanged.connect(self._schedule_autosave)
         form.addRow(self.tr("Name"), self._name)
 
         self._description = QTextEdit()
         self._description.setFixedHeight(70)
+        self._description.textChanged.connect(self._schedule_autosave)
         form.addRow(self.tr("Description"), self._description)
 
         self._instructions = QTextEdit()
         self._instructions.setFixedHeight(70)
         self._instructions.setPlaceholderText(
             self.tr("Shown to the user before installation starts (Markdown supported)"))
+        self._instructions.textChanged.connect(self._schedule_autosave)
         form.addRow(self.tr("Instructions"), self._instructions)
 
         self._category = QComboBox()
         self._category.addItem(self.tr("(none)"), 0)
+        self._category.currentIndexChanged.connect(self._schedule_autosave)
         form.addRow(self.tr("Category"), self._category)
 
         self._adult = QCheckBox(self.tr("Contains adult content"))
+        self._adult.stateChanged.connect(self._schedule_autosave)
         form.addRow("", self._adult)
 
         self._listed = QCheckBox(self.tr("Publish as listed (public)"))
         self._listed.setChecked(True)
+        self._listed.stateChanged.connect(self._schedule_autosave)
         form.addRow("", self._listed)
 
         self._recommend_new_profile = QCheckBox(self.tr("Recommend new profile"))
         self._recommend_new_profile.setChecked(True)
+        self._recommend_new_profile.stateChanged.connect(self._schedule_autosave)
         form.addRow("", self._recommend_new_profile)
 
         self._exclude_plugin_rules = QCheckBox(self.tr("Exclude plugin rules"))
+        self._exclude_plugin_rules.stateChanged.connect(self._schedule_autosave)
         form.addRow("", self._exclude_plugin_rules)
 
         root.addWidget(form_host)
@@ -308,6 +332,14 @@ class CreateCollectionView(QWidget):
         self._search.setFixedWidth(220)
         self._search.textChanged.connect(self._on_search)
         tl.addWidget(self._search)
+        rescan_btn = QPushButton(self.tr("Rescan"))
+        rescan_btn.setObjectName("FormButton")
+        rescan_btn.setCursor(Qt.PointingHandCursor)
+        rescan_btn.setToolTip(self.tr(
+            "Re-check the modlist for mods enabled or disabled since this "
+            "tab opened, without losing what you've already set up here"))
+        rescan_btn.clicked.connect(self._rescan_rows)
+        tl.addWidget(rescan_btn)
         tl.addStretch(1)
         self._count_label = QLabel("")
         tl.addWidget(self._count_label)
@@ -395,6 +427,83 @@ class CreateCollectionView(QWidget):
         pd = getattr(self._game, "_active_profile_dir", None) if self._game else None
         return Path(pd) if pd else None
 
+    # -- draft persistence ----------------------------------------------
+    # Everything typed here (per-mod source/version/optional/instructions/
+    # update policy, the collection-level form) autosaves in the background
+    # to a per-profile draft file, and is restored the next time this tab
+    # opens for the same profile -- requested directly after closing the
+    # tab mid-edit (even just to pick up a forgotten mod) discarded all of
+    # it. Distinct from <profile>/collection.json, which is the read-only
+    # record of what a profile was actually installed from.
+    _DRAFT_FILENAME = "collection_export_draft.json"
+
+    def _draft_path(self) -> "Path | None":
+        pd = self._profile_dir()
+        return (pd / self._DRAFT_FILENAME) if pd else None
+
+    def _collect_draft_info(self) -> dict:
+        return {
+            "name": self._name.text(),
+            "description": self._description.toPlainText(),
+            "installInstructions": self._instructions.toPlainText(),
+            "category_id": self._category.currentData(),
+            "adult": self._adult.isChecked(),
+            "listed": self._listed.isChecked(),
+            "recommendNewProfile": self._recommend_new_profile.isChecked(),
+            "excludePluginRules": self._exclude_plugin_rules.isChecked(),
+        }
+
+    def _apply_draft_info(self, info: dict):
+        if info.get("name"):
+            self._name.setText(info["name"])
+        if info.get("description"):
+            self._description.setPlainText(info["description"])
+        if info.get("installInstructions"):
+            self._instructions.setPlainText(info["installInstructions"])
+        cid = info.get("category_id")
+        if cid:
+            idx = self._category.findData(cid)
+            if idx >= 0:
+                self._category.setCurrentIndex(idx)
+            else:
+                self._pending_category_id = cid   # categories still loading
+        if "adult" in info:
+            self._adult.setChecked(bool(info["adult"]))
+        if "listed" in info:
+            self._listed.setChecked(bool(info["listed"]))
+        if "recommendNewProfile" in info:
+            self._recommend_new_profile.setChecked(bool(info["recommendNewProfile"]))
+        if "excludePluginRules" in info:
+            self._exclude_plugin_rules.setChecked(bool(info["excludePluginRules"]))
+
+    def _save_draft(self):
+        path = self._draft_path()
+        if path is None:
+            return
+        try:
+            data = {"info": self._collect_draft_info(), "rows": self._all_rows}
+            path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+        except Exception as exc:
+            self._log(f"[collection] could not save draft: {exc}")
+
+    def _load_draft(self) -> "dict | None":
+        path = self._draft_path()
+        if path is None or not path.is_file():
+            return None
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+            return data if isinstance(data, dict) and data.get("rows") else None
+        except Exception as exc:
+            self._log(f"[collection] could not read saved draft: {exc}")
+            return None
+
+    def _schedule_autosave(self):
+        if self._autosave_timer is None:
+            self._autosave_timer = QTimer(self)
+            self._autosave_timer.setSingleShot(True)
+            self._autosave_timer.timeout.connect(self._save_draft)
+        self._autosave_timer.start(800)
+
     def _load_rows(self):
         """Export rows from the active profile's modlist, highest-priority
         first — same order/contract as ExportProfileView._load_rows. Seeds
@@ -454,6 +563,72 @@ class CreateCollectionView(QWidget):
             if "excludePluginRules" in cc:
                 self._exclude_plugin_rules.setChecked(bool(cc["excludePluginRules"]))
 
+    def _rescan_rows(self):
+        """Re-read the modlist and merge in whatever changed (a mod enabled
+        or disabled after this tab was already opened), keeping every
+        already-edited setting -- source, version, optional, instructions,
+        update policy, FOMOD choice -- for every mod still there. Requested
+        directly: closing and reopening the tab to pick up a forgotten mod
+        discarded all of that work; unlike _load_rows() (only ever run once,
+        at construction) this never re-seeds Description/Instructions/the
+        collectionConfig toggles from collection.json, since that would
+        overwrite whatever the curator has already typed here."""
+        from Utils.mods.modlist import read_modlist
+        pd = self._profile_dir()
+        modlist_path = (pd / "modlist.txt") if pd else None
+        if not self._game or not modlist_path or not modlist_path.is_file():
+            self._log("[collection] Rescan: no active profile/modlist found.")
+            return
+        entries = [e for e in reversed(read_modlist(modlist_path))
+                  if not e.is_separator]
+        fresh_rows = profile_export.load_rows(entries, self._game)
+
+        # Variant rows (added via the "+" file picker) have no modlist.txt
+        # entry of their own -- a rescan must never touch them.
+        existing_by_name = {r["name"]: r for r in self._all_rows
+                            if not r.get("is_variant")}
+        variants = [r for r in self._all_rows if r.get("is_variant")]
+
+        never_together_names: set = set()
+        try:
+            from Utils.mods.bg3_pak_index import read_rules as _read_insights_rules
+            for group in _read_insights_rules(pd).get("never_together") or []:
+                never_together_names.update(group)
+        except Exception:
+            pass
+
+        merged = []
+        added = 0
+        fresh_names: set = set()
+        for row in fresh_rows:
+            fresh_names.add(row["name"])
+            prior = existing_by_name.get(row["name"])
+            if prior is not None:
+                merged.append(prior)
+                continue
+            row.setdefault("update_policy", "exact")
+            row.setdefault("instructions", "")
+            row.setdefault("is_variant", False)
+            if row.get("is_modio") and row.get("source") == "bundle":
+                row["source"] = "modio"
+            if row["name"] in never_together_names:
+                row["optional"] = True
+            merged.append(row)
+            added += 1
+        removed = len(existing_by_name) - len(existing_by_name.keys() & fresh_names)
+
+        self._all_rows = merged + variants
+        self._selected.clear()      # indices into the old list no longer apply
+        self._apply_filter()
+
+        parts = []
+        if added:
+            parts.append(self.tr("{0} mod(s) added").format(added))
+        if removed:
+            parts.append(self.tr("{0} removed (no longer enabled)").format(removed))
+        summary = ", ".join(parts) if parts else self.tr("no changes")
+        self._log(f"[collection] Rescan: {summary} — {len(self._all_rows)} total.")
+
     # -- filter / render ----------------------------------------------------
     def _apply_filter(self):
         if self._search_text:
@@ -466,6 +641,7 @@ class CreateCollectionView(QWidget):
         self._count_label.setText(
             self.tr("{0} (of {1} in the modlist)").format(exportable, len(self._all_rows)))
         self._rebuild_table()
+        self._schedule_autosave()
 
     def _on_search(self, text: str):
         self._search_text = (text or "").lower()
@@ -552,13 +728,16 @@ class CreateCollectionView(QWidget):
     # -- cell actions -------------------------------------------------------
     def _set_optional(self, data_idx: int, checked: bool):
         self._all_rows[data_idx]["optional"] = bool(checked)
+        self._schedule_autosave()
 
     def _set_fomod(self, data_idx: int, checked: bool):
         self._all_rows[data_idx]["fomod_export"] = bool(checked)
+        self._schedule_autosave()
 
     def _set_update_policy(self, data_idx: int, value):
         if value:
             self._all_rows[data_idx]["update_policy"] = value
+            self._schedule_autosave()
 
     # -- bulk selection / actions --------------------------------------------
     def _set_selected(self, data_idx: int, checked: bool):
@@ -861,6 +1040,11 @@ class CreateCollectionView(QWidget):
     def _on_categories_ready(self, cats):
         for cat_id, name in cats or []:
             self._category.addItem(name, cat_id)
+        if self._pending_category_id:
+            idx = self._category.findData(self._pending_category_id)
+            if idx >= 0:
+                self._category.setCurrentIndex(idx)
+            self._pending_category_id = None
 
     def _on_target_changed(self, _idx: int):
         col = self._target.currentData()
