@@ -333,9 +333,13 @@ def _plugin_rules_block(profile_dir, known_plugins=None) -> "dict | None":
 
 
 # ---------------------------------------------------------------------------
-# modRules — reuse the original collection's rules when we still have them,
-# else a minimal adjacent-mod chain (enough to fully constrain the topo-sort
-# back to the current order on reimport, without an O(n^2) pairwise blowup).
+# modRules — start from the original collection's rules when we still have
+# them (renamed endpoints resolved via md5), layer the user's own Load Order
+# Insights / Sort Load Order decisions on top (their most recent, most
+# specific word on this exact mod set — overriding anything reused that
+# contradicts them), else fall back to a minimal adjacent-mod chain (enough
+# to fully constrain the topo-sort back to the current order on reimport,
+# without an O(n^2) pairwise blowup).
 # ---------------------------------------------------------------------------
 
 def build_mod_rules(ordered_logical_names: list, profile_dir,
@@ -353,24 +357,47 @@ def build_mod_rules(ordered_logical_names: list, profile_dir,
     original = read_profile_manifest(profile_dir).get("modRules") or []
     names = set(ordered_logical_names)
     name_by_md5 = name_by_md5 or {}
-    if original:
-        reused = []
-        for rule in original:
-            ref_block = rule.get("reference") or {}
-            src_block = rule.get("source") or {}
-            ref = ref_block.get("logicalFileName") or ref_block.get("logicalFilename")
-            src = src_block.get("logicalFileName") or src_block.get("logicalFilename")
-            if ref not in names:
-                ref = name_by_md5.get((ref_block.get("fileMD5") or "").lower())
-            if src not in names:
-                src = name_by_md5.get((src_block.get("fileMD5") or "").lower())
-            if ref in names and src in names:
-                rule = json.loads(json.dumps(rule))  # deep copy before rewriting
-                rule.setdefault("reference", {})["logicalFileName"] = ref
-                rule.setdefault("source", {})["logicalFileName"] = src
-                reused.append(rule)
-        if reused:
-            return reused
+
+    reused = []
+    for rule in original:
+        ref_block = rule.get("reference") or {}
+        src_block = rule.get("source") or {}
+        ref = ref_block.get("logicalFileName") or ref_block.get("logicalFilename")
+        src = src_block.get("logicalFileName") or src_block.get("logicalFilename")
+        if ref not in names:
+            ref = name_by_md5.get((ref_block.get("fileMD5") or "").lower())
+        if src not in names:
+            src = name_by_md5.get((src_block.get("fileMD5") or "").lower())
+        if ref in names and src in names:
+            rule = json.loads(json.dumps(rule))  # deep copy before rewriting
+            rule.setdefault("reference", {})["logicalFileName"] = ref
+            rule.setdefault("source", {})["logicalFileName"] = src
+            reused.append(rule)
+
+    own_rules = []
+    own_pairs: set = set()
+    if profile_dir:
+        from Utils.mods.bg3_pak_index import read_rules
+        for r in read_rules(Path(profile_dir)).get("rules", []):
+            w, l = r.get("winner"), r.get("loser")
+            if w in names and l in names:
+                own_pairs.add((w, l))
+                own_pairs.add((l, w))
+                own_rules.append({
+                    "type": "after",
+                    "source": {"logicalFileName": w},
+                    "reference": {"logicalFileName": l},
+                })
+
+    # A reused original-collection rule the user's own decisions contradict
+    # (or simply restate) is dropped in favour of their decision — it's the
+    # more recent, more specific record for this exact mod set.
+    reused = [r for r in reused if (r["source"]["logicalFileName"],
+                                    r["reference"]["logicalFileName"]) not in own_pairs]
+
+    merged = reused + own_rules
+    if merged:
+        return merged
 
     rules = []
     for higher, lower in zip(ordered_logical_names, ordered_logical_names[1:]):

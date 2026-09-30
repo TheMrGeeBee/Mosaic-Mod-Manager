@@ -380,3 +380,72 @@ def test_unrenamed_rule_still_matches_by_name_with_no_md5_lookup(tmp_path):
     assert len(rules) == 1
     assert rules[0]["source"]["logicalFileName"] == "A"
     assert rules[0]["reference"]["logicalFileName"] == "B"
+
+
+# ---- build_mod_rules: the profile's own Load Order Insights / Sort Load
+# Order decisions must carry into the export, not just the original
+# collection's rules -- requested directly: "the rules from the Wizard ->
+# Load order insight and then Wizard -> Sort load order should apply to the
+# exported list [...] Otherwise the user has to do those steps manually."
+# Both wizards share one persisted store (Utils.mods.bg3_pak_index's
+# read_rules/write_rules), regardless of which one made the decision.
+
+def _seed_own_rules(profile_dir, pairs):
+    from Utils.mods.bg3_pak_index import write_rules
+    write_rules(profile_dir, {
+        "rules": [{"winner": w, "loser": l, "reason": "stats_override"}
+                  for w, l in pairs],
+        "ignored": [], "never_together": [],
+    })
+
+
+def test_own_decided_rule_is_added_even_with_no_original_collection(tmp_path):
+    _seed_own_rules(tmp_path, [("A", "B")])
+
+    rules = collection_export.build_mod_rules(["A", "B", "C"], tmp_path)
+
+    assert len(rules) == 1
+    assert rules[0]["source"]["logicalFileName"] == "A"
+    assert rules[0]["reference"]["logicalFileName"] == "B"
+
+
+def test_own_decided_rule_overrides_a_contradicting_original_rule(tmp_path):
+    _write_original_collection(tmp_path, [{
+        "type": "after",
+        "reference": {"logicalFileName": "A"},   # original: B wins over A
+        "source": {"logicalFileName": "B"},
+    }])
+    _seed_own_rules(tmp_path, [("A", "B")])   # user later decided: A wins
+
+    rules = collection_export.build_mod_rules(["A", "B"], tmp_path)
+
+    assert len(rules) == 1
+    assert rules[0]["source"]["logicalFileName"] == "A"
+    assert rules[0]["reference"]["logicalFileName"] == "B"
+
+
+def test_own_decided_rule_supplements_non_conflicting_original_rules(tmp_path):
+    _write_original_collection(tmp_path, [{
+        "type": "after",
+        "reference": {"logicalFileName": "B"},
+        "source": {"logicalFileName": "A"},
+    }])
+    _seed_own_rules(tmp_path, [("C", "D")])
+
+    rules = collection_export.build_mod_rules(["A", "B", "C", "D"], tmp_path)
+
+    pairs = {(r["source"]["logicalFileName"], r["reference"]["logicalFileName"])
+             for r in rules}
+    assert pairs == {("A", "B"), ("C", "D")}
+
+
+def test_own_rule_for_a_mod_no_longer_exported_is_dropped(tmp_path):
+    # A second, still-valid pair keeps this out of the empty-merged ->
+    # naive-chain fallback path, so this isolates the "Gone Mod" filtering.
+    _seed_own_rules(tmp_path, [("A", "Gone Mod"), ("B", "C")])
+
+    rules = collection_export.build_mod_rules(["A", "B", "C"], tmp_path)
+
+    pairs = {(r["source"]["logicalFileName"], r["reference"]["logicalFileName"])
+             for r in rules}
+    assert pairs == {("B", "C")}
