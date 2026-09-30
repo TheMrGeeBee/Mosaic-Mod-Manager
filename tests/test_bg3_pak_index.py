@@ -226,6 +226,22 @@ def test_never_together_survives_alongside_existing_rules_and_ignored(tmp_path):
     assert state["never_together"] == [["A", "B"]]
 
 
+def test_clear_decisions_wipes_rules_and_ignored_but_keeps_never_together(tmp_path):
+    prof = _profile(tmp_path, ["A", "B", "C"])
+    bx.write_rules(prof, {
+        "rules": [{"winner": "A", "loser": "B"}],
+        "ignored": ["same_file:B|C"],
+        "never_together": [["A", "B"]],
+    })
+
+    bx.clear_decisions(prof)
+
+    state = bx.read_rules(prof)
+    assert state["rules"] == []
+    assert state["ignored"] == []
+    assert state["never_together"] == [["A", "B"]]
+
+
 def test_patch_that_depends_on_the_loser_is_intended(tmp_path):
     # "CX patch" depends on Combat Extender and overrides its entries on
     # purpose (the real Ultimate NPC Stat Overhaul - CX case).

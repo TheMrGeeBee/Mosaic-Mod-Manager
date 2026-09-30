@@ -152,6 +152,14 @@ class BG3InsightsView(WizardViewBase):
         self._rescan_btn = self._accent_btn(self.tr("Rescan"))
         self._rescan_btn.clicked.connect(lambda _c=False: self._rescan())
         rh.addWidget(self._rescan_btn)
+        self._clear_decisions_btn = self._orange_btn(self.tr("Clear Decisions"))
+        self._clear_decisions_btn.setToolTip(self.tr(
+            "Discard every saved winner and ignored finding for this profile "
+            "(e.g. to clear a stale \"Your rule is broken\") — Never Together "
+            "markings are kept"))
+        self._clear_decisions_btn.clicked.connect(
+            lambda _c=False: self._clear_decisions())
+        rh.addWidget(self._clear_decisions_btn)
         done = self._green_btn()
         done.clicked.connect(lambda _c=False: self._finish())
         rh.addWidget(done)
@@ -170,6 +178,7 @@ class BG3InsightsView(WizardViewBase):
         self._set_status(self._summary, self.tr("Reading mod .pak files…"))
         self._rescan_btn.setEnabled(False)
         self._refresh_notes_btn.setEnabled(False)
+        self._clear_decisions_btn.setEnabled(False)
         # The app's shared Nexus client is resolved on the GUI thread; author
         # notes are public, so without one an anonymous client is used.
         api_fn = getattr(self._ctx, "nexus_api", None) if self._ctx else None
@@ -211,6 +220,7 @@ class BG3InsightsView(WizardViewBase):
         self._insights = insights
         self._rescan_btn.setEnabled(True)
         self._refresh_notes_btn.setEnabled(True)
+        self._clear_decisions_btn.setEnabled(True)
         n = unresolved_count(insights)
         total = len(insights.findings)
         if n:
@@ -478,4 +488,23 @@ class BG3InsightsView(WizardViewBase):
             mark_never_together(f, self._profile_dir)
             self._log(f"BG3 Insights: marked never-together — "
                       f"{', '.join(f.mods)}")
+        self._rescan()
+
+    def _clear_decisions(self):
+        if self._profile_dir is None:
+            return
+        from gui_qt.overlays.confirm_overlay import ConfirmOverlay
+        ConfirmOverlay.show_over(
+            self, self.tr("Clear Decisions"),
+            self.tr("Discard every saved winner and ignored finding for this "
+                    "profile? Findings will need to be decided again on the "
+                    "next scan.\n\n\"Never Together\" markings are kept."),
+            lambda ok: self._do_clear_decisions() if ok else None,
+            confirm_label=self.tr("Clear"))
+
+    def _do_clear_decisions(self):
+        from Utils.mods.bg3_pak_index import clear_decisions
+        clear_decisions(self._profile_dir)
+        self._log("BG3 Insights: cleared all saved decisions "
+                  "(never-together markings kept)")
         self._rescan()

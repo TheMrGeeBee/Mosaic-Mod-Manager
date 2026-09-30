@@ -827,6 +827,22 @@ def unmark_never_together(finding: "Finding", profile_dir: Path) -> None:
     write_rules(profile_dir, data)
 
 
+def clear_decisions(profile_dir: Path) -> None:
+    """Discard every saved winner/keep-current-order rule and ignored
+    finding for this profile — lets a stale "Your rule is broken" state
+    (e.g. after mods were reordered for an unrelated reason, or a rule was
+    made against a modlist that's since changed a lot) be wiped and
+    re-decided from scratch on the next scan, rather than accumulating
+    conflicting rules with no way back to a clean slate.
+
+    Deliberately preserves never_together markings — those are durable,
+    deliberate facts about which mods are alternatives, not per-order
+    decisions that go stale the way winner/loser rules do."""
+    data = read_rules(profile_dir)
+    write_rules(profile_dir, {"rules": [], "ignored": [],
+                              "never_together": data["never_together"]})
+
+
 def _apply_never_together_status(findings: "list[Finding]",
                                  groups: "list[list[str]]") -> None:
     group_sets = [frozenset(g) for g in groups]
