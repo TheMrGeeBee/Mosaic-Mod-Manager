@@ -139,6 +139,13 @@ class BG3InsightsView(WizardViewBase):
             "Make this patch win every overlap it has with the mods it patches"))
         self._patch_btn.clicked.connect(lambda _c=False: self._accept_patch())
         rh.addWidget(self._patch_btn)
+        self._never_together_btn = self._orange_btn(self.tr("Never Together"))
+        self._never_together_btn.setToolTip(self.tr(
+            "Mark these as deliberately mutually-exclusive alternatives (e.g. "
+            "the same mod from Nexus and mod.io) — keeps showing this finding "
+            "on future rescans, with its own status, instead of dismissing it"))
+        self._never_together_btn.clicked.connect(lambda _c=False: self._never_together())
+        rh.addWidget(self._never_together_btn)
         self._ignore_btn = self._orange_btn(self.tr("Ignore"))
         self._ignore_btn.clicked.connect(lambda _c=False: self._ignore())
         rh.addWidget(self._ignore_btn)
@@ -155,7 +162,7 @@ class BG3InsightsView(WizardViewBase):
     def _set_actions_enabled(self, on: bool):
         for w in (self._winner_box, self._win_btn, self._ignore_btn,
                   self._patch_btn, self._keep_btn, self._accept_note_btn,
-                  self._copy_rule_btn):
+                  self._copy_rule_btn, self._never_together_btn):
             w.setEnabled(on)
 
     # ---- scanning ---------------------------------------------------------------
@@ -221,6 +228,8 @@ class BG3InsightsView(WizardViewBase):
             return self.tr("Ignored")
         if f.kind == "identical":
             return self.tr("Harmless")
+        if f.never_together:
+            return self.tr("Marked — never together")
         if f.rule_violated:
             return self.tr("Your rule is broken")
         if f.intended:
@@ -325,6 +334,10 @@ class BG3InsightsView(WizardViewBase):
             can_order and bool(f.winner) and not ignored
             and (not f.resolved_by_rule or f.rule_violated))
         self._ignore_btn.setEnabled(not ignored)
+        self._never_together_btn.setEnabled(not ignored and len(f.mods) >= 2)
+        self._never_together_btn.setText(
+            self.tr("Un-mark Never Together") if f.never_together
+            else self.tr("Never Together"))
 
     # ---- actions -----------------------------------------------------------------
     def _make_win(self):
@@ -450,4 +463,19 @@ class BG3InsightsView(WizardViewBase):
         if f is None or ignored or self._profile_dir is None:
             return
         ignore_finding(self._profile_dir, f)
+        self._rescan()
+
+    def _never_together(self):
+        from Utils.mods.bg3_pak_index import mark_never_together, unmark_never_together
+        f, _ignored = self._selected()
+        if f is None or self._profile_dir is None or len(f.mods) < 2:
+            return
+        if f.never_together:
+            unmark_never_together(f, self._profile_dir)
+            self._log(f"BG3 Insights: un-marked never-together — "
+                      f"{', '.join(f.mods)}")
+        else:
+            mark_never_together(f, self._profile_dir)
+            self._log(f"BG3 Insights: marked never-together — "
+                      f"{', '.join(f.mods)}")
         self._rescan()

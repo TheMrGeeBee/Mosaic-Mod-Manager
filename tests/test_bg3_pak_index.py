@@ -162,6 +162,70 @@ def test_ignore_finding_persists(tmp_path):
     assert bx.read_rules(prof)["ignored"] == [f.id]
 
 
+def test_mark_never_together_persists_and_reflects_in_a_fresh_finding(tmp_path):
+    # e.g. the same UI mod downloaded from both Nexus and mod.io -- module
+    # UUID collides, genuinely can't both be used, neither should "win".
+    prof = _profile(tmp_path, ["Better Hotbar (Nexus)", "Better Hotbar (mod.io)"])
+    f = bx.Finding(kind="same_module",
+                   mods=["Better Hotbar (Nexus)", "Better Hotbar (mod.io)"],
+                   keys=["module: Better Hotbar (uuid-1)"], winner=None)
+
+    bx.mark_never_together(f, prof)
+
+    assert bx.read_rules(prof)["never_together"] == [
+        sorted(["Better Hotbar (Nexus)", "Better Hotbar (mod.io)"])]
+    # A freshly-built Finding for the exact same mod set (as a rescan would
+    # produce) must come back flagged, not just the original object.
+    fresh = bx.Finding(kind="same_module",
+                       mods=["Better Hotbar (mod.io)", "Better Hotbar (Nexus)"],
+                       keys=["module: Better Hotbar (uuid-1)"], winner=None)
+    bx._apply_never_together_status([fresh], bx.read_rules(prof)["never_together"])
+    assert fresh.never_together is True
+
+
+def test_mark_never_together_is_idempotent(tmp_path):
+    prof = _profile(tmp_path, ["A", "B"])
+    f = bx.Finding(kind="same_module", mods=["A", "B"], keys=["x"], winner=None)
+    bx.mark_never_together(f, prof)
+    bx.mark_never_together(f, prof)
+    assert bx.read_rules(prof)["never_together"] == [["A", "B"]]
+
+
+def test_unmark_never_together_removes_the_group(tmp_path):
+    prof = _profile(tmp_path, ["A", "B"])
+    f = bx.Finding(kind="same_module", mods=["A", "B"], keys=["x"], winner=None)
+    bx.mark_never_together(f, prof)
+
+    bx.unmark_never_together(f, prof)
+
+    assert bx.read_rules(prof)["never_together"] == []
+
+
+def test_never_together_group_does_not_match_a_different_mod_set(tmp_path):
+    prof = _profile(tmp_path, ["A", "B"])
+    f = bx.Finding(kind="same_module", mods=["A", "B"], keys=["x"], winner=None)
+    bx.mark_never_together(f, prof)
+
+    other = bx.Finding(kind="same_module", mods=["A", "C"], keys=["x"], winner=None)
+    bx._apply_never_together_status([other], bx.read_rules(prof)["never_together"])
+
+    assert other.never_together is False
+
+
+def test_never_together_survives_alongside_existing_rules_and_ignored(tmp_path):
+    prof = _profile(tmp_path, ["A", "B", "C"])
+    bx.write_rules(prof, {"rules": [{"winner": "A", "loser": "B"}],
+                          "ignored": ["same_file:B|C"], "never_together": []})
+    f = bx.Finding(kind="same_module", mods=["A", "B"], keys=["x"], winner=None)
+
+    bx.mark_never_together(f, prof)
+
+    state = bx.read_rules(prof)
+    assert state["rules"] == [{"winner": "A", "loser": "B"}]
+    assert state["ignored"] == ["same_file:B|C"]
+    assert state["never_together"] == [["A", "B"]]
+
+
 def test_patch_that_depends_on_the_loser_is_intended(tmp_path):
     # "CX patch" depends on Combat Extender and overrides its entries on
     # purpose (the real Ultimate NPC Stat Overhaul - CX case).

@@ -368,6 +368,13 @@ class Finding:
     winner: str | None           # mod whose version currently takes effect
     resolved_by_rule: bool = False
     rule_violated: bool = False
+    # A deliberate, persistent "these are mutually-exclusive alternatives,
+    # never both enabled on purpose" marking — set by mark_never_together()
+    # once its exact mod set matches a saved group. Distinct from Ignore
+    # (which just dismisses this one instance): the finding keeps showing on
+    # rescans, with its own status, and Create Collection reads the saved
+    # groups to default those rows to Optional.
+    never_together: bool = False
     # The winner declares a dependency on every loser: it's a patch built on
     # top of them, so the current order is the intended one.
     intended: bool = False
@@ -786,14 +793,46 @@ def read_rules(profile_dir: Path) -> dict:
     from Utils.profile.profile_state import read_profile_state
     raw = read_profile_state(profile_dir).get(_STATE_KEY) or {}
     return {"rules": list(raw.get("rules") or []),
-            "ignored": list(raw.get("ignored") or [])}
+            "ignored": list(raw.get("ignored") or []),
+            "never_together": [list(g) for g in (raw.get("never_together") or [])]}
 
 
 def write_rules(profile_dir: Path, data: dict) -> None:
     from Utils.profile.profile_state import _update_key
     _update_key(profile_dir, _STATE_KEY,
                 {"rules": data.get("rules", []),
-                 "ignored": sorted(set(data.get("ignored", [])))})
+                 "ignored": sorted(set(data.get("ignored", []))),
+                 "never_together": data.get("never_together", [])})
+
+
+def mark_never_together(finding: "Finding", profile_dir: Path) -> None:
+    """Record *finding*'s mod set as a permanent, deliberate mutual-exclusion
+    group (e.g. the same UI mod downloaded from both Nexus and mod.io) --
+    distinct from Ignore, which just dismisses this one finding instance.
+    The finding keeps showing on future rescans, with its own status,
+    instead of disappearing."""
+    data = read_rules(profile_dir)
+    group = sorted(set(finding.mods))
+    existing = [sorted(set(g)) for g in data["never_together"]]
+    if group not in existing:
+        data["never_together"].append(group)
+        write_rules(profile_dir, data)
+
+
+def unmark_never_together(finding: "Finding", profile_dir: Path) -> None:
+    data = read_rules(profile_dir)
+    group = sorted(set(finding.mods))
+    data["never_together"] = [g for g in data["never_together"]
+                              if sorted(set(g)) != group]
+    write_rules(profile_dir, data)
+
+
+def _apply_never_together_status(findings: "list[Finding]",
+                                 groups: "list[list[str]]") -> None:
+    group_sets = [frozenset(g) for g in groups]
+    for f in findings:
+        if frozenset(f.mods) in group_sets:
+            f.never_together = True
 
 
 def _apply_rule_status(findings: list[Finding], rules: list[dict],
@@ -845,6 +884,7 @@ def compute_insights(game, profile_dir: Path, log_fn=None) -> Insights:
     findings, rank = analyse(enabled, index, staging, manifest, known, author)
     state = read_rules(profile_dir)
     _apply_rule_status(findings, state["rules"], rank)
+    _apply_never_together_status(findings, state["never_together"])
     ignored_ids = set(state["ignored"])
     return Insights(
         findings=[f for f in findings if f.id not in ignored_ids],
