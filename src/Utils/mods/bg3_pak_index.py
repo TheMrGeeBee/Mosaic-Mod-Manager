@@ -465,13 +465,18 @@ def collection_mods(index: dict[str, list[dict]],
             if r.get("meta") and r["meta"]["uuid"].lower() in uuids}
 
 
-def compute_load_rank(enabled: list[ModEntry],
+def resolve_pak_order(enabled: list[ModEntry],
                       index: dict[str, list[dict]],
-                      manifest: list[dict] | None = None) -> dict[str, int]:
-    """Position of each mod in the modsettings.lsx order write_modsettings
-    would produce (higher = loads later = wins).  Mods with no load-order
-    entry (override-only / no meta.lsx) are absent.  With a collection
-    *manifest* the order follows it, exactly as deploy does."""
+                      manifest: list[dict] | None = None) -> list[BG3ModInfo]:
+    """The paks write_modsettings would order into modsettings.lsx, lowest-
+    priority (loads first) to highest (loads last, wins) — one entry per
+    pak, so a mod shipping several paks (e.g. load-order divider packs)
+    yields several entries. Override-only / no-meta.lsx paks are absent
+    (the game loads them directly, outside modsettings.lsx — see
+    load_order_eligible). With a collection *manifest* the order follows
+    it, exactly as deploy does. Shared by compute_load_rank (Insights'
+    per-mod winner ranking) and collection_export.py's ``loadOrder`` block
+    (the pak-level detail a per-mod rank can't express)."""
     lowest_first = list(reversed(enabled))
     by_uuid: dict[str, BG3ModInfo] = {}
     for e in lowest_first:
@@ -483,10 +488,19 @@ def compute_load_rank(enabled: list[ModEntry],
     eligible = load_order_eligible(by_uuid)
     if manifest:
         from Utils.mods.modsettings import _apply_manifest_pak_order
-        ordered = _apply_manifest_pak_order(lowest_first, eligible, manifest,
-                                            lambda _m: None)
-    else:
-        ordered = resolve_load_order(lowest_first, eligible)
+        return _apply_manifest_pak_order(lowest_first, eligible, manifest,
+                                         lambda _m: None)
+    return resolve_load_order(lowest_first, eligible)
+
+
+def compute_load_rank(enabled: list[ModEntry],
+                      index: dict[str, list[dict]],
+                      manifest: list[dict] | None = None) -> dict[str, int]:
+    """Position of each mod in the modsettings.lsx order write_modsettings
+    would produce (higher = loads later = wins).  Mods with no load-order
+    entry (override-only / no meta.lsx) are absent.  With a collection
+    *manifest* the order follows it, exactly as deploy does."""
+    ordered = resolve_pak_order(enabled, index, manifest)
     rank: dict[str, int] = {}
     for i, info in enumerate(ordered):
         rank[info.source_mod] = max(rank.get(info.source_mod, -1), i)

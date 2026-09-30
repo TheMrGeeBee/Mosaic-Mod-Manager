@@ -260,6 +260,62 @@ def _bundled_folder_name(mod_name: str, version: str = "") -> str:
 
 
 # ---------------------------------------------------------------------------
+# loadOrder (BG3 / FBLO games only)
+# ---------------------------------------------------------------------------
+
+def build_load_order(profile_dir, game_domain: str, game, mods: list) -> "list | None":
+    """The profile's resolved BG3 pak load order — one entry per pak, lowest
+    priority (loads first) first, highest (loads last, wins) last — as the
+    manifest's ``loadOrder`` block.
+
+    FBLO games (BG3) treat this as the primary ordering signal —
+    collection_reset.py's ``_resolve_collection_priorities`` prefers it over
+    a pure modRules/mods-array topo-sort when present. Without it, a fresh
+    install only has ``modRules`` + this manifest's own ``mods[]`` array
+    order to go on, which already carries the profile's current *mod-level*
+    order (see build_mod_rules) but not the *pak-level* interleaving — a
+    single mod can ship several paks (e.g. load-order divider packs) that
+    Load Order Insights / Sort Load Order / deploy already order correctly
+    via resolve_pak_order; this is what makes that survive a reinstall.
+
+    BG3-only: every other game gets None, and the manifest falls back to
+    mods[] array order + modRules alone, same as before this existed."""
+    if game_domain != "baldursgate3" or not profile_dir or game is None:
+        return None
+    profile_dir = Path(profile_dir)
+    modlist_path = profile_dir / "modlist.txt"
+    if not modlist_path.is_file():
+        return None
+    try:
+        from Utils.mods.bg3_pak_index import (
+            build_index, resolve_pak_order, INDEX_FILENAME)
+        from Utils.mods.modlist import read_modlist
+        entries = read_modlist(modlist_path)
+        enabled = [e for e in entries if e.enabled and not e.is_separator]
+        staging = Path(game.get_effective_mod_staging_path())
+        index = build_index(staging, [e.name for e in enabled],
+                            profile_dir / INDEX_FILENAME)
+        ordered = resolve_pak_order(enabled, index)
+    except Exception:
+        return None
+    # fileId is the join key collection_reset.py's install-time priority
+    # resolution uses against mods[]; omit it (rather than write 0) for a
+    # non-Nexus mod so that consumer skips it cleanly instead of colliding
+    # multiple such mods on a fake shared id. data.uuid — what deploy's own
+    # pak-level ordering actually reads — is unaffected either way.
+    file_id_by_name = {m["name"]: (m.get("source") or {}).get("fileId")
+                       for m in mods}
+    out = []
+    for info in ordered:
+        entry: dict = {"data": {"uuid": info.uuid}, "name": info.source_mod}
+        fid = file_id_by_name.get(info.source_mod)
+        if fid:
+            entry["fileId"] = fid
+        out.append(entry)
+    return out or None
+
+
+# ---------------------------------------------------------------------------
 # Plugins + LOOT rules (Bethesda-family profiles)
 # ---------------------------------------------------------------------------
 
@@ -579,6 +635,10 @@ def build_collection_manifest(rows, game, info: dict, *,
             "excludePluginRules": bool(info.get("excludePluginRules", False)),
         },
     }
+
+    load_order = build_load_order(profile_dir, game_domain, game, mods)
+    if load_order:
+        manifest["loadOrder"] = load_order
 
     plugins = _plugins_block(profile_dir)
     if plugins is not None:
