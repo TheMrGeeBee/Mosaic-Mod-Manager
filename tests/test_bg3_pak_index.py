@@ -269,11 +269,11 @@ def test_patch_named_mod_is_suggested_not_auto_resolved(tmp_path):
         "Morningstar": [_rec("u-m", "M", stats={"StatusData:LIGHT": "m"})],
         "Blood of Lathander": [_rec("u-b", "B", stats={"Weapon:W": "b"})],
     }
-    findings, _ = bx.analyse(enabled, index, tmp_path)
+    findings, rank = bx.analyse(enabled, index, tmp_path)
     assert len(findings) == 2
     assert all(f.suggested_patch == "Awakened Morningstar (Compatibility Patch)"
                and not f.intended for f in findings)
-    assert bx.unresolved_count(bx.Insights(findings=findings)) == 2
+    assert bx.unresolved_count(bx.Insights(findings=findings, load_rank=rank)) == 2
 
 
 def test_game_version_patch_name_is_not_a_patch():
@@ -507,3 +507,17 @@ def test_override_only_mod_gets_explanatory_note_not_fake_winner(tmp_path):
     assert "Distinctive Dyes" not in rank
     assert "Addon For UI" in rank
     assert "override-only" in f.note
+
+    # Un-decidable findings shouldn't inflate "N findings need a decision" —
+    # there is no order Mosaic (or the user) could ever set to resolve this.
+    ins = bx.Insights(findings=findings, load_rank=rank)
+    assert bx.unresolved_count(ins) == 0
+
+
+def test_unresolved_count_still_counts_a_normal_ranked_finding(tmp_path):
+    enabled = _entries("A", "B")
+    index = {"A": [_rec("ua", "A", stats={"Character:X": "a"})],
+            "B": [_rec("ub", "B", stats={"Character:X": "b"})]}
+    findings, rank = bx.analyse(enabled, index, tmp_path)
+    ins = bx.Insights(findings=findings, load_rank=rank)
+    assert bx.unresolved_count(ins) == 1

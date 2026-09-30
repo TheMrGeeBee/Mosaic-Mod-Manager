@@ -256,6 +256,8 @@ class BG3InsightsView(WizardViewBase):
             return self.tr("Looks like a patch — accept?")
         if f.kind == "author_note":
             return self.tr("Author says — accept?")
+        if self._insights and not all(m in self._insights.load_rank for m in f.mods):
+            return self.tr("Can't be decided — see notes")
         return self.tr("Needs a decision")
 
     def _populate(self):
@@ -332,9 +334,11 @@ class BG3InsightsView(WizardViewBase):
                            ).format(f.suggested_patch) + "\n\n" + text
             self._detail.setPlainText(text)
         self._patch_btn.setEnabled(bool(pending_patch))
-        can_order = f.kind not in ("identical", "declared_conflict", "variant_group",
-                                   "known_incompatible", "outdated_dependency",
-                                   "same_module", "author_note")
+        all_ranked = all(m in self._insights.load_rank for m in f.mods)
+        can_order = all_ranked and f.kind not in (
+            "identical", "declared_conflict", "variant_group",
+            "known_incompatible", "outdated_dependency",
+            "same_module", "author_note")
         is_note = f.kind == "author_note"
         self._accept_note_btn.setEnabled(
             is_note and not ignored and not f.intended

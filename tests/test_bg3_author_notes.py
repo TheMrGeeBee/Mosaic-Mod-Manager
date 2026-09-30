@@ -123,9 +123,10 @@ def test_unfollowed_note_needs_a_decision_and_accept_saves_load_after(tmp_path):
                              "just after Community Library", "https://x/1")
     index = {"Tag Framework": [_rec("u1", "TF")], "Community Library": [_rec("u2", "CL")]}
     enabled = _entries("Community Library", "Tag Framework")     # TF loads first
-    [f] = [x for x in bx.analyse(enabled, index, tmp_path, author=[sug])[0]
-           if x.kind == "author_note"]
-    assert not f.intended and bx.unresolved_count(bx.Insights(findings=[f])) == 1
+    findings, rank = bx.analyse(enabled, index, tmp_path, author=[sug])
+    [f] = [x for x in findings if x.kind == "author_note"]
+    assert not f.intended
+    assert bx.unresolved_count(bx.Insights(findings=[f], load_rank=rank)) == 1
     prof = tmp_path / "profile"
     prof.mkdir()
     write_modlist(prof / "modlist.txt", enabled)

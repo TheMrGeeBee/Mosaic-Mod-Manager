@@ -1002,10 +1002,15 @@ def known_rule_suggestion(finding: Finding, mod_uuids: dict[str, list[str]]) -> 
 
 def unresolved_count(insights: Insights) -> int:
     """Findings that still need a decision (not identical, no rule yet, or a
-    rule the current order breaks)."""
+    rule the current order breaks). Excludes a finding no order-based
+    decision could ever settle anyway — a mod outside modsettings.lsx
+    (override-only, no meta.lsx) has no controllable priority for Mosaic
+    (or any mod manager) to set, so counting it alongside real decisions
+    overstates how much the user actually has to work through."""
     return sum(1 for f in insights.findings
                if f.kind != "identical" and not f.intended
-               and (not f.resolved_by_rule or f.rule_violated))
+               and (not f.resolved_by_rule or f.rule_violated)
+               and all(m in insights.load_rank for m in f.mods))
 
 
 class RuleConflict(Exception):
