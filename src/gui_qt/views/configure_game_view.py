@@ -415,6 +415,20 @@ class ConfigureGameView(QWidget):
                   self.tr("Prepend load-order numbers to mod folders"),
                   hasattr(self._game, "prefix_numbering"))
 
+        # Externally-managed frameworks — one checkbox per framework this game
+        # declares (e.g. "Native Mod Loader"), for a standalone tool that
+        # deliberately never places a file under the game root (so the
+        # framework banner's file-existence check can never confirm it) —
+        # lets the user tell Mosaic to trust it's handled instead of nagging.
+        self._framework_keys: dict[str, str] = {}
+        for fw_label in (getattr(self._game, "frameworks", None) or {}):
+            key = f"externally_managed:{fw_label}"
+            self._framework_keys[key] = fw_label
+            add_check(key,
+                      self.tr("{0} is managed externally (not installed as a mod)")
+                      .format(fw_label),
+                      True)
+
         # BG3 patch-version radios.
         self._patch_group = None
         if hasattr(self._game, "get_patch_version"):
@@ -482,6 +496,9 @@ class ConfigureGameView(QWidget):
             self._set_check("profile_ini_files", getattr(g, "profile_ini_files", False))
             self._set_check("profile_saves", getattr(g, "profile_saves", False))
             self._set_check("prefix_numbering", getattr(g, "prefix_numbering", True))
+            external = set(getattr(g, "externally_managed_frameworks", None) or [])
+            for key, fw_label in self._framework_keys.items():
+                self._set_check(key, fw_label in external)
             if self._patch_group is not None and hasattr(g, "get_patch_version"):
                 rb = self._patch_buttons.get(int(g.get_patch_version()))
                 if rb:
@@ -1112,6 +1129,11 @@ class ConfigureGameView(QWidget):
             g.set_profile_saves(self._opt_checks["profile_saves"].isChecked())
         if hasattr(g, "prefix_numbering") and "prefix_numbering" in self._opt_checks:
             g.prefix_numbering = self._opt_checks["prefix_numbering"].isChecked()
+        if self._framework_keys:
+            g.externally_managed_frameworks = [
+                fw_label for key, fw_label in self._framework_keys.items()
+                if key in self._opt_checks and self._opt_checks[key].isChecked()
+            ]
         if hasattr(g, "set_patch_version") and self._patch_group is not None:
             for val, rb in self._patch_buttons.items():
                 if rb.isChecked():

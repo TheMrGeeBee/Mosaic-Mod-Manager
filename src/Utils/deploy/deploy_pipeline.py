@@ -191,6 +191,12 @@ def _warn_missing_requirements(game, profile_dir: Path, *, log_fn: LogFn) -> Non
             for fw_name, rel_exe in frameworks.items():
                 if (game_root / rel_exe).is_file():
                     present_frameworks.append(fw_name.lower())
+        # User-asserted externally-managed frameworks (e.g. a standalone
+        # native-mod-loader injector that deliberately leaves no file under
+        # the game root) — never file-detectable, so trust the setting.
+        external = getattr(game, "externally_managed_frameworks", None) or []
+        present_frameworks.extend(fw_name.lower() for fw_name in frameworks
+                                  if fw_name in external)
 
     # BG3 only: a requirement met by a pak UUID from a mod under a different
     # Nexus id (e.g. a fork) — scanned lazily, only if something is missing.

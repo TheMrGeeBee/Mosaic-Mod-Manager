@@ -161,9 +161,17 @@ def detect_frameworks(game, filemap_path, modlist_path,
     staged_keys = _load_staged_keys(filemap_path)
     index_path = (Path(filemap_path).parent / "modindex.bin") if filemap_path else None
     disabled = disabled_basenames(modlist_path, index_path)
+    external = set(getattr(game, "externally_managed_frameworks", None) or [])
 
     out: list[FrameworkStatus] = []
     for label, exe in frameworks.items():
+        if label in external:
+            # A standalone tool the user says handles this, outside Mosaic's
+            # management — by design it leaves no file for us to detect, so
+            # take their word for it rather than reporting "missing".
+            out.append(FrameworkStatus(
+                label, STATE_INSTALLED, f"✔  {label} (managed externally)"))
+            continue
         exe_path = Path(exe)
         present = game_root is not None and file_exists_ci(game_root, exe_path)
 

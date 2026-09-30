@@ -1698,6 +1698,26 @@ class BaseGame(ABC):
         self._save_settings(data)
 
     @property
+    def externally_managed_frameworks(self) -> list[str]:
+        """Framework labels (keys of the `frameworks` property, e.g. "Native
+        Mod Loader") the user has told Mosaic are handled by a tool outside
+        Mosaic's own management — a standalone injector that, by design,
+        never places any file under the game install directory, so
+        Utils.wine_proton.framework_detect's file-existence check can never
+        recognize it no matter what path is checked. Purely a user-asserted
+        override: suppresses the "not deployed"/"missing" framework banner
+        for that label and satisfies any missing-requirement check whose
+        name substring-matches it (Utils.deploy.deploy_pipeline)."""
+        raw = self._load_settings().get("externally_managed_frameworks", [])
+        return list(raw) if isinstance(raw, list) else []
+
+    @externally_managed_frameworks.setter
+    def externally_managed_frameworks(self, value: "list[str]") -> None:
+        data = self._load_settings()
+        data["externally_managed_frameworks"] = list(value or [])
+        self._save_settings(data)
+
+    @property
     def archive_invalidation(self) -> bool:
         """If True, archive invalidation is applied on deploy (Bethesda games)."""
         return self._load_settings().get("archive_invalidation", True)

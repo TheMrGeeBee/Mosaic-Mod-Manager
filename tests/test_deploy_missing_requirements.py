@@ -24,10 +24,12 @@ from Utils.profile.profile_state import write_ignored_missing_requirements
 
 
 class _FakeGame:
-    def __init__(self, staging_dir, game_root=None, frameworks=None):
+    def __init__(self, staging_dir, game_root=None, frameworks=None,
+                externally_managed_frameworks=None):
         self._staging_dir = staging_dir
         self._game_root = game_root
         self.frameworks = frameworks or {}
+        self.externally_managed_frameworks = externally_managed_frameworks or []
         self.warnings: list[str] = []
 
     def get_effective_mod_staging_path(self):
@@ -199,6 +201,30 @@ def test_native_framework_requirement_genuinely_missing_still_warns(tmp_path):
 
     assert len(game.warnings) == 1
     assert "BG3SE" in game.warnings[0]
+
+
+def test_externally_managed_framework_requirement_is_not_warned_about(tmp_path):
+    # "Yet Another BG3 Native Mod Loader" is a standalone injector that, by
+    # design, never places any file under the game root -- Mosaic's own
+    # file-existence framework check can never confirm it, so the user
+    # tells Mosaic directly via externally_managed_frameworks instead.
+    staging = tmp_path / "mods"
+    _install(staging, "Some NML Plugin",
+             missing_requirements="141:Native Mod Loader")
+    profile_dir = tmp_path / "profile"
+    profile_dir.mkdir()
+    write_modlist(profile_dir / "modlist.txt", [
+        ModEntry(name="Some NML Plugin", enabled=True, locked=False),
+    ])
+    game_root = tmp_path / "game"
+    game_root.mkdir()  # no bin/bink2w64_original.dll -- genuinely not on disk
+    game = _FakeGame(staging, game_root=game_root,
+                     frameworks={"Native Mod Loader": "bin/bink2w64_original.dll"},
+                     externally_managed_frameworks=["Native Mod Loader"])
+
+    _warn_missing_requirements(game, profile_dir, log_fn=lambda _m: None)
+
+    assert game.warnings == []
 
 
 def test_multiple_affected_mods_combine_into_one_warning(tmp_path):
