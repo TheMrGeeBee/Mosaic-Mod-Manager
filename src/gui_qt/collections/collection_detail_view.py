@@ -196,13 +196,15 @@ class CollectionDetailView(QWidget):
                 source_type="nexus", version=m.get("version") or "",
                 category_id=int(cat.get("id") or 0),
                 category_name=(cat.get("name") or "").strip(),
-                domain_name=(m.get("domainName") or "").strip()))
+                domain_name=(m.get("domainName") or "").strip(),
+                instructions=(src.get("instructions") or "").strip()))
         self._mods = mods
         self._total_size = int(total_size or 0)
         self._size_lbl.setText(
             self.tr("Total size: {0}  |  {1} mods").format(fmt_size(total_size), len(mods)))
         self._fill_table()
         self._fill_optional()
+        self._set_install_instructions((cj.get("info") or {}).get("installInstructions", ""))
         # Optional flags already came straight from the manifest — no override.
         self._offsite_auto = offsite_auto
         self._on_manifest_ready((self._detail_token, offsite, None))
@@ -250,6 +252,32 @@ class CollectionDetailView(QWidget):
         self._size_lbl.setStyleSheet(f"color:{_c(p,'TEXT_DIM')}; font-size:12px;")
         hb.addWidget(self._size_lbl)
         root.addWidget(bar)
+
+        # Curator's install instructions (collection.json info.installInstructions)
+        # — shown before the user installs, same positioning Vortex's own
+        # "Instructions" tab uses. Hidden until a manifest with one lands.
+        self._instructions_panel = QFrame()
+        self._instructions_panel.setObjectName("InstructionsPanel")
+        self._instructions_panel.setStyleSheet(
+            f"#InstructionsPanel {{ background:{_c(p,'BG_PANEL')};"
+            f" border:1px solid {_c(p,'ACCENT')}; border-radius:4px; }}")
+        iv = QVBoxLayout(self._instructions_panel)
+        iv.setContentsMargins(10, 8, 10, 8); iv.setSpacing(3)
+        it = QLabel(self.tr("📝 Instructions from the collection's author"))
+        it.setStyleSheet(f"color:{_c(p,'ACCENT')}; font-weight:600; font-size:12px;")
+        iv.addWidget(it)
+        self._instructions_lbl = QLabel("")
+        self._instructions_lbl.setWordWrap(True)
+        self._instructions_lbl.setTextFormat(Qt.PlainText)
+        self._instructions_lbl.setStyleSheet(f"color:{_c(p,'TEXT_MAIN')}; font-size:12px;")
+        iv.addWidget(self._instructions_lbl)
+        instructions_wrap = QWidget()
+        iwrap = QVBoxLayout(instructions_wrap)
+        iwrap.setContentsMargins(8, 6, 8, 0); iwrap.setSpacing(0)
+        iwrap.addWidget(self._instructions_panel)
+        root.addWidget(instructions_wrap)
+        self._instructions_wrap = instructions_wrap
+        self._instructions_wrap.setVisible(False)
 
         # Body: left (table / off-site — vertically resizable) | right (optional /
         # actions).
@@ -663,7 +691,12 @@ class CollectionDetailView(QWidget):
         self._table.setSortingEnabled(False)
         self._table.setRowCount(len(self._mods))
         for r, m in enumerate(self._mods):
-            self._set_cell(r, 0, self._display_name(m))
+            name_item = QTableWidgetItem(self._display_name(m))
+            instructions = (getattr(m, "instructions", "") or "").strip()
+            if instructions:
+                name_item.setText(name_item.text() + "  📝")
+                name_item.setToolTip(instructions)
+            self._table.setItem(r, 0, name_item)
             self._set_cell(r, 1, m.mod_author or "")
             self._set_cell(r, 2, m.version or "")
             # Size — humanized text, numeric sort via the raw bytes in UserRole.
@@ -676,6 +709,11 @@ class CollectionDetailView(QWidget):
 
     def _set_cell(self, row, col, text):
         self._table.setItem(row, col, QTableWidgetItem(text))
+
+    def _set_install_instructions(self, text: str):
+        text = (text or "").strip()
+        self._instructions_lbl.setText(text)
+        self._instructions_wrap.setVisible(bool(text))
 
     def _fill_optional(self):
         # In-session choices: keep the user's unticks when the checklist is
@@ -712,14 +750,15 @@ class CollectionDetailView(QWidget):
         saved_skipped = self._saved_skipped_fids() if has_history else set()
         for i, m in enumerate(optionals):
             name = self._display_name(m)
-            cb = QCheckBox(name)
+            instructions = (getattr(m, "instructions", "") or "").strip()
+            cb = QCheckBox(name + ("  📝" if instructions else ""))
             if m.file_id in prior_fids:
                 cb.setChecked(m.file_id not in prior_unticked)
             elif has_history:
                 cb.setChecked(m.file_id not in saved_skipped)
             else:
                 cb.setChecked(False)
-            cb.setToolTip(name)
+            cb.setToolTip(f"{name}\n\n{instructions}" if instructions else name)
             self._opt_layout.insertWidget(i, cb)
             self._opt_boxes.append((cb, m.file_id))
 
@@ -819,13 +858,14 @@ class CollectionDetailView(QWidget):
         e.g. hyphens collapsed to spaces — so it's only a fallback). We apply it
         whenever the current name is ambiguous: empty, or shared by >1 file in
         this collection. Unique, non-empty GraphQL names are left untouched."""
-        info: "dict[int, tuple[bool, str]]" = {}   # file_id → (optional, name)
+        info: "dict[int, tuple[bool, str, str]]" = {}   # file_id → (optional, name, instructions)
         for cm in (manifest or {}).get("mods", []):
             src = cm.get("source") or {}
             fid = src.get("fileId")
             if fid is not None:
                 cj_name = (cm.get("name") or src.get("logicalFilename") or "")
-                info[int(fid)] = (bool(cm.get("optional", False)), cj_name)
+                info[int(fid)] = (bool(cm.get("optional", False)), cj_name,
+                                  (src.get("instructions") or "").strip())
         if not info:
             return False
         # An ambiguous display name is one that is empty (GraphQL couldn't
@@ -839,7 +879,7 @@ class CollectionDetailView(QWidget):
         changed = False
         for m in self._mods:
             if m.file_id and m.file_id in info:
-                opt, cj_name = info[m.file_id]
+                opt, cj_name, instructions = info[m.file_id]
                 if bool(getattr(m, "optional", False)) != opt:
                     m.optional = opt
                     changed = True
@@ -847,6 +887,9 @@ class CollectionDetailView(QWidget):
                 ambiguous = (not cur) or name_counts.get(cur, 1) > 1
                 if cj_name and ambiguous and cur != cj_name:
                     m.mod_name = cj_name
+                    changed = True
+                if instructions and getattr(m, "instructions", "") != instructions:
+                    m.instructions = instructions
                     changed = True
         return changed
 
@@ -858,6 +901,8 @@ class CollectionDetailView(QWidget):
         if manifest:
             from Utils.collections.collection_manifest import extract_offsite_split
             self._offsite_auto = extract_offsite_split(manifest)[1]
+            self._set_install_instructions(
+                (manifest.get("info") or {}).get("installInstructions", ""))
         if manifest and self._apply_manifest_overrides(manifest):
             self._fill_table()
             self._fill_optional()

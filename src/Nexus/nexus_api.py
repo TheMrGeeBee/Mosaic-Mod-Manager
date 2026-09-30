@@ -288,6 +288,11 @@ class NexusCollectionMod:
     md5: str = ""           # collection.json mods[].source.md5 — used to verify cached archives
     domain_name: str = ""   # collection.json mods[].domainName — overrides collection-level domain
                             # (e.g. Skyrim mods inside an Enderal collection)
+    instructions: str = ""  # collection.json mods[].source.instructions — curator guidance for
+                            # this specific mod (e.g. "pick this or the UW version"); real
+                            # collections use this for mutually-exclusive variants since the
+                            # schema has no structured "pick one of" relationship (see
+                            # Utils.collections.collection_export.py's variant-row support)
 
 
 @dataclass
