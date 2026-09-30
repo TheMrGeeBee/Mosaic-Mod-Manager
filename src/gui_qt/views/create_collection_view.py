@@ -408,6 +408,20 @@ class CreateCollectionView(QWidget):
         entries = [e for e in reversed(read_modlist(modlist_path))
                   if not e.is_separator]
         rows = profile_export.load_rows(entries, self._game)
+
+        # Mods marked "Never Together" in Load Order Insights (e.g. the same
+        # UI mod downloaded from both Nexus and mod.io) are, by definition,
+        # alternatives the installer should pick between -- default those
+        # rows to Optional rather than making the curator remember to do it
+        # by hand for every export.
+        never_together_names: set = set()
+        try:
+            from Utils.mods.bg3_pak_index import read_rules as _read_insights_rules
+            for group in _read_insights_rules(pd).get("never_together") or []:
+                never_together_names.update(group)
+        except Exception:
+            pass
+
         for row in rows:
             row.setdefault("update_policy", "exact")
             row.setdefault("instructions", "")
@@ -419,7 +433,13 @@ class CreateCollectionView(QWidget):
                 # mod.io page URL and file list, so default to referencing
                 # it instead of bloating the archive with bundled files.
                 row["source"] = "modio"
+            if row["name"] in never_together_names:
+                row["optional"] = True
         self._all_rows = rows
+        if never_together_names:
+            marked = sum(1 for r in rows if r["name"] in never_together_names)
+            self._log(f"[collection] {marked} mod(s) marked Optional — part of "
+                      "a \"Never Together\" group in Load Order Insights.")
 
         seeded = collection_export.read_profile_manifest(pd)
         if seeded:
