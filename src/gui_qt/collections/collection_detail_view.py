@@ -462,18 +462,30 @@ class CollectionDetailView(QWidget):
 
     # -- revision picker ----------------------------------------------------
     def _installed_revision(self):
-        """The revisionNumber currently installed for this collection (from the
-        profile that has it), or None. Small file reads — UI thread is fine."""
+        """The revisionNumber currently installed for this collection IN THE
+        ACTIVE PROFILE specifically, or None. Deliberately does not offer
+        "Update" just because some OTHER profile's collection.json still
+        carries this slug from however long ago it was originally installed
+        there — confirmed live: a profile customized from 59 to 473 mods
+        since its original collection install permanently blocked a fresh
+        install of that same collection into any other (e.g. "default")
+        profile, since _run_collection_update's own active-profile guard
+        (see app.py) would just refuse with "switch profiles first" instead
+        of ever letting a plain Install happen elsewhere."""
         slug = getattr(self._collection, "slug", "") or ""
         if not slug or self._game is None:
             return None
         try:
+            from pathlib import Path
             from Utils.exe_launch.game_helpers import find_profile_with_collection_slug
             from Utils.profile.profile_state import read_collection_revision
             pname = find_profile_with_collection_slug(self._game.name, slug)
             if not pname:
                 return None
             pdir = self._game.get_profile_root() / "profiles" / pname
+            active = getattr(self._game, "_active_profile_dir", None)
+            if active is None or Path(active).resolve() != pdir.resolve():
+                return None
             return read_collection_revision(pdir)
         except Exception:
             return None
