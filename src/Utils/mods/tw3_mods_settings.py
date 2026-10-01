@@ -77,8 +77,8 @@ def write_mods_settings(settings_path: Path, modlist_path: Path,
     try:
         if not deployed_mods:
             return 0
-        ranked = _rank(deployed_mods, modlist_path, manifest_load_order,
-                       file_ids or {}, _log)
+        ranked = rank_folders(deployed_mods, modlist_path, manifest_load_order,
+                             file_ids or {}, _log)
         cp = configparser.ConfigParser()
         cp.optionxform = str  # preserve folder-id casing in section names
         for folder_id, priority in ranked.items():
@@ -131,23 +131,21 @@ def _order_unmatched_by_modlist(folder_ids: list[str],
     return ordered
 
 
-def _rank(deployed_mods: dict[str, str], modlist_path: Path,
-         manifest_load_order: "list[dict] | None",
-         file_ids: dict[str, int], log_fn=None) -> dict[str, int]:
-    """Return {folder_id: Priority} for every entry in *deployed_mods*,
-    lowest Priority = wins (see module docstring).
+def match_manifest(deployed_mods: dict[str, str],
+                   manifest_load_order: "list[dict] | None",
+                   file_ids: dict[str, int],
+                   log_fn=None) -> tuple[dict[str, int], list[str]]:
+    """Split *deployed_mods* into (matched, unmatched) against a Collection
+    manifest's loadOrder. *matched* is {folder_id: manifest_rank} (the
+    manifest's raw ascending data.prefix/index -- an ORDERING key only,
+    lower = curator's intended winner, see rank_folders for why it's never
+    written as a final Priority verbatim). *unmatched* is every deployed
+    folder_id the manifest doesn't cover.
 
-    Final values are a fresh, consecutive 0..N-1 sequence in "most winning
-    first" order, not the Collection manifest's raw prefix numbers written
-    verbatim. Two reasons: (1) an extra/unmatched mod must win over every
-    Collection mod, and a real Collection's own prefix values can start at
-    0, so placing an unmatched group strictly below the manifest's minimum
-    would require negative Priority integers -- whether TW3's parser
-    accepts those at all is unverified, so it's avoided entirely; (2)
-    resequencing to guaranteed-unique integers makes the old "two folders
-    claim the same manifest priority" duplicate-value failure mode (see the
-    matching logic below) structurally impossible rather than something
-    that has to be separately guarded against."""
+    Shared by rank_folders() (the mods.settings writer) and
+    Utils.mods.tw3_load_index (Load Order Insights' "already settled by
+    the collection" detection) -- both need the exact same matching, not
+    two copies that could drift apart."""
     _log = log_fn or (lambda _m: None)
     by_fileid: dict[int, int] = {}
     by_id: dict[str, int] = {}
@@ -170,7 +168,7 @@ def _rank(deployed_mods: dict[str, str], modlist_path: Path,
             by_id[entry_id] = manifest_rank
 
     # matched: folder_id -> manifest_rank, used only to ORDER matched
-    # entries relative to each other below -- never written verbatim.
+    # entries relative to each other -- never written verbatim.
     matched: dict[str, int] = {}
     unmatched: list[str] = []
     # A single Mosaic mod can legitimately produce more than one top-level
@@ -223,6 +221,28 @@ def _rank(deployed_mods: dict[str, str], modlist_path: Path,
                  "folder name -- ranked from modlist.txt instead, which "
                  "may not match the curator's intended priority.")
 
+    return matched, unmatched
+
+
+def rank_folders(deployed_mods: dict[str, str], modlist_path: Path,
+                 manifest_load_order: "list[dict] | None",
+                 file_ids: dict[str, int], log_fn=None) -> dict[str, int]:
+    """Return {folder_id: Priority} for every entry in *deployed_mods*,
+    lowest Priority = wins (see module docstring).
+
+    Final values are a fresh, consecutive 0..N-1 sequence in "most winning
+    first" order, not the Collection manifest's raw prefix numbers written
+    verbatim. Two reasons: (1) an extra/unmatched mod must win over every
+    Collection mod, and a real Collection's own prefix values can start at
+    0, so placing an unmatched group strictly below the manifest's minimum
+    would require negative Priority integers -- whether TW3's parser
+    accepts those at all is unverified, so it's avoided entirely; (2)
+    resequencing to guaranteed-unique integers makes the old "two folders
+    claim the same manifest priority" duplicate-value failure mode (see
+    match_manifest's docstring) structurally impossible rather than
+    something that has to be separately guarded against."""
+    matched, unmatched = match_manifest(deployed_mods, manifest_load_order,
+                                        file_ids, log_fn)
     ordered_unmatched = _order_unmatched_by_modlist(unmatched, deployed_mods,
                                                      modlist_path)
 
