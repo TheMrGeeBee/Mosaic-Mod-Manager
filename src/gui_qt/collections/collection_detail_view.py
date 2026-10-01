@@ -44,6 +44,25 @@ def _is_modio_auto_offsite(url: str, domain: str) -> bool:
     return domain == "baldursgate3" and bool(_MODIO_BROWSE_RE.match(url or ""))
 
 
+def _split_offsite_with_modio(manifest: dict, domain: str):
+    """``(manual, automatic)`` off-site mods, same as
+    collection_manifest.extract_offsite_split but reclassifying a "browse"
+    entry as automatic when it's a mod.io page Mosaic can resolve itself
+    (see _is_modio_auto_offsite) — otherwise the network-fetched Browse
+    Collections path lists a mod install will in fact auto-resolve under
+    "download manually", unlike the local-import preview."""
+    from Utils.collections.collection_manifest import extract_offsite_split
+    manual, automatic = extract_offsite_split(manifest)
+    automatic = list(automatic)
+    still_manual = []
+    for name, url in manual:
+        if _is_modio_auto_offsite(url, domain):
+            automatic.append((name, url))
+        else:
+            still_manual.append((name, url))
+    return still_manual, automatic
+
+
 class _SizeItem(QTableWidgetItem):
     """Size cell: shows the humanized string (DisplayRole only) but sorts by the
     raw byte count stashed in UserRole. Setting EditRole to an int made the view
@@ -117,7 +136,7 @@ class CollectionDetailView(QWidget):
     *log_fn*, *on_install(chosen_fids, skipped_fids)* (install is stubbed)."""
 
     _detail_ready = Signal(object)      # (name, size, count, mods, dl_path, revisions) | None
-    _manifest_ready = Signal(object)    # (token, offsite list[(name, url)], manifest dict|None)
+    _manifest_ready = Signal(object)    # (token, offsite list[(name, url)], manifest dict|None, offsite_auto list[(name, url)])
     title_resolved = Signal(str)        # real collection name once the detail loads
 
     def __init__(self, api, collection, game, log_fn=None, on_install=None,
@@ -221,7 +240,7 @@ class CollectionDetailView(QWidget):
         self._set_install_instructions((cj.get("info") or {}).get("installInstructions", ""))
         # Optional flags already came straight from the manifest — no override.
         self._offsite_auto = offsite_auto
-        self._on_manifest_ready((self._detail_token, offsite, None))
+        self._on_manifest_ready((self._detail_token, offsite, None, offsite_auto))
 
     # -- construction -------------------------------------------------------
     def _build(self):
@@ -822,13 +841,14 @@ class CollectionDetailView(QWidget):
 
         def worker():
             offsite = []
+            offsite_auto = []
             manifest = {}
             try:
                 from Utils.collections.collection_manifest import (
-                    load_collection_manifest, extract_offsite_split)
+                    load_collection_manifest)
                 manifest = load_collection_manifest(
                     self._api, game_name, slug, rev, dl_path, log_fn=self._log)
-                offsite = extract_offsite_split(manifest)[0]      # manual ones only
+                offsite, offsite_auto = _split_offsite_with_modio(manifest, self._domain)
                 if manifest:
                     # Keep for the install worker (Tk _collection_schema_cache
                     # parity) so install never needs a second manifest download.
@@ -853,7 +873,7 @@ class CollectionDetailView(QWidget):
                 self._log(
                     f"Collection: manifest empty for {slug!r} rev={rev} — "
                     f"per-file names not applied (using mod-page names).")
-            safe_emit(self._manifest_ready, (token, offsite, manifest))
+            safe_emit(self._manifest_ready, (token, offsite, manifest, offsite_auto))
 
         threading.Thread(target=worker, daemon=True,
                          name="collection-manifest").start()
@@ -913,13 +933,12 @@ class CollectionDetailView(QWidget):
         return changed
 
     def _on_manifest_ready(self, payload):
-        token, offsite, manifest = payload
+        token, offsite, manifest, offsite_auto = payload
         if token != self._detail_token:
             return                       # a newer revision switch superseded this
         self._offsite = list(offsite or [])
         if manifest:
-            from Utils.collections.collection_manifest import extract_offsite_split
-            self._offsite_auto = extract_offsite_split(manifest)[1]
+            self._offsite_auto = list(offsite_auto or [])
             self._set_install_instructions(
                 (manifest.get("info") or {}).get("installInstructions", ""))
         if manifest and self._apply_manifest_overrides(manifest):

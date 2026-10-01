@@ -1018,6 +1018,7 @@ def unresolved_count(insights: Insights) -> int:
     overstates how much the user actually has to work through."""
     return sum(1 for f in insights.findings
                if f.kind != "identical" and not f.intended
+               and not f.never_together
                and (not f.resolved_by_rule or f.rule_violated)
                and all(m in insights.load_rank for m in f.mods))
 

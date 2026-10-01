@@ -210,6 +210,9 @@ class CreateCollectionView(QWidget):
         # (fetched async) has arrived — applied once _on_categories_ready fires.
         self._pending_category_id = None
         self._autosave_timer = None
+        self._busy = False
+        self._export_btn = None
+        self._publish_btn = None
 
         self.setObjectName("CreateCollectionView")
         self._my_collections_ready.connect(self._on_my_collections_ready)
@@ -416,11 +419,13 @@ class CreateCollectionView(QWidget):
         export_btn.setCursor(Qt.PointingHandCursor)
         export_btn.clicked.connect(self._on_export_file)
         bl.addWidget(export_btn)
+        self._export_btn = export_btn
         publish_btn = QPushButton(self.tr("Publish to Nexus"))
         publish_btn.setObjectName("PrimaryButton")
         publish_btn.setCursor(Qt.PointingHandCursor)
         publish_btn.clicked.connect(self._on_publish)
         bl.addWidget(publish_btn)
+        self._publish_btn = publish_btn
         root.addWidget(btn_row)
 
     # -- data -------------------------------------------------------------
@@ -1064,6 +1069,14 @@ class CreateCollectionView(QWidget):
         if err:
             self._notify(err, "warning")
             return None
+        missing = profile_export.nexus_missing_file_ids(self._all_rows)
+        if missing:
+            count = len(missing)
+            noun = self.tr("mod") if count == 1 else self.tr("mods")
+            verb = self.tr("is") if count == 1 else self.tr("are")
+            self._notify(
+                self.tr("{0} Nexus {1} {2} missing a File ID and must be set before exporting.").format(count, noun, verb), "warning")
+            return None
         return {
             "name": name,
             "description": self._description.toPlainText().strip(),
@@ -1071,6 +1084,7 @@ class CreateCollectionView(QWidget):
             "recommendNewProfile": self._recommend_new_profile.isChecked(),
             "excludePluginRules": self._exclude_plugin_rules.isChecked(),
             "gameVersions": [],
+            "category_id": self._category.currentData(),
         }
 
     # -- export to file -----------------------------------------------------
@@ -1111,6 +1125,13 @@ class CreateCollectionView(QWidget):
         self._start_worker(self._publish_worker, (info, col))
 
     def _start_worker(self, target, args):
+        if self._busy:
+            return
+        self._busy = True
+        if self._export_btn is not None:
+            self._export_btn.setEnabled(False)
+        if self._publish_btn is not None:
+            self._publish_btn.setEnabled(False)
         self._progress.emit(0, 0, self.tr("Preparing…"))
         threading.Thread(target=target, args=args, daemon=True,
                          name="collection-publish").start()
@@ -1125,7 +1146,8 @@ class CreateCollectionView(QWidget):
             for w in warnings:
                 self._log(f"[collection] {w}")
 
-            tmp_path = Path(tempfile.gettempdir()) / f"{info['name']}.7z"
+            safe_name = collection_export._safe_archive_component(info["name"])
+            tmp_path = Path(tempfile.gettempdir()) / f"{safe_name}.7z"
             archive = collection_export.pack_collection(
                 tmp_path, manifest, bundle_jobs,
                 progress_cb=self._make_progress_cb(), log_fn=self._log)
@@ -1161,7 +1183,12 @@ class CreateCollectionView(QWidget):
             revision = result.get("revision") or {}
             collection = result.get("collection") or {}
             revision_id = revision.get("id")
+            collection_id = collection.get("id")
             slug = collection.get("slug", "")
+
+            category_id = info.get("category_id")
+            if category_id and collection_id:
+                self._api.edit_collection(collection_id, category_id=int(category_id))
 
             if revision_id:
                 self._progress.emit(0, 0, self.tr("Publishing…"))
@@ -1211,6 +1238,11 @@ class CreateCollectionView(QWidget):
                            bytes_mode=total > 0, key="collection-publish")
 
     def _on_build_done(self, ok: bool, message: str, extra):
+        self._busy = False
+        if self._export_btn is not None:
+            self._export_btn.setEnabled(True)
+        if self._publish_btn is not None:
+            self._publish_btn.setEnabled(True)
         popup = self._progress_popup()
         if popup is not None:
             if ok:

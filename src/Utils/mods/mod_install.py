@@ -2874,6 +2874,21 @@ def _try_resolve_modio(meta_path: Path, dest_root: Path, archive: Path, log_fn: 
                 modio_meta.mark_not_found(meta_path, mod_id)
             return
         if meta is not None and meta.mod_id > 0:
+            # resolve_modio_meta() always builds a brand-new ModioMeta, so
+            # liked/ignore_update/ignored_version come back at dataclass
+            # defaults — round-trip them from whatever's already on disk
+            # (a reinstall/update over an existing mod.io mod) instead of
+            # letting write_modio_meta's unconditional write wipe them. Same
+            # pattern as gui_qt/app.py's _stamp_modio_meta, which otherwise
+            # runs too late to prevent this: it reads meta.ini only after
+            # this call has already overwritten it.
+            try:
+                current = modio_meta.read_modio_meta(meta_path)
+                meta.liked = current.liked
+                meta.ignore_update = current.ignore_update
+                meta.ignored_version = current.ignored_version
+            except Exception:
+                pass
             modio_meta.write_modio_meta(meta_path, meta)
     except Exception as exc:
         log_fn(f"mod.io meta resolution skipped ({exc}).")
