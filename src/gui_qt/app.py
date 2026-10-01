@@ -860,6 +860,40 @@ class MainWindow(QMainWindow):
         if profs:
             self._profile_selector.set_items(profs, current=gs.profile)
         self._refresh_profile_actions()
+        self._update_profile_collection_tooltip()
+
+    def _update_profile_collection_tooltip(self):
+        """Show the tracked collection + its installed revision on the profile
+        selector, since a profile's own folder name is only ever stamped with
+        a _RevN suffix at the moment it's first created -- Collection Update
+        bumps profile_state.json's collection_revision_number correctly but
+        never renames the (potentially long-since-stale) folder name to
+        match, so the name alone can't be trusted to show the real revision."""
+        game = self._gs.game
+        pdir = getattr(game, "_active_profile_dir", None) if game is not None else None
+        if pdir is None:
+            self._profile_selector.setToolTip("")
+            return
+        from Utils.exe_launch.game_helpers import get_collection_url_from_profile
+        from Utils.profile.profile_state import read_collection_revision
+        url = get_collection_url_from_profile(pdir)
+        if not url:
+            self._profile_selector.setToolTip("")
+            return
+        revision = read_collection_revision(pdir)
+        name = ""
+        try:
+            import json
+            manifest_path = Path(pdir) / "collection.json"
+            if manifest_path.is_file():
+                name = (json.loads(manifest_path.read_text(encoding="utf-8"))
+                        .get("info", {}).get("name", "")).strip()
+        except Exception:
+            pass
+        label = name or self.tr("Nexus Collection")
+        tip = (self.tr("Tracking: {0} — Rev {1}").format(label, revision)
+               if revision is not None else self.tr("Tracking: {0}").format(label))
+        self._profile_selector.setToolTip(tip)
 
     # ---------------------------------------------------------- header row
     def _build_header_row(self) -> QWidget:
@@ -2149,6 +2183,7 @@ class MainWindow(QMainWindow):
             with perftrace.span("switch.set_profile"):
                 self._gs.set_profile(name)
             self._profile_selector.set_current(name)
+            self._update_profile_collection_tooltip()
             # profile_ini_files / profile_saves are per-profile overrides — set_profile
             # reloaded them, so refresh the Open submenu for the new profile.
             self._refresh_profile_actions()
@@ -4253,6 +4288,13 @@ class MainWindow(QMainWindow):
             write_collection_optional_skipped(profile_dir, set(skipped or ()))
         except Exception:
             pass
+        # Reflect a just-updated revision immediately if this is the active
+        # profile — the folder name itself is only ever stamped once, at
+        # creation, so the tooltip is the only thing that won't go stale.
+        game = self._gs.game
+        if (game is not None
+                and getattr(game, "_active_profile_dir", None) == profile_dir):
+            self._update_profile_collection_tooltip()
 
     def _build_collection_callbacks(self):
         """Build a CollectionInstallCallbacks whose every field is a single

@@ -17,15 +17,27 @@ from PySide6.QtCore import Signal
 
 from gui_qt.safe_emit import safe_emit
 from wizards_qt._view_base import GREEN, RED, WizardViewBase
-from Utils.modding_tools.xedit_tools import tool_exe_path
+from Utils.modding_tools.xedit_tools import applications_dir, tool_exe_path
 
 if TYPE_CHECKING:
     from Games.base_game import BaseGame
 
-_NEXUS_URL = "https://www.nexusmods.com/witcher3/mods/8405?tab=files&file_id=59566"
-_NEXUS_FILE_ID = 59566
+# Bump this (and _NEXUS_URL) whenever the author ships a new Main file --
+# e.g. 0.9.7 rc2 (59566) -> 0.9.8 rc5 (74645) for the 2026-09-30 Witcher 3
+# Remastered (v5) support. _VERSION_MARKER below is what actually makes an
+# existing install notice the bump instead of silently reusing a stale exe
+# forever (see _advance_from_deploy).
+_NEXUS_URL = "https://www.nexusmods.com/witcher3/mods/8405?tab=files&file_id=74645"
+_NEXUS_FILE_ID = 74645
 _MERGER_EXE = "WitcherScriptMerger.exe"
 _MERGER_DIR = "ScriptMerger"
+# Records which _NEXUS_FILE_ID an install was extracted from, so a later
+# Mosaic release that bumps the pin can tell a stale install from a current
+# one instead of always skipping straight past the download step once the
+# exe exists. An install from before this marker existed (or one placed
+# manually) has no marker at all -- treated as stale, not current, since
+# there's no way to know which file it actually came from.
+_VERSION_MARKER = ".mosaic_file_id"
 # .NET 8 install runs through Utils.wine_proton.proton_tools.install_dotnet_runtime.
 
 (_PG_DEPLOY, _PG_DOWNLOAD, _PG_LOCATE, _PG_EXTRACT, _PG_PROTON, _PG_NET8,
@@ -118,9 +130,52 @@ class ScriptMergerView(WizardViewBase):
         elif idx == _PG_RUN:
             self._preflight_run()
 
+    def _installed_file_id(self) -> int:
+        """The _NEXUS_FILE_ID an existing install's marker claims, or 0 if
+        there is no marker (pre-tracking install, or placed manually)."""
+        marker = applications_dir(self._game, _MERGER_DIR) / _VERSION_MARKER
+        try:
+            return int(marker.read_text(encoding="utf-8").strip())
+        except (OSError, ValueError):
+            return 0
+
+    def _write_installed_file_id(self) -> None:
+        marker = applications_dir(self._game, _MERGER_DIR) / _VERSION_MARKER
+        try:
+            marker.write_text(str(_NEXUS_FILE_ID), encoding="utf-8")
+        except OSError as exc:
+            self._log(f"Script Merger Wizard: could not write version marker: {exc}")
+
     def _advance_from_deploy(self):
-        # Skip download step if WitcherScriptMerger.exe is already present.
-        if tool_exe_path(self._game, _MERGER_EXE, _MERGER_DIR) is not None:
+        exe = tool_exe_path(self._game, _MERGER_EXE, _MERGER_DIR)
+        if exe is not None and self._installed_file_id() == _NEXUS_FILE_ID:
+            self._goto_step(_PG_PROTON)
+        elif exe is not None:
+            # Already installed, but not confirmed current -- the author can
+            # ship a compatibility-relevant update (e.g. 2026-09-30's Witcher
+            # 3 Remastered support) without Mosaic noticing on its own, so
+            # ask instead of silently reusing a possibly-stale exe forever.
+            from gui_qt.overlays.confirm_overlay import ConfirmOverlay
+            ConfirmOverlay.show_over(
+                self, self.tr("Script Merger Update Available"),
+                self.tr(
+                    "A newer Script Merger is available on Nexus, and this "
+                    "install isn't confirmed to be that version (or predates "
+                    "Mosaic tracking which file it came from).\n\n"
+                    "Update now, or keep the currently installed copy?"),
+                self._on_update_choice,
+                confirm_label=self.tr("Keep Current"),
+                cancel_label=self.tr("Update Now"))
+        else:
+            self._goto_step(_PG_DOWNLOAD)
+            self._nexus_auto_fetch(
+                url=_NEXUS_URL, file_id=_NEXUS_FILE_ID,
+                keywords=["sm-fae"], label="Script Merger",
+                pages=(_PG_DOWNLOAD, _PG_LOCATE),
+                on_archive=lambda _p: self._goto_step(_PG_EXTRACT))
+
+    def _on_update_choice(self, keep_current: bool):
+        if keep_current:
             self._goto_step(_PG_PROTON)
         else:
             self._goto_step(_PG_DOWNLOAD)
@@ -132,6 +187,7 @@ class ScriptMergerView(WizardViewBase):
 
     def _on_extract_done(self, ok: bool):
         if ok:
+            self._write_installed_file_id()
             self._goto_step(_PG_PROTON)
 
     def _on_proton_chosen(self, proton_name: str, prefix_mode: str):
