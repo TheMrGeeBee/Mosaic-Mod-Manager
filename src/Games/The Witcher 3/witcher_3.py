@@ -31,12 +31,14 @@ Mosaic_vanilla_files/ and moved back on restore.
 
 from __future__ import annotations
 
+import json
 import shutil
 from pathlib import Path
 
 from Games.base_game import BaseGame
 from Utils.deploy.deploy import LinkMode, load_per_mod_strip_prefixes, load_separator_deploy_paths, expand_separator_deploy_paths, expand_separator_raw_deploy, _resolve_nocase, _resolve_root_path, _write_deploy_snapshot, _move_runtime_files, _FILEMAP_SNAPSHOT_NAME
 from Utils.mods.modlist import read_modlist
+from Utils.mods.tw3_mods_settings import write_mods_settings
 from Utils.config_paths import get_profiles_dir
 from Utils.modding_tools.tw3_filelist import update_menu_filelists
 
@@ -115,6 +117,19 @@ def _route_path(staged_rel: str) -> tuple[str, str]:
       "Full/DLC/dlcFoo/content/x.xml"             → ("dlc",  "dlcFoo/content/x.xml")
       "bin/x64/d3d11.dll"                         → ("",     "bin/x64/d3d11.dll")
       "Full/bin/config/r4game/user_config.xml"    → ("",     "bin/config/r4game/user_config.xml")
+
+    A wrapper folder whose own NAME happens to start with "mod"/"dlc" (an
+    author-chosen archive name, e.g. "ModHideQuest 5.00 - Je1992") is NOT
+    mistaken for the real mod folder: if the segment right after it is
+    itself a recognised container (mods/dlc/dlcs), that confirms the
+    current segment is just a wrapper around a properly-nested archive, so
+    scanning continues deeper instead of stopping here. Confirmed live: a
+    real archive shaped "ModHideQuest 5.00 - Je1992/Mods/modHideQuests/
+    content/..." was deployed doubly-nested (mods/ModHideQuest 5.00 -
+    Je1992/Mods/modHideQuests/content/...) before this check existed --
+    not just a cosmetic issue, since TW3's own mod loader only scans one
+    level deep under mods/, so the mod's content was never actually read
+    by the game at all.
     """
     norm     = staged_rel.replace("\\", "/")
     segments = norm.split("/")
@@ -126,10 +141,12 @@ def _route_path(staged_rel: str) -> tuple[str, str]:
             continue          # known container — look deeper
         if low in _ROOT_SEGMENTS:
             return "", "/".join(segments[i:])   # e.g. bin/... at game root
-        if low.startswith("mod"):
-            return "mods", "/".join(segments[i:])
-        if low.startswith("dlc"):
-            return "dlc", "/".join(segments[i:])
+        if low.startswith("mod") or low.startswith("dlc"):
+            nxt = segments[i + 1].lower() if i + 1 < len(segments) else ""
+            if nxt in _SKIP_SEGMENTS or nxt in _ROOT_SEGMENTS:
+                continue      # archive wrapper that merely starts with mod/dlc
+            prefix = "mods" if low.startswith("mod") else "dlc"
+            return prefix, "/".join(segments[i:])
 
     # No recognised folder found — deploy to game root as-is
     return "", norm
@@ -307,6 +324,14 @@ class Witcher3(BaseGame):
         # both route to mods/modBrutalBlood/… — the second placement must not
         # treat the first hardlink as a vanilla file.)
         _placed_this_run: set[str] = set()
+        # TW3 mod-folder id (e.g. "modGearLevelScaling") -> Mosaic mod display
+        # name, for every "mods/"-routed entry placed this run. Feeds
+        # write_mods_settings() below -- modlist.txt itself is keyed by the
+        # Mosaic display name, not the in-game folder id, so this mapping has
+        # to be captured here where both are already in scope. DLC-prefixed
+        # entries are deliberately never added (mods.settings priority has no
+        # DLC concept, mirroring Vortex's own game-witcher3 extension).
+        _tw3_mod_dirs: dict[str, str] = {}
 
         lines = [
             ln.rstrip("\n")
@@ -330,6 +355,10 @@ class Witcher3(BaseGame):
                 dest_prefix, final_rel = _route_path(staged_rel)
                 dest_dir  = (base_dir / dest_prefix) if dest_prefix else base_dir
                 dest_file = dest_dir / final_rel
+                if not in_custom_dir and dest_prefix == "mods":
+                    folder_id = final_rel.split("/", 1)[0]
+                    if folder_id:
+                        _tw3_mod_dirs.setdefault(folder_id, mod_name)
 
             src = self._find_staged_file(
                 staging, mod_name, staged_rel,
@@ -446,6 +475,55 @@ class Witcher3(BaseGame):
             _log(f"  WARN: could not write deploy snapshot: {exc}")
 
         update_menu_filelists(game_path, log_fn=_log)
+
+        # mods.settings: the game engine's own priority file, resolving which
+        # mod wins when more than one overrides the same relative path (e.g.
+        # several mods all shipping their own game/player/playerWitcher.ws).
+        # Without this TW3 falls back to its own undefined default, which is
+        # why a Collection's own curator-tested order was never actually
+        # honored before this. See Utils.mods.tw3_mods_settings for the full
+        # ranking rule (Collection loadOrder first, modlist.txt fallback).
+        prefix_path = self.get_prefix_path()
+        if prefix_path is not None:
+            manifest_lo = None
+            collection_json = profile_dir / "collection.json"
+            if collection_json.is_file():
+                try:
+                    cj = json.loads(collection_json.read_text(encoding="utf-8"))
+                    lo = cj.get("loadOrder")
+                    if isinstance(lo, list) and lo:
+                        manifest_lo = lo
+                except (OSError, json.JSONDecodeError) as exc:
+                    _log(f"  Warning: could not read collection.json: {exc}")
+            # Each mod's own tracked Nexus file_id is the preferred match key
+            # against the Collection manifest (see tw3_mods_settings' module
+            # docstring for why folder-id string matching alone isn't
+            # reliable enough) -- read once per distinct mod, not per file.
+            from Nexus.nexus_meta import read_meta
+            _fileid_cache: dict[str, int] = {}
+            file_ids: dict[str, int] = {}
+            for folder_id, mn in _tw3_mod_dirs.items():
+                fid = _fileid_cache.get(mn)
+                if fid is None:
+                    try:
+                        fid = read_meta(staging / mn / "meta.ini").file_id
+                    except Exception:
+                        fid = 0
+                    _fileid_cache[mn] = fid
+                if fid:
+                    file_ids[folder_id] = fid
+            # get_prefix_path() already resolves to .../pfx -- confirmed
+            # directly against a real prefix (do not append "pfx" again).
+            settings_path = (prefix_path / "drive_c" / "users" /
+                             "steamuser" / "Documents" / "The Witcher 3" /
+                             "mods.settings")
+            n = write_mods_settings(settings_path, profile_dir / "modlist.txt",
+                                    _tw3_mod_dirs, log_fn=_log,
+                                    manifest_load_order=manifest_lo,
+                                    file_ids=file_ids)
+            _log(f"Wrote mods.settings ({n} mod(s)) → {settings_path}")
+        else:
+            _log("  Skipping mods.settings — game prefix not yet configured.")
 
     def _find_staged_file(
         self,
