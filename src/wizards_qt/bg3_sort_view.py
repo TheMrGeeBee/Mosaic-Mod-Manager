@@ -206,6 +206,25 @@ class BG3SortView(WizardViewBase):
                 head.addChild(QTreeWidgetItem([text, "", ""]))
             head.setExpanded(True)
 
+        # Collection-governed mods never appear in plan.layers (they're
+        # deliberately left out of layer sorting — deploy orders them by the
+        # manifest regardless), so without this the summary says "N mod(s)
+        # follow your collection's order" while the list right below it
+        # shows nothing at all. plan.load_order is coll_order + order, so
+        # its first collection_count entries are exactly those mods, in
+        # their collection-determined order.
+        if plan.collection_count:
+            coll_group = QTreeWidgetItem([
+                self.tr("Follows your collection's order (not moved)"),
+                str(plan.collection_count), ""])
+            self._tree.addTopLevelItem(coll_group)
+            for mod in plan.load_order[:plan.collection_count]:
+                item = QTreeWidgetItem([f"   {mod}", str(new_pos[mod] + 1),
+                                        self.tr("Collection's load order")])
+                item.setData(0, Qt.UserRole, mod)
+                coll_group.addChild(item)
+            coll_group.setExpanded(False)
+
         groups: dict[str, QTreeWidgetItem] = {}
         for layer in LAYERS:
             groups[layer.id] = QTreeWidgetItem([self.tr(layer.label), "", ""])
