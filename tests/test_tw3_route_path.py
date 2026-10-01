@@ -1,5 +1,5 @@
-"""Games.'The Witcher 3'.witcher_3._route_path -- decides whether a staged
-file deploys under mods/, dlc/, or the game root.
+"""Utils.mods.tw3_routing.route_path -- decides whether a staged file
+deploys under mods/, dlc/, or the game root.
 
 Real bug, found live: a real mod archive ("Hide Quest in Quest Menu for
 Remaster ONLY") ships as `ModHideQuest 5.00 - Je1992/Mods/modHideQuests/
@@ -14,20 +14,16 @@ content was never read by the game at all. Confirmed via Script Merger
 failing to find/hash the file at the path it correctly expected
 (mods/modHideQuests/content/...), which doesn't exist -- only the
 wrongly-doubled path does.
+
+This logic originally lived directly in Games/The Witcher 3/witcher_3.py
+(hence the dynamic spec-loading this test used to need -- that folder
+name has a space in it, unimportable as a normal module) but was
+extracted to Utils.mods.tw3_routing so Utils.mods.tw3_load_index could
+reuse it too; witcher_3.py now imports it from there as well.
 """
 from __future__ import annotations
 
-import importlib.util
-import sys
-from pathlib import Path
-
-_SPEC = importlib.util.spec_from_file_location(
-    "witcher_3", Path(__file__).resolve().parents[1] / "src" / "Games" /
-    "The Witcher 3" / "witcher_3.py")
-_w3 = importlib.util.module_from_spec(_SPEC)
-sys.modules.setdefault("witcher_3_test_module", _w3)
-_SPEC.loader.exec_module(_w3)
-_route_path = _w3._route_path
+from Utils.mods.tw3_routing import route_path as _route_path
 
 
 # ---- documented baseline behavior (previously untested) -------------------
