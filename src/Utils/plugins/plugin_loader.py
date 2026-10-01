@@ -122,6 +122,17 @@ BUILTIN_WIZARD_TOOLS: list[dict] = [
         "category": "Load Order and Config",
     },
     {
+        "id": "tw3_load_order_insights",
+        "label": "Load Order Insights",
+        "description": ("Show which enabled mods ship the same file, which "
+                        "one currently wins (per mods.settings' Priority), "
+                        "and pick the winner."),
+        "game_ids": ["witcher_3"],
+        "all_games": False,
+        "dialog_class": "wizards.tw3_insights.TW3InsightsWizard",
+        "category": "Load Order and Config",
+    },
+    {
         "id": "sdv_smapi",
         "label": "Install SMAPI",
         "description": "Download and install SMAPI (mod loader) for Stardew Valley.",
