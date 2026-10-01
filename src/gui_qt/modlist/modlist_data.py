@@ -29,6 +29,7 @@ FLAG_PRERTX = 1 << 11      # contains pre-RTX (natives/x64) files — filemap-de
 FLAG_ROOT_RULE = 1 << 12   # owns files with a custom root-routing rule — filemap-derived
 FLAG_RERUN_FOMOD = 1 << 13  # a FOMOD option's fileDependency plugin is now in the load order — live overlay
 FLAG_MODIO_LIKED = 1 << 14  # BG3 mod.io: the logged-in user has rated this mod positively
+FLAG_COLLECTION_ORDER_LOCKED = 1 << 15  # TW3: this mod's priority is set by a Collection's loadOrder
 
 
 def _parse_missing_req_pairs(raw: str) -> list[tuple[int, str]]:
@@ -58,7 +59,8 @@ def _parse_missing_req_names(raw: str) -> list[str]:
 def read_meta_for_entries(entries: list[ModEntry], staging_dir: Path,
                           ignored_reqs: frozenset[str] = frozenset(),
                           profile_dir: "Path | None" = None,
-                          is_bg3: bool = False):
+                          is_bg3: bool = False,
+                          collection_order_mods: frozenset[str] = frozenset()):
     """Return a MetaInfo-ish tuple keyed by mod name.
 
     versions[name]     -> version string ("" if none)
@@ -76,6 +78,10 @@ def read_meta_for_entries(entries: list[ModEntry], staging_dir: Path,
     mod is only flagged if it still has missing requirements outside this set.
     *profile_dir* — the active profile dir; when given, per-mod user notes are
     read (Note flag). *is_bg3* — enable the BG3-only mod.io update flag.
+    *collection_order_mods* — mod names a Collection's own loadOrder governs
+    (TW3 only; see Utils.mods.tw3_load_index.collection_governed_mod_names) —
+    flagged so a drag-reorder in the Mod List doesn't silently break the
+    curator's order without the user realizing it's collection-controlled.
     """
     versions: dict[str, str] = {}
     installed: dict[str, str] = {}
@@ -190,6 +196,8 @@ def read_meta_for_entries(entries: list[ModEntry], staging_dir: Path,
             bits |= FLAG_COLLECTION_BUNDLED
         if getattr(meta, "from_collection_patched", False):
             bits |= FLAG_COLLECTION_PATCHED
+        if e.name in collection_order_mods:
+            bits |= FLAG_COLLECTION_ORDER_LOCKED
         # xEdit-modified plugins (semicolon-separated list in meta).
         if (getattr(meta, "xedit_modified_plugins", "") or "").strip():
             bits |= FLAG_XEDIT

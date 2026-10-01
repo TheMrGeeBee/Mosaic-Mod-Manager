@@ -341,6 +341,26 @@ def _apply_rule_status(findings: list[Finding], rules: list[dict],
             w in rank and l in rank and rank[w] < rank[l] for w, l in mine)
 
 
+def collection_governed_mod_names(game, profile_dir: Path) -> set[str]:
+    """Mod names a Collection's own loadOrder governs for this profile, or
+    an empty set if there's no collection.json / nothing matches.
+
+    A convenience entry point for callers that only need this one piece of
+    compute_insights' result (e.g. the main Mod List's "this mod's order
+    is set by your Collection" flag, gui_qt.modlist.modlist_data) without
+    needing the full conflict-finding scan's other output."""
+    manifest = read_manifest(profile_dir)
+    if not manifest:
+        return set()
+    entries = read_modlist(profile_dir / "modlist.txt")
+    enabled = [e for e in entries if e.enabled and not e.is_separator]
+    staging = game.get_effective_mod_staging_path()
+    names = [e.name for e in enabled]
+    index = build_index(staging, names)
+    file_ids = mod_file_ids(staging, names)
+    return collection_mods(index, manifest, file_ids)
+
+
 def compute_insights(game, profile_dir: Path, log_fn=None) -> Insights:
     modlist_path = profile_dir / "modlist.txt"
     entries = read_modlist(modlist_path)

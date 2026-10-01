@@ -24,7 +24,7 @@ from gui_qt.modlist.modlist_data import (
     FLAG_UPDATE, FLAG_ENDORSED, FLAG_ROOT, FLAG_MODIFIED_MF, FLAG_MISSING_REQS,
     FLAG_COLLECTION_BUNDLED, FLAG_COLLECTION_PATCHED, FLAG_NOTE, FLAG_XEDIT,
     FLAG_BUNDLE, FLAG_MODIO_UPDATE, FLAG_PRERTX, FLAG_ROOT_RULE,
-    FLAG_RERUN_FOMOD, FLAG_MODIO_LIKED,
+    FLAG_RERUN_FOMOD, FLAG_MODIO_LIKED, FLAG_COLLECTION_ORDER_LOCKED,
 )
 
 # Flag bit → icon filename, painted left-to-right in the Flags column, in the
@@ -50,6 +50,7 @@ _FLAG_ICONS = [
     # root.png: meta root_folder OR a custom root-routing rule (same icon).
     (FLAG_ROOT, "root.png"),
     (FLAG_ROOT_RULE, "root.png"),
+    (FLAG_COLLECTION_ORDER_LOCKED, "lock.png"),
 ]
 
 # The info-icon flags, in precedence order (Tk: pre-RTX wins, else collection).
@@ -77,6 +78,7 @@ _FLAG_TIPS = {
     FLAG_XEDIT: QT_TRANSLATE_NOOP("ModRowDelegate", "Contains a plugin modified in xEdit"),
     FLAG_ROOT: QT_TRANSLATE_NOOP("ModRowDelegate", "This mod is sent to the root folder"),
     FLAG_ROOT_RULE: QT_TRANSLATE_NOOP("ModRowDelegate", "This mod contains files that route to the game root"),
+    FLAG_COLLECTION_ORDER_LOCKED: QT_TRANSLATE_NOOP("ModRowDelegate", "This mod's priority is set by your Collection's load order — dragging it may conflict with that order (see Load Order Insights)"),
 }
 
 

@@ -12491,14 +12491,25 @@ class MainWindow(QMainWindow):
             ignored = self._ignored_missing_reqs
             pdir_meta = self._gs.profile_dir()
             is_bg3 = (getattr(self._gs.game, "game_id", "") == "baldurs_gate_3")
+            is_tw3 = (getattr(self._gs.game, "game_id", "") == "witcher_3")
+            game_meta = self._gs.game
             meta_entries = list(entries)
 
             def meta_worker():
                 try:
+                    collection_order_mods = frozenset()
+                    if is_tw3 and pdir_meta is not None:
+                        try:
+                            from Utils.mods.tw3_load_index import collection_governed_mod_names
+                            collection_order_mods = frozenset(
+                                collection_governed_mod_names(game_meta, pdir_meta))
+                        except Exception as exc:
+                            print(f"[gui_qt] TW3 collection-order scan failed: {exc}", flush=True)
                     with span("modlist.meta_worker(read_meta)"):
                         payload = read_meta_for_entries(
                             meta_entries, staging, ignored,
-                            profile_dir=pdir_meta, is_bg3=is_bg3)
+                            profile_dir=pdir_meta, is_bg3=is_bg3,
+                            collection_order_mods=collection_order_mods)
                 except Exception as exc:
                     print(f"[gui_qt] meta read failed: {exc}", flush=True)
                     payload = None   # still emit — the conflict rebuild chains
@@ -12735,6 +12746,17 @@ class MainWindow(QMainWindow):
                                (self._mod_missing_reqs, missing_reqs)):
                 cur -= subset
                 cur |= fresh
+        # FLAG_COLLECTION_ORDER_LOCKED (TW3) is NOT recomputed on this path --
+        # it's a cheap targeted refresh after things like endorse/note-edit,
+        # not a full profile rescan (which would need a real file-content
+        # scan, too costly to run on every small action). Preserve whatever
+        # it already was so this can't silently clear it; the full reload
+        # path (_on_modlist_meta_ready) recomputes it properly.
+        from gui_qt.modlist.modlist_data import FLAG_COLLECTION_ORDER_LOCKED
+        prev_flags = getattr(self._modlist_model, "_flags", None) or {}
+        for name, prev_bits in prev_flags.items():
+            if prev_bits & FLAG_COLLECTION_ORDER_LOCKED:
+                flags[name] = flags.get(name, 0) | FLAG_COLLECTION_ORDER_LOCKED
         self._modlist_model.set_flags(flags)
         # Re-point the model at the (possibly rebuilt) categories dict and
         # re-sort if the Category column drives the current sort.
