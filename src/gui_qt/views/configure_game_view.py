@@ -301,7 +301,7 @@ class ConfigureGameView(QWidget):
         # get_detected_version_label on Witcher3).
         self._version_lbl = None
         if hasattr(g, "get_detected_version_label"):
-            self._version_lbl = self._status("", "TEXT_MAIN")
+            self._version_lbl = self._status("", "ACCENT")
             v.addWidget(self._version_lbl)
 
         v.addWidget(self._divider())
