@@ -16,5 +16,4 @@ The GPL-3.0 license carries forward unmodified: this project remains free
 software, and anyone is free to use, study, modify, and redistribute it
 under the same terms as the original.
 
-Thank you to ChrisDKN and everyone who contributed to the original Amethyst
-Mod Manager for the foundation this project was built on.
+Thank you to ChrisDKN and everyone who contributed to the original Amethyst Mod Manager for the foundation this project was built on.
