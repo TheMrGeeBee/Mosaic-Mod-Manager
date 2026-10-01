@@ -249,6 +249,8 @@ class BG3InsightsView(WizardViewBase):
                 return self.tr("Intended (author rule)")
             if f.intended_by == "author note":
                 return self.tr("Author note — already followed")
+            if f.intended_by == "collection order":
+                return self.tr("Intended (collection's order)")
             return self.tr("Intended (patch for the other)")
         if f.resolved_by_rule:
             return self.tr("Decided")

@@ -623,6 +623,13 @@ def analyse(enabled: list[ModEntry], index: dict[str, list[dict]],
     if known is not None:
         known_after = {(first, then): (reason, source)
                        for first, then, reason, source in known.edges}
+    # A pair both covered by the installed collection's own loadOrder has its
+    # rank DERIVED from that manifest (compute_load_rank/_apply_manifest_pak_
+    # order above) — the current winner isn't a guess the user still has to
+    # confirm, it's exactly what the collection curator set up. Without this,
+    # a fresh install from a real collection shows every one of these as
+    # "Needs a decision" despite the order already being correct by design.
+    coll_mods = collection_mods(index, manifest) if manifest else set()
     for f in findings:
         if f.winner:
             losers = [m for m in f.mods if m != f.winner]
@@ -633,6 +640,8 @@ def analyse(enabled: list[ModEntry], index: dict[str, list[dict]],
                 reason, source = known_after[(losers[0], f.winner)]
                 f.note = (f"{reason[0].upper()}{reason[1:]}."
                           + (f" Source: {source}" if source else ""))
+            elif coll_mods and all(m in coll_mods for m in f.mods):
+                f.intended, f.intended_by = True, "collection order"
             else:
                 against = [(f.winner, l) for l in losers if (f.winner, l) in known_after]
                 if against:

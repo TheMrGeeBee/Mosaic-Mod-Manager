@@ -521,3 +521,51 @@ def test_unresolved_count_still_counts_a_normal_ranked_finding(tmp_path):
     findings, rank = bx.analyse(enabled, index, tmp_path)
     ins = bx.Insights(findings=findings, load_rank=rank)
     assert bx.unresolved_count(ins) == 1
+
+
+# ---- findings fully settled by the installed collection's own order -------
+# Real report, fresh install from a real exported collection: Insights
+# showed "Needs a decision" for pairs whose order was already exactly what
+# the collection curator set up, because nothing recognised that the
+# CURRENT winner wasn't a guess -- it was derived straight from the
+# collection's own loadOrder (compute_load_rank uses it for rank whenever
+# a manifest is passed). Confusing: the order is already correct, but the
+# finding still demands user action, and "N findings need a decision"
+# overstates how much is actually left to do.
+
+def test_pair_fully_covered_by_collection_order_is_intended(tmp_path):
+    enabled = _entries("NPC Overhaul", "Combat Extender")
+    index = {
+        "NPC Overhaul": [_rec("u-npc", "NPC", stats={"Character:Bandit": "a"})],
+        "Combat Extender": [_rec("u-ce", "CE", stats={"Character:Bandit": "b"})],
+    }
+    # Collection's own loadOrder, lowest-priority (loads first) first.
+    manifest = [{"data": {"uuid": "u-ce"}}, {"data": {"uuid": "u-npc"}}]
+
+    findings, rank = bx.analyse(enabled, index, tmp_path, manifest)
+
+    [f] = findings
+    assert f.winner == "NPC Overhaul"
+    assert f.intended is True
+    assert f.intended_by == "collection order"
+    ins = bx.Insights(findings=findings, load_rank=rank)
+    assert bx.unresolved_count(ins) == 0
+
+
+def test_partial_collection_coverage_is_not_marked_intended(tmp_path):
+    # Only one side of the pair is covered by the collection's loadOrder --
+    # the current winner isn't fully collection-derived, so this must still
+    # surface as a real decision.
+    enabled = _entries("NPC Overhaul", "Combat Extender")
+    index = {
+        "NPC Overhaul": [_rec("u-npc", "NPC", stats={"Character:Bandit": "a"})],
+        "Combat Extender": [_rec("u-ce", "CE", stats={"Character:Bandit": "b"})],
+    }
+    manifest = [{"data": {"uuid": "u-npc"}}]   # Combat Extender not covered
+
+    findings, rank = bx.analyse(enabled, index, tmp_path, manifest)
+
+    [f] = findings
+    assert f.intended is False
+    ins = bx.Insights(findings=findings, load_rank=rank)
+    assert bx.unresolved_count(ins) == 1
