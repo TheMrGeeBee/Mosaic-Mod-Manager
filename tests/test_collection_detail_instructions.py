@@ -56,6 +56,18 @@ def test_collection_level_instructions_shown(qapp, request):
     assert view._instructions_lbl.text() == "Run BG3SE Configs before playing."
 
 
+def test_collection_level_instructions_render_markdown(qapp, request):
+    # The authoring field (create_collection_view.py) tells curators
+    # Markdown is supported, matching real Nexus Collections -- the display
+    # side must actually render it (bold/headings), not show raw syntax.
+    from PySide6.QtCore import Qt
+    view = _view(qapp, request, _manifest(
+        [{"name": "A", "source": {"type": "nexus", "modId": 1, "fileId": 2}}],
+        install_instructions="**Important:** read this first."))
+
+    assert view._instructions_lbl.textFormat() == Qt.MarkdownText
+
+
 def test_no_collection_instructions_hides_the_banner(qapp, request):
     view = _view(qapp, request, _manifest(
         [{"name": "A", "source": {"type": "nexus", "modId": 1, "fileId": 2}}]))

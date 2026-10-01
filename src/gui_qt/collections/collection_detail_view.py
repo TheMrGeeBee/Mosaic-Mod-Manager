@@ -268,7 +268,11 @@ class CollectionDetailView(QWidget):
         iv.addWidget(it)
         self._instructions_lbl = QLabel("")
         self._instructions_lbl.setWordWrap(True)
-        self._instructions_lbl.setTextFormat(Qt.PlainText)
+        # The authoring field (create_collection_view.py) tells curators
+        # Markdown is supported, matching real Nexus Collections (Vortex's
+        # own Instructions tab renders it) — honor that here instead of
+        # showing raw "**bold**"/"# Heading" syntax as literal text.
+        self._instructions_lbl.setTextFormat(Qt.MarkdownText)
         self._instructions_lbl.setStyleSheet(f"color:{_c(p,'TEXT_MAIN')}; font-size:12px;")
         iv.addWidget(self._instructions_lbl)
         instructions_wrap = QWidget()
