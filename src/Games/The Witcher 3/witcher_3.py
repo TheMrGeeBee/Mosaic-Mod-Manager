@@ -178,6 +178,17 @@ class Witcher3(BaseGame):
         return "bin/x64/witcher3.exe"
 
     @property
+    def exe_name_alts(self) -> list[str]:
+        # Remastered moved the exe from bin/x64/ to bin/x64_dx12/ (DX12-only
+        # renderer) -- confirmed against a real installed Remastered copy,
+        # which has no bin/x64/ folder at all. Without this, a Remastered-
+        # only install's game folder looks like "Executable not found" to
+        # auto-detect/validation even though the install is genuinely fine
+        # (Steam's own rungameid launch doesn't go through exe_name at all,
+        # so the Play button was never actually affected by this).
+        return ["bin/x64_dx12/witcher3.exe"]
+
+    @property
     def steam_id(self) -> str:
         return "292030"
 
@@ -188,6 +199,14 @@ class Witcher3(BaseGame):
     @property
     def nexus_game_domain(self) -> str:
         return "witcher3"
+
+    def get_detected_version_label(self, game_path) -> str:
+        """Human-readable Next-Gen/Remastered summary for *game_path*, e.g.
+        "5.0.15.61352 (Remastered)" -- passive display only (Configure Game
+        dialog), so a user can sanity-check their setup without installing
+        a Collection first. See Utils.modding_tools.tw3_version."""
+        from Utils.modding_tools.tw3_version import describe_tw3_version
+        return describe_tw3_version(game_path)
 
     @property
     def mod_install_prefix(self) -> str:

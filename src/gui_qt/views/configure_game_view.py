@@ -295,6 +295,15 @@ class ConfigureGameView(QWidget):
         row.addWidget(self._scan_btn)
         row.addStretch(1)
         v.addLayout(row)
+
+        # Passive detected-version label — only for games that declare it
+        # (currently just TW3, Next-Gen vs. Remastered; see
+        # get_detected_version_label on Witcher3).
+        self._version_lbl = None
+        if hasattr(g, "get_detected_version_label"):
+            self._version_lbl = self._status("", "TEXT_DIM")
+            v.addWidget(self._version_lbl)
+
         v.addWidget(self._divider())
 
         # --- Proton prefix ---
@@ -716,7 +725,20 @@ class ConfigureGameView(QWidget):
                 msg, tone = "Executable found.", "TEXT_OK"
         self._game_status.setText(msg)
         self._game_status.setStyleSheet(f"color:{self._c(tone)};")
+        self._update_version_label(path)
         self._save_btn.setEnabled(True)
+
+    def _update_version_label(self, path: Path):
+        if self._version_lbl is None:
+            return
+        try:
+            label = self._game.get_detected_version_label(path)
+        except Exception:
+            label = ""
+        if label and label != "Version unknown":
+            self._version_lbl.setText(self.tr("Detected version: {0}").format(label))
+        else:
+            self._version_lbl.setText("")
 
     def _set_prefix(self, path: Path, configured=False):
         self._found_prefix = path
@@ -742,6 +764,7 @@ class ConfigureGameView(QWidget):
             elif present is True:
                 self._game_status.setText(self.tr("Executable found."))
                 self._game_status.setStyleSheet(f"color:{self._c('TEXT_OK')};")
+            self._update_version_label(path)
             self._save_btn.setEnabled(True)
 
     def _on_prefix_typed(self):
