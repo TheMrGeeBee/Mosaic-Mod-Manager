@@ -23,6 +23,7 @@ from pathlib import Path
 from typing import Callable, Iterable
 
 from Utils.modding_tools import skyrim_runtime as sr
+from Utils.modding_tools import tw3_version as tw3v
 from Utils.wizard_support.pe_version import Version, format_version
 
 FIX_RUNTIME_SWAP = "runtime-swap"
@@ -55,6 +56,10 @@ def fixable(checks: Iterable[Check]) -> list[Check]:
 
 def is_skyrim_se(game) -> bool:
     return str(getattr(game, "steam_id", "")) == str(sr.STEAM_APP_ID)
+
+
+def is_witcher3(game) -> bool:
+    return str(getattr(game, "steam_id", "")) == str(tw3v.STEAM_APP_ID)
 
 
 def _mod_id(mod) -> int:
@@ -161,6 +166,64 @@ def check_skyrim_runtime(
         "(that restores the current build), then try again.")]
 
 
+def _classify_version_string(v: str) -> str:
+    """Classify a version STRING from a collection manifest (e.g. "4.04",
+    "5.0.1") the same way as a real file-version tuple -- major number
+    only, see tw3_version.classify_tw3_version."""
+    try:
+        major = int(str(v).strip().split(".")[0])
+    except (ValueError, IndexError):
+        return "unknown"
+    if major >= 5:
+        return "remastered"
+    if major == 4:
+        return "next-gen"
+    return "unknown"
+
+
+def check_tw3_version(
+    game_root: "str | Path",
+    collection_versions: list[str] | None = None,
+) -> list[Check]:
+    """Does the installed Witcher 3 match the branch (Next-Gen 4.x vs.
+    Remastered 5.x) this collection was built for?
+
+    Unlike Skyrim's runtime-swap, this can't be auto-fixed: no binary-diff
+    relationship exists between the two branches, they're separate Steam/GOG
+    downloads, and nothing in this codebase drives Steam's beta-branch
+    selector or GOG Galaxy's version picker. A mismatch is always a warning,
+    never a blocker -- the manifest's own gameVersions field is populated
+    inconsistently by TW3 collection authors, so "unknown" on either side
+    (unread exe, or no declared version) never blocks.
+    """
+    installed = tw3v.read_tw3_version(game_root)
+    installed_branch = tw3v.classify_tw3_version(installed)
+    shown = format_version(installed) if installed else "unknown"
+    installed_label = tw3v.BRANCH_LABELS.get(installed_branch, installed_branch)
+
+    if installed_branch == "unknown":
+        return []
+
+    declared = {_classify_version_string(v) for v in (collection_versions or [])}
+    declared.discard("unknown")
+    if not declared or installed_branch in declared:
+        return [Check("tw3-version", True, f"The Witcher 3 is {shown} ({installed_label})",
+                      "Matches what this collection expects." if declared else
+                      "The collection doesn't declare a target version.")]
+
+    other_branch = next(iter(declared))
+    other_label = tw3v.BRANCH_LABELS.get(other_branch, other_branch)
+    return [Check(
+        "tw3-version",
+        False,
+        f"The Witcher 3 is {shown} ({installed_label}), this collection targets {other_label}",
+        "Mosaic can't switch branches -- CD Projekt Red ships Next-Gen and "
+        "Remastered as separate downloads. In Steam, use Properties > Betas to "
+        "pick the other branch (GOG Galaxy has its own version selector). You "
+        "can continue anyway if you expect this collection to still work.",
+        blocking=False)]
+
+
 def check_disk_space(
     staging_root: "str | Path | None",
     cache_dir: "str | Path | None",
@@ -238,6 +301,9 @@ def run_preflight(
         checks += check_skyrim_runtime(
             game_root, state_dir, transition, game_running=game_running,
             collection_versions=manifest_game_versions(manifest))
+    if is_witcher3(game) and game_root:
+        checks += check_tw3_version(
+            game_root, collection_versions=manifest_game_versions(manifest))
     archives = sum(int(getattr(m, "size_bytes", 0) or 0) for m in mods)
     checks += check_disk_space(staging_root, cache_dir, install_size, archives, free_fn=free_fn)
     return checks
