@@ -83,6 +83,10 @@ def test_collection_governed_mods_appear_in_their_own_group(qapp):
     child_names = [coll_group.child(i).text(0).strip()
                   for i in range(coll_group.childCount())]
     assert child_names == ["Collection Mod A", "Collection Mod B"]
+    # Expanded by default -- collapsed would look just as empty as the
+    # original bug when every mod follows the collection's order (this
+    # group is then the ONLY row in the whole tree).
+    assert coll_group.isExpanded()
 
 
 def test_no_collection_mods_means_no_collection_group(qapp):

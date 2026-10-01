@@ -223,7 +223,11 @@ class BG3SortView(WizardViewBase):
                                         self.tr("Collection's load order")])
                 item.setData(0, Qt.UserRole, mod)
                 coll_group.addChild(item)
-            coll_group.setExpanded(False)
+            # Expanded by default: when every mod follows the collection's
+            # order (0 free mods to sort), a collapsed group is the ONLY row
+            # in the tree -- indistinguishable from the original "list looks
+            # empty" bug this group exists to fix.
+            coll_group.setExpanded(True)
 
         groups: dict[str, QTreeWidgetItem] = {}
         for layer in LAYERS:
