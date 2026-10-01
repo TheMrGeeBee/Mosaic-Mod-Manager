@@ -16,6 +16,20 @@ from gui_qt.worker import run_in_worker
 from Utils.collections.collection_manifest import fmt_size
 
 
+def _markdown_tooltip(text: str) -> str:
+    """A per-mod instructions string (Markdown — the authoring overlay in
+    create_collection_view.py tells curators Markdown is supported, same as
+    the collection-level installInstructions field) rendered to HTML for use
+    as a tooltip. A native Qt tooltip only renders rich text when the string
+    "looks like" HTML (Qt::mightBeRichText) — raw Markdown syntax shown
+    as-is would just display literal "**"/"#" characters, so convert through
+    QTextDocument's own Markdown parser first rather than inventing one."""
+    from PySide6.QtGui import QTextDocument
+    doc = QTextDocument()
+    doc.setMarkdown(text)
+    return doc.toHtml()
+
+
 def _is_modio_auto_offsite(url: str, domain: str) -> bool:
     """True when a "browse"-type off-site source's URL is a mod.io mod page
     Mosaic can actually resolve and auto-install, rather than one the user
@@ -699,7 +713,7 @@ class CollectionDetailView(QWidget):
             instructions = (getattr(m, "instructions", "") or "").strip()
             if instructions:
                 name_item.setText(name_item.text() + "  📝")
-                name_item.setToolTip(instructions)
+                name_item.setToolTip(_markdown_tooltip(instructions))
             self._table.setItem(r, 0, name_item)
             self._set_cell(r, 1, m.mod_author or "")
             self._set_cell(r, 2, m.version or "")
@@ -762,7 +776,8 @@ class CollectionDetailView(QWidget):
                 cb.setChecked(m.file_id not in saved_skipped)
             else:
                 cb.setChecked(False)
-            cb.setToolTip(f"{name}\n\n{instructions}" if instructions else name)
+            cb.setToolTip(_markdown_tooltip(f"**{name}**\n\n{instructions}")
+                         if instructions else name)
             self._opt_layout.insertWidget(i, cb)
             self._opt_boxes.append((cb, m.file_id))
 

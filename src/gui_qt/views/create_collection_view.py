@@ -92,7 +92,8 @@ class _InstructionsOverlay(CardOverlay):
         self._body.addWidget(card_title(self.tr("Instructions — {0}").format(mod_name)))
         sub = QLabel(self.tr(
             'Shown to the user during install (e.g. "install only if you '
-            'have both X and Y", or "pick one of the resolution variants"):'))
+            'have both X and Y", or "pick one of the resolution variants") '
+            '— Markdown supported:'))
         sub.setObjectName("CardSub")
         sub.setWordWrap(True)
         self._body.addWidget(sub)

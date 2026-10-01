@@ -98,7 +98,11 @@ def test_mod_with_instructions_gets_a_marker_in_the_table(qapp, request):
 
     item = view._table.item(0, 0)
     assert "📝" in item.text()
-    assert item.toolTip() == "Pick this or B."
+    # Rendered to HTML (so Markdown in the source actually formats, per
+    # _markdown_tooltip) rather than shown as a raw-text tooltip -- check
+    # the content made it through, not an exact plain-text match.
+    assert "Pick this or B." in item.toolTip()
+    assert "<html" in item.toolTip().lower()
 
 
 def test_mod_without_instructions_has_no_marker(qapp, request):
@@ -120,3 +124,17 @@ def test_optional_checkbox_marks_and_shows_instructions(qapp, request):
     cb, _fid = view._opt_boxes[0]
     assert "📝" in cb.text()
     assert "Pick this or B." in cb.toolTip()
+
+
+def test_per_mod_markdown_actually_renders_bold(qapp, request):
+    view = _view(qapp, request, _manifest([
+        {"name": "A", "source": {"type": "nexus", "modId": 1, "fileId": 2,
+                                 "instructions": "**Important:** read this."}},
+    ]))
+
+    tooltip = view._table.item(0, 0).toolTip()
+    # Markdown's "**Important:**" should become real bold styling, not show
+    # up as literal asterisks in the rendered HTML (Qt's own Markdown-to-
+    # richtext conversion emits "font-weight:700", not a <strong> tag).
+    assert "font-weight:700" in tooltip
+    assert "**Important:**" not in tooltip
