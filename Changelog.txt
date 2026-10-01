@@ -22,6 +22,12 @@ keeps release tooling from matching the wrong section).
 - Fixed Sort Load Order's review list showing completely empty for mods that follow a Collection's order: they were correctly left unmoved, but silently dropped from the display too, not just from re-sorting
 - Fixed a freshly-accepted author-note rule showing "Your rule is broken" -- accepting a note only records it, it doesn't reorder the modlist, so the generic "went stale" wording was wrong for a rule that was never applied in the first place; it now says so plainly
 - Fixed a mod with no load-order entry at all (one that overwrites base-game files directly rather than through its own module, e.g. a simple texture/icon replacer) reading as "not in the load order" in a way that sounded like it wasn't installed, and inviting a decision that could never actually be resolved -- Mosaic now says plainly that no mod manager controls this, and it no longer counts toward "N findings need a decision"
+- Fixed "Create Collection"'s Publish/Export actions building their temporary archive path directly from the collection name, so a name containing a slash (or shaped like an absolute path) could escape the intended temp folder; the name is now sanitized the same way bundled-mod archive entries already were
+- Fixed "Publish to Nexus" / "Export to file" allowing a second click to start a second worker while the first was still running, racing both against the same temporary archive
+- "Create Collection" now blocks export/publish, the same way the existing Export Manifest tab already does, when a mod's source is Nexus but it has no File ID set, instead of silently publishing an invalid entry
+- Fixed the Category chosen in "Create Collection" never actually reaching the published collection on Nexus
+- Fixed Load Order Insights' "N finding(s) need a decision" banner never reaching zero once every remaining finding had been marked "Never Together" -- it kept counting them anyway
+- Extended the mod.io off-site auto-resolve fix to the network-fetched "Browse Collections" preview as well -- previously only a locally-imported collection's preview knew a mod.io "browse" entry would actually install automatically instead of needing a manual download
 
 ---
 
