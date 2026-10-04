@@ -3854,7 +3854,7 @@ class MainWindow(QMainWindow):
             threading.Thread(target=self._preflight_apply, args=(ctx,),
                              daemon=True, name="col-preflight-apply").start()
 
-        if not self._wizard_run_restore(_restored):
+        if not self._wizard_run_restore(_restored, ignore_col_install=True):
             self._preflight_ev.emit("fix-failed", (ctx, self.tr(
                 "Couldn't start Restore right now (a deploy or restore may be running). "
                 "Try again in a moment.")))
@@ -9097,7 +9097,7 @@ class MainWindow(QMainWindow):
             except Exception as e:
                 log_fn(f"error for {game.name}: {e}")
 
-    def _on_restore(self):
+    def _on_restore(self, *, ignore_col_install: bool = False):
         game = self._gs.game
         if game is None or not game.is_configured():
             self._notify(self.tr("No configured game selected."), "warning")
@@ -9110,8 +9110,13 @@ class MainWindow(QMainWindow):
         # profile — see _install_paths / _start_deploy for the full
         # explanation). Released by _drain_pending_after_staged. Coalesce
         # duplicate restore requests.
+        # *ignore_col_install* — the collection preflight (see
+        # _preflight_restore_then_apply) runs its own Restore step WHILE
+        # _col_install_running is True, before any profile exists or any
+        # file is staged. Queuing behind "the current install" there would
+        # deadlock: the install is itself blocked waiting on this restore.
         if getattr(self, "_install_running", False) \
-                or getattr(self, "_col_install_running", False) \
+                or (getattr(self, "_col_install_running", False) and not ignore_col_install) \
                 or getattr(self, "_staged_finish_running", False) \
                 or self._staged_finish_queue:
             if not any(getattr(cb, "_kind", None) == "restore"
@@ -9945,20 +9950,22 @@ class MainWindow(QMainWindow):
         self._on_deploy()
         return True
 
-    def _wizard_run_restore(self, on_done) -> bool:
+    def _wizard_run_restore(self, on_done, *, ignore_col_install: bool = False) -> bool:
         """Start a Restore (undeploy) for a wizard step through the normal
         restore path — root-flagged mods, active-profile dir and the deploy
         flag are handled there, which game.restore() alone doesn't do.
         *on_done(ok)* fires on the UI thread when it finishes (a restore queued
         behind an install fires once it has run). Returns False when one can't
         be started now (unconfigured game, or a deploy/restore already running).
+        *ignore_col_install* — see _on_restore; set by the collection preflight,
+        which runs its own Restore step before any profile/install exists.
         """
         game = self._gs.game
         if (game is None or not game.is_configured()
                 or not hasattr(game, "restore") or self._deploy_running):
             return False
         self._restore_done_hooks.append(on_done)
-        self._on_restore()
+        self._on_restore(ignore_col_install=ignore_col_install)
         return True
 
     def _wizard_refresh_plugins(self):

@@ -94,7 +94,7 @@ class Harness(QMainWindow):
     def _notify(self, text, state="info", sticky=False):
         self.notes.append(text)
 
-    def _wizard_run_restore(self, on_done):
+    def _wizard_run_restore(self, on_done, *, ignore_col_install: bool = False):
         self.restore_calls += 1
         if self.restore_ok:
             marker = self.game.root / "Data" / ".mm_deployed"
