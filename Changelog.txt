@@ -4,6 +4,12 @@ reset to v1.0.0; they keep Amethyst Mod Manager's original numbering, which
 overlaps the numbers above, and the prefix is what keeps the two apart (and
 keeps release tooling from matching the wrong section).
 
+- v1.10.1
+### Bug Fixes
+- Fixed a collection-update preflight deadlock on Skyrim SE/AE: when the game needed restoring to vanilla before a runtime-version switch, the Restore step deferred itself behind the collection install it was itself blocking, freezing the "Restoring the game to vanilla first…" dialog forever with Cancel disabled
+
+---
+
 - v1.10.0
 ### Additions
 - Brought The Witcher 3 up to the same Collection-install standard as Baldur's Gate 3. A native mods.settings writer gives TW3's own same-file conflicts (several mods all overriding one vanilla script, invisible until now) a real, curator-respecting resolution instead of TW3's own undefined default -- ranked from an installed Collection's own load order when one covers a mod, falling back to modlist.txt order for anything outside it. Confirmed against a real 6-way conflict that the engine resolves ties by LOWEST Priority number, not highest as every other convention in this codebase (and Vortex's own extension source) would suggest -- verified the hard way against the real game, not just inferred from documentation
