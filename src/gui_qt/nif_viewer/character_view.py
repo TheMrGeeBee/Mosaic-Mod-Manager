@@ -670,6 +670,13 @@ class CharacterView(QWidget):
         if res["problems"]:
             parts.append(self.tr("could not load: {0}").format("; ".join(res["problems"])))
         self._info.setText(" · ".join(parts))
+        # Must run AFTER setCurrentIndex(0) above: QStackedWidget raises its
+        # newly-current page when switching, which buries the record-info
+        # overlay if it was already raised beforehand (_on_equip_ready calls
+        # _update_record_card() before this async rebuild completes) -- only
+        # matters the first time the stack ever leaves the initial "Building
+        # the character…" placeholder, but re-raising here is correct every time.
+        self._update_record_card()
 
     def _check_gl(self):
         if self._viewport.error() and self._stack.currentIndex() == 0:

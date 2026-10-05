@@ -550,7 +550,6 @@ class NifViewerView(QWidget):
             self._info.setText(self._describe(info))
             self._record_card.set_data([])
             return
-        self._update_record_card(res)
         src = self._source()
         if src == _SRC_TEXTURE:
             first = next((res["images"][i] for i in sorted(res["images"])), None)
@@ -565,6 +564,14 @@ class NifViewerView(QWidget):
             self._apply_mode()
             self._stack.setCurrentIndex(_PAGE_MESH)
             QTimer.singleShot(400, self._check_gl)
+        # Must run AFTER the setCurrentIndex() calls above: QStackedWidget
+        # raises its newly-current page when switching, which buries this
+        # overlay if it was already raised beforehand -- only matters the
+        # FIRST time the stack ever leaves the initial placeholder page
+        # (later selections don't change the current index, so no re-raise
+        # happens there and the ordering doesn't matter) -- but always
+        # updating last is simplest and correct in every case.
+        self._update_record_card(res)
         self._info.setText(self._describe(info))
 
     def _apply_mode(self):
