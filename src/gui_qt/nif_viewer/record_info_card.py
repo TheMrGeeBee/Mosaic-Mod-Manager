@@ -1,8 +1,9 @@
 """
 record_info_card.py
-RecordInfoCard -- a flat, app-styled overlay card showing the ARMO record
-data (Utils.plugins.armor_record_details.ArmorInfo) for the mesh currently
-selected in the NIF Viewer or Character tab.
+RecordInfoCard -- a flat, app-styled overlay card showing the record data
+(Utils.plugins.record_info.RecordInfo, any handled type -- Armor, Weapon,
+Potion, a generic Static, ...) for the mesh currently selected in the NIF
+Viewer or Character tab.
 
 Non-modal, parented on the viewport's own QStackedWidget (not on MeshViewport
 itself) so it floats above whichever page is current without being one of
@@ -12,6 +13,13 @@ siblings overlapping it, so no changes are needed in gl_viewport.py.
 Only fields derivable from a static plugin record are shown; a live
 placed-reference's own Ref Form ID / world Position have no equivalent here
 and are intentionally not part of this card.
+
+Fixed rows (Editor ID/Base Form ID/Base Type/Textures/Keywords/Value/Weight/
+Is Enabled) are common to every type; everything type-specific (Armor Type/
+Equip Slots/Armor Addon for ARMO, Weapon Type/Damage for WEAP, Soul Size/
+Capacity for SLGM, ...) comes from RecordInfo.extra_fields and is rendered
+into a small nested QFormLayout rebuilt on every _render() call, rather than
+every type's fields being hardcoded rows here.
 """
 from __future__ import annotations
 
@@ -42,9 +50,9 @@ class ClickableLabel(QLabel):
 
 
 class RecordInfoCard(QFrame):
-    """set_data([], ...) hides the card; a non-empty ArmorInfo list shows it,
-    with the first entry (the load-order winner) active by default -- click
-    the "+N more" line to browse the rest and pick a different one."""
+    """set_data([], ...) hides the card; a non-empty RecordInfo list shows
+    it, with the first entry (the load-order winner) active by default --
+    click the "+N more" line to browse the rest and pick a different one."""
 
     def __init__(self, parent: "QWidget | None" = None):
         super().__init__(parent)
@@ -55,7 +63,6 @@ class RecordInfoCard(QFrame):
         self._active_index = 0
         self._textures_found = 0
         self._textures_missing = 0
-        self._slot_labels: "dict[int, str] | None" = None
 
         form = QFormLayout(self)
         form.setContentsMargins(14, 12, 14, 12)
@@ -78,17 +85,30 @@ class RecordInfoCard(QFrame):
             ("base_type", self.tr("Base Type")),
             ("textures", self.tr("Textures")),
             ("keywords", self.tr("Keywords")),
-            ("armor_type", self.tr("Armor Type")),
             ("value", self.tr("Value")),
             ("weight", self.tr("Weight")),
-            ("slots", self.tr("Equip Slots")),
-            ("armature", self.tr("Armor Addon")),
-            ("enabled", self.tr("Is Enabled")),
         ):
             value = QLabel()
             value.setTextInteractionFlags(Qt.TextSelectableByMouse)
             form.addRow(f"{label}:", value)
             self._rows[key] = value
+
+        # Type-specific rows (Armor Type/Equip Slots/Armor Addon, Weapon
+        # Type/Damage, Soul Size/Capacity, ...) -- rebuilt per record from
+        # RecordInfo.extra_fields, since different types need different rows.
+        self._extra_container = QWidget()
+        self._extra_container.setStyleSheet("background:transparent;")
+        self._extra_layout = QFormLayout(self._extra_container)
+        self._extra_layout.setContentsMargins(0, 0, 0, 0)
+        self._extra_layout.setSpacing(4)
+        self._extra_layout.setLabelAlignment(Qt.AlignLeft)
+        self._extra_layout.setRowWrapPolicy(QFormLayout.DontWrapRows)
+        form.addRow(self._extra_container)
+
+        enabled_value = QLabel()
+        enabled_value.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        form.addRow(f"{self.tr('Is Enabled')}:", enabled_value)
+        self._rows["enabled"] = enabled_value
 
         self.hide()
 
@@ -120,21 +140,17 @@ class RecordInfoCard(QFrame):
         self.raise_()
 
     # -- content ----------------------------------------------------------------------------
-    def set_data(self, infos: list, textures_found: int = 0, textures_missing: int = 0,
-                 slot_labels: "dict[int, str] | None" = None):
-        """*infos* is every ArmorInfo sharing the selected mesh, in load-order
-        priority order (winner first); an empty list hides the card. The
-        first entry is shown by default -- click the "+N more" line to pick
-        a different one from the full set (Utils.plugins.armor_record_details
-        can't tell which one you actually meant, since they're genuinely
-        distinct records that happen to share a model). *slot_labels*
-        optionally maps a slot number to a game-specific friendly name
-        (Utils.nif.character's GameProfile.slot_groups, reversed)."""
+    def set_data(self, infos: list, textures_found: int = 0, textures_missing: int = 0):
+        """*infos* is every RecordInfo sharing the selected mesh, in
+        load-order priority order (winner first); an empty list hides the
+        card. The first entry is shown by default -- click the "+N more"
+        line to pick a different one from the full set (a mesh shared by
+        several genuinely distinct records has no single "right" one to
+        show)."""
         self._infos = infos
         self._active_index = 0
         self._textures_found = textures_found
         self._textures_missing = textures_missing
-        self._slot_labels = slot_labels
         if not infos:
             self.hide()
             return
@@ -164,7 +180,7 @@ class RecordInfoCard(QFrame):
 
         self._rows["editor_id"].setText(info.editor_id or _DASH)
         self._rows["formid"].setText(info.display_formid or _DASH)
-        self._rows["base_type"].setText(self.tr("Armor (ARMO)"))
+        self._rows["base_type"].setText(info.base_type_label or _DASH)
         if self._textures_found or self._textures_missing:
             text = self.tr("{0} found").format(self._textures_found)
             if self._textures_missing:
@@ -173,25 +189,18 @@ class RecordInfoCard(QFrame):
             text = _DASH
         self._rows["textures"].setText(text)
         kw_count = len(info.keyword_labels)
-        kw_label = self.tr("{0}").format(kw_count) if kw_count else "0"
-        self._rows["keywords"].setText(kw_label)
+        self._rows["keywords"].setText(str(kw_count))
         self._rows["keywords"].setToolTip(", ".join(info.keyword_labels))
-        self._rows["armor_type"].setText(info.armor_type or _DASH)
-        self._rows["value"].setText(str(info.value))
-        self._rows["weight"].setText(f"{info.weight:g}")
-        self._rows["slots"].setText(_format_slots(info.slots, self._slot_labels))
-        self._rows["armature"].setText(str(len(info.arma_keys)))
+        self._rows["value"].setText(str(info.value) if info.value is not None else _DASH)
+        self._rows["weight"].setText(f"{info.weight:g}" if info.weight is not None else _DASH)
         self._rows["enabled"].setText(self.tr("Yes") if info.enabled else self.tr("No"))
 
+        while self._extra_layout.rowCount():
+            self._extra_layout.removeRow(0)
+        for label, text in info.extra_fields:
+            value = QLabel(text or _DASH)
+            value.setTextInteractionFlags(Qt.TextSelectableByMouse)
+            self._extra_layout.addRow(f"{label}:", value)
+        self._extra_container.setVisible(bool(info.extra_fields))
+
         self._reposition()
-
-
-def _format_slots(slots: "frozenset[int]", slot_labels: "dict[int, str] | None") -> str:
-    if not slots:
-        return _DASH
-    labels = slot_labels or {}
-    parts = []
-    for s in sorted(slots):
-        name = labels.get(s)
-        parts.append(f"{s} ({name})" if name else str(s))
-    return ", ".join(parts)

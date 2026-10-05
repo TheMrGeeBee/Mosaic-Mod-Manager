@@ -30,7 +30,6 @@ from Utils.nif.asset_catalog import BASE, AssetCatalog, AssetEntry
 from Utils.nif.catalog_loader import build_catalog
 from Utils.nif.character import (
     auto_gender, body_paths, compose, detect_gender, detect_weight, guess_gender, profile_for_game,
-    slot_label_map,
 )
 from Utils.nif.nif_reader import (
     NifError, NifUnsupported, format_label, read_nif, version_string,
@@ -187,7 +186,6 @@ class NifViewerView(QWidget):
         rv.addWidget(self._stack, 1)
         self._record_card = RecordInfoCard(self._stack)
         self._record_card.attach(self._stack)
-        self._slot_labels = slot_label_map(self._profile)
         self._info = QLabel()
         self._info.setStyleSheet(
             f"background:{_c(pal, 'BG_HEADER')}; color:{_c(pal, 'TEXT_MAIN')}; padding:4px 10px;")
@@ -520,11 +518,10 @@ class NifViewerView(QWidget):
         self._stack.setCurrentIndex(_PAGE_IMAGE)
 
     def _update_record_card(self, res: dict):
-        infos = (self._catalog.armor_info(self._entry)
+        infos = (self._catalog.record_info(self._entry)
                  if self._catalog is not None and self._entry is not None else [])
         self._record_card.set_data(
-            infos, len(res.get("images", {})), len(set(res.get("missing", ()))),
-            self._slot_labels)
+            infos, len(res.get("images", {})), len(set(res.get("missing", ()))))
 
     def _show_mesh(self):
         res = self._last

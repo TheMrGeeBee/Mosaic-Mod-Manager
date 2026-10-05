@@ -160,7 +160,7 @@ def build_catalog(game, profile_dir: "Path | None", staging_dir: "Path | None") 
         pass
 
     authoritative_slots: dict = {}
-    armor_records_index: dict = {}
+    item_records_index: dict = {}
     if getattr(game, "game_id", None) in EXPECTED_NIF_FORMAT:
         try:
             from Utils.plugins.armor_records import build_slot_index
@@ -168,8 +168,8 @@ def build_catalog(game, profile_dir: "Path | None", staging_dir: "Path | None") 
         except Exception:
             pass                                   # best-effort: never fail a catalog build over plugin data
         try:
-            from Utils.plugins.armor_record_details import build_armor_index
-            armor_records_index = build_armor_index(game, profile_dir)
+            from Utils.plugins.item_record_details import build_item_index
+            item_records_index = build_item_index(game, profile_dir)
         except Exception:
             pass                                   # best-effort: never fail a catalog build over plugin data
 
@@ -182,7 +182,7 @@ def build_catalog(game, profile_dir: "Path | None", staging_dir: "Path | None") 
         strips_for=lambda m: mflogic.read_strip_prefixes(profile_dir, m),
         expected_nif_format=EXPECTED_NIF_FORMAT.get(getattr(game, "game_id", None)),
         authoritative_slots=authoritative_slots,
-        armor_records=armor_records_index,
+        item_records=item_records_index,
         # Fallout 4's own dismemberment segments aren't reliable enough to
         # guess a slot from (verified: a real mesh's own segments claimed slot
         # 60/Pip-Boy alongside meaningless small numbers) — only trust a real

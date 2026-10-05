@@ -29,7 +29,7 @@ from Utils.nif.catalog_loader import build_catalog
 from Utils.nif.character import (
     SKYRIM_PROFILE, GameProfile, assemble, blend_scene, body_paths, bone_transforms, covered_slots,
     detect_gender, fits_slot, gender_fits, guess_gender, is_race_variant, is_wearable_path,
-    profile_for_game, slot_group, slot_label_map, weight_variant,
+    profile_for_game, slot_group, weight_variant,
 )
 from Utils.nif.nif_reader import NifError, NifUnsupported, format_label, read_nif
 from gui_qt.nif_viewer.asset_loader import AssetLoader
@@ -206,7 +206,6 @@ class CharacterView(QWidget):
         self._pieces: dict[str, AssetEntry] = {}
         self._piece_gender: dict[str, "str | None"] = {}   # group → the gender its mesh is made for
         self._current_group: "str | None" = None       # which equipped slot the info card reflects
-        self._record_slot_labels = slot_label_map(self._profile)
         self._pending: list[AssetEntry] = []          # equips requested before the catalog was ready
         self._gen = 0
         self._first_build = True
@@ -481,9 +480,9 @@ class CharacterView(QWidget):
 
     def _update_record_card(self):
         entry = self._pieces.get(self._current_group) if self._current_group else None
-        infos = (self._catalog.armor_info(entry)
+        infos = (self._catalog.record_info(entry)
                  if self._catalog is not None and entry is not None else [])
-        self._record_card.set_data(infos, 0, 0, self._record_slot_labels)
+        self._record_card.set_data(infos, 0, 0)
 
     def _unequip(self, group: str):
         if self._pieces.pop(group, None) is not None:
