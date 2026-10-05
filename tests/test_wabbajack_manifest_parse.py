@@ -168,6 +168,25 @@ def test_unknown_directive_keeps_raw_and_destination():
 # Game mapping
 # ---------------------------------------------------------------------------
 
+def test_every_mapped_game_is_a_real_mosaic_game_name():
+    """WABBAJACK_GAME_MAP values must equal a handler's ``name`` exactly, or
+    preflight would reject every modlist for that game. Scans handler source
+    (``def name`` ... ``return "X"``) instead of importing the handlers."""
+    import re
+    from pathlib import Path
+
+    from Utils.wabbajack.wabbajack_manifest import WABBAJACK_GAME_MAP
+
+    games_dir = Path(__file__).resolve().parent.parent / "src" / "Games"
+    pattern = re.compile(r'def name\(self\)[^:]*:\s*\n\s*return\s+"([^"]+)"')
+    handler_names = set()
+    for py in games_dir.rglob("*.py"):
+        handler_names.update(pattern.findall(py.read_text(encoding="utf-8", errors="replace")))
+    assert handler_names, "found no game handler names -- scan pattern is stale"
+    missing = {k: v for k, v in WABBAJACK_GAME_MAP.items() if v not in handler_names}
+    assert not missing
+
+
 def test_mosaic_game_for_known_and_unknown():
     assert mosaic_game_for("SkyrimSpecialEdition") == "Skyrim Special Edition"
     assert mosaic_game_for("CyberpunkTheGame") is None

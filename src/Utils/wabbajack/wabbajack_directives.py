@@ -13,14 +13,15 @@ byte-for-byte fidelity against Wabbajack's expected output hash needs
 dedicated validation against a real modlist first (see the plan's "key open
 risks" note), and texture transforms are an explicit v1 non-goal.
 
-``RemappedInlineFile`` is extracted as-is, without substituting the
-game-install-path placeholders real Wabbajack modlists use -- the exact
-placeholder token format isn't confirmed against a real modlist yet. In
-practice this means a real ``RemappedInlineFile`` directive will currently
-fail its own hash check (the directive's ``Hash`` is almost certainly the
-*remapped* output's hash, not the raw template's), which is the correct,
-loud failure mode for an unfinished feature rather than silently installing
-a wrong file.
+``RemappedInlineFile`` (typically an INI or profile file that records
+absolute paths) has Wabbajack's path placeholders replaced with the user's
+real paths, from a table built by :func:`path_substitutions`. Its output is
+*not* hash-verified: it depends on where this particular user installed
+things, so it can't match a hash computed when the modlist was compiled.
+The placeholder spellings (``{--||GAME_PATH_MAGIC_BACK||--}`` and its
+``DOUBLE_BACK``/``FORWARD`` and ``MO2``/``DOWNLOAD`` siblings) follow
+Wabbajack's own constants but haven't been checked against a real modlist
+from this sandbox.
 """
 from __future__ import annotations
 
@@ -53,6 +54,38 @@ class DirectiveResult:
     unsupported: bool = False
 
 
+# Directive kinds apply_directive() can't produce yet; preflight reports a
+# modlist containing any of these instead of letting it install partially.
+UNSUPPORTED_DIRECTIVE_TYPES = (CreateBSADirective, TransformedTextureDirective, UnknownDirective)
+
+
+def path_substitutions(*, game_path: "str | None" = None, install_path: "str | None" = None,
+                       download_path: "str | None" = None) -> "dict[str, str]":
+    """Placeholder -> replacement table for ``RemappedInlineFile`` content.
+
+    Paths are given as the game will see them -- under Proton, Windows-style
+    (``Z:\\home\\...``). Each root gets the three spellings Wabbajack uses:
+    backslashes, doubled backslashes (for escaped strings), and forward
+    slashes.
+    """
+    table: "dict[str, str]" = {}
+    for root, path in (("GAME", game_path), ("MO2", install_path), ("DOWNLOAD", download_path)):
+        if not path:
+            continue
+        back = str(path).replace("/", "\\")
+        table[f"{{--||{root}_PATH_MAGIC_BACK||--}}"] = back
+        table[f"{{--||{root}_PATH_MAGIC_DOUBLE_BACK||--}}"] = back.replace("\\", "\\\\")
+        table[f"{{--||{root}_PATH_MAGIC_FORWARD||--}}"] = back.replace("\\", "/")
+    return table
+
+
+def _remap_file(path: Path, substitutions: "dict[str, str]") -> None:
+    data = path.read_bytes()
+    for placeholder, replacement in substitutions.items():
+        data = data.replace(placeholder.encode("ascii"), replacement.encode("utf-8"))
+    path.write_bytes(data)
+
+
 def _verify(directive: Directive, dest: Path) -> DirectiveResult:
     expected = getattr(directive, "hash", "")
     if expected and not hashes_match(expected, hash_file(dest)):
@@ -63,16 +96,19 @@ def _verify(directive: Directive, dest: Path) -> DirectiveResult:
 
 
 def apply_directive(directive: Directive, *, dest_root: Path, wabbajack_path: "str | Path",
-                     archive_index: ArchiveIndex) -> DirectiveResult:
-    """Apply one directive, writing ``dest_root / directive.to``."""
-    if isinstance(directive, (CreateBSADirective, TransformedTextureDirective)):
-        return DirectiveResult(
-            success=False, unsupported=True,
-            error=f"{type(directive).__name__} is not implemented yet")
+                     archive_index: ArchiveIndex,
+                     substitutions: "dict[str, str] | None" = None) -> DirectiveResult:
+    """Apply one directive, writing ``dest_root / directive.to``.
+    ``substitutions`` (from :func:`path_substitutions`) is used only by
+    ``RemappedInlineFile``."""
     if isinstance(directive, UnknownDirective):
         return DirectiveResult(
             success=False, unsupported=True,
             error=f"unrecognized directive type {directive.type_name!r}")
+    if isinstance(directive, UNSUPPORTED_DIRECTIVE_TYPES):
+        return DirectiveResult(
+            success=False, unsupported=True,
+            error=f"{type(directive).__name__} is not implemented yet")
 
     dest = dest_root / directive.to
     dest.parent.mkdir(parents=True, exist_ok=True)
@@ -107,6 +143,9 @@ def apply_directive(directive: Directive, *, dest_root: Path, wabbajack_path: "s
             return DirectiveResult(
                 success=False,
                 error=f"inline data {directive.source_data_id!r} not found in container")
+        if isinstance(directive, RemappedInlineFileDirective):
+            _remap_file(dest, substitutions or {})
+            return DirectiveResult(success=True, path=dest)
         return _verify(directive, dest)
 
     return DirectiveResult(success=False, unsupported=True,

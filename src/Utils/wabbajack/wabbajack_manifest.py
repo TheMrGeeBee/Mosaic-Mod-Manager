@@ -253,7 +253,9 @@ def parse_directive(d: dict) -> Directive:
 # GameType -> Mosaic's internal game identifiers (the extensibility seam)
 # ---------------------------------------------------------------------------
 
-# Wabbajack's GameType enum names -> Mosaic's own game names (src/Games/...).
+# Wabbajack's GameType enum names -> Mosaic's own game names (the ``name``
+# each handler under src/Games/ returns; test_wabbajack_manifest_parse checks
+# every value here against the real handlers).
 # Only Bethesda-engine games are wired end-to-end in v1; a GameType absent
 # here is rejected at preflight with a clear message instead of being
 # attempted and silently mishandled. Extending to BG3/Cyberpunk 2077 later is
@@ -265,7 +267,7 @@ WABBAJACK_GAME_MAP: "dict[str, str]" = {
     "SkyrimSpecialEdition": "Skyrim Special Edition",
     "SkyrimVR": "Skyrim VR",
     "Enderal": "Enderal",
-    "EnderalSpecialEdition": "Enderal Special Edition",
+    "EnderalSpecialEdition": "Enderal SE",
     "Fallout4": "Fallout 4",
     "Fallout4VR": "Fallout 4 VR",
     "FalloutNewVegas": "Fallout New Vegas",

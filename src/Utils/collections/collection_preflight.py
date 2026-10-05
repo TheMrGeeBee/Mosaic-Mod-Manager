@@ -231,11 +231,13 @@ def check_disk_space(
     archives_size: int,
     *,
     free_fn: Callable[[Path], int] | None = None,
+    noun: str = "collection",
 ) -> list[Check]:
     """Free space for the extracted mods (block) and archives on top (warn).
 
     Sizes come from the collection (installed size / sum of archive sizes). The
-    filesystem may compress, so only "clearly doesn't fit" blocks.
+    filesystem may compress, so only "clearly doesn't fit" blocks. ``noun``
+    names the thing being installed in the message (e.g. "modlist").
     """
     if install_size <= 0:
         return []
@@ -247,7 +249,7 @@ def check_disk_space(
     gib = 1 << 30
     if have < install_size:
         return [Check("disk-space", False, "Not enough free disk space",
-                      f"The collection needs about {install_size / gib:.0f} GB for its mods "
+                      f"The {noun} needs about {install_size / gib:.0f} GB for its mods "
                       f"and {have / gib:.0f} GB is free where they are staged.")]
     same_fs = cache_dir is not None and _same_fs(root, Path(cache_dir))
     need_both = install_size + (archives_size if same_fs else 0)

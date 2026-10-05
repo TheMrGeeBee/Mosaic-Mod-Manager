@@ -1,0 +1,119 @@
+"""Checks that run before a Wabbajack modlist install starts -- before any
+profile is created or anything is downloaded -- so a modlist that can't be
+installed is refused up front instead of half-installing.
+
+Pure logic: the app gathers the inputs and shows the result. Results use
+``collection_preflight``'s ``Check`` record so the existing preflight overlay
+can display them unchanged.
+
+Blocking: a game Mosaic can't install Wabbajack modlists for (or a modlist
+for a different game than the active one), directives Mosaic can't build
+yet, archives from download sources it doesn't recognise, and clearly
+insufficient disk space. Everything else that may need the user (manual
+downloads, Nexus without Premium, LoversLab without a login) is a warning.
+"""
+from __future__ import annotations
+
+from collections import Counter
+from pathlib import Path
+from typing import Callable
+
+from Utils.collections.collection_preflight import Check, check_disk_space
+
+from .wabbajack_directives import UNSUPPORTED_DIRECTIVE_TYPES
+from .wabbajack_manifest import (
+    CreateBSADirective,
+    LoversLabState,
+    ManualState,
+    ModList,
+    NexusState,
+    TransformedTextureDirective,
+    UnknownDirective,
+    UnknownState,
+    mosaic_game_for,
+)
+
+FIX_LOVERSLAB_LOGIN = "loverslab-login"
+
+_DIRECTIVE_LABELS = {
+    CreateBSADirective: "rebuilt BSA/BA2 archives",
+    TransformedTextureDirective: "converted textures",
+}
+
+
+def _plural(n: int, word: str) -> str:
+    return f"{n} {word}{'' if n == 1 else 's'}"
+
+
+def check_game(modlist: ModList, active_game_name: str) -> "list[Check]":
+    target = mosaic_game_for(modlist.game_type)
+    if target is None:
+        return [Check("game", False, "Game not supported yet",
+                      f"This modlist is for {modlist.game_type or 'an unknown game'}, and "
+                      "Mosaic can't install Wabbajack modlists for that game yet.")]
+    if active_game_name != target:
+        return [Check("game", False, "Modlist is for a different game",
+                      f"This modlist is for {target}. Switch to {target} in Mosaic, "
+                      "then import it again.")]
+    return [Check("game", True, f"Modlist is for {target}")]
+
+
+def check_directives(modlist: ModList) -> "list[Check]":
+    counts: Counter = Counter()
+    for d in modlist.directives:
+        if isinstance(d, UnknownDirective):
+            counts[f"unrecognised steps ({d.type_name.split(',')[0] or 'no type'})"] += 1
+        elif isinstance(d, UNSUPPORTED_DIRECTIVE_TYPES):
+            counts[_DIRECTIVE_LABELS[type(d)]] += 1
+    if not counts:
+        return [Check("directives", True, "Mosaic can build every file in this modlist")]
+    parts = "; ".join(f"{n} {label}" for label, n in counts.most_common())
+    return [Check("directives", False, "Modlist needs features Mosaic can't install yet",
+                  f"{parts}. Installing it now would leave the setup incomplete.")]
+
+
+def check_sources(modlist: ModList, *, nexus_premium: bool,
+                  loverslab_logged_in: bool) -> "list[Check]":
+    by_kind: Counter = Counter(type(a.state) for a in modlist.archives)
+    checks: "list[Check]" = []
+    if by_kind[UnknownState]:
+        names = sorted({a.state.type_name.split(",")[0] for a in modlist.unsupported_archives})
+        checks.append(Check(
+            "sources", False, "Some downloads come from sources Mosaic doesn't recognise",
+            f"{_plural(by_kind[UnknownState], 'archive')} ({', '.join(names)})."))
+    if by_kind[ManualState]:
+        checks.append(Check(
+            "manual", False, "Some files must be downloaded by hand",
+            f"{_plural(by_kind[ManualState], 'archive')} can only be downloaded from a "
+            "web page; Mosaic will open each one for you during the install.",
+            blocking=False))
+    if by_kind[NexusState] and not nexus_premium:
+        checks.append(Check(
+            "nexus-premium", False, "Nexus downloads need Premium to run automatically",
+            f"{_plural(by_kind[NexusState], 'archive')} come from Nexus Mods. Without "
+            "Nexus Premium each one needs a click on the Nexus website.",
+            blocking=False))
+    if by_kind[LoversLabState] and not loverslab_logged_in:
+        checks.append(Check(
+            "loverslab", False, "Log in to LoversLab",
+            f"{_plural(by_kind[LoversLabState], 'archive')} come from LoversLab, which "
+            "needs you to be logged in.",
+            blocking=False, fix=FIX_LOVERSLAB_LOGIN))
+    if not checks:
+        checks.append(Check("sources", True, "Mosaic can download every archive"))
+    return checks
+
+
+def run_preflight(modlist: ModList, *, active_game_name: str,
+                  staging_root: "str | Path | None", cache_dir: "str | Path | None",
+                  nexus_premium: bool, loverslab_logged_in: bool,
+                  free_fn: "Callable[[Path], int] | None" = None) -> "list[Check]":
+    """Every preflight check for ``modlist``, in display order."""
+    return [
+        *check_game(modlist, active_game_name),
+        *check_directives(modlist),
+        *check_sources(modlist, nexus_premium=nexus_premium,
+                       loverslab_logged_in=loverslab_logged_in),
+        *check_disk_space(staging_root, cache_dir, modlist.total_install_size,
+                          modlist.total_archive_size, free_fn=free_fn, noun="modlist"),
+    ]

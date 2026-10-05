@@ -9,7 +9,7 @@ import zipfile
 import bsdiff4
 
 from Utils.wabbajack import wabbajack_manifest as wm
-from Utils.wabbajack.wabbajack_directives import apply_directive
+from Utils.wabbajack.wabbajack_directives import apply_directive, path_substitutions
 from Utils.wabbajack.wabbajack_hash import hash_bytes
 from Utils.wabbajack.wabbajack_vfs import ArchiveIndex
 
@@ -143,32 +143,37 @@ def test_inline_file_missing_data_id_reports_error(tmp_path):
     assert "inline data" in result.error
 
 
-def test_remapped_inline_file_extracts_raw_without_substitution(tmp_path):
-    """Documents current (incomplete) behavior: no placeholder substitution
-    is performed, so a directive whose Hash reflects the *remapped* output
-    will fail its own hash check -- a loud, correct failure for an
-    unfinished feature rather than installing the wrong bytes."""
-    raw_template = b"%GAME_PATH%/Data/foo.esp"
+def test_path_substitutions_spellings():
+    table = path_substitutions(game_path="Z:\\games\\Skyrim", install_path="Z:/mosaic/list")
+    assert table["{--||GAME_PATH_MAGIC_BACK||--}"] == "Z:\\games\\Skyrim"
+    assert table["{--||GAME_PATH_MAGIC_DOUBLE_BACK||--}"] == "Z:\\\\games\\\\Skyrim"
+    assert table["{--||GAME_PATH_MAGIC_FORWARD||--}"] == "Z:/games/Skyrim"
+    assert table["{--||MO2_PATH_MAGIC_BACK||--}"] == "Z:\\mosaic\\list"
+    assert not any("DOWNLOAD" in k for k in table)  # not given -> not substituted
+
+
+def test_remapped_inline_file_substitutes_paths_without_hash_check(tmp_path):
+    template = (b"sResourceDataDirsFinal=\n"
+                b"sLocalSavePath={--||MO2_PATH_MAGIC_DOUBLE_BACK||--}\\\\saves\n"
+                b"game={--||GAME_PATH_MAGIC_FORWARD||--}/Data\n")
     wj_path = tmp_path / "list.wabbajack"
-    _make_wabbajack_file(wj_path, inline_files={"data-1": raw_template})
+    _make_wabbajack_file(wj_path, inline_files={"data-1": template})
+    # The compiled Hash can't match per-user output; it must not be enforced.
+    directive = wm.RemappedInlineFileDirective(
+        to="profiles/Default/Skyrim.ini", hash="compile-time-hash==", size=len(template),
+        source_data_id="data-1")
 
-    # Hash matches the raw (unsubstituted) bytes -- succeeds today.
-    directive_raw_hash = wm.RemappedInlineFileDirective(
-        to="profiles/Default/plugins.txt", hash=hash_bytes(raw_template),
-        size=len(raw_template), source_data_id="data-1")
+    dest_root = tmp_path / "dest"
     result = apply_directive(
-        directive_raw_hash, dest_root=tmp_path / "dest", wabbajack_path=wj_path,
-        archive_index=ArchiveIndex(tmp_path / "scratch"))
-    assert result.success
+        directive, dest_root=dest_root, wabbajack_path=wj_path,
+        archive_index=ArchiveIndex(tmp_path / "scratch"),
+        substitutions=path_substitutions(game_path="Z:\\g\\Skyrim", install_path="Z:\\m"))
 
-    # Hash matching the (hypothetical) substituted output fails loudly.
-    directive_remapped_hash = wm.RemappedInlineFileDirective(
-        to="profiles/Default/other.txt", hash=hash_bytes(b"/real/game/path/Data/foo.esp"),
-        size=1, source_data_id="data-1")
-    result2 = apply_directive(
-        directive_remapped_hash, dest_root=tmp_path / "dest", wabbajack_path=wj_path,
-        archive_index=ArchiveIndex(tmp_path / "scratch"))
-    assert not result2.success
+    assert result.success, result.error
+    assert (dest_root / "profiles/Default/Skyrim.ini").read_bytes() == (
+        b"sResourceDataDirsFinal=\n"
+        b"sLocalSavePath=Z:\\\\m\\\\saves\n"
+        b"game=Z:/g/Skyrim/Data\n")
 
 
 # ---------------------------------------------------------------------------
