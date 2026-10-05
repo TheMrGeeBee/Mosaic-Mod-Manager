@@ -65,7 +65,7 @@ def parse_arma(rec: Record) -> "tuple[frozenset, list[str]] | None":
     return (slots, paths) if paths else None
 
 
-def _active_plugin_paths(game, profile_dir: "Path | None") -> list:
+def active_plugin_paths(game, profile_dir: "Path | None") -> list:
     """Enabled plugins in load order (lowest priority first), resolved to an
     on-disk path — mirrors `catalog_loader.build_catalog`'s own mod/BSA
     resolution so this index sees exactly the same load order it does.
@@ -175,7 +175,7 @@ def build_slot_index(game, profile_dir: "Path | None") -> "dict[str, frozenset]"
     enough (and harmless for a "does this fit slot X" filter) that they are
     merged rather than tracked separately."""
     index: "dict[str, frozenset]" = {}
-    for path in _active_plugin_paths(game, profile_dir):
+    for path in active_plugin_paths(game, profile_dir):
         try:
             records = read_records(path, {"ARMA"})
         except Exception:

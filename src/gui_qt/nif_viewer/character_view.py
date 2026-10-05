@@ -29,11 +29,12 @@ from Utils.nif.catalog_loader import build_catalog
 from Utils.nif.character import (
     SKYRIM_PROFILE, GameProfile, assemble, blend_scene, body_paths, bone_transforms, covered_slots,
     detect_gender, fits_slot, gender_fits, guess_gender, is_race_variant, is_wearable_path,
-    profile_for_game, slot_group, weight_variant,
+    profile_for_game, slot_group, slot_label_map, weight_variant,
 )
 from Utils.nif.nif_reader import NifError, NifUnsupported, format_label, read_nif
 from gui_qt.nif_viewer.asset_loader import AssetLoader
 from gui_qt.nif_viewer.gl_viewport import TEXTURED, MeshViewport
+from gui_qt.nif_viewer.record_info_card import ClickableLabel, RecordInfoCard
 from gui_qt.safe_emit import safe_emit
 from gui_qt.theme.theme_qt import _c, active_palette
 from gui_qt.worker import run_in_worker
@@ -204,6 +205,8 @@ class CharacterView(QWidget):
         self._loader = AssetLoader()
         self._pieces: dict[str, AssetEntry] = {}
         self._piece_gender: dict[str, "str | None"] = {}   # group → the gender its mesh is made for
+        self._current_group: "str | None" = None       # which equipped slot the info card reflects
+        self._record_slot_labels = slot_label_map(self._profile)
         self._pending: list[AssetEntry] = []          # equips requested before the catalog was ready
         self._gen = 0
         self._first_build = True
@@ -254,7 +257,7 @@ class CharacterView(QWidget):
         self._slot_clear: dict[str, QPushButton] = {}
         for row, (group, label) in enumerate(self._profile.groups):
             grid.addWidget(QLabel(label), row, 0)
-            name = QLabel(self.tr("— none —"))
+            name = ClickableLabel(self.tr("— none —"), lambda g=group: self._select_group(g))
             name.setStyleSheet(f"color:{_c(pal, 'TEXT_DIM')};")
             name.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
             grid.addWidget(name, row, 1)
@@ -306,6 +309,8 @@ class CharacterView(QWidget):
         self._stack.addWidget(self._message)
         self._stack.setCurrentIndex(1)
         rv.addWidget(self._stack, 1)
+        self._record_card = RecordInfoCard(self._stack)
+        self._record_card.attach(self._stack)
         self._info = QLabel()
         self._info.setStyleSheet(
             f"background:{_c(pal, 'BG_HEADER')}; color:{_c(pal, 'TEXT_MAIN')}; padding:4px 10px;")
@@ -460,22 +465,42 @@ class CharacterView(QWidget):
                 self._gender.blockSignals(False)
         self._pieces[group] = entry
         self._piece_gender[group] = gender
+        self._current_group = group            # newly-equipped piece becomes "current"
         self.equip_result.emit(self.tr("Added {0} to the character ({1})").format(
             entry.path.rsplit("/", 1)[-1], dict(self._profile.groups).get(group, group)), True)
         self._refresh_slots()
+        self._update_record_card()
         self._rebuild(reframe=False)
+
+    def _select_group(self, group: str):
+        if self._pieces.get(group) is None:
+            return                              # nothing equipped there, nothing to show
+        self._current_group = group
+        self._refresh_slots()
+        self._update_record_card()
+
+    def _update_record_card(self):
+        entry = self._pieces.get(self._current_group) if self._current_group else None
+        infos = (self._catalog.armor_info(entry)
+                 if self._catalog is not None and entry is not None else [])
+        self._record_card.set_data(infos, 0, 0, self._record_slot_labels)
 
     def _unequip(self, group: str):
         if self._pieces.pop(group, None) is not None:
             self._piece_gender.pop(group, None)
+            if self._current_group == group:
+                self._current_group = None
             self._refresh_slots()
+            self._update_record_card()
             self._rebuild(reframe=False)
 
     def _clear_all(self):
         if self._pieces:
             self._pieces.clear()
             self._piece_gender.clear()
+            self._current_group = None
             self._refresh_slots()
+            self._update_record_card()
             self._rebuild(reframe=False)
 
     def _choose(self, group: str):
@@ -498,7 +523,8 @@ class CharacterView(QWidget):
                 owner = self._catalog.base_name if e.mod == BASE else e.mod
                 lab.setText(e.path.rsplit("/", 1)[-1])
                 lab.setToolTip(f"{e.path}\n{owner}" + (f" ({e.archive})" if e.archive else ""))
-                lab.setStyleSheet(f"color:{_c(pal, 'TEXT_MAIN')};")
+                color = _c(pal, 'ACCENT') if group == self._current_group else _c(pal, 'TEXT_MAIN')
+                lab.setStyleSheet(f"color:{color}; font-weight:{'600' if group == self._current_group else '400'};")
             self._slot_clear[group].setEnabled(e is not None)
         self._remove_all.setEnabled(bool(self._pieces))
 

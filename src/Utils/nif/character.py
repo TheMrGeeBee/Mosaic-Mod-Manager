@@ -412,6 +412,23 @@ def slot_group(path: str, slots: "frozenset | None", profile: GameProfile = SKYR
     return None
 
 
+def slot_label_map(profile: GameProfile = SKYRIM_PROFILE) -> dict:
+    """{slot number: friendly group label} reversed from the profile's own
+    slot_groups/groups data -- for display only (e.g. the NIF Viewer's info
+    card), not for any slot_group()-style decision. A slot that belongs to
+    more than one group (shouldn't normally happen, but slot_groups is
+    hand-authored data) keeps whichever group label group_priority (or
+    dict order) reaches last."""
+    labels = dict(profile.groups)
+    order = profile.group_priority or profile.slot_groups.keys()
+    out: dict = {}
+    for group in order:
+        label = labels.get(group, group)
+        for slot in profile.slot_groups.get(group, ()):
+            out[slot] = label
+    return out
+
+
 def assemble(base: list[NifScene], pieces: "dict[str, NifScene]",
              bones: "dict | None" = None, profile: GameProfile = SKYRIM_PROFILE) -> NifScene:
     """The base parts (body, hands, feet, head) plus the equipped *pieces*

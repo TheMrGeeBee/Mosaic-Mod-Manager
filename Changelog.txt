@@ -4,6 +4,13 @@ reset to v1.0.0; they keep Amethyst Mod Manager's original numbering, which
 overlaps the numbers above, and the prefix is what keeps the two apart (and
 keeps release tooling from matching the wrong section).
 
+- v1.11.0
+### Additions
+- Added an armor-record info card to the NIF Viewer and Character tab: selecting a mesh now shows its real Name, Editor ID, Base Form ID (FE-compressed for ESL-flagged plugins, matching xEdit/the in-game console), Keywords, Armor Type (Light/Heavy/Clothing on Skyrim, a humanized ArmorType... keyword fallback on Fallout 4), Value, Weight, Equip Slots and Armor Addon count, read straight from the winning ARMO record across the active load order -- nothing like this existed before; the app only ever parsed ARMA (Armor Addon) records for body-slot data, never ARMO (Armor) itself, and discarded FormID/EditorID even there. New Utils.plugins.armor_record_details/formid_resolve/string_table modules handle the ARMO/KYWD parsing, FormID resolution (including ESL's separate FE-prefixed addressing), and localized FULL-name lookup (loose or BSA/BA2-packed, both Skyrim's "Skyrim_English" and Fallout 4's "Fallout4_en" naming conventions)
+- A mesh shared by many armor records (e.g. a base item's dozens of enchanted variants) now shows a "+N more item(s) share this mesh" link that opens a resizable, searchable, sortable list of every one of them -- picking a row swaps the card to show that variant's own details, so the specific item you're after doesn't stay buried behind whichever one happened to win load order
+
+---
+
 - v1.10.1
 ### Bug Fixes
 - Fixed a collection-update preflight deadlock on Skyrim SE/AE: when the game needed restoring to vanilla before a runtime-version switch, the Restore step deferred itself behind the collection install it was itself blocking, freezing the "Restoring the game to vanilla first…" dialog forever with Cancel disabled

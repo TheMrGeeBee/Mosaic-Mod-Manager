@@ -30,6 +30,7 @@ from Utils.nif.asset_catalog import BASE, AssetCatalog, AssetEntry
 from Utils.nif.catalog_loader import build_catalog
 from Utils.nif.character import (
     auto_gender, body_paths, compose, detect_gender, detect_weight, guess_gender, profile_for_game,
+    slot_label_map,
 )
 from Utils.nif.nif_reader import (
     NifError, NifUnsupported, format_label, read_nif, version_string,
@@ -40,6 +41,7 @@ from gui_qt.nif_viewer.asset_tree import (
     AssetTreeDelegate, AssetTreeModel, EntryRole,
 )
 from gui_qt.nif_viewer.gl_viewport import SOLID, TEXTURED, WIRE, MeshViewport
+from gui_qt.nif_viewer.record_info_card import RecordInfoCard
 from gui_qt.theme.theme_qt import _c, active_palette
 from gui_qt.safe_emit import safe_emit
 from gui_qt.worker import run_in_worker
@@ -183,6 +185,9 @@ class NifViewerView(QWidget):
         for w in (self._viewport, self._canvas, self._message):
             self._stack.addWidget(w)
         rv.addWidget(self._stack, 1)
+        self._record_card = RecordInfoCard(self._stack)
+        self._record_card.attach(self._stack)
+        self._slot_labels = slot_label_map(self._profile)
         self._info = QLabel()
         self._info.setStyleSheet(
             f"background:{_c(pal, 'BG_HEADER')}; color:{_c(pal, 'TEXT_MAIN')}; padding:4px 10px;")
@@ -480,12 +485,14 @@ class NifViewerView(QWidget):
         if kind == "error":
             self._show_message(res["text"])
             self._info.setText("")
+            self._record_card.set_data([])
             if res.get("incompatible"):
                 self._tree.viewport().update()          # show its amber mark now
                 self._update_status()
         elif kind == "texture":
             self._show_image(res["image"])
             self._info.setText(self._describe(res["info"]))
+            self._record_card.set_data([])
         else:
             self._last = res
             self._show_mesh()
@@ -512,6 +519,13 @@ class NifViewerView(QWidget):
         self._canvas.set_image(QPixmap.fromImage(image))
         self._stack.setCurrentIndex(_PAGE_IMAGE)
 
+    def _update_record_card(self, res: dict):
+        infos = (self._catalog.armor_info(self._entry)
+                 if self._catalog is not None and self._entry is not None else [])
+        self._record_card.set_data(
+            infos, len(res.get("images", {})), len(set(res.get("missing", ()))),
+            self._slot_labels)
+
     def _show_mesh(self):
         res = self._last
         if res is None:
@@ -537,7 +551,9 @@ class NifViewerView(QWidget):
             self._show_message(self.tr("This file has no drawable geometry "
                                        "(animation or collision only)."))
             self._info.setText(self._describe(info))
+            self._record_card.set_data([])
             return
+        self._update_record_card(res)
         src = self._source()
         if src == _SRC_TEXTURE:
             first = next((res["images"][i] for i in sorted(res["images"])), None)

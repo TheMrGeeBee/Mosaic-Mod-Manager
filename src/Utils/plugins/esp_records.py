@@ -47,6 +47,7 @@ class Record:
     sig: str
     formid: int
     subs: dict = field(default_factory=dict)   # subrecord sig -> list[bytes]
+    flags: int = 0                             # record header flags (e.g. 0x20 Deleted)
 
     def sub(self, sig: str) -> "bytes | None":
         """First occurrence of *sig*, or None."""
@@ -97,7 +98,7 @@ def _read_record(buf: bytes, pos: int) -> "tuple[Record | None, int]":
             body = zlib.decompress(body[4:])
         except zlib.error:
             return None, new_pos
-    rec = Record(sig.decode("ascii", errors="replace"), formid, _split_subrecords(body))
+    rec = Record(sig.decode("ascii", errors="replace"), formid, _split_subrecords(body), flags)
     return rec, new_pos
 
 

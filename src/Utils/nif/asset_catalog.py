@@ -76,6 +76,7 @@ class AssetCatalog:
         expected_nif_format: "tuple[int, int] | None" = None,
         authoritative_slots: "Mapping[str, frozenset] | None" = None,
         slots_need_authority: bool = False,
+        armor_records: "Mapping[str, list] | None" = None,
     ):
         """
         base_archives: the game's own BSAs, lowest priority first.
@@ -101,6 +102,10 @@ class AssetCatalog:
                        Pip-Boy picker. catalog_loader sets this True for
                        Fallout 4, so an un-authored mesh is simply excluded
                        from every slot picker rather than mis-sorted into one.
+        armor_records: {mesh rel_key: [ArmorInfo, ...]} — resolved ARMO record
+                       data (Utils.plugins.armor_record_details) for the NIF
+                       Viewer/Character tab's info card, keyed the same way
+                       authoritative_slots is.
         """
         self.base_name = base_name
         self._base_archives = list(base_archives)
@@ -121,6 +126,7 @@ class AssetCatalog:
         self._expected_format = expected_nif_format
         self._authoritative_slots = dict(authoritative_slots or {})
         self._slots_need_authority = slots_need_authority
+        self._armor_records = dict(armor_records or {})
         self._bad: dict[tuple, str] = {}       # entry key → format label
         self._slots: dict[tuple, "frozenset | None"] = {}   # entry key → body slots (None: unreadable)
 
@@ -346,6 +352,12 @@ class AssetCatalog:
             except (NifError, BsaReadError, OSError):
                 self._slots[key] = None
         return self._slots[key]
+
+    def armor_info(self, entry: AssetEntry) -> list:
+        """Every ArmorInfo (Utils.plugins.armor_record_details) whose ARMA
+        declares entry.path, [] if none. Pure dict lookup — the whole index
+        was already built once at catalog-build time, no per-call parsing."""
+        return self._armor_records.get(entry.path, [])
 
     def siblings(self, entry: AssetEntry) -> list[AssetEntry]:
         """Other files in the same folder from the same layer (base game or mod),
