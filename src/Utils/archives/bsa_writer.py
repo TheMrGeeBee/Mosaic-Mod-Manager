@@ -54,6 +54,7 @@ from __future__ import annotations
 import os
 import struct
 import zlib
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
 
@@ -572,22 +573,85 @@ def write_bsa(
     if not folders:
         raise BsaWriteError("no packable files found")
 
-    # Sort folders by hash, files within each folder by hash. BSA TOC requires
-    # this.
-    sorted_folders: list[tuple[str, int, list[tuple[str, int, Path]]]] = []
+    entries = [
+        BsaEntry(f"{folder_name}\\{fn}", abs_path, compress and not _is_incompressible(fn))
+        for folder_name, files in folders.items()
+        for fn, abs_path in files
+    ]
+    archive_flags = _AF_HAS_DIR_NAMES | _AF_HAS_FILE_NAMES
+    if compress:
+        archive_flags |= _AF_COMPRESSED_DEF
+    archive_flags |= _AF_RETAIN_DIR_NAMES | _AF_RETAIN_FILE_NAMES
+
+    file_count, size = write_bsa_entries(
+        bsa_path, entries, version=version, archive_flags=archive_flags,
+        file_flags=_FILE_FLAGS, progress=progress, cancel=cancel)
+    return file_count, size, packed_rel_keys
+
+
+@dataclass(frozen=True)
+class BsaEntry:
+    """One file to store in a BSA. ``path`` is its path inside the archive
+    (any case, ``/`` or ``\\`` separators; it must be inside a folder).
+    ``compress`` is this file's *effective* compression -- where it differs
+    from the archive default the writer sets the per-file invert bit."""
+    path: str
+    source: Path
+    compress: bool
+
+
+def write_bsa_entries(
+    bsa_path: Path,
+    entries: "list[BsaEntry]",
+    *,
+    version: int,
+    archive_flags: int,
+    file_flags: int,
+    progress: ProgressCb | None = None,
+    cancel: CancelCb | None = None,
+) -> tuple[int, int]:
+    """Write exactly *entries* into a BSA at *bsa_path* (atomically), with
+    the given header fields. :func:`write_bsa` decides those for Mosaic's
+    own packing; callers reproducing an existing archive (Wabbajack's
+    CreateBSA) pass the original archive's values.
+
+    *version* is 103 (Oblivion), 104 (FO3 / FNV / Skyrim LE) or 105
+    (Skyrim SE / VR); 103 and 104 share a layout. Bit 2 of *archive_flags*
+    is the default compression; bit 8 (v104+) embeds each file's full path
+    before its data, as Bethesda's tools do for some archives.
+
+    Returns ``(file_count, bytes_written)``. Raises :class:`BsaWriteError`
+    on any I/O or format error, a root-level or duplicate path, or cancel.
+    """
+    if version not in (103, 104, 105):
+        raise BsaWriteError(f"unsupported BSA version {version}")
+    if not entries:
+        raise BsaWriteError("no files to pack")
+
+    # Group by folder (keeping first-seen order), then sort folders by hash
+    # and files within each folder by hash -- the BSA TOC requires this.
+    folders: dict[str, list[tuple[str, Path, bool]]] = {}
+    seen: set[str] = set()
+    for entry in entries:
+        norm = entry.path.replace("/", "\\").strip("\\").lower()
+        folder_name, sep, fn = norm.rpartition("\\")
+        if not sep or not folder_name or not fn:
+            raise BsaWriteError(f"BSA files must be inside a folder: {entry.path!r}")
+        if norm in seen:
+            raise BsaWriteError(f"duplicate path in BSA: {entry.path!r}")
+        seen.add(norm)
+        folders.setdefault(folder_name, []).append((fn, Path(entry.source), entry.compress))
+
+    sorted_folders: list[tuple[str, int, list[tuple[str, int, Path, bool]]]] = []
     for folder_name, files in folders.items():
         folder_hash = tes4_hash_folder(folder_name)
-        scored: list[tuple[str, int, Path]] = [
-            (fn, tes4_hash_file(fn), p) for fn, p in files
-        ]
+        scored = [(fn, tes4_hash_file(fn), p, c) for fn, p, c in files]
         scored.sort(key=lambda t: t[1])
         sorted_folders.append((folder_name, folder_hash, scored))
     sorted_folders.sort(key=lambda t: t[1])
 
     folder_count = len(sorted_folders)
     file_count = sum(len(files) for _, _, files in sorted_folders)
-    if file_count == 0:
-        raise BsaWriteError("no packable files found")
 
     # total_folder_name_length: each folder name has a 1-byte length prefix
     # (the prefix is itself NOT counted), and the name itself includes a
@@ -598,17 +662,13 @@ def write_bsa(
     )
     # total_file_name_length: every filename + trailing null, summed.
     total_file_name_length = sum(
-        len(fn) + 1 for _, _, files in sorted_folders for fn, _, _ in files
+        len(fn) + 1 for _, _, files in sorted_folders for fn, _, _, _ in files
     )
 
     folder_record_size = 24 if version == 105 else 16
     file_record_size = 16
-
-    # Compute the header values now; offsets get patched after writing data.
-    archive_flags = _AF_HAS_DIR_NAMES | _AF_HAS_FILE_NAMES
-    if compress:
-        archive_flags |= _AF_COMPRESSED_DEF
-    archive_flags |= _AF_RETAIN_DIR_NAMES | _AF_RETAIN_FILE_NAMES
+    default_compress = bool(archive_flags & _AF_COMPRESSED_DEF)
+    embed_names = version >= 104 and bool(archive_flags & _AF_EMBED_FILE_NAMES)
 
     if cancel and cancel():
         raise BsaWriteError("cancelled")
@@ -626,7 +686,7 @@ def write_bsa(
                 file_count,
                 total_folder_name_length,
                 total_file_name_length,
-                _FILE_FLAGS,
+                file_flags,
             ))
 
             # --- Folder records (placeholder — patched after we know the
@@ -635,34 +695,20 @@ def write_bsa(
             fh.write(b"\x00" * (folder_record_size * folder_count))
 
             # --- Folder name + file-record blocks (interleaved) ---------
-            # Track byte offset *of each folder's name+file-record group*
-            # from the start of the file. That's what folder_record.offset
-            # holds — but per BSA spec it includes total_file_name_length
-            # (so writing tools and game agree on the constant offset of
-            # the file data start). We follow the convention bethutil uses:
-            # folder.offset = absolute byte offset of folder_name +
-            # total_file_name_length. The reader subtracts at parse time
-            # by ignoring that constant; what matters is consistency.
-            #
-            # In practice both Bethesda's tools and BSArch store the
-            # **absolute** offset to the folder-name-plus-file-records
-            # block PLUS total_file_name_length. Our reader (which only
-            # walks sequentially from folder_offset) doesn't depend on
-            # this value being meaningful for *its* parse — but the game
-            # and other tools do. So we record absolute offsets here and
-            # add total_file_name_length at the patch step.
+            # folder_record.offset = absolute offset of the folder's
+            # name+file-record block + total_file_name_length -- the
+            # convention Bethesda's tools and BSArch use (and what the game
+            # and other tools read). Recorded here, patched in below.
             folder_block_offsets: list[int] = []
 
-            # We also need to remember each file's record position so we can
-            # patch in size + data offset after writing the data blob.
-            # Layout per folder block:
+            # Each file's record position, patched with size + data offset
+            # once the data blob is written. Layout per folder block:
             #   1 B name_length
             #   N B folder_name + 0x00
             #   16 B per file record
             file_record_positions: list[int] = []   # absolute file-position
-            file_descriptors: list[tuple[Path, str, bool]] = []
-            # (abs_path, name_lower, do_compress) — do_compress is the
-            # *effective* compression for that file.
+            file_descriptors: list[tuple[Path, str, str, bool]] = []
+            # (abs_path, name_lower, full_path, do_compress)
 
             for folder_name, folder_hash, files in sorted_folders:
                 folder_block_offsets.append(fh.tell())
@@ -672,26 +718,25 @@ def write_bsa(
                 fh.write(bytes([len(fname_bytes)]))
                 fh.write(fname_bytes)
 
-                for fn, fhash, abs_path in files:
+                for fn, fhash, abs_path, do_compress in files:
                     file_record_positions.append(fh.tell())
                     fh.write(b"\x00" * file_record_size)
-                    incompressible = _is_incompressible(fn)
-                    do_compress = compress and not incompressible
-                    file_descriptors.append((abs_path, fn, do_compress))
+                    file_descriptors.append(
+                        (abs_path, fn, f"{folder_name}\\{fn}", do_compress))
 
             # --- File name block ----------------------------------------
             for _, _, files in sorted_folders:
-                for fn, _, _ in files:
+                for fn, _, _, _ in files:
                     fh.write(fn.encode("cp1252", errors="replace") + b"\x00")
 
             # --- File data ----------------------------------------------
             # Track each file's data offset and on-disk record size.
-            file_data_specs: list[tuple[int, int, bool]] = []
-            # (data_offset, record_size_field, compress_invert_flag)
+            file_data_specs: list[tuple[int, int]] = []
+            # (data_offset, record_size_field)
 
             done = 0
             total = file_count
-            for abs_path, fn, do_compress in file_descriptors:
+            for abs_path, fn, full_path, do_compress in file_descriptors:
                 if cancel and cancel():
                     raise BsaWriteError("cancelled")
 
@@ -710,11 +755,18 @@ def write_bsa(
                         # zlib payloads in v105 archives.
                         compressed = lz4.frame.compress(raw, compression_level=9)
                     else:
-                        # v104 — zlib deflate.
+                        # v103/v104 — zlib deflate.
                         compressed = zlib.compress(raw, 9)
                     payload = struct.pack("<I", len(raw)) + compressed
                 else:
                     payload = raw
+                if embed_names:
+                    # A bstring (length byte, no terminator) ahead of the
+                    # data; counted in the record's size field.
+                    name = full_path.encode("cp1252", errors="replace")
+                    if len(name) > 0xFF:
+                        raise BsaWriteError(f"embedded file name too long: {full_path}")
+                    payload = bytes([len(name)]) + name + payload
                 on_disk_size = len(payload)
 
                 # Per-file size field is 30 bits — files larger than
@@ -731,12 +783,11 @@ def write_bsa(
                 # compression state is *inverted* relative to
                 # archive_flags (so size_field stays the on-disk byte
                 # count).
-                invert = compress != do_compress
                 size_field = on_disk_size
-                if invert:
+                if do_compress != default_compress:
                     size_field |= _FILE_COMPRESS_INVERT
 
-                file_data_specs.append((data_offset, size_field, invert))
+                file_data_specs.append((data_offset, size_field))
 
                 done += 1
                 if progress is not None:
@@ -778,9 +829,9 @@ def write_bsa(
             # --- Patch file records ------------------------------------
             i = 0
             for folder_name, folder_hash, files in sorted_folders:
-                for fn, fhash, _ in files:
+                for fn, fhash, _, _ in files:
                     rec_pos = file_record_positions[i]
-                    data_offset, size_field, _invert = file_data_specs[i]
+                    data_offset, size_field = file_data_specs[i]
                     fh.seek(rec_pos)
                     fh.write(struct.pack(
                         "<QII",
@@ -797,4 +848,4 @@ def write_bsa(
     except (OSError, struct.error) as exc:
         raise BsaWriteError(str(exc)) from exc
 
-    return file_count, bsa_path.stat().st_size, packed_rel_keys
+    return file_count, bsa_path.stat().st_size

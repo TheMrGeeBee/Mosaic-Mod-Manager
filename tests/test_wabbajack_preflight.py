@@ -48,18 +48,32 @@ def test_directives_all_supported():
     assert check.ok
 
 
+def _create_bsa(state):
+    return {"$type": "CreateBSA, Wabbajack.Lib", "To": "mods/A/a.bsa", "TempID": "t", "State": state}
+
+
 def test_directives_unsupported_are_counted_and_block():
     ml = _modlist(directives=[
-        {"$type": "CreateBSA, Wabbajack.Lib", "To": "a.bsa"},
-        {"$type": "CreateBSA, Wabbajack.Lib", "To": "b.bsa"},
+        _create_bsa({"$type": "BSAState, Compression.BSA", "Version": 105}),  # buildable
+        _create_bsa({"$type": "TES3State, Compression.BSA"}),
+        _create_bsa({"$type": "TES3State, Compression.BSA"}),
         {"$type": "TransformedTexture, Wabbajack.Lib", "To": "t.dds"},
         {"$type": "SomethingNew, Wabbajack.Lib", "To": "x"},
     ])
     [check] = check_directives(ml)
     assert not check.ok and check.blocking
-    assert "2 rebuilt BSA/BA2 archives" in check.detail
+    assert "2 unbuildable archives (Morrowind-format BSA)" in check.detail
     assert "1 converted texture;" in check.detail
     assert "1 unrecognised step (SomethingNew)" in check.detail
+
+
+def test_buildable_archives_alone_pass():
+    ml = _modlist(directives=[
+        _create_bsa({"$type": "BSAState, Compression.BSA", "Version": 104}),
+        _create_bsa({"$type": "BA2State, Compression.BSA", "Version": 8, "Type": "DX10"}),
+    ])
+    [check] = check_directives(ml)
+    assert check.ok
 
 
 def test_sources_all_automatic():

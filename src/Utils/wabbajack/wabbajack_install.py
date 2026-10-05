@@ -12,7 +12,8 @@ Steps:
    ``mods/<Name>/...`` builds into Mosaic's staging folder ``<Name>``.
    ``profiles/<Profile>/...`` builds into a scratch folder for step 4 --
    only one profile is used (the one with a ``modlist.txt``, else the first
-   by name). Anything else (MO2's own files, a stock-game copy, ...) isn't
+   by name). ``TEMP_BSA_FILES/<TempID>/...`` builds into scratch as the input
+   of a rebuilt BSA/BA2. Anything else (MO2's own files, a stock-game copy, ...) isn't
    placed and is listed in the report; how those map onto Mosaic is still
    open (the plan's "profile-file translation" risk).
 2. **Download** every archive a placed directive reads from. Automatic
@@ -20,7 +21,8 @@ Steps:
    downloader, or whose automatic download failed, is then offered to the
    user one at a time through ``request_manual_download``. Every archive is
    checked against ``Archive.hash`` before use.
-3. **Build** each placed directive (:func:`wabbajack_directives.apply_directive`).
+3. **Build** each placed directive (:func:`wabbajack_directives.apply_directive`),
+   packing ``CreateBSA`` archives last, from their already-built inputs.
 4. **Profile**: the curator's ``modlist.txt`` (filtered to mods that were
    actually built) becomes the profile's, and ``plugins.txt``/``loadorder.txt``
    are copied as-is. There's deliberately no LOOT sort: a Wabbajack load
@@ -51,6 +53,7 @@ from .wabbajack_directives import apply_directive
 from .wabbajack_hash import hash_file, hashes_match
 from .wabbajack_manifest import (
     Archive,
+    CreateBSADirective,
     Directive,
     FromArchiveDirective,
     ModList,
@@ -60,6 +63,9 @@ from .wabbajack_manifest import (
 from .wabbajack_vfs import ArchiveIndex
 
 PROFILE_FILES_DIR = "wabbajack_profile_files"
+# Wabbajack builds the loose files that go into a rebuilt BSA/BA2 under
+# TEMP_BSA_FILES/<TempID>/ before its CreateBSA directive packs them.
+_BSA_TEMP_DIR = "temp_bsa_files"
 _LOAD_ORDER_FILES = ("plugins.txt", "loadorder.txt")
 
 
@@ -112,12 +118,13 @@ class WabbajackInstallReport:
 class InstallPlan:
     mod_directives: "list[Directive]" = field(default_factory=list)      # to = <Name>/<rel>
     profile_directives: "list[Directive]" = field(default_factory=list)  # to = <rel>
+    bsa_inputs: "list[Directive]" = field(default_factory=list)          # to = <TempID>/<rel>
     profile_name: str = ""
     unplaced: "list[str]" = field(default_factory=list)
 
     def archive_hashes(self) -> "set[str]":
         return {d.archive_hash_path[0]
-                for d in self.mod_directives + self.profile_directives
+                for d in self.mod_directives + self.profile_directives + self.bsa_inputs
                 if isinstance(d, (FromArchiveDirective, PatchedFromArchiveDirective))
                 and d.archive_hash_path}
 
@@ -135,6 +142,8 @@ def classify_directives(modlist: ModList) -> InstallPlan:
             plan.mod_directives.append(replace(d, to="/".join(parts[1:])))
         elif head == "profiles" and len(parts) >= 3:
             by_profile.setdefault(parts[1], []).append(replace(d, to="/".join(parts[2:])))
+        elif head == _BSA_TEMP_DIR and len(parts) >= 3:
+            plan.bsa_inputs.append(replace(d, to="/".join(parts[1:])))
         else:
             plan.unplaced.append(to)
 
@@ -373,8 +382,13 @@ def run_wabbajack_install(*, wabbajack_path: "str | Path", modlist: ModList, gam
     for h, path in have.items():
         index.add_archive(h, path)
 
-    jobs = ([(d, staging) for d in plan.mod_directives]
-            + [(d, profile_scratch) for d in plan.profile_directives])
+    bsa_root = work_root / "bsa"
+    # Archives are packed last, once every file that goes into them exists.
+    archives = [d for d in plan.mod_directives if isinstance(d, CreateBSADirective)]
+    jobs = ([(d, staging) for d in plan.mod_directives if not isinstance(d, CreateBSADirective)]
+            + [(d, profile_scratch) for d in plan.profile_directives]
+            + [(d, bsa_root) for d in plan.bsa_inputs]
+            + [(d, staging) for d in archives])
     built_mods: "set[str]" = set()
     cb.on_status("Building files…")
     try:
@@ -384,7 +398,9 @@ def run_wabbajack_install(*, wabbajack_path: "str | Path", modlist: ModList, gam
                 return report
             result = apply_directive(directive, dest_root=dest_root,
                                      wabbajack_path=wabbajack_path, archive_index=index,
-                                     substitutions=substitutions)
+                                     substitutions=substitutions, bsa_temp_root=bsa_root)
+            if result.note:
+                log(f"Wabbajack: {result.note}")
             if result.success:
                 if dest_root is staging:
                     built_mods.add(directive.to.split("/", 1)[0])

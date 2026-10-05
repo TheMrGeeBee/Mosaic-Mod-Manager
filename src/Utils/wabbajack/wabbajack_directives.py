@@ -7,11 +7,14 @@ before reporting success -- a bad reconstruction (e.g. a corrupt patch, or
 an unimplemented transform silently writing the wrong bytes) is caught here
 as a hash mismatch rather than surfacing as an in-game crash much later.
 
-``CreateBSA``/``CreateBA2`` and ``TransformedTexture`` are not implemented
-yet and report as unsupported rather than being attempted: BSA/BA2 writer
-byte-for-byte fidelity against Wabbajack's expected output hash needs
-dedicated validation against a real modlist first (see the plan's "key open
-risks" note), and texture transforms are an explicit v1 non-goal.
+``CreateBSA``/``CreateBA2`` packs the loose files earlier directives built
+into ``TEMP_BSA_FILES/<TempID>/`` (see :mod:`.wabbajack_bsa`). Its output
+is *not* required to match the directive's ``Hash``: Wabbajack compresses
+with .NET libraries whose output differs from Python's zlib/LZ4, so a
+correct rebuild is normally not byte-identical. Every file packed into it
+was verified when it was built; a differing archive hash is reported as a
+note, not a failure. ``TransformedTexture`` is an explicit v1 non-goal and
+reports as unsupported.
 
 ``RemappedInlineFile`` (typically an INI or profile file that records
 absolute paths) has Wabbajack's path placeholders replaced with the user's
@@ -43,6 +46,7 @@ from .wabbajack_manifest import (
     TransformedTextureDirective,
     UnknownDirective,
 )
+from .wabbajack_bsa import ArchiveBuildError, build_archive
 from .wabbajack_vfs import ArchiveIndex, VfsResolutionError
 
 
@@ -52,11 +56,14 @@ class DirectiveResult:
     path: "Path | None" = None
     error: str = ""
     unsupported: bool = False
+    note: str = ""   # success, but worth logging (e.g. a non-identical rebuild)
 
 
 # Directive kinds apply_directive() can't produce yet; preflight reports a
 # modlist containing any of these instead of letting it install partially.
-UNSUPPORTED_DIRECTIVE_TYPES = (CreateBSADirective, TransformedTextureDirective, UnknownDirective)
+# (CreateBSA is supported, but some archive formats aren't -- see
+# wabbajack_bsa.support_problem.)
+UNSUPPORTED_DIRECTIVE_TYPES = (TransformedTextureDirective, UnknownDirective)
 
 
 def path_substitutions(*, game_path: "str | None" = None, install_path: "str | None" = None,
@@ -97,10 +104,12 @@ def _verify(directive: Directive, dest: Path) -> DirectiveResult:
 
 def apply_directive(directive: Directive, *, dest_root: Path, wabbajack_path: "str | Path",
                      archive_index: ArchiveIndex,
-                     substitutions: "dict[str, str] | None" = None) -> DirectiveResult:
+                     substitutions: "dict[str, str] | None" = None,
+                     bsa_temp_root: "Path | None" = None) -> DirectiveResult:
     """Apply one directive, writing ``dest_root / directive.to``.
     ``substitutions`` (from :func:`path_substitutions`) is used only by
-    ``RemappedInlineFile``."""
+    ``RemappedInlineFile``; ``bsa_temp_root`` (where the ``TEMP_BSA_FILES``
+    directives were built) only by ``CreateBSA``."""
     if isinstance(directive, UnknownDirective):
         return DirectiveResult(
             success=False, unsupported=True,
@@ -112,6 +121,20 @@ def apply_directive(directive: Directive, *, dest_root: Path, wabbajack_path: "s
 
     dest = dest_root / directive.to
     dest.parent.mkdir(parents=True, exist_ok=True)
+
+    if isinstance(directive, CreateBSADirective):
+        if bsa_temp_root is None:
+            return DirectiveResult(success=False, error="no archive input folder given")
+        try:
+            build_archive(directive, bsa_temp_root, dest)
+        except ArchiveBuildError as exc:
+            return DirectiveResult(success=False, error=f"couldn't build archive: {exc}")
+        if directive.hash and not hashes_match(directive.hash, hash_file(dest)):
+            return DirectiveResult(
+                success=True, path=dest,
+                note=f"rebuilt {directive.to!r} isn't byte-identical to the curator's "
+                     "archive (expected: different compressor); its files were verified")
+        return DirectiveResult(success=True, path=dest)
 
     if isinstance(directive, FromArchiveDirective):
         try:

@@ -42,7 +42,7 @@ def _from_archive(to, archive_hash, member, file_hash):
             "ArchiveHashPath": [archive_hash, member]}
 
 
-def _build(tmp_path, *, archive_state="HttpDownloader"):
+def _build(tmp_path, *, archive_state="HttpDownloader", extra=None):
     """A source archive on 'the internet' plus a .wabbajack referencing it."""
     src = tmp_path / "internet" / "ModA.zip"
     src.parent.mkdir()
@@ -67,6 +67,7 @@ def _build(tmp_path, *, archive_state="HttpDownloader"):
                       "State": {"$type": f"{archive_state}, Wabbajack.Lib",
                                 "Url": "https://example.com/ModA.zip"}}],
         "Directives": [
+            *(extra(a_hash) if extra else []),
             _from_archive("mods\\ModA\\ModA.esp", a_hash, "plugin.esp", hash_bytes(b"ESP BYTES")),
             _from_archive("mods\\ModA\\textures\\a.dds", a_hash, "textures/a.dds",
                           hash_bytes(b"DDS BYTES")),
@@ -232,3 +233,43 @@ def test_cancel_before_start_returns_cancelled(tmp_path, monkeypatch):
         tmp_path, wj, modlist, monkeypatch, downloader=_fake_http(src), control=control)
     assert report.cancelled
     assert not (staging / "ModA").exists()
+
+
+def test_install_rebuilds_bsa_from_temp_files(tmp_path, monkeypatch):
+    """CreateBSA listed *before* its inputs still runs after them; the
+    rebuilt archive's hash differs from the curator's (different
+    compressor), which is logged, not a failure."""
+    from Utils.archives.bsa_extract import extract_bsa
+    from Utils.wabbajack.wabbajack_hash import hash_bytes
+
+    def extra(a_hash):
+        return [
+            {"$type": "CreateBSA, Wabbajack.Lib", "To": "mods\\ModC\\ModC.bsa",
+             "Hash": "curator-archive-hash==", "Size": 1, "TempID": "abc123",
+             "State": {"$type": "BSAState, Compression.BSA", "Magic": "BSA\u0000",
+                       "Version": 105, "ArchiveFlags": 0x7, "FileFlags": 0x3},
+             "FileStates": [
+                 {"$type": "BSAFileState, Compression.BSA", "Path": "meshes\\x.nif",
+                  "Index": 0, "FlipCompression": False},
+                 {"$type": "BSAFileState, Compression.BSA", "Path": "textures\\y.dds",
+                  "Index": 1, "FlipCompression": True}]},
+            _from_archive("TEMP_BSA_FILES\\abc123\\meshes\\x.nif", a_hash, "plugin.esp",
+                          hash_bytes(b"ESP BYTES")),
+            _from_archive("TEMP_BSA_FILES\\abc123\\textures\\y.dds", a_hash,
+                          "textures/a.dds", hash_bytes(b"DDS BYTES")),
+        ]
+
+    wj, modlist, src = _build(tmp_path, extra=extra)
+    logs = []
+    report, staging, profile, _ = _run(
+        tmp_path, wj, modlist, monkeypatch, downloader=_fake_http(src),
+        callbacks=wi.WabbajackInstallCallbacks(on_log=logs.append))
+
+    assert report.ok, (report.failed_archives, report.failed_directives)
+    assert report.installed_mods == ["ModA", "ModB", "ModC"]
+    assert not any("TEMP_BSA_FILES" in u for u in report.unplaced_files)
+    extract_bsa(staging / "ModC" / "ModC.bsa", tmp_path / "out")
+    assert (tmp_path / "out" / "meshes" / "x.nif").read_bytes() == b"ESP BYTES"
+    assert (tmp_path / "out" / "textures" / "y.dds").read_bytes() == b"DDS BYTES"
+    assert any("isn't byte-identical" in line for line in logs)
+    assert not (profile / ".wabbajack_work").exists()

@@ -29,6 +29,7 @@ from __future__ import annotations
 import os
 import struct
 import zlib
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
 
@@ -823,6 +824,197 @@ def write_ba2_textures(
 
 
 # ---------------------------------------------------------------------------
+# Explicit-entry writer
+#
+# write_ba2 / write_ba2_textures decide for themselves what to pack and how
+# (Mosaic's own packing policy). write_ba2_entries writes exactly the files,
+# flags, hashes and texture chunk layout it is given -- for reproducing an
+# existing archive (Wabbajack's CreateBA2). It streams each file's data and
+# patches the record table afterwards, so it never holds the archive in
+# memory.
+# ---------------------------------------------------------------------------
+
+# BA2 versions sharing the original 24-byte header: 1 (FO4), 7 and 8 (FO4
+# "next-gen" update). Starfield's 2/3 add header fields and aren't handled.
+_ENTRY_WRITER_VERSIONS = (1, 7, 8)
+
+
+@dataclass(frozen=True)
+class Ba2GeneralEntry:
+    """One file in a GNRL BA2. Hashes/extension default to values derived
+    from ``path`` the same way :func:`write_ba2` derives them."""
+    path: str
+    source: Path
+    compress: bool
+    flags: int = _RECORD_FLAGS
+    name_hash: "int | None" = None
+    dir_hash: "int | None" = None
+    ext: "str | None" = None
+
+
+@dataclass(frozen=True)
+class Ba2Chunk:
+    """One chunk of a DX10 texture: ``unpacked_size`` bytes of the DDS pixel
+    data (consumed in order), covering mips ``start_mip``..``end_mip``."""
+    unpacked_size: int
+    start_mip: int
+    end_mip: int
+    compress: bool
+
+
+@dataclass(frozen=True)
+class Ba2TextureEntry:
+    """One texture in a DX10 BA2. ``source`` is a .dds file; the pixel data
+    after its header is split into ``chunks`` in order."""
+    path: str
+    source: Path
+    height: int
+    width: int
+    num_mips: int
+    dxgi_format: int
+    chunks: "tuple[Ba2Chunk, ...]"
+    unk8: int = 0
+    chunk_header_len: int = _DX10_CHUNK_LEN
+    tile_mode: int = 2048
+    name_hash: "int | None" = None
+    dir_hash: "int | None" = None
+
+
+def _split_archive_path(path: str) -> tuple[str, str, str, str]:
+    """``(full_back, dir_back_lower, leaf_lower, ext_lower)`` for a path
+    inside a BA2."""
+    full_back = path.replace("/", "\\").strip("\\")
+    low = full_back.lower()
+    dir_back, _, name = low.rpartition("\\")
+    leaf, dot, ext = name.rpartition(".")
+    if not dot:
+        leaf, ext = name, ""
+    return full_back, dir_back, leaf, ext
+
+
+def _dds_pixel_data(raw: bytes, source: Path) -> bytes:
+    if raw[:4] != b"DDS ":
+        raise Ba2WriteError(f"not a DDS file: {source}")
+    header = 128 + (20 if raw[84:88] == b"DX10" else 0)
+    return raw[header:]
+
+
+def write_ba2_entries(
+    ba2_path: Path,
+    entries: "list[Ba2GeneralEntry] | list[Ba2TextureEntry]",
+    *,
+    archive_type: str,
+    version: int = 1,
+    name_table: bool = True,
+    progress: ProgressCb | None = None,
+    cancel: CancelCb | None = None,
+) -> tuple[int, int]:
+    """Write exactly *entries* into a BA2 at *ba2_path* (atomically).
+
+    *archive_type* is ``"GNRL"`` (entries are :class:`Ba2GeneralEntry`) or
+    ``"DX10"`` (entries are :class:`Ba2TextureEntry`). Compression is zlib,
+    per file (GNRL) or per chunk (DX10). Returns ``(file_count,
+    bytes_written)``; raises :class:`Ba2WriteError` on I/O or format errors
+    (including a texture whose pixel data doesn't match its chunk sizes),
+    an unsupported version/type, or cancel.
+    """
+    if version not in _ENTRY_WRITER_VERSIONS:
+        raise Ba2WriteError(f"unsupported BA2 version {version}")
+    if archive_type not in ("GNRL", "DX10"):
+        raise Ba2WriteError(f"unsupported BA2 type {archive_type!r}")
+    if not entries:
+        raise Ba2WriteError("no files to pack")
+    is_dx10 = archive_type == "DX10"
+    expected = Ba2TextureEntry if is_dx10 else Ba2GeneralEntry
+    if not all(isinstance(e, expected) for e in entries):
+        raise Ba2WriteError(f"{archive_type} BA2 entries must all be {expected.__name__}")
+
+    if is_dx10:
+        record_table = sum(_DX10_HEADER_LEN + _DX10_CHUNK_LEN * len(e.chunks) for e in entries)
+    else:
+        record_table = _GNRL_RECORD_LEN * len(entries)
+    total = len(entries)
+
+    try:
+        with atomic_writer(ba2_path, "wb", encoding=None) as fh:
+            fh.write(b"\x00" * (_HEADER_LEN + record_table))  # patched below
+            records: list[bytes] = []
+            names: list[str] = []
+            for done, entry in enumerate(entries, start=1):
+                if cancel is not None and cancel():
+                    raise Ba2WriteError("cancelled")
+                full_back, dir_back, leaf, ext = _split_archive_path(entry.path)
+                names.append(full_back)
+                name_hash = entry.name_hash if entry.name_hash is not None else ba2_hash(leaf)
+                dir_hash = entry.dir_hash if entry.dir_hash is not None else ba2_hash(dir_back)
+                try:
+                    raw = Path(entry.source).read_bytes()
+                except OSError as exc:
+                    raise Ba2WriteError(f"failed to read {entry.source}: {exc}") from exc
+
+                if not is_dx10:
+                    offset = fh.tell()
+                    if entry.compress:
+                        payload = zlib.compress(raw, 9)
+                        packed = len(payload)
+                    else:
+                        payload, packed = raw, 0
+                    fh.write(payload)
+                    ext_field = entry.ext if entry.ext is not None else ext
+                    records.append(struct.pack(
+                        "<I4sIIQIII", name_hash, _ext_bytes(ext_field.lower()), dir_hash,
+                        entry.flags, offset, packed, len(raw), _END_MARKER))
+                else:
+                    pixels = _dds_pixel_data(raw, Path(entry.source))
+                    if sum(c.unpacked_size for c in entry.chunks) != len(pixels):
+                        raise Ba2WriteError(
+                            f"texture data size doesn't match its chunk layout: {full_back}")
+                    rec = [struct.pack(
+                        "<I4sIBBHHHBBH", name_hash, b"dds\x00", dir_hash, entry.unk8,
+                        len(entry.chunks), entry.chunk_header_len, entry.height,
+                        entry.width, entry.num_mips, entry.dxgi_format, entry.tile_mode)]
+                    pos = 0
+                    for chunk in entry.chunks:
+                        data = pixels[pos:pos + chunk.unpacked_size]
+                        pos += chunk.unpacked_size
+                        offset = fh.tell()
+                        if chunk.compress:
+                            payload = zlib.compress(data, 9)
+                            packed = len(payload)
+                        else:
+                            payload, packed = data, 0
+                        fh.write(payload)
+                        rec.append(struct.pack(
+                            "<QIIHHI", offset, packed, len(data),
+                            chunk.start_mip, chunk.end_mip, _END_MARKER))
+                    records.append(b"".join(rec))
+                if progress is not None:
+                    progress(done, total, full_back)
+
+            name_table_offset = 0
+            if name_table:
+                name_table_offset = fh.tell()
+                for full_back in names:
+                    name_bytes = full_back.encode("latin-1", errors="replace")
+                    fh.write(struct.pack("<H", len(name_bytes)))
+                    fh.write(name_bytes)
+            end = fh.tell()
+
+            fh.seek(0)
+            fh.write(struct.pack(
+                "<4sI4sIQ", _BTDX_MAGIC, version,
+                _TYPE_DX10 if is_dx10 else _TYPE_GNRL, total, name_table_offset))
+            fh.write(b"".join(records))
+            fh.seek(end)
+    except Ba2WriteError:
+        raise
+    except (OSError, struct.error, zlib.error) as exc:
+        raise Ba2WriteError(str(exc)) from exc
+
+    return total, Path(ba2_path).stat().st_size
+
+
+# ---------------------------------------------------------------------------
 # Stub plugin generation — re-export bsa_writer's helpers verbatim.  The
 # stub plugin is a Bethesda format concept, not a BA2 one, and FO4 uses
 # the same TES4 header layout (with internal_version 131 instead of 44).
@@ -837,12 +1029,16 @@ from Utils.archives.bsa_writer import (  # noqa: E402  (re-export)
 
 
 __all__ = [
+    "Ba2Chunk",
+    "Ba2GeneralEntry",
+    "Ba2TextureEntry",
     "Ba2WriteError",
     "ba2_hash",
     "ba2_version_for_game",
     "is_our_stub_plugin",
     "is_packable",
     "write_ba2",
+    "write_ba2_entries",
     "write_ba2_textures",
     "write_stub_plugin",
 ]

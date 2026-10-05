@@ -14,13 +14,12 @@ whole container), and caches each hop's result on disk keyed by
 ``(container, member path)`` so the same nested file referenced by multiple
 directives is only extracted once.
 
-BSA/BA2 as a *nested container* (a directive reaching for a file packed
-inside a BSA that is itself inside a downloaded archive) isn't supported
-yet: Mosaic has a BSA/BA2 file-name lister (``Utils/archives/bsa_reader.py``)
-and writers (``bsa_writer.py``/``ba2_writer.py``), but no extractor. A chain
-that needs this raises :class:`VfsResolutionError` with a clear message
-instead of silently failing or mis-extracting -- see the plan's "key open
-risks" note.
+Containers can be zip, 7z, or a Bethesda BSA (v104/v105) / BA2 (read with
+``Utils.archives.bsa_file_reader.BsaFile``). A DX10 texture read out of a
+BA2 comes back with a reconstructed DDS header, which may not match the
+bytes Wabbajack hashed -- the directive's hash check catches that rather
+than installing a different file. Any other container format raises
+:class:`VfsResolutionError`.
 """
 from __future__ import annotations
 
@@ -33,6 +32,7 @@ from .wabbajack_hash import hash_file
 
 _ZIP_EXTS = (".zip",)
 _SEVENZ_EXTS = (".7z",)
+_BETHESDA_EXTS = (".bsa", ".ba2")
 
 
 class VfsResolutionError(Exception):
@@ -92,6 +92,8 @@ class ArchiveIndex:
             self._extract_from_zip(container, member_path, dest)
         elif ext in _SEVENZ_EXTS:
             self._extract_from_7z(container, member_path, dest)
+        elif ext in _BETHESDA_EXTS:
+            self._extract_from_bethesda(container, member_path, dest)
         else:
             raise VfsResolutionError(
                 f"don't know how to look inside {container.name!r} to find "
@@ -139,3 +141,16 @@ class ArchiveIndex:
                 extracted.replace(dest)
         except py7zr.exceptions.ArchiveError as exc:
             raise VfsResolutionError(f"{container}: 7z read failed ({exc})") from exc
+
+    @staticmethod
+    def _extract_from_bethesda(container: Path, member_path: str, dest: Path) -> None:
+        from Utils.archives.bsa_file_reader import BsaFile, BsaReadError
+        try:
+            with BsaFile(container) as archive:
+                if member_path not in archive:
+                    raise VfsResolutionError(f"{member_path!r} not found in {container.name}")
+                data = archive.read(member_path)
+        except BsaReadError as exc:
+            raise VfsResolutionError(f"{container}: BSA/BA2 read failed ({exc})") from exc
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        dest.write_bytes(data)

@@ -20,6 +20,7 @@ from typing import Callable
 
 from Utils.collections.collection_preflight import Check, check_disk_space
 
+from .wabbajack_bsa import support_problem
 from .wabbajack_directives import UNSUPPORTED_DIRECTIVE_TYPES
 from .wabbajack_manifest import (
     CreateBSADirective,
@@ -36,7 +37,6 @@ from .wabbajack_manifest import (
 FIX_LOVERSLAB_LOGIN = "loverslab-login"
 
 _DIRECTIVE_LABELS = {
-    CreateBSADirective: "rebuilt BSA/BA2 archive",
     TransformedTextureDirective: "converted texture",
 }
 
@@ -74,6 +74,10 @@ def check_directives(modlist: ModList) -> "list[Check]":
     for d in modlist.directives:
         if isinstance(d, UnknownDirective):
             counts[f"unrecognised step ({d.type_name.split(',')[0] or 'no type'})"] += 1
+        elif isinstance(d, CreateBSADirective):
+            problem = support_problem(d)
+            if problem is not None:
+                counts[f"unbuildable archive ({problem})"] += 1
         elif isinstance(d, UNSUPPORTED_DIRECTIVE_TYPES):
             counts[_DIRECTIVE_LABELS[type(d)]] += 1
     if not counts:

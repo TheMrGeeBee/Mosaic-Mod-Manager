@@ -116,3 +116,35 @@ def test_resolve_corrupt_zip_raises_vfs_error(tmp_path):
     idx.add_archive("hash1", archive)
     with pytest.raises(VfsResolutionError, match="not a valid zip"):
         idx.resolve(["hash1", "whatever"])
+
+
+def test_resolve_file_inside_bsa_inside_zip(tmp_path):
+    """The classic Wabbajack chain: a downloaded archive that ships a BSA,
+    with the directive reaching a file inside that BSA."""
+    from Utils.archives.bsa_writer import BsaEntry, write_bsa_entries
+    loose = tmp_path / "loose" / "a.nif"
+    loose.parent.mkdir()
+    loose.write_bytes(b"NIF IN A BSA" * 50)
+    bsa = tmp_path / "Mod.bsa"
+    write_bsa_entries(bsa, [BsaEntry("meshes/a.nif", loose, True)], version=105,
+                      archive_flags=0x7, file_flags=0)
+    outer = tmp_path / "download.zip"
+    _make_zip(outer, {"Data/Mod.bsa": bsa.read_bytes()})
+
+    idx = ArchiveIndex(tmp_path / "scratch")
+    idx.add_archive("dl-hash", outer)
+    resolved = idx.resolve(["dl-hash", "Data/Mod.bsa", "meshes\\a.nif"])
+    assert resolved.read_bytes() == b"NIF IN A BSA" * 50
+
+
+def test_resolve_missing_member_in_bsa_raises(tmp_path):
+    from Utils.archives.bsa_writer import BsaEntry, write_bsa_entries
+    loose = tmp_path / "a.nif"
+    loose.write_bytes(b"x")
+    bsa = tmp_path / "Mod.bsa"
+    write_bsa_entries(bsa, [BsaEntry("meshes/a.nif", loose, False)], version=104,
+                      archive_flags=0x3, file_flags=0)
+    idx = ArchiveIndex(tmp_path / "scratch")
+    idx.add_archive("h", bsa)
+    with pytest.raises(VfsResolutionError, match="not found"):
+        idx.resolve(["h", "meshes/missing.nif"])

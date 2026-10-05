@@ -180,13 +180,55 @@ def test_remapped_inline_file_substitutes_paths_without_hash_check(tmp_path):
 # Unsupported directive types
 # ---------------------------------------------------------------------------
 
-def test_create_bsa_is_unsupported(tmp_path):
-    directive = wm.CreateBSADirective(to="mods/Foo/Foo.bsa", hash="x==", size=1, temp_id="t")
+def _bsa_directive(temp_id="t1", hash_="", file_paths=("meshes\\a.nif",)):
+    return wm.parse_directive({
+        "$type": "CreateBSA, Wabbajack.Lib", "To": "Foo/Foo.bsa", "Hash": hash_, "Size": 1,
+        "TempID": temp_id,
+        "State": {"$type": "BSAState, Compression.BSA", "Magic": "BSA\u0000", "Version": 105,
+                  "ArchiveFlags": 0x7, "FileFlags": 0x1},
+        "FileStates": [{"$type": "BSAFileState, Compression.BSA", "Path": p, "Index": i,
+                        "FlipCompression": False} for i, p in enumerate(file_paths)],
+    })
+
+
+def test_create_bsa_packs_built_inputs_and_notes_non_identical_hash(tmp_path):
+    from Utils.archives.bsa_extract import extract_bsa
+    temp_root = tmp_path / "bsa"
+    (temp_root / "t1" / "meshes").mkdir(parents=True)
+    (temp_root / "t1" / "meshes" / "a.nif").write_bytes(b"NIF DATA" * 100)
+
     result = apply_directive(
-        directive, dest_root=tmp_path / "dest", wabbajack_path=tmp_path / "unused.wabbajack",
-        archive_index=ArchiveIndex(tmp_path / "scratch"))
-    assert not result.success
-    assert result.unsupported
+        _bsa_directive(hash_="curator-archive-hash=="), dest_root=tmp_path / "dest",
+        wabbajack_path=tmp_path / "unused.wabbajack",
+        archive_index=ArchiveIndex(tmp_path / "scratch"), bsa_temp_root=temp_root)
+
+    assert result.success, result.error
+    assert "isn't byte-identical" in result.note
+    extract_bsa(tmp_path / "dest" / "Foo" / "Foo.bsa", tmp_path / "out")
+    assert (tmp_path / "out" / "meshes" / "a.nif").read_bytes() == b"NIF DATA" * 100
+
+
+def test_create_bsa_with_matching_hash_has_no_note(tmp_path):
+    temp_root = tmp_path / "bsa"
+    (temp_root / "t1" / "meshes").mkdir(parents=True)
+    (temp_root / "t1" / "meshes" / "a.nif").write_bytes(b"x")
+    # Build once to learn the hash this writer produces, then rebuild against it.
+    first = apply_directive(_bsa_directive(), dest_root=tmp_path / "d1",
+                            wabbajack_path="unused", archive_index=ArchiveIndex(tmp_path / "s"),
+                            bsa_temp_root=temp_root)
+    from Utils.wabbajack.wabbajack_hash import hash_file
+    again = apply_directive(_bsa_directive(hash_=hash_file(first.path)), dest_root=tmp_path / "d2",
+                            wabbajack_path="unused", archive_index=ArchiveIndex(tmp_path / "s"),
+                            bsa_temp_root=temp_root)
+    assert again.success and again.note == ""
+
+
+def test_create_bsa_missing_input_fails(tmp_path):
+    result = apply_directive(
+        _bsa_directive(), dest_root=tmp_path / "dest", wabbajack_path="unused",
+        archive_index=ArchiveIndex(tmp_path / "scratch"), bsa_temp_root=tmp_path / "bsa")
+    assert not result.success and not result.unsupported
+    assert "missing file" in result.error
 
 
 def test_transformed_texture_is_unsupported(tmp_path):
