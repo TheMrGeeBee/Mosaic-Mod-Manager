@@ -580,6 +580,17 @@ def write_collection_revision(profile_dir: Path, revision_number: int | None) ->
         _update_key(profile_dir, "collection_revision_number", int(revision_number))
 
 
+def read_wabbajack_modlist_info(profile_dir: Path) -> dict | None:
+    """The Wabbajack modlist this profile was installed from
+    (``{"name", "author", "version", "game_type", "source_file"}``), or None."""
+    raw = _read_key(profile_dir, None, "wabbajack_modlist")
+    return raw if isinstance(raw, dict) else None
+
+
+def write_wabbajack_modlist_info(profile_dir: Path, info: dict) -> None:
+    _update_key(profile_dir, "wabbajack_modlist", dict(info))
+
+
 def read_collection_install_paused(profile_dir: Path) -> bool:
     """Return True if this profile's collection install was paused partway through."""
     raw = _read_key(profile_dir, None, "collection_install_paused")
