@@ -5,6 +5,7 @@ from Utils.wabbajack import wabbajack_manifest as wm
 from Utils.wabbajack.downloaders import (
     download_google_drive,
     download_http,
+    download_loverslab,
     download_mediafire,
     download_mega,
     download_wabbajack_cdn,
@@ -33,10 +34,14 @@ def test_resolve_downloader_mega():
     assert resolve_downloader(wm.MegaState()) is download_mega
 
 
-def test_resolve_downloader_unimplemented_sources_return_none():
+def test_resolve_downloader_loverslab():
+    assert resolve_downloader(wm.LoversLabState()) is download_loverslab
+
+
+def test_resolve_downloader_sources_without_a_downloader_return_none():
     # Nexus is deliberately excluded (needs a live NexusDownloader instance,
-    # see the module docstring); LoversLab isn't implemented yet.
-    for state in (wm.NexusState(), wm.LoversLabState(), wm.ManualState()):
+    # see the module docstring); Manual archives need the user.
+    for state in (wm.NexusState(), wm.ManualState(), wm.UnknownState()):
         assert resolve_downloader(state) is None
 
 

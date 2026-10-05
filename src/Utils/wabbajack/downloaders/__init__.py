@@ -8,11 +8,11 @@ client, not make an anonymous request) -- callers special-case
 ``isinstance(state, NexusState)`` and call it directly rather than going
 through :func:`resolve_downloader`.
 
-HTTP, Wabbajack-CDN, Google Drive, MediaFire and Mega sources are
-implemented so far (LoversLab is planned per the approved plan's download-
-source build order but not built yet); :func:`resolve_downloader` returns
-``None`` for anything not yet wired up so callers can report "unsupported
-source" rather than guess.
+``ManualDownloader`` archives (a page the user must download from by hand)
+and unrecognized ``$type``s have no downloader; :func:`resolve_downloader`
+returns ``None`` for them so callers can route them to the manual-download
+flow or report them as unsupported rather than guess. A LoversLab download
+without a valid login comes back with ``needs_auth=True``.
 """
 from __future__ import annotations
 
@@ -20,6 +20,7 @@ from ..wabbajack_manifest import (
     ArchiveState,
     GoogleDriveState,
     HttpState,
+    LoversLabState,
     MediaFireState,
     MegaState,
     UnknownState,
@@ -27,6 +28,7 @@ from ..wabbajack_manifest import (
 )
 from .google_drive_source import download_google_drive
 from .http_source import WabbajackDownloadResult, download_http, download_wabbajack_cdn
+from .loverslab_source import download_loverslab
 from .mediafire_source import download_mediafire
 from .mega_source import download_mega
 
@@ -38,6 +40,7 @@ _DISPATCH = {
     GoogleDriveState: download_google_drive,
     MediaFireState: download_mediafire,
     MegaState: download_mega,
+    LoversLabState: download_loverslab,
 }
 
 

@@ -47,6 +47,8 @@ class WabbajackDownloadResult:
     file_path: "Path | None" = None
     error: str = ""
     bytes_downloaded: int = 0
+    # The source needs the user to (re-)log in before a retry can succeed.
+    needs_auth: bool = False
 
 
 def _parse_headers(header_lines: "list[str]") -> dict:
