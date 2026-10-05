@@ -20,3 +20,4 @@ backports.tarfile
 msgpack
 bsdiff4
 xxhash
+pycryptodomex
