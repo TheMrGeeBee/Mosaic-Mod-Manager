@@ -36,13 +36,24 @@ from .wabbajack_manifest import (
 FIX_LOVERSLAB_LOGIN = "loverslab-login"
 
 _DIRECTIVE_LABELS = {
-    CreateBSADirective: "rebuilt BSA/BA2 archives",
-    TransformedTextureDirective: "converted textures",
+    CreateBSADirective: "rebuilt BSA/BA2 archive",
+    TransformedTextureDirective: "converted texture",
 }
 
 
 def _plural(n: int, word: str) -> str:
     return f"{n} {word}{'' if n == 1 else 's'}"
+
+
+def _archives_come(n: int) -> str:
+    return f"{_plural(n, 'archive')} {'comes' if n == 1 else 'come'}"
+
+
+def _plural_label(n: int, label: str) -> str:
+    """``"2 unrecognised steps (X)"``: pluralise the noun before any
+    parenthesised detail."""
+    noun, sep, detail = label.partition(" (")
+    return f"{_plural(n, noun)}{sep}{detail}"
 
 
 def check_game(modlist: ModList, active_game_name: str) -> "list[Check]":
@@ -62,12 +73,12 @@ def check_directives(modlist: ModList) -> "list[Check]":
     counts: Counter = Counter()
     for d in modlist.directives:
         if isinstance(d, UnknownDirective):
-            counts[f"unrecognised steps ({d.type_name.split(',')[0] or 'no type'})"] += 1
+            counts[f"unrecognised step ({d.type_name.split(',')[0] or 'no type'})"] += 1
         elif isinstance(d, UNSUPPORTED_DIRECTIVE_TYPES):
             counts[_DIRECTIVE_LABELS[type(d)]] += 1
     if not counts:
         return [Check("directives", True, "Mosaic can build every file in this modlist")]
-    parts = "; ".join(f"{n} {label}" for label, n in counts.most_common())
+    parts = "; ".join(_plural_label(n, label) for label, n in counts.most_common())
     return [Check("directives", False, "Modlist needs features Mosaic can't install yet",
                   f"{parts}. Installing it now would leave the setup incomplete.")]
 
@@ -90,13 +101,13 @@ def check_sources(modlist: ModList, *, nexus_premium: bool,
     if by_kind[NexusState] and not nexus_premium:
         checks.append(Check(
             "nexus-premium", False, "Nexus downloads need Premium to run automatically",
-            f"{_plural(by_kind[NexusState], 'archive')} come from Nexus Mods. Without "
+            f"{_archives_come(by_kind[NexusState])} from Nexus Mods. Without "
             "Nexus Premium each one needs a click on the Nexus website.",
             blocking=False))
     if by_kind[LoversLabState] and not loverslab_logged_in:
         checks.append(Check(
             "loverslab", False, "Log in to LoversLab",
-            f"{_plural(by_kind[LoversLabState], 'archive')} come from LoversLab, which "
+            f"{_archives_come(by_kind[LoversLabState])} from LoversLab, which "
             "needs you to be logged in.",
             blocking=False, fix=FIX_LOVERSLAB_LOGIN))
     if not checks:

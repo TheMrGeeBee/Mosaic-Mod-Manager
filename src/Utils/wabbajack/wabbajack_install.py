@@ -75,9 +75,10 @@ class WabbajackInstallCallbacks:
     on_download_progress: Callable[[str, int, int], None] = _noop  # hash, cur, total
     on_download_finish: Callable[[str, bool], None] = _noop        # hash, ok
     on_build_progress: Callable[[int, int], None] = _noop          # done, total
-    # Blocking: ask the user to fetch an archive by hand; returns its path or
-    # None to skip it. None here means "can't ask" -- the archive just fails.
-    request_manual_download: "Callable[[Archive], Path | None] | None" = None
+    # Blocking: ask the user to fetch an archive by hand (with why the
+    # automatic download didn't work); returns its path, or None to skip it.
+    # Unset means "can't ask" -- the archive just fails.
+    request_manual_download: "Callable[[Archive, str], Path | None] | None" = None
     # Blocking: show the LoversLab login form; True once logged in.
     request_loverslab_login: "Callable[[], bool] | None" = None
 
@@ -210,13 +211,14 @@ def _download_all(archives: "list[Archive]", download_dir: Path, *, nexus_downlo
     def work(archive: Archive) -> None:
         if cancel.is_set():
             return
+        # Reported for cache hits too, so progress counts every archive.
+        cb.on_download_start(archive.hash, archive.name, archive.size)
         path = _cached(archive, download_dir)
         why = ""
         if path is None:
-            cb.on_download_start(archive.hash, archive.name, archive.size)
             path, why = _download_automatic(
                 archive, download_dir, nexus_downloader=nexus_downloader, cb=cb, cancel=cancel)
-            cb.on_download_finish(archive.hash, path is not None)
+        cb.on_download_finish(archive.hash, path is not None)
         with lock:
             if path is not None:
                 have[archive.hash] = path
@@ -233,7 +235,7 @@ def _download_all(archives: "list[Archive]", download_dir: Path, *, nexus_downlo
         path = None
         if cb.request_manual_download is not None:
             cb.on_log(f"Wabbajack: {archive.name} needs a manual download ({why})")
-            path = cb.request_manual_download(archive)
+            path = cb.request_manual_download(archive, why)
         if path is not None and _verified(Path(path), archive):
             have[archive.hash] = Path(path)
         else:

@@ -58,8 +58,8 @@ def test_directives_unsupported_are_counted_and_block():
     [check] = check_directives(ml)
     assert not check.ok and check.blocking
     assert "2 rebuilt BSA/BA2 archives" in check.detail
-    assert "1 converted textures" in check.detail
-    assert "SomethingNew" in check.detail
+    assert "1 converted texture;" in check.detail
+    assert "1 unrecognised step (SomethingNew)" in check.detail
 
 
 def test_sources_all_automatic():

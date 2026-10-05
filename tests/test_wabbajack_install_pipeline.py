@@ -178,14 +178,14 @@ def test_hash_mismatch_falls_back_to_manual_download(tmp_path, monkeypatch):
 
     asked = []
 
-    def manual(archive):
-        asked.append(archive.name)
+    def manual(archive, why):
+        asked.append((archive.name, why))
         return src  # the user picks the real file
 
     report, staging, *_ = _run(
         tmp_path, wj, modlist, monkeypatch, downloader=corrupt,
         callbacks=wi.WabbajackInstallCallbacks(request_manual_download=manual))
-    assert asked == ["ModA.zip"]
+    assert asked == [("ModA.zip", "downloaded file doesn't match the modlist's hash")]
     assert report.ok
     assert (staging / "ModA" / "ModA.esp").is_file()
 
@@ -195,7 +195,7 @@ def test_unavailable_archive_fails_its_files_but_not_the_rest(tmp_path, monkeypa
     report, staging, profile, _ = _run(
         tmp_path, wj, modlist, monkeypatch,
         downloader=lambda state, dest, **kw: WabbajackDownloadResult(success=False, error="404"),
-        callbacks=wi.WabbajackInstallCallbacks(request_manual_download=lambda a: None))
+        callbacks=wi.WabbajackInstallCallbacks(request_manual_download=lambda a, why: None))
     assert not report.ok
     assert report.failed_archives == [("ModA.zip", "404")]
     assert {to for to, _ in report.failed_directives} == {"ModA/ModA.esp", "ModA/textures/a.dds"}

@@ -7935,6 +7935,11 @@ class MainWindow(QMainWindow):
             self._export_profile_code()
         elif which == "import_code":
             self._import_profile_code()
+        elif which == "import_wabbajack":
+            if getattr(self, "_wabbajack", None) is None:
+                from gui_qt.wabbajack.wabbajack_controller import WabbajackController
+                self._wabbajack = WabbajackController(self)
+            self._wabbajack.start_import()
         else:
             self._append_log(f"[profile] {which} (not wired yet)")
 
@@ -9394,6 +9399,8 @@ class MainWindow(QMainWindow):
             (self.tr("Import profile…"), lambda: self._on_profile_action("import")),
             (self.tr("Export code…"), lambda: self._on_profile_action("export_code")),
             (self.tr("Import code…"), lambda: self._on_profile_action("import_code")),
+            (self.tr("Import Wabbajack modlist…"),
+             lambda: self._on_profile_action("import_wabbajack")),
             (self.tr("Create/Publish Collection…"),
              lambda: self._on_profile_action("create_collection")),
         ])
