@@ -5,6 +5,7 @@ from Utils.wabbajack import wabbajack_manifest as wm
 from Utils.wabbajack.downloaders import (
     download_google_drive,
     download_http,
+    download_mediafire,
     download_wabbajack_cdn,
     is_unsupported,
     resolve_downloader,
@@ -23,11 +24,14 @@ def test_resolve_downloader_google_drive():
     assert resolve_downloader(wm.GoogleDriveState()) is download_google_drive
 
 
+def test_resolve_downloader_mediafire():
+    assert resolve_downloader(wm.MediaFireState()) is download_mediafire
+
+
 def test_resolve_downloader_unimplemented_sources_return_none():
     # Nexus is deliberately excluded (needs a live NexusDownloader instance,
-    # see the module docstring); MediaFire/Mega/LoversLab aren't implemented yet.
-    for state in (wm.NexusState(), wm.MediaFireState(), wm.MegaState(),
-                  wm.LoversLabState(), wm.ManualState()):
+    # see the module docstring); Mega/LoversLab aren't implemented yet.
+    for state in (wm.NexusState(), wm.MegaState(), wm.LoversLabState(), wm.ManualState()):
         assert resolve_downloader(state) is None
 
 
