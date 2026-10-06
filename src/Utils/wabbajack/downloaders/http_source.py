@@ -4,16 +4,16 @@ Covers two of ``Archive.State``'s ``$type`` variants:
   - ``HttpState`` -- a plain, already-resolved URL, optionally with extra
     request headers the compiler captured (e.g. an auth token for a gated
     host).
-  - ``WabbajackCDNState`` -- Wabbajack's own hosted mirror. The URL doesn't
-    point at the file itself: it's a "definition" endpoint returning a JSON
-    manifest describing one or more independently-hosted parts, which this
-    module fetches in order and concatenates. (The exact definition-JSON
-    shape assumed below -- a ``Parts`` list of ``{"Url", "Size"}`` objects --
-    should be cross-checked against a real modlist before this is trusted
-    for a release; see the plan's "key open risks" note. Per-part integrity
-    isn't verified here: the orchestrator verifies the whole concatenated
-    file against ``Archive.hash`` once downloaded, which already catches a
-    corrupt/truncated result.)
+  - ``WabbajackCDNState`` -- Wabbajack's own file host
+    (``authored-files.wabbajack.org``). The URL names a folder, not the
+    file (a plain GET returns an HTML page): ``<url>/definition.json.gz``
+    is gzip-compressed JSON with the total ``Size``/``Hash`` and a ``Parts``
+    list (``Index``, ``Offset``, ``Size``, ``Hash``; no URLs), and each part
+    is served from ``<url>/parts/<Index>``. Parts are written in ``Index``
+    order and each one, then the whole file, is checked against its hash.
+    This layout was observed on the gallery's own modlist files; a
+    ``WabbajackCDNDownloader`` state inside a modlist hasn't been seen yet,
+    so it's assumed to point at the same kind of folder.
 
 Streaming/cancel/bandwidth-throttle pattern mirrors
 ``Nexus.nexus_download.NexusDownloader._stream_download``, minus the
@@ -22,15 +22,19 @@ hash, not a Nexus file id).
 """
 from __future__ import annotations
 
+import gzip
+import json
 import threading
 from dataclasses import dataclass
 from pathlib import Path
+from urllib.parse import quote, unquote, urlsplit, urlunsplit
 
 import requests
 
 from Utils.ca_bundle import resolve_ca_bundle
 from Utils.downloads import bandwidth_limit
 
+from ..wabbajack_hash import StreamingHash, hashes_match
 from ..wabbajack_manifest import HttpState, WabbajackCDNState
 
 _CHUNK_SIZE = 256 * 1024
@@ -102,47 +106,78 @@ def download_http(state: HttpState, dest: Path, *, progress_cb=None,
         return WabbajackDownloadResult(success=False, error=str(exc))
 
 
+def cdn_base_url(url: str) -> str:
+    """``url`` with its path percent-encoded (real CDN names contain spaces
+    and apostrophes, e.g. ``A Dragonborn's Fate.wabbajack_<uuid>``) and no
+    trailing slash. Idempotent: an already-encoded URL is left as is."""
+    parts = urlsplit(url.strip())
+    path = quote(unquote(parts.path), safe="/").rstrip("/")
+    return urlunsplit((parts.scheme, parts.netloc, path, "", ""))
+
+
+def _cdn_definition(base: str, verify) -> dict:
+    resp = requests.get(f"{base}/definition.json.gz", timeout=30, verify=verify)
+    resp.raise_for_status()
+    data = resp.content
+    # The server may send it gzipped or let the transfer layer decompress it.
+    if data[:2] == b"\x1f\x8b":
+        data = gzip.decompress(data)
+    definition = json.loads(data)
+    if not isinstance(definition, dict):
+        raise ValueError("CDN definition isn't a JSON object")
+    return definition
+
+
 def download_wabbajack_cdn(state: WabbajackCDNState, dest: Path, *, progress_cb=None,
                             cancel: "threading.Event | None" = None) -> WabbajackDownloadResult:
     """Download a Wabbajack-CDN-hosted archive (``Archive.State`` ``$type``
-    ``WabbajackCDNDownloader``). See the module docstring for the definition-
-    JSON shape assumed and what is/isn't verified here."""
+    ``WabbajackCDNDownloader``); see the module docstring for the layout."""
     if not state.url:
         return WabbajackDownloadResult(
             success=False, error="no URL in WabbajackCDNDownloader state")
+    verify = resolve_ca_bundle() or True
+    base = cdn_base_url(state.url)
     try:
-        resp = requests.get(state.url, timeout=30, verify=resolve_ca_bundle() or True)
-        resp.raise_for_status()
-        definition = resp.json()
-    except (requests.RequestException, ValueError) as exc:
+        definition = _cdn_definition(base, verify)
+    except (requests.RequestException, ValueError, OSError, EOFError) as exc:
         return WabbajackDownloadResult(success=False, error=f"CDN definition fetch failed: {exc}")
 
-    parts = definition.get("Parts") or []
+    parts = sorted(definition.get("Parts") or [], key=lambda p: int(p.get("Index") or 0))
     if not parts:
         return WabbajackDownloadResult(success=False, error="CDN definition has no parts")
 
     dest.parent.mkdir(parents=True, exist_ok=True)
     total_size = int(definition.get("Size") or sum(int(p.get("Size") or 0) for p in parts))
+    whole = StreamingHash()
     downloaded = 0
     try:
         with open(dest, "wb") as out:
             for part in parts:
                 if cancel and cancel.is_set():
                     raise DownloadCancelled()
-                part_url = part.get("Url", "")
-                if not part_url:
-                    raise ValueError("CDN part is missing a Url")
-                with requests.get(part_url, stream=True, timeout=_REQUEST_TIMEOUT,
-                                  verify=resolve_ca_bundle() or True) as presp:
+                index = int(part.get("Index") or 0)
+                part_hash, part_size = StreamingHash(), 0
+                with requests.get(f"{base}/parts/{index}", stream=True,
+                                  timeout=_REQUEST_TIMEOUT, verify=verify) as presp:
                     presp.raise_for_status()
                     for chunk in presp.iter_content(_CHUNK_SIZE):
                         if cancel and cancel.is_set():
                             raise DownloadCancelled()
                         out.write(chunk)
+                        part_hash.update(chunk)
+                        whole.update(chunk)
+                        part_size += len(chunk)
                         downloaded += len(chunk)
                         bandwidth_limit.throttle(len(chunk), cancel)
                         if progress_cb:
                             progress_cb(downloaded, total_size)
+                if part.get("Size") is not None and part_size != int(part["Size"]):
+                    raise ValueError(f"CDN part {index} is {part_size} bytes, "
+                                     f"expected {part['Size']}")
+                if part.get("Hash") and not hashes_match(part["Hash"], part_hash.b64()):
+                    raise ValueError(f"CDN part {index} doesn't match its hash")
+        if definition.get("Hash") and not hashes_match(definition["Hash"], whole.b64()):
+            raise ValueError("downloaded file doesn't match the CDN's hash")
     except DownloadCancelled:
         dest.unlink(missing_ok=True)
         return WabbajackDownloadResult(success=False, error="cancelled")

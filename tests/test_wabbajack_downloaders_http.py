@@ -92,49 +92,123 @@ def test_download_http_raises_http_error_is_reported(tmp_path, monkeypatch):
 
 
 # ---------------------------------------------------------------------------
-# WabbajackCDN
+# WabbajackCDN -- layout observed on authored-files.wabbajack.org: the URL is
+# a folder (a bare GET is an HTML page); <url>/definition.json.gz is gzipped
+# JSON with Parts (no URLs); each part is at <url>/parts/<Index>.
 # ---------------------------------------------------------------------------
 
-def test_download_wabbajack_cdn_concatenates_parts(tmp_path, monkeypatch):
-    definition = _FakeResponse(json_data={
-        "Size": 10,
-        "Parts": [{"Url": "https://cdn/part1", "Size": 5}, {"Url": "https://cdn/part2", "Size": 5}],
-    })
-    part_bodies = {"https://cdn/part1": b"AAAAA", "https://cdn/part2": b"BBBBB"}
+import gzip  # noqa: E402
+import json  # noqa: E402
+
+from Utils.wabbajack.wabbajack_hash import hash_bytes  # noqa: E402
+
+# Verbatim from the real Halgari's Helper definition (note the server's own
+# misspelt ServerAssingedUniqueId).
+_HALGARI_DEFINITION = (
+    '{"Author":"github/halgari","OriginalFileName":"HalgarisHelper.wabbajack",'
+    '"Size":1588954,"Hash":"83fJglT61Dk=","Parts":[{"Size":1588954,"Offset":0,'
+    '"Hash":"83fJglT61Dk=","Index":0}],"ServerAssignedUniqueId":null,'
+    '"MungedName":"HalgarisHelper.wabbajack_5d55cc2d-2dbd-49ba-82d5-a66fb0572c54",'
+    '"ServerAssingedUniqueId":"5d55cc2d-2dbd-49ba-82d5-a66fb0572c54","UploadedAt":1698095073}')
+
+
+class _CdnResponse(_FakeResponse):
+    @property
+    def content(self):
+        return self._body
+
+
+def _cdn_server(monkeypatch, base, parts, *, gzipped=True, size=None, whole_hash=None,
+                part_hashes=None):
+    """Fake CDN: parts listed out of order on purpose; ``requests`` records
+    every URL fetched."""
+    whole = b"".join(parts)
+    definition = {
+        "Size": len(whole) if size is None else size,
+        "Hash": hash_bytes(whole) if whole_hash is None else whole_hash,
+        "Parts": [{"Index": i, "Size": len(b), "Offset": sum(map(len, parts[:i])),
+                   "Hash": (part_hashes or {}).get(i, hash_bytes(b))}
+                  for i, b in reversed(list(enumerate(parts)))],
+    }
+    raw = json.dumps(definition).encode()
+    routes = {f"{base}/definition.json.gz": gzip.compress(raw) if gzipped else raw,
+              base: b"<html>CDN landing page</html>"}
+    routes.update({f"{base}/parts/{i}": b for i, b in enumerate(parts)})
+    fetched = []
 
     def fake_get(url, **kw):
-        if url == "https://cdn/definition":
-            return definition
-        return _FakeResponse(body=part_bodies[url])
+        fetched.append(url)
+        if url not in routes:
+            return _CdnResponse(status=404)
+        return _CdnResponse(body=routes[url])
 
     monkeypatch.setattr(http_source.requests, "get", fake_get)
-    state = wm.WabbajackCDNState(url="https://cdn/definition")
-    dest = tmp_path / "archive.7z"
-    result = http_source.download_wabbajack_cdn(state, dest)
-
-    assert result.success
-    assert dest.read_bytes() == b"AAAAABBBBB"
-    assert result.bytes_downloaded == 10
+    return fetched
 
 
-def test_download_wabbajack_cdn_no_parts_fails(tmp_path, monkeypatch):
-    monkeypatch.setattr(
-        http_source.requests, "get",
-        lambda url, **kw: _FakeResponse(json_data={"Parts": []}))
-    result = http_source.download_wabbajack_cdn(
-        wm.WabbajackCDNState(url="https://cdn/definition"), tmp_path / "a.7z")
-    assert not result.success
-    assert "no parts" in result.error
+def test_real_halgari_definition_parses():
+    d = json.loads(_HALGARI_DEFINITION)
+    assert [p["Index"] for p in d["Parts"]] == [0] and "Url" not in d["Parts"][0]
 
 
-def test_download_wabbajack_cdn_part_missing_url_cleans_up(tmp_path, monkeypatch):
-    monkeypatch.setattr(
-        http_source.requests, "get",
-        lambda url, **kw: _FakeResponse(json_data={"Parts": [{"Size": 1}]}))
-    dest = tmp_path / "a.7z"
-    result = http_source.download_wabbajack_cdn(wm.WabbajackCDNState(url="https://cdn/d"), dest)
-    assert not result.success
+def test_cdn_downloads_parts_in_index_order_from_parts_urls(tmp_path, monkeypatch):
+    base = "https://authored-files.wabbajack.org/Mod.wabbajack_uuid"
+    parts = [b"AAAA" * 10, b"BBBB" * 10, b"CCCC" * 10]
+    fetched = _cdn_server(monkeypatch, base, parts)
+    dest = tmp_path / "Mod.7z"
+
+    result = http_source.download_wabbajack_cdn(wm.WabbajackCDNState(url=base), dest)
+
+    assert result.success, result.error
+    assert dest.read_bytes() == b"".join(parts)
+    assert fetched == [f"{base}/definition.json.gz", f"{base}/parts/0",
+                       f"{base}/parts/1", f"{base}/parts/2"]
+    assert base not in fetched  # the bare URL is an HTML page, never used
+
+
+def test_cdn_accepts_definition_already_decompressed(tmp_path, monkeypatch):
+    base = "https://authored-files.wabbajack.org/Mod.wabbajack_uuid"
+    _cdn_server(monkeypatch, base, [b"payload"], gzipped=False)
+    result = http_source.download_wabbajack_cdn(wm.WabbajackCDNState(url=base), tmp_path / "x")
+    assert result.success, result.error
+
+
+def test_cdn_percent_encodes_spaces_and_apostrophes(tmp_path, monkeypatch):
+    raw_url = "https://authored-files.wabbajack.org/A Dragonborn's Fate.wabbajack_cb8be6e1"
+    encoded = "https://authored-files.wabbajack.org/A%20Dragonborn%27s%20Fate.wabbajack_cb8be6e1"
+    fetched = _cdn_server(monkeypatch, encoded, [b"data"])
+    result = http_source.download_wabbajack_cdn(wm.WabbajackCDNState(url=raw_url), tmp_path / "x")
+    assert result.success, result.error
+    assert fetched[0] == f"{encoded}/definition.json.gz"
+
+
+def test_cdn_base_url_is_idempotent_and_drops_trailing_slash():
+    once = http_source.cdn_base_url("https://h.org/A Dragonborn's Fate.wabbajack_x/")
+    assert once == "https://h.org/A%20Dragonborn%27s%20Fate.wabbajack_x"
+    assert http_source.cdn_base_url(once) == once
+
+
+def test_cdn_part_hash_mismatch_fails_and_cleans_up(tmp_path, monkeypatch):
+    base = "https://authored-files.wabbajack.org/Mod.wabbajack_uuid"
+    _cdn_server(monkeypatch, base, [b"one", b"two"], part_hashes={1: "wrong=="})
+    dest = tmp_path / "x"
+    result = http_source.download_wabbajack_cdn(wm.WabbajackCDNState(url=base), dest)
+    assert not result.success and "part 1" in result.error
     assert not dest.exists()
+
+
+def test_cdn_whole_file_hash_mismatch_fails(tmp_path, monkeypatch):
+    base = "https://authored-files.wabbajack.org/Mod.wabbajack_uuid"
+    _cdn_server(monkeypatch, base, [b"one"], whole_hash="wrong==")
+    result = http_source.download_wabbajack_cdn(wm.WabbajackCDNState(url=base), tmp_path / "x")
+    assert not result.success and "CDN's hash" in result.error
+
+
+def test_cdn_missing_definition_reports_error(tmp_path, monkeypatch):
+    monkeypatch.setattr(http_source.requests, "get", lambda url, **kw: _CdnResponse(status=404))
+    result = http_source.download_wabbajack_cdn(
+        wm.WabbajackCDNState(url="https://h.org/gone"), tmp_path / "x")
+    assert not result.success and "definition" in result.error
 
 
 def test_download_wabbajack_cdn_no_url_fails():

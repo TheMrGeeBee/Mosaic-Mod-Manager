@@ -45,6 +45,20 @@ def hash_file(path: "str | Path", chunk_size: int = _CHUNK_SIZE) -> str:
     return _digest_to_b64(hasher.intdigest())
 
 
+class StreamingHash:
+    """Wabbajack-format hash built up from chunks (``update``) -- for
+    checking data while it streams to disk."""
+
+    def __init__(self):
+        self._h = xxhash.xxh64()
+
+    def update(self, data: bytes) -> None:
+        self._h.update(data)
+
+    def b64(self) -> str:
+        return _digest_to_b64(self._h.intdigest())
+
+
 def hashes_match(expected: str, actual: str) -> bool:
     """Whitespace-tolerant comparison of two base64 Wabbajack hash strings."""
     return (expected or "").strip() == (actual or "").strip()
