@@ -502,3 +502,16 @@ def test_limit_to_profile_mods_matches_case_insensitively():
     ]}))
     assert wi.limit_to_profile_mods(plan, {"skyui"}) == ["Other"]
     assert [d.to for d in plan.mod_directives] == ["SkyUI/a.esp"]
+
+
+def test_separator_folders_are_not_reported_as_skipped_mods():
+    def inline(to):
+        return {"$type": "InlineFile, Wabbajack.Lib", "To": to, "SourceDataID": "x"}
+    plan = wi.classify_directives(parse_modlist({"Directives": [
+        inline("mods\\Horizon\\a.esp"),
+        inline("mods\\Unofficial Fallout 4 Patch - GOG\\b.esp"),
+        inline("mods\\Gameplay_separator\\meta.ini"),
+        inline("mods\\UI_SEPARATOR\\meta.ini"),
+    ]}))
+    assert wi.limit_to_profile_mods(plan, {"Horizon"}) == ["Unofficial Fallout 4 Patch - GOG"]
+    assert [d.to for d in plan.mod_directives] == ["Horizon/a.esp"]

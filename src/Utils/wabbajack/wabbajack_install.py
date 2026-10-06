@@ -216,14 +216,18 @@ def limit_to_profile_mods(plan: InstallPlan, listed: "set[str]") -> "list[str]":
     ships both stores' variants of some mods (Horizon: two Unofficial
     Fallout 4 Patch builds providing the same plugin); only the chosen
     profile's belong in the install. Names match case-insensitively.
-    Returns the skipped mod names, sorted."""
+    Returns the skipped mod names, sorted, not counting MO2 separator
+    folders (``*_separator``), which are never built either way."""
     wanted = {n.lower() for n in listed}
     kept, skipped = [], set()
     for d in plan.mod_directives:
         mod = d.to.split("/", 1)[0]
         if mod.lower() in wanted:
             kept.append(d)
-        else:
+        elif not mod.lower().endswith("_separator"):
+            # Separator folders aren't mods (the profile's modlist.txt
+            # still carries the separator lines), so they're dropped
+            # without being reported as skipped.
             skipped.add(mod)
     plan.mod_directives = kept
     temp_ids = {d.temp_id.lower() for d in kept if isinstance(d, CreateBSADirective)}
