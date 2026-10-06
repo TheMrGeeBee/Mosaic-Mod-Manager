@@ -24,7 +24,8 @@ Steps:
 3. **Build** each placed directive (:func:`wabbajack_directives.apply_directive`),
    packing ``CreateBSA`` archives last, from their already-built inputs.
 4. **Profile**: the curator's ``modlist.txt`` (filtered to mods that were
-   actually built) becomes the profile's, and ``plugins.txt``/``loadorder.txt``
+   actually built) becomes the profile's -- and mods it doesn't list at all
+   (another profile's variants) were never downloaded or built, and ``plugins.txt``/``loadorder.txt``
    are copied as-is. There's deliberately no LOOT sort: a Wabbajack load
    order is hand-tuned and reproducing it exactly is the point. Other
    profile files (INIs) are kept in ``<profile>/wabbajack_profile_files`` and
@@ -52,6 +53,7 @@ from .downloaders import resolve_downloader
 from .downloaders.game_file_source import fetch_game_file
 from .downloaders.nexus_source import download_nexus
 from .wabbajack_directives import apply_directive
+from . import wabbajack_file
 from .wabbajack_hash import hash_file, hashes_match
 from .wabbajack_manifest import (
     Archive,
@@ -59,9 +61,11 @@ from .wabbajack_manifest import (
     Directive,
     FromArchiveDirective,
     GameFileSourceState,
+    InlineFileDirective,
     ModList,
     NexusState,
     PatchedFromArchiveDirective,
+    RemappedInlineFileDirective,
 )
 from .wabbajack_vfs import ArchiveIndex
 
@@ -104,6 +108,8 @@ class WabbajackInstallReport:
     failed_directives: "list[tuple[str, str]]" = field(default_factory=list)  # to, why
     unplaced_files: "list[str]" = field(default_factory=list)
     held_profile_files: "list[str]" = field(default_factory=list)
+    # Mods only other profiles use: not downloaded or built.
+    skipped_mods: "list[str]" = field(default_factory=list)
     profile_used: str = ""
     cancelled: bool = False
 
@@ -200,6 +206,46 @@ def classify_directives(modlist: ModList, profile: "str | None" = None) -> Insta
         else:
             plan.unplaced.append(to)
     return plan
+
+
+def limit_to_profile_mods(plan: InstallPlan, listed: "set[str]") -> "list[str]":
+    """Keep only the mods the chosen profile's ``modlist.txt`` lists
+    (enabled or disabled), dropping every other ``mods/<Name>`` directive and
+    the ``TEMP_BSA_FILES`` inputs that only their archives used -- so their
+    archives aren't downloaded either. A list with GOG and Steam profiles
+    ships both stores' variants of some mods (Horizon: two Unofficial
+    Fallout 4 Patch builds providing the same plugin); only the chosen
+    profile's belong in the install. Names match case-insensitively.
+    Returns the skipped mod names, sorted."""
+    wanted = {n.lower() for n in listed}
+    kept, skipped = [], set()
+    for d in plan.mod_directives:
+        mod = d.to.split("/", 1)[0]
+        if mod.lower() in wanted:
+            kept.append(d)
+        else:
+            skipped.add(mod)
+    plan.mod_directives = kept
+    temp_ids = {d.temp_id.lower() for d in kept if isinstance(d, CreateBSADirective)}
+    plan.bsa_inputs = [d for d in plan.bsa_inputs
+                       if d.to.split("/", 1)[0].lower() in temp_ids]
+    return sorted(skipped)
+
+
+def _profile_mod_names(plan: InstallPlan, wabbajack_path) -> "set[str] | None":
+    """Mod names in the chosen profile's ``modlist.txt``, read straight from
+    the ``.wabbajack`` before anything is downloaded. ``None`` when the
+    profile has no inline ``modlist.txt`` (nothing to filter by)."""
+    import tempfile
+    entry = next((d for d in plan.profile_directives if d.to.lower() == "modlist.txt"
+                  and isinstance(d, (InlineFileDirective, RemappedInlineFileDirective))), None)
+    if entry is None:
+        return None
+    with tempfile.TemporaryDirectory() as td:
+        dest = Path(td) / "modlist.txt"
+        if not wabbajack_file.extract_inline_file(wabbajack_path, entry.source_data_id, dest):
+            return None
+        return {e.name for e in read_modlist(dest) if not e.is_separator}
 
 
 # ---------------------------------------------------------------------------
@@ -325,7 +371,10 @@ def _write_profile(profile_dir: Path, scratch: Path, built_mods: "set[str]",
         entries = [e for e in read_modlist(curated)
                    if e.is_separator or e.name in built_mods]
     listed = {e.name for e in entries}
-    entries += [ModEntry(name=n, enabled=True, locked=False)
+    # Without a curated modlist every built mod is part of the setup; with
+    # one, a built mod it doesn't list (not expected after
+    # limit_to_profile_mods) is added disabled, as MO2 would show it.
+    entries += [ModEntry(name=n, enabled=not curated.is_file(), locked=False)
                 for n in sorted(built_mods - listed)]
     write_modlist(profile_dir / "modlist.txt", entries)
 
@@ -428,6 +477,12 @@ def run_wabbajack_install(*, wabbajack_path: "str | Path", modlist: ModList, gam
     if plan.unplaced:
         log(f"Wabbajack: {len(plan.unplaced)} file(s) outside mods/ and the chosen "
             "profile are not installed")
+    profile_mods = _profile_mod_names(plan, wabbajack_path)
+    if profile_mods is not None:
+        report.skipped_mods = limit_to_profile_mods(plan, profile_mods)
+        if report.skipped_mods:
+            log(f"Wabbajack: skipping {len(report.skipped_mods)} mod(s) the "
+                f"{plan.profile_name!r} profile doesn't use: {', '.join(report.skipped_mods)}")
 
     needed = plan.archive_hashes()
     archives = [a for a in modlist.archives if a.hash in needed]

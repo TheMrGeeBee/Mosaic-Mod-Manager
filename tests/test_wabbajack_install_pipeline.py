@@ -54,7 +54,7 @@ def _build(tmp_path, *, archive_state="HttpDownloader", extra=None):
     from Utils.wabbajack.wabbajack_hash import hash_bytes
     inline = {
         "cfg": b'{"setting": 1}',
-        "mo2-modlist": b"+ModB\n+ModA\n*DLC: Dawnguard\n+NotBuilt\n",
+        "mo2-modlist": b"+ModB\n+ModA\n*DLC: Dawnguard\n+NotBuilt\n+ModC\n+DLC\n",
         "plugins": b"*ModA.esp\n",
         "loadorder": b"Skyrim.esm\nModA.esp\n",
         "ini": b"sPath={--||GAME_PATH_MAGIC_BACK||--}\\Data\n",
@@ -391,3 +391,114 @@ def test_download_name_strips_directories():
     assert wi._download_name(Archive(name="../../etc/x.7z", hash="h")) == "x.7z"
     assert wi._download_name(Archive(name="..", hash="ab/c=")) == "ab_c="
     assert wi._download_name(Archive(name="Mod 1.0.7z", hash="h")) == "Mod 1.0.7z"
+
+
+def _horizon_two_store_list(tmp_path):
+    """Horizon 1.4.4's real shape: GOG and Steam profiles, each listing a
+    store-specific Unofficial Patch build the other doesn't, both shipping
+    the same plugin. The GOG build comes from its own archive, so skipping
+    it must also skip that download; the Steam profile's CC patch is packed
+    into a BSA from TEMP_BSA_FILES, the GOG one's BSA too."""
+    from Utils.wabbajack.wabbajack_hash import hash_bytes
+    gog_zip = tmp_path / "internet" / "UFO4P-GOG.zip"
+    gog_zip.parent.mkdir(parents=True)
+    with zipfile.ZipFile(gog_zip, "w") as zf:
+        zf.writestr("Unofficial Fallout 4 Patch.esp", b"GOG ESP")
+    g_hash = hash_file(gog_zip)
+
+    def inline(to, data_id):
+        return {"$type": "InlineFile, Wabbajack.Lib", "To": to, "SourceDataID": data_id}
+
+    def bsa(to, temp_id):
+        return {"$type": "CreateBSA, Wabbajack.Lib", "To": to, "TempID": temp_id,
+                "State": {"$type": "BSAState, Compression.BSA", "Version": 104,
+                          "ArchiveFlags": 3, "FileFlags": 0},
+                "FileStates": [{"Path": "meshes\\\\a.nif", "Index": 0}]}
+
+    payload = {
+        "steam-mods": b"+Horizon\n+Unofficial Fallout 4 Patch\n+Horizon NextGen CC Patch\n",
+        "gog-mods": b"+Horizon\n+Unofficial Fallout 4 Patch - GOG\n"
+                    b"+Graygarden CTD Fix - Unofficial UFO4P Patch\n",
+        "steam-plugins": b"*unofficial fallout 4 patch.esp\n*Z_Horizon_Patch_CC_NextGen.esp\n",
+        "gog-plugins": b"*Unofficial Fallout 4 Patch.esp\n",
+        "esp": b"ESP", "nif": b"NIF",
+    }
+    modlist = {
+        "Name": "Horizon", "GameType": "Fallout4",
+        "Archives": [{"Hash": g_hash, "Name": "UFO4P-GOG.zip", "Size": gog_zip.stat().st_size,
+                      "State": {"$type": "HttpDownloader, Wabbajack.Lib", "Url": "https://x/gog"}}],
+        "Directives": [
+            inline("profiles\\Horizon - Steam\\modlist.txt", "steam-mods"),
+            inline("profiles\\Horizon - Steam\\plugins.txt", "steam-plugins"),
+            inline("profiles\\Horizon - GOG\\modlist.txt", "gog-mods"),
+            inline("profiles\\Horizon - GOG\\plugins.txt", "gog-plugins"),
+            inline("mods\\Horizon\\Horizon.esp", "esp"),
+            inline("mods\\Unofficial Fallout 4 Patch\\Unofficial Fallout 4 Patch.esp", "esp"),
+            {"$type": "FromArchive, Wabbajack.Lib",
+             "To": "mods\\Unofficial Fallout 4 Patch - GOG\\Unofficial Fallout 4 Patch.esp",
+             "Hash": hash_bytes(b"GOG ESP"), "ArchiveHashPath": [g_hash, "Unofficial Fallout 4 Patch.esp"]},
+            inline("mods\\Graygarden CTD Fix - Unofficial UFO4P Patch\\fix.esp", "esp"),
+            bsa("mods\\Horizon NextGen CC Patch\\CC - Main.ba2".replace("ba2", "bsa"), "steam-cc"),
+            inline("TEMP_BSA_FILES\\steam-cc\\meshes\\a.nif", "nif"),
+            bsa("mods\\Unofficial Fallout 4 Patch - GOG\\GOG - Main.bsa", "gog-bsa"),
+            inline("TEMP_BSA_FILES\\gog-bsa\\meshes\\a.nif", "nif"),
+        ],
+    }
+    wj = tmp_path / "Horizon.wabbajack"
+    with zipfile.ZipFile(wj, "w") as zf:
+        zf.writestr("modlist", json.dumps(modlist))
+        for k, v in payload.items():
+            zf.writestr(k, v)
+    return wj, parse_modlist(modlist), gog_zip
+
+
+def _install_horizon(tmp_path, monkeypatch, profile):
+    wj, modlist, gog_zip = _horizon_two_store_list(tmp_path)
+    fetched = []
+    monkeypatch.setattr(wi, "resolve_downloader", lambda state: _fake_http(gog_zip, fetched))
+    monkeypatch.setattr(wi, "_rebuild_index", lambda *a: None)
+    staging = tmp_path / "staging" / "mods"
+    profile_dir = tmp_path / "staging" / "profiles" / "H"
+    profile_dir.mkdir(parents=True)
+    report = wi.run_wabbajack_install(
+        wabbajack_path=wj, modlist=modlist, game=FakeGame(staging), profile_dir=profile_dir,
+        download_dir=tmp_path / "downloads", profile_name=profile)
+    return report, staging, profile_dir, fetched
+
+
+def test_steam_profile_skips_gog_only_mods_and_their_downloads(tmp_path, monkeypatch):
+    report, staging, profile_dir, fetched = _install_horizon(tmp_path, monkeypatch,
+                                                             "Horizon - Steam")
+    assert report.ok, (report.failed_archives, report.failed_directives)
+    assert report.installed_mods == ["Horizon", "Horizon NextGen CC Patch",
+                                     "Unofficial Fallout 4 Patch"]
+    assert report.skipped_mods == ["Graygarden CTD Fix - Unofficial UFO4P Patch",
+                                   "Unofficial Fallout 4 Patch - GOG"]
+    assert fetched == []  # the GOG-only archive is never downloaded
+    assert not (staging / "Unofficial Fallout 4 Patch - GOG").exists()
+    assert [(e.name, e.enabled) for e in read_modlist(profile_dir / "modlist.txt")] == [
+        ("Horizon", True), ("Unofficial Fallout 4 Patch", True),
+        ("Horizon NextGen CC Patch", True)]
+    assert (staging / "Horizon NextGen CC Patch" / "CC - Main.bsa").is_file()
+
+
+def test_gog_profile_skips_steam_only_mods(tmp_path, monkeypatch):
+    report, staging, profile_dir, fetched = _install_horizon(tmp_path, monkeypatch,
+                                                             "Horizon - GOG")
+    assert report.ok, (report.failed_archives, report.failed_directives)
+    assert report.skipped_mods == ["Horizon NextGen CC Patch", "Unofficial Fallout 4 Patch"]
+    assert fetched == ["https://x/gog"]
+    names = [e.name for e in read_modlist(profile_dir / "modlist.txt")]
+    assert names == ["Horizon", "Unofficial Fallout 4 Patch - GOG",
+                     "Graygarden CTD Fix - Unofficial UFO4P Patch"]
+    assert (staging / "Unofficial Fallout 4 Patch - GOG" / "GOG - Main.bsa").is_file()
+    assert not (staging / "Horizon NextGen CC Patch").exists()
+
+
+def test_limit_to_profile_mods_matches_case_insensitively():
+    plan = wi.classify_directives(parse_modlist({"Directives": [
+        {"$type": "InlineFile, Wabbajack.Lib", "To": "mods\\SkyUI\\a.esp", "SourceDataID": "x"},
+        {"$type": "InlineFile, Wabbajack.Lib", "To": "mods\\Other\\b.esp", "SourceDataID": "x"},
+    ]}))
+    assert wi.limit_to_profile_mods(plan, {"skyui"}) == ["Other"]
+    assert [d.to for d in plan.mod_directives] == ["SkyUI/a.esp"]

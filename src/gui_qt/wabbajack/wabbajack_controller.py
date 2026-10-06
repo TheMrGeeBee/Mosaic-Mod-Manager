@@ -34,6 +34,9 @@ def install_summary(report, profile_name: str) -> "tuple[str, bool]":
         parts.append(f"{len(report.failed_archives)} download(s) couldn't be completed.")
     if report.failed_directives:
         parts.append(f"{len(report.failed_directives)} file(s) couldn't be built.")
+    if report.skipped_mods:
+        parts.append(f"Skipped {len(report.skipped_mods)} mod(s) that only other "
+                     "versions of the modlist use.")
     if report.held_profile_files:
         parts.append(f"{len(report.held_profile_files)} profile settings file(s), such as "
                      "INIs, were saved in the profile's wabbajack_profile_files folder "
