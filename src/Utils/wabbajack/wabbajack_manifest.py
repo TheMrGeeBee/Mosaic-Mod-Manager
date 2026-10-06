@@ -79,6 +79,19 @@ class ManualState:
 
 
 @dataclass
+class GameFileSourceState:
+    """A file taken from the user's own game install. ``game_file`` is
+    relative to the game root, with Windows separators and the ``Data\\``
+    prefix (e.g. ``Data\\Dawnguard.esm``); ``game_version`` is the game
+    version the curator's copy came from."""
+    game: str = ""
+    game_file: str = ""
+    game_version: str = ""
+    hash: str = ""
+    raw: dict = field(default_factory=dict)
+
+
+@dataclass
 class UnknownState:
     """Any ``$type`` this module doesn't recognize yet. ``downloaders``
     reports these as an unsupported source instead of guessing at one."""
@@ -88,7 +101,8 @@ class UnknownState:
 
 ArchiveState = (
     NexusState | HttpState | WabbajackCDNState | GoogleDriveState
-    | MediaFireState | MegaState | LoversLabState | ManualState | UnknownState
+    | MediaFireState | MegaState | LoversLabState | ManualState | GameFileSourceState
+    | UnknownState
 )
 
 
@@ -116,6 +130,9 @@ _STATE_FACTORIES = {
     "loverslabdownloader": lambda d: LoversLabState(url=d.get("Url", ""), raw=d),
     "manualdownloader": lambda d: ManualState(
         url=d.get("Url", ""), prompt=d.get("Prompt", ""), raw=d),
+    "gamefilesourcedownloader": lambda d: GameFileSourceState(
+        game=d.get("Game", ""), game_file=d.get("GameFile", ""),
+        game_version=str(d.get("GameVersion", "") or ""), hash=d.get("Hash", ""), raw=d),
 }
 
 

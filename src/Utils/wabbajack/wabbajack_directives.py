@@ -120,6 +120,9 @@ def apply_directive(directive: Directive, *, dest_root: Path, wabbajack_path: "s
             error=f"{type(directive).__name__} is not implemented yet")
 
     dest = dest_root / directive.to
+    if not dest.resolve().is_relative_to(Path(dest_root).resolve()):
+        return DirectiveResult(
+            success=False, error=f"refusing to write outside the install folder: {directive.to!r}")
     dest.parent.mkdir(parents=True, exist_ok=True)
 
     if isinstance(directive, CreateBSADirective):

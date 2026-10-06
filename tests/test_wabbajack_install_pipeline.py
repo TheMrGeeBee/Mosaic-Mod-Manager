@@ -273,3 +273,121 @@ def test_install_rebuilds_bsa_from_temp_files(tmp_path, monkeypatch):
     assert (tmp_path / "out" / "textures" / "y.dds").read_bytes() == b"DDS BYTES"
     assert any("isn't byte-identical" in line for line in logs)
     assert not (profile / ".wabbajack_work").exists()
+
+
+# ---------------------------------------------------------------------------
+# Real-modlist shapes (Horizon 1.4.4 profiles; A Dragonborn's Fate game files)
+# ---------------------------------------------------------------------------
+
+def _horizon_like():
+    def inline(to, data_id="x"):
+        return {"$type": "InlineFile, Wabbajack.Lib", "To": to, "SourceDataID": data_id}
+    return parse_modlist({"GameType": "Fallout4", "Directives": [
+        inline("profiles\\Horizon - GOG\\modlist.txt"),
+        inline("profiles\\Horizon - GOG\\plugins.txt"),
+        inline("profiles\\Horizon - Steam\\modlist.txt"),
+        inline("profiles\\Horizon - Steam\\plugins.txt"),
+        inline("profiles\\Horizon - Steam\\loadorder.txt"),
+        inline("profiles\\Horizon - Steam\\loadorder.txt.2025_12_17_21_16_42"),
+        inline("mods\\Horizon\\Horizon.esp"),
+        inline("ModOrganizer.exe"),
+        inline("dlls\\qt.dll"),
+    ]})
+
+
+def test_profile_choices_lists_every_profile_with_a_modlist():
+    assert wi.profile_choices(_horizon_like()) == ["Horizon - GOG", "Horizon - Steam"]
+
+
+def test_classify_refuses_to_guess_between_profiles():
+    import pytest
+    with pytest.raises(wi.ProfileChoiceRequired):
+        wi.classify_directives(_horizon_like())
+    with pytest.raises(ValueError):
+        wi.classify_directives(_horizon_like(), "Horizon - Epic")
+
+
+def test_classify_uses_only_the_chosen_profile_and_skips_backups():
+    plan = wi.classify_directives(_horizon_like(), "Horizon - Steam")
+    assert plan.profile_name == "Horizon - Steam"
+    assert sorted(d.to for d in plan.profile_directives) == [
+        "loadorder.txt", "modlist.txt", "plugins.txt"]
+    assert sorted(plan.unplaced) == [
+        "ModOrganizer.exe", "dlls/qt.dll",
+        "profiles/Horizon - GOG/modlist.txt", "profiles/Horizon - GOG/plugins.txt",
+        "profiles/Horizon - Steam/loadorder.txt.2025_12_17_21_16_42"]
+
+
+def test_install_takes_a_file_from_the_game_folder_in_place(tmp_path, monkeypatch):
+    from Utils.wabbajack.wabbajack_hash import hash_bytes
+    game_root = tmp_path / "game"
+    (game_root / "data").mkdir(parents=True)
+    master = game_root / "data" / "dawnguard.esm"
+    master.write_bytes(b"DAWNGUARD MASTER")
+    m_hash = hash_bytes(b"DAWNGUARD MASTER")
+
+    def extra(_a_hash):
+        return [{"$type": "FromArchive, Wabbajack.Lib", "To": "mods\\DLC\\Dawnguard.esm",
+                 "Hash": m_hash, "Size": 16, "ArchiveHashPath": [m_hash]}]
+
+    wj, modlist, src = _build(tmp_path, extra=extra)
+    modlist.archives.append(parse_modlist({"Archives": [{
+        "Hash": m_hash, "Name": "Data_Dawnguard.esm", "Size": 16,
+        "State": {"$type": "GameFileSourceDownloader, Wabbajack.Lib",
+                  "Game": "SkyrimSpecialEdition", "GameFile": "Data\\Dawnguard.esm",
+                  "GameVersion": "1.6.1170.0", "Hash": m_hash}}]}).archives[0])
+
+    class GameWithRoot(FakeGame):
+        def get_game_path(self):
+            return game_root
+
+    monkeypatch.setattr(wi, "resolve_downloader", lambda state: _fake_http(src))
+    monkeypatch.setattr(wi, "_rebuild_index", lambda *a: None)
+    staging = tmp_path / "staging" / "mods"
+    profile = tmp_path / "staging" / "profiles" / "T"
+    profile.mkdir(parents=True)
+    report = wi.run_wabbajack_install(
+        wabbajack_path=wj, modlist=modlist, game=GameWithRoot(staging), profile_dir=profile,
+        download_dir=tmp_path / "downloads")
+
+    assert report.ok, (report.failed_archives, report.failed_directives)
+    assert (staging / "DLC" / "Dawnguard.esm").read_bytes() == b"DAWNGUARD MASTER"
+    assert master.read_bytes() == b"DAWNGUARD MASTER"
+    assert not (tmp_path / "downloads" / "Data_Dawnguard.esm").exists()  # never copied there
+
+
+def test_classify_never_places_paths_that_leave_their_folder():
+    def inline(to):
+        return {"$type": "InlineFile, Wabbajack.Lib", "To": to, "SourceDataID": "x"}
+    plan = wi.classify_directives(parse_modlist({"Directives": [
+        inline("mods\\\\Doubled\\\\file.esp"),   # empty parts are dropped, not absolute
+        inline("mods\\..\\..\\escape.txt"),
+        inline("mods\\A\\..\\..\\..\\escape.txt"),
+        inline("profiles\\P\\..\\..\\x.txt"),
+    ]}))
+    assert [d.to for d in plan.mod_directives] == ["Doubled/file.esp"]
+    assert len(plan.unplaced) == 3 and all(".." in u for u in plan.unplaced)
+
+
+def test_apply_directive_refuses_to_write_outside_dest_root(tmp_path):
+    from Utils.wabbajack import wabbajack_manifest as wm
+    from Utils.wabbajack.wabbajack_directives import apply_directive
+    from Utils.wabbajack.wabbajack_vfs import ArchiveIndex
+    wj = tmp_path / "x.wabbajack"
+    with zipfile.ZipFile(wj, "w") as zf:
+        zf.writestr("modlist", "{}")
+        zf.writestr("d1", b"payload")
+    for to in ("../escape.txt", "/abs/escape.txt"):
+        result = apply_directive(
+            wm.InlineFileDirective(to=to, source_data_id="d1"), dest_root=tmp_path / "root",
+            wabbajack_path=wj, archive_index=ArchiveIndex(tmp_path / "s"))
+        assert not result.success and "outside" in result.error
+    assert not (tmp_path / "escape.txt").exists()
+
+
+def test_download_name_strips_directories():
+    from Utils.wabbajack.wabbajack_manifest import Archive
+    assert wi._download_name(Archive(name="..\\..\\evil.7z", hash="h")) == "evil.7z"
+    assert wi._download_name(Archive(name="../../etc/x.7z", hash="h")) == "x.7z"
+    assert wi._download_name(Archive(name="..", hash="ab/c=")) == "ab_c="
+    assert wi._download_name(Archive(name="Mod 1.0.7z", hash="h")) == "Mod 1.0.7z"

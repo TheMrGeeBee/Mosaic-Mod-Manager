@@ -188,3 +188,75 @@ def test_install_summary_wording():
     assert not ok and "1 download(s) couldn't be completed" in text and "See the log" in text
     text, ok = install_summary(WabbajackInstallReport(cancelled=True), "P")
     assert not ok and text.startswith("Install cancelled.")
+
+
+def test_import_view_requires_a_profile_choice_when_there_are_several(qapp):
+    from gui_qt.wabbajack.wabbajack_import_view import WabbajackImportView
+    from Utils.wabbajack.wabbajack_manifest import parse_modlist
+    chosen = []
+    view = WabbajackImportView(parse_modlist({"Name": "Horizon"}), [],
+                               profiles=["Horizon - GOG", "Horizon - Steam"],
+                               on_install=chosen.append, on_login=lambda: None)
+    view.show()
+    qapp.processEvents()
+    install = next(b for b in view.findChildren(QPushButton) if b.text() == "Install as new profile")
+    assert not install.isEnabled()  # nothing preselected
+    assert view._profile_combo.currentData() is None
+
+    view._profile_combo.setCurrentIndex(2)
+    qapp.processEvents()
+    assert install.isEnabled()
+    QTest.mouseClick(install, Qt.LeftButton)
+    assert chosen == ["Horizon - Steam"]
+
+
+def test_import_view_has_no_picker_for_a_single_profile(qapp):
+    from gui_qt.wabbajack.wabbajack_import_view import WabbajackImportView
+    from Utils.wabbajack.wabbajack_manifest import parse_modlist
+    chosen = []
+    view = WabbajackImportView(parse_modlist({}), [], profiles=["Main"],
+                               on_install=chosen.append, on_login=lambda: None)
+    assert view._profile_combo is None
+    QTest.mouseClick(next(b for b in view.findChildren(QPushButton)
+                          if b.text() == "Install as new profile"), Qt.LeftButton)
+    assert chosen == [None]
+
+
+def test_install_summary_groups_skipped_files():
+    from gui_qt.wabbajack.wabbajack_controller import install_summary
+    from Utils.wabbajack.wabbajack_install import WabbajackInstallReport
+    unplaced = ["ModOrganizer.exe"] + [f"dlls/{i}.dll" for i in range(40)] + \
+               [f"plugins/{i}.py" for i in range(9)] + ["stylesheets/a.qss"] * 2
+    text, _ok = install_summary(WabbajackInstallReport(installed_mods=["A"],
+                                                       unplaced_files=unplaced), "P")
+    assert "Skipped 52 file(s)" in text
+    assert "dlls (40), plugins (9), stylesheets (2) and 1 more" in text
+    assert "ModOrganizer.exe" not in text
+
+
+def test_controller_passes_the_chosen_profile_to_the_install(qapp, tmp_path, monkeypatch):
+    from Utils.exe_launch import game_helpers
+    from Utils.wabbajack import wabbajack_install
+    from Utils.wabbajack.wabbajack_manifest import parse_modlist
+    from gui_qt.wabbajack import wabbajack_controller as wc
+
+    monkeypatch.setattr(game_helpers, "_create_profile",
+                        lambda g, name, profile_specific_mods=False: str(tmp_path / name))
+    monkeypatch.setattr(game_helpers, "_profiles_for_game", lambda name: [])
+    monkeypatch.setattr("Utils.config_paths.get_download_cache_dir_for_game",
+                        lambda name: tmp_path / "downloads")
+    seen = {}
+
+    def fake_install(**kw):
+        seen.update(kw)
+        return wabbajack_install.WabbajackInstallReport(installed_mods=["A"])
+
+    monkeypatch.setattr(wabbajack_install, "run_wabbajack_install", fake_install)
+    win = FakeWindow(FakeGame(tmp_path / "mods"))
+    win.show()
+    controller = wc.WabbajackController(win)
+    controller._path = tmp_path / "Horizon.wabbajack"
+    controller._modlist = parse_modlist({"Name": "Horizon"})
+    controller._start_install("Horizon - Steam")
+    _wait_until(qapp, lambda: win.selected == ["Horizon"])
+    assert seen["profile_name"] == "Horizon - Steam"

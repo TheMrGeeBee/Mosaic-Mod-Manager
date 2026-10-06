@@ -11,8 +11,8 @@ Steps:
 1. **Classify** every directive by destination (:func:`classify_directives`).
    ``mods/<Name>/...`` builds into Mosaic's staging folder ``<Name>``.
    ``profiles/<Profile>/...`` builds into a scratch folder for step 4 --
-   only one profile is used (the one with a ``modlist.txt``, else the first
-   by name). ``TEMP_BSA_FILES/<TempID>/...`` builds into scratch as the input
+   only the chosen profile is used (see :func:`profile_choices`), and MO2's
+   timestamped backups in it are skipped. ``TEMP_BSA_FILES/<TempID>/...`` builds into scratch as the input
    of a rebuilt BSA/BA2. Anything else (MO2's own files, a stock-game copy, ...) isn't
    placed and is listed in the report; how those map onto Mosaic is still
    open (the plan's "profile-file translation" risk).
@@ -36,6 +36,7 @@ Steps:
 from __future__ import annotations
 
 import configparser
+import re
 import shutil
 import threading
 from dataclasses import dataclass, field, replace
@@ -48,6 +49,7 @@ from Utils.plugins.plugins import invalidate_plugins_cache
 from Utils.profile.profile_state import write_wabbajack_modlist_info
 
 from .downloaders import resolve_downloader
+from .downloaders.game_file_source import fetch_game_file
 from .downloaders.nexus_source import download_nexus
 from .wabbajack_directives import apply_directive
 from .wabbajack_hash import hash_file, hashes_match
@@ -56,6 +58,7 @@ from .wabbajack_manifest import (
     CreateBSADirective,
     Directive,
     FromArchiveDirective,
+    GameFileSourceState,
     ModList,
     NexusState,
     PatchedFromArchiveDirective,
@@ -129,31 +132,73 @@ class InstallPlan:
                 and d.archive_hash_path}
 
 
-def classify_directives(modlist: ModList) -> InstallPlan:
-    """Split the modlist's directives by where they land (see module doc).
-    Wabbajack writes ``To`` with Windows separators; they're normalised."""
-    plan = InstallPlan()
-    by_profile: "dict[str, list[Directive]]" = {}
+class ProfileChoiceRequired(ValueError):
+    """The modlist ships several MO2 profiles and none was chosen."""
+
+
+def _norm_to(d) -> "list[str]":
+    """``To`` split into path parts, with empty parts dropped (``a\\\\b``,
+    ``/a``). An empty part would otherwise make the joined path absolute
+    and escape the destination folder."""
+    return [p for p in (getattr(d, "to", "") or "").replace("\\", "/").split("/") if p]
+
+
+def _unsafe(parts: "list[str]") -> bool:
+    return any(p in (".", "..") for p in parts)
+
+
+def profile_choices(modlist: ModList) -> "list[str]":
+    """The modlist's MO2 profiles a user can install, sorted. A profile
+    folder counts if it has a ``modlist.txt``; when none does, every
+    profile folder counts. More than one means the user must choose (e.g.
+    Horizon's "Horizon - GOG" and "Horizon - Steam" differ in mods and
+    plugins), so :func:`classify_directives` never picks on its own."""
+    folders: "dict[str, bool]" = {}
     for d in modlist.directives:
-        to = (getattr(d, "to", "") or "").replace("\\", "/").strip("/")
-        parts = to.split("/")
+        parts = _norm_to(d)
+        if len(parts) >= 3 and parts[0].lower() == "profiles":
+            has = folders.get(parts[1], False)
+            folders[parts[1]] = has or (len(parts) == 3 and parts[2].lower() == "modlist.txt")
+    with_modlist = sorted(n for n, has in folders.items() if has)
+    return with_modlist or sorted(folders)
+
+
+# MO2 keeps timestamped copies like loadorder.txt.2025_12_17_21_16_42 in
+# profile folders; they're history, not part of the setup.
+_PROFILE_BACKUP_RE = re.compile(r"\.\d{4}_\d{2}_\d{2}_\d{2}_\d{2}_\d{2}$")
+
+
+def classify_directives(modlist: ModList, profile: "str | None" = None) -> InstallPlan:
+    """Split the modlist's directives by where they land (see module doc).
+    Wabbajack writes ``To`` with Windows separators; they're normalised.
+    ``profile`` names the MO2 profile to install; it may be omitted only
+    when :func:`profile_choices` offers at most one, otherwise
+    :class:`ProfileChoiceRequired` is raised."""
+    choices = profile_choices(modlist)
+    if profile is None:
+        if len(choices) > 1:
+            raise ProfileChoiceRequired(
+                f"choose one of the modlist's profiles: {', '.join(choices)}")
+        profile = choices[0] if choices else ""
+    elif profile not in choices:
+        raise ValueError(f"{profile!r} isn't one of the modlist's profiles")
+
+    plan = InstallPlan(profile_name=profile)
+    for d in modlist.directives:
+        parts = _norm_to(d)
+        to = "/".join(parts)
         head = parts[0].lower() if parts else ""
-        if head == "mods" and len(parts) >= 3:
+        if _unsafe(parts):
+            plan.unplaced.append(to)  # never built: it would leave its folder
+        elif head == "mods" and len(parts) >= 3:
             plan.mod_directives.append(replace(d, to="/".join(parts[1:])))
-        elif head == "profiles" and len(parts) >= 3:
-            by_profile.setdefault(parts[1], []).append(replace(d, to="/".join(parts[2:])))
+        elif (head == "profiles" and len(parts) >= 3 and parts[1] == profile
+              and not _PROFILE_BACKUP_RE.search(parts[-1])):
+            plan.profile_directives.append(replace(d, to="/".join(parts[2:])))
         elif head == _BSA_TEMP_DIR and len(parts) >= 3:
             plan.bsa_inputs.append(replace(d, to="/".join(parts[1:])))
         else:
             plan.unplaced.append(to)
-
-    if by_profile:
-        with_modlist = sorted(name for name, ds in by_profile.items()
-                              if any(d.to.lower() == "modlist.txt" for d in ds))
-        plan.profile_name = (with_modlist or sorted(by_profile))[0]
-        plan.profile_directives = by_profile.pop(plan.profile_name)
-        for name, ds in by_profile.items():
-            plan.unplaced.extend(f"profiles/{name}/{d.to}" for d in ds)
     return plan
 
 
@@ -166,8 +211,15 @@ def _verified(path: "Path | None", archive: Archive) -> bool:
     return path is not None and path.is_file() and hashes_match(archive.hash, hash_file(path))
 
 
+def _download_name(archive: Archive) -> str:
+    """The archive's file name with any directory part removed, so a
+    crafted ``Name`` can't place the download outside the download folder."""
+    name = Path((archive.name or "").replace("\\", "/")).name
+    return name if name not in ("", ".", "..") else archive.hash.replace("/", "_")
+
+
 def _cached(archive: Archive, download_dir: Path) -> "Path | None":
-    candidate = download_dir / archive.name
+    candidate = download_dir / _download_name(archive)
     if (archive.name and candidate.is_file()
             and (not archive.size or candidate.stat().st_size == archive.size)
             and _verified(candidate, archive)):
@@ -176,7 +228,7 @@ def _cached(archive: Archive, download_dir: Path) -> "Path | None":
 
 
 def _download_automatic(archive: Archive, download_dir: Path, *, nexus_downloader,
-                        cb: WabbajackInstallCallbacks,
+                        game_root, cb: WabbajackInstallCallbacks,
                         cancel: threading.Event) -> "tuple[Path | None, str]":
     """``(verified path, "")`` or ``(None, why)``. Never asks the user
     anything except the LoversLab login (one retry after a successful one)."""
@@ -184,6 +236,10 @@ def _download_automatic(archive: Archive, download_dir: Path, *, nexus_downloade
         cb.on_download_progress(archive.hash, cur, total or archive.size)
 
     state = archive.state
+    if isinstance(state, GameFileSourceState):
+        # Used in place and already hash-checked; never unlinked below.
+        result = fetch_game_file(state, game_root, archive.hash)
+        return (result.file_path, "") if result.success else (None, result.error)
     if isinstance(state, NexusState):
         if nexus_downloader is None:
             return None, "not logged in to Nexus Mods"
@@ -195,7 +251,8 @@ def _download_automatic(archive: Archive, download_dir: Path, *, nexus_downloade
         if fn is None:
             return None, "no automatic download for this source"
         def fetch():
-            return fn(state, download_dir / archive.name, progress_cb=progress, cancel=cancel)
+            return fn(state, download_dir / _download_name(archive), progress_cb=progress,
+                      cancel=cancel)
 
     result = fetch()
     if (not result.success and result.needs_auth and not cancel.is_set()
@@ -211,7 +268,7 @@ def _download_automatic(archive: Archive, download_dir: Path, *, nexus_downloade
 
 
 def _download_all(archives: "list[Archive]", download_dir: Path, *, nexus_downloader,
-                  max_workers: int, cb: WabbajackInstallCallbacks, cancel: threading.Event,
+                  game_root, max_workers: int, cb: WabbajackInstallCallbacks, cancel: threading.Event,
                   report: WabbajackInstallReport) -> "dict[str, Path]":
     have: "dict[str, Path]" = {}
     need_manual: "list[tuple[Archive, str]]" = []
@@ -226,7 +283,8 @@ def _download_all(archives: "list[Archive]", download_dir: Path, *, nexus_downlo
         why = ""
         if path is None:
             path, why = _download_automatic(
-                archive, download_dir, nexus_downloader=nexus_downloader, cb=cb, cancel=cancel)
+                archive, download_dir, nexus_downloader=nexus_downloader,
+                game_root=game_root, cb=cb, cancel=cancel)
         cb.on_download_finish(archive.hash, path is not None)
         with lock:
             if path is not None:
@@ -340,13 +398,16 @@ def _rebuild_index(game, profile_dir: Path, log) -> None:
 
 def run_wabbajack_install(*, wabbajack_path: "str | Path", modlist: ModList, game,
                           profile_dir: Path, download_dir: Path, nexus_downloader=None,
+                          profile_name: "str | None" = None,
                           substitutions: "dict[str, str] | None" = None,
                           max_downloads: int = 3,
                           callbacks: "WabbajackInstallCallbacks | None" = None,
                           control: "WabbajackInstallControl | None" = None,
                           ) -> WabbajackInstallReport:
     """Install ``modlist`` into ``profile_dir`` (see the module doc).
-    ``substitutions`` comes from ``wabbajack_directives.path_substitutions``."""
+    ``profile_name`` is the MO2 profile to install (required when
+    :func:`profile_choices` offers more than one). ``substitutions`` comes
+    from ``wabbajack_directives.path_substitutions``."""
     cb = callbacks or WabbajackInstallCallbacks()
     cancel = (control or WabbajackInstallControl()).cancel
     log = cb.on_log
@@ -358,9 +419,10 @@ def run_wabbajack_install(*, wabbajack_path: "str | Path", modlist: ModList, gam
     game.set_active_profile_dir(profile_dir)
     game.load_paths()
     staging = Path(game.get_effective_mod_staging_path())
+    game_root = game.get_game_path() if hasattr(game, "get_game_path") else None
 
     cb.on_status("Reading modlist…")
-    plan = classify_directives(modlist)
+    plan = classify_directives(modlist, profile_name)
     report.unplaced_files = list(plan.unplaced)
     report.profile_used = plan.profile_name
     if plan.unplaced:
@@ -371,6 +433,7 @@ def run_wabbajack_install(*, wabbajack_path: "str | Path", modlist: ModList, gam
     archives = [a for a in modlist.archives if a.hash in needed]
     cb.on_status(f"Downloading {len(archives)} archive(s)…")
     have = _download_all(archives, download_dir, nexus_downloader=nexus_downloader,
+                         game_root=game_root,
                          max_workers=max_downloads, cb=cb, cancel=cancel, report=report)
     if cancel.is_set():
         report.cancelled = True

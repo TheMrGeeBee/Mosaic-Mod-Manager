@@ -1,6 +1,8 @@
 """The tab shown after picking a ``.wabbajack`` file: what the modlist is,
-where its downloads come from, and the preflight result. Install is only
-enabled when no check blocks; a LoversLab login is offered in place when
+where its downloads come from, and the preflight result. A modlist that
+ships several MO2 profiles (e.g. GOG and Steam variants) shows a profile
+picker with nothing preselected. Install is only enabled when no check
+blocks and, if there's a picker, a profile is chosen; a LoversLab login is offered in place when
 preflight asks for one (the controller re-runs preflight afterwards via
 :meth:`set_checks`).
 """
@@ -11,6 +13,7 @@ from collections import Counter
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
+    QComboBox,
     QFrame,
     QHBoxLayout,
     QLabel,
@@ -42,8 +45,14 @@ def source_breakdown(modlist: ModList) -> str:
 
 
 class WabbajackImportView(QWidget):
-    def __init__(self, modlist: ModList, checks, *, on_install, on_login, parent=None):
+    def __init__(self, modlist: ModList, checks, *, on_install, on_login,
+                 profiles=(), parent=None):
+        """``on_install(profile)`` gets the chosen profile name, or ``None``
+        when the modlist has at most one profile (``profiles``)."""
         super().__init__(parent)
+        self._blocked = False
+        self._installing = False
+        self._profile_combo = None
         self._modlist = modlist
         self._on_install = on_install
         self._on_login = on_login
@@ -93,6 +102,24 @@ class WabbajackImportView(QWidget):
             desc.setStyleSheet(f"color:{_c(p,'TEXT_MAIN')}; font-size:13px; margin-top:6px;")
             v.addWidget(desc)
 
+        if len(profiles) > 1:
+            pick_title = QLabel(self.tr("Profile"))
+            pick_title.setStyleSheet(
+                f"color:{_c(p,'TEXT_MAIN')}; font-weight:600; font-size:14px; margin-top:10px;")
+            v.addWidget(pick_title)
+            pick_note = QLabel(self.tr(
+                "This modlist comes in several versions with different mods and load "
+                "orders. Choose the one that matches your copy of the game."))
+            pick_note.setWordWrap(True)
+            pick_note.setStyleSheet(f"color:{_c(p,'TEXT_DIM')}; font-size:13px;")
+            v.addWidget(pick_note)
+            self._profile_combo = QComboBox()
+            self._profile_combo.addItem(self.tr("Choose a profile…"), None)
+            for name in profiles:
+                self._profile_combo.addItem(name, name)
+            self._profile_combo.currentIndexChanged.connect(lambda _i: self._refresh_install())
+            v.addWidget(self._profile_combo, 0, Qt.AlignLeft)
+
         checks_title = QLabel(self.tr("Before installing"))
         checks_title.setStyleSheet(
             f"color:{_c(p,'TEXT_MAIN')}; font-weight:600; font-size:14px; margin-top:10px;")
@@ -113,7 +140,7 @@ class WabbajackImportView(QWidget):
         self._install_btn = QPushButton(self.tr("Install as new profile"))
         self._install_btn.setObjectName("PrimaryButton")
         self._install_btn.setCursor(Qt.PointingHandCursor)
-        self._install_btn.clicked.connect(lambda: self._on_install())
+        self._install_btn.clicked.connect(lambda: self._on_install(self.selected_profile()))
         bar.addWidget(self._install_btn)
         outer.addLayout(bar)
 
@@ -131,13 +158,26 @@ class WabbajackImportView(QWidget):
         for check in checks:
             self._checks_box.addWidget(self._check_row(check))
         self._login_btn.setVisible(any(c.fix == FIX_LOVERSLAB_LOGIN and not c.ok for c in checks))
-        blocked = bool(blocking_failures(checks))
-        self._install_btn.setEnabled(not blocked)
-        self._install_btn.setToolTip(
-            self.tr("Resolve the problems above first.") if blocked else "")
+        self._blocked = bool(blocking_failures(checks))
+        self._refresh_install()
+
+    def selected_profile(self) -> "str | None":
+        return self._profile_combo.currentData() if self._profile_combo is not None else None
 
     def set_installing(self, installing: bool) -> None:
-        self._install_btn.setEnabled(not installing)
+        self._installing = installing
+        self._refresh_install()
+
+    def _refresh_install(self) -> None:
+        needs_profile = self._profile_combo is not None and self.selected_profile() is None
+        self._install_btn.setEnabled(not (self._blocked or needs_profile or self._installing))
+        if self._blocked:
+            tip = self.tr("Resolve the problems above first.")
+        elif needs_profile:
+            tip = self.tr("Choose a profile first.")
+        else:
+            tip = ""
+        self._install_btn.setToolTip(tip)
 
     def _check_row(self, check) -> QWidget:
         p = self._p

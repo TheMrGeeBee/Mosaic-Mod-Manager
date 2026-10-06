@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import re
 import threading
+from collections import Counter
 from pathlib import Path
 
 from PySide6.QtCore import QObject, Signal
@@ -38,8 +39,12 @@ def install_summary(report, profile_name: str) -> "tuple[str, bool]":
                      "INIs, were saved in the profile's wabbajack_profile_files folder "
                      "but not applied.")
     if report.unplaced_files:
-        parts.append(f"{len(report.unplaced_files)} file(s) from outside the modlist's "
-                     "mods weren't installed.")
+        groups = Counter(f.split("/", 1)[0] if "/" in f else "(top level)"
+                         for f in report.unplaced_files)
+        top = ", ".join(f"{name} ({n})" for name, n in groups.most_common(3))
+        more = f" and {len(groups) - 3} more" if len(groups) > 3 else ""
+        parts.append(f"Skipped {len(report.unplaced_files)} file(s) Mosaic doesn't use, such "
+                     f"as Mod Organizer 2's own program files: {top}{more}.")
     if not report.ok:
         parts.append("See the log for the details.")
     return " ".join(parts), report.ok
@@ -120,11 +125,15 @@ class WabbajackController(QObject):
         from Utils.wabbajack.wabbajack_preflight import run_preflight
         game = self._win._gs.game
         nexus_ok = self._win._ensure_nexus_api() is not None and bool(load_nexus_last_premium())
+        try:
+            game_root = game.get_game_path()
+        except Exception:
+            game_root = None
         return run_preflight(
             modlist, active_game_name=game.name,
             staging_root=game.get_effective_mod_staging_path(),
             cache_dir=get_download_cache_dir_for_game(game.name),
-            nexus_premium=nexus_ok,
+            nexus_premium=nexus_ok, game_root=game_root,
             loverslab_logged_in=bool(loverslab_auth.load_session()))
 
     def _on_parsed(self, path, modlist, error) -> None:
@@ -138,8 +147,9 @@ class WabbajackController(QObject):
         if self._win._tabs.has_key(key):
             self._win._tabs.close_tab(key)
         self._path, self._modlist = path, modlist
+        from Utils.wabbajack.wabbajack_install import profile_choices
         self._view = WabbajackImportView(
-            modlist, self._preflight(modlist),
+            modlist, self._preflight(modlist), profiles=profile_choices(modlist),
             on_install=self._start_install, on_login=self._login_from_view)
         self._win._tabs.open_tab(
             self._view, self.tr("Wabbajack: {0}").format(modlist.name or path.stem), key=key)
@@ -154,7 +164,7 @@ class WabbajackController(QObject):
         LoversLabLoginOverlay.show_over(self._win, done)
 
     # -- install ----------------------------------------------------------------
-    def _start_install(self) -> None:
+    def _start_install(self, profile=None) -> None:
         from Utils.exe_launch.game_helpers import _create_profile, _profiles_for_game
         from Utils.wabbajack.wabbajack_install import (
             WabbajackInstallCallbacks,
@@ -177,6 +187,7 @@ class WabbajackController(QObject):
             return
 
         self._running = True
+        self._mo2_profile = profile
         self._profile_name = name
         if self._view is not None:
             self._view.set_installing(True)
@@ -220,6 +231,7 @@ class WabbajackController(QObject):
             report = run_wabbajack_install(
                 wabbajack_path=self._path, modlist=self._modlist, game=game,
                 profile_dir=profile_dir, download_dir=download_dir,
+                profile_name=self._mo2_profile,
                 nexus_downloader=(NexusDownloader(api, download_dir=download_dir)
                                   if api is not None else None),
                 substitutions=substitutions, callbacks=callbacks, control=control)

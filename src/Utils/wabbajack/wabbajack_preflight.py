@@ -20,10 +20,12 @@ from typing import Callable
 
 from Utils.collections.collection_preflight import Check, check_disk_space
 
+from .downloaders.game_file_source import resolve_game_file
 from .wabbajack_bsa import support_problem
 from .wabbajack_directives import UNSUPPORTED_DIRECTIVE_TYPES
 from .wabbajack_manifest import (
     CreateBSADirective,
+    GameFileSourceState,
     LoversLabState,
     ManualState,
     ModList,
@@ -119,13 +121,33 @@ def check_sources(modlist: ModList, *, nexus_premium: bool,
     return checks
 
 
+def check_game_files(modlist: ModList, game_root: "str | Path | None") -> "list[Check]":
+    """Files the modlist takes from the game install must exist there. (Their
+    hashes are checked during the install, which is when they're read.)"""
+    wanted = [a.state for a in modlist.archives if isinstance(a.state, GameFileSourceState)]
+    if not wanted or not game_root:
+        return []
+    missing = [s for s in wanted if resolve_game_file(game_root, s.game_file) is None]
+    if not missing:
+        return [Check("game-files", True, "Game files the modlist uses are present")]
+    names = ", ".join(s.game_file for s in missing[:5])
+    more = f" and {len(missing) - 5} more" if len(missing) > 5 else ""
+    versions = sorted({s.game_version for s in missing if s.game_version})
+    expects = f" The modlist was built from game version {', '.join(versions)}." if versions else ""
+    return [Check("game-files", False, "Files missing from your game folder",
+                  f"{names}{more}. Install the DLC or Creation Club content they come "
+                  f"from.{expects}")]
+
+
 def run_preflight(modlist: ModList, *, active_game_name: str,
                   staging_root: "str | Path | None", cache_dir: "str | Path | None",
                   nexus_premium: bool, loverslab_logged_in: bool,
+                  game_root: "str | Path | None" = None,
                   free_fn: "Callable[[Path], int] | None" = None) -> "list[Check]":
     """Every preflight check for ``modlist``, in display order."""
     return [
         *check_game(modlist, active_game_name),
+        *check_game_files(modlist, game_root),
         *check_directives(modlist),
         *check_sources(modlist, nexus_premium=nexus_premium,
                        loverslab_logged_in=loverslab_logged_in),
