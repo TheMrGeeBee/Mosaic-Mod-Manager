@@ -515,3 +515,123 @@ def test_separator_folders_are_not_reported_as_skipped_mods():
     ]}))
     assert wi.limit_to_profile_mods(plan, {"Horizon"}) == ["Unofficial Fallout 4 Patch - GOG"]
     assert [d.to for d in plan.mod_directives] == ["Horizon/a.esp"]
+
+
+# ---------------------------------------------------------------------------
+# Shapes from the first real install (Horizon 1.4.4, 2026-10-07)
+# ---------------------------------------------------------------------------
+
+def _install_real_shapes(tmp_path, monkeypatch):
+    """F4SE as Horizon ships it: a 7z whose members sit under
+    ``f4se_0_06_23/`` (forward slashes in the archive, backslashes in the
+    modlist), installed through Root Builder (``Root/`` + ``Scripts/``); a
+    Root-only launcher mod; a Better Console-style Octodiff patch from an
+    empty source file; and a profile modlist.txt whose recorded hash is
+    stale, as Wabbajack ships it."""
+    import hashlib
+    import io
+    import struct
+
+    import py7zr
+
+    from Utils.wabbajack.wabbajack_hash import hash_bytes
+
+    loader, dll, pex, mem = b"LOADER EXE", b"F4SE DLL", b"PEX", b"MEM DATA " * 50
+    f4se = tmp_path / "internet" / "F4SE.7z"
+    f4se.parent.mkdir()
+    with py7zr.SevenZipFile(f4se, "w") as arc:
+        for name, data in {"f4se_0_06_23/f4se_loader.exe": loader,
+                           "f4se_0_06_23/f4se_1_10_163.dll": dll,
+                           "f4se_0_06_23/Data/Scripts/Math.pex": pex,
+                           "Data/F4SE/Plugins/BetterConsole.mem": b""}.items():
+            arc.writef(io.BytesIO(data), name)
+    a_hash = hash_file(f4se)
+    patch = (b"OCTODELTA\x01\x04SHA1" + struct.pack("<i", 20) + hashlib.sha1(mem).digest()
+             + b">>>" + b"\x80" + struct.pack("<q", len(mem)) + mem)
+    curated = b"-Overview_separator\r\n+Game Launcher\r\n+F4SE\r\n+Better Console\r\n"
+
+    def fa(to, member, data):
+        return {"$type": "FromArchive, Wabbajack.Lib", "To": to, "Hash": hash_bytes(data),
+                "Size": len(data), "ArchiveHashPath": [a_hash, member]}
+
+    modlist = {
+        "Name": "Real Shapes", "Version": "1.0", "GameType": "Fallout4",
+        "Archives": [{"Hash": a_hash, "Name": "F4SE.7z", "Size": f4se.stat().st_size,
+                      "State": {"$type": "HttpDownloader, Wabbajack.Lib", "Url": "https://x/f4se"}}],
+        "Directives": [
+            fa("mods\\F4SE\\Root\\f4se_loader.exe", "f4se_0_06_23\\f4se_loader.exe", loader),
+            fa("mods\\F4SE\\Root\\f4se_1_10_163.dll", "F4SE_0_06_23\\F4SE_1_10_163.DLL", dll),
+            fa("mods\\F4SE\\Scripts\\Math.pex", "f4se_0_06_23\\Data\\Scripts\\Math.pex", pex),
+            _inline("mods\\F4SE\\meta.ini", "meta"),
+            _inline("mods\\Game Launcher\\Root\\game_launcher.bat", "bat"),
+            {"$type": "PatchedFromArchive, Wabbajack.Lib",
+             "To": "mods\\Better Console\\F4SE\\Plugins\\BetterConsole.mem",
+             "Hash": hash_bytes(mem), "Size": len(mem), "FromHash": hash_bytes(b""),
+             "PatchID": "patch", "ArchiveHashPath": [a_hash, "Data\\F4SE\\Plugins\\BetterConsole.mem"]},
+            {"$type": "InlineFile, Wabbajack.Lib", "To": "profiles\\Main\\modlist.txt",
+             "Hash": "9nrn5IAiGug=", "Size": 1238, "SourceDataID": "curated"},
+        ],
+    }
+    wj = tmp_path / "list.wabbajack"
+    with zipfile.ZipFile(wj, "w") as zf:
+        zf.writestr("modlist", json.dumps(modlist))
+        zf.writestr("meta", b"[General]\nversion=0.6.23\n")
+        zf.writestr("bat", b"start f4se_loader.exe\r\n")
+        zf.writestr("patch", patch)
+        zf.writestr("curated", curated)
+    monkeypatch.setattr(wi, "resolve_downloader", lambda state: _fake_http(f4se))
+    monkeypatch.setattr(wi, "_rebuild_index", lambda *a: None)
+    staging = tmp_path / "staging" / "mods"
+    profile_dir = tmp_path / "staging" / "profiles" / "P"
+    profile_dir.mkdir(parents=True)
+    report = wi.run_wabbajack_install(
+        wabbajack_path=wj, modlist=parse_modlist(modlist), game=FakeGame(staging),
+        profile_dir=profile_dir, download_dir=tmp_path / "downloads")
+    return report, staging, profile_dir, mem
+
+
+def test_real_shapes_install_cleanly(tmp_path, monkeypatch):
+    report, staging, profile_dir, mem = _install_real_shapes(tmp_path, monkeypatch)
+    assert report.ok, (report.failed_archives, report.failed_directives)
+    assert (staging / "Better Console" / "F4SE" / "Plugins" / "BetterConsole.mem").read_bytes() == mem
+    # The curated modlist.txt is used despite its stale recorded hash.
+    assert [e.name for e in read_modlist(profile_dir / "modlist.txt")] == [
+        "Overview_separator", "Game Launcher", "F4SE", "Better Console"]
+
+
+def test_root_builder_mods_become_root_folder_mods(tmp_path, monkeypatch):
+    import configparser
+
+    from Nexus.nexus_meta import read_meta
+    report, staging, _, _ = _install_real_shapes(tmp_path, monkeypatch)
+    assert report.root_builder_mods == ["F4SE", "Game Launcher"]
+    f4se = staging / "F4SE"
+    assert (f4se / "f4se_loader.exe").read_bytes() == b"LOADER EXE"
+    assert (f4se / "f4se_1_10_163.dll").is_file()
+    assert (f4se / "Data" / "Scripts" / "Math.pex").is_file()
+    assert not (f4se / "Root").exists() and not (f4se / "Scripts").exists()
+    assert (staging / "Game Launcher" / "game_launcher.bat").is_file()
+    assert read_meta(f4se / "meta.ini").root_folder
+    assert read_meta(staging / "Game Launcher" / "meta.ini").root_folder
+    cp = configparser.ConfigParser(interpolation=None)
+    cp.read(f4se / "meta.ini")
+    assert cp["General"]["version"] == "0.6.23"  # the curator's meta.ini is kept
+    # A mod without Root/ is left alone.
+    assert (staging / "Better Console" / "F4SE" / "Plugins" / "BetterConsole.mem").is_file()
+    assert not read_meta(staging / "Better Console" / "meta.ini").root_folder
+
+
+def test_failed_file_is_not_left_in_staging(tmp_path, monkeypatch):
+    """A directive that fails its hash check must not leave the wrong bytes
+    where a deploy would pick them up (real case: a 0-byte BetterConsole.mem
+    after the patch couldn't be applied)."""
+    from Utils.wabbajack.wabbajack_hash import hash_bytes
+
+    def extra(a_hash):
+        return [_from_archive("mods\\ModA\\wrong.esp", a_hash, "plugin.esp",
+                              hash_bytes(b"something else"))]
+    wj, modlist, src = _build(tmp_path, extra=extra)
+    report, staging, _, _ = _run(tmp_path, wj, modlist, monkeypatch, downloader=_fake_http(src))
+    assert [to for to, _ in report.failed_directives] == ["ModA/wrong.esp"]
+    assert not (staging / "ModA" / "wrong.esp").exists()
+    assert (staging / "ModA" / "ModA.esp").is_file()

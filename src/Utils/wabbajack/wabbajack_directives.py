@@ -23,8 +23,11 @@ real paths, from a table built by :func:`path_substitutions`. Its output is
 things, so it can't match a hash computed when the modlist was compiled.
 The placeholder spellings (``{--||GAME_PATH_MAGIC_BACK||--}`` and its
 ``DOUBLE_BACK``/``FORWARD`` and ``MO2``/``DOWNLOAD`` siblings) follow
-Wabbajack's own constants but haven't been checked against a real modlist
-from this sandbox.
+Wabbajack's own constants; ``GAME_PATH_MAGIC_DOUBLE_BACK``/``_FORWARD`` are
+confirmed in real modlists.
+
+``PatchedFromArchive`` patches are Octodiff deltas in real modlists (see
+:mod:`.wabbajack_octodiff`); bsdiff (``BSDIFF40``) is still accepted.
 """
 from __future__ import annotations
 
@@ -47,6 +50,7 @@ from .wabbajack_manifest import (
     UnknownDirective,
 )
 from .wabbajack_bsa import ArchiveBuildError, build_archive
+from .wabbajack_octodiff import apply_octodiff, is_octodiff
 from .wabbajack_vfs import ArchiveIndex, VfsResolutionError
 
 
@@ -93,23 +97,39 @@ def _remap_file(path: Path, substitutions: "dict[str, str]") -> None:
     path.write_bytes(data)
 
 
-def _verify(directive: Directive, dest: Path) -> DirectiveResult:
+def _verify(directive: Directive, dest: Path, verify_hash: bool = True) -> DirectiveResult:
     expected = getattr(directive, "hash", "")
-    if expected and not hashes_match(expected, hash_file(dest)):
+    if verify_hash and expected and not hashes_match(expected, hash_file(dest)):
+        # Never leave a wrong file where an install would pick it up.
+        dest.unlink(missing_ok=True)
         return DirectiveResult(
-            success=False, path=dest,
+            success=False,
             error=f"hash mismatch writing {directive.to!r} (expected {expected})")
     return DirectiveResult(success=True, path=dest)
+
+
+def _apply_patch(source: Path, patch_path: Path, dest: Path) -> None:
+    """Patch ``source`` into ``dest`` with whichever format ``patch_path`` is:
+    Octodiff (what real modlists ship) or bsdiff (BSDIFF40)."""
+    with open(patch_path, "rb") as fh:
+        head = fh.read(16)
+    if is_octodiff(head):
+        apply_octodiff(source, patch_path, dest)
+    else:
+        bsdiff4.file_patch(str(source), str(dest), str(patch_path))
 
 
 def apply_directive(directive: Directive, *, dest_root: Path, wabbajack_path: "str | Path",
                      archive_index: ArchiveIndex,
                      substitutions: "dict[str, str] | None" = None,
-                     bsa_temp_root: "Path | None" = None) -> DirectiveResult:
+                     bsa_temp_root: "Path | None" = None,
+                     verify_hash: bool = True) -> DirectiveResult:
     """Apply one directive, writing ``dest_root / directive.to``.
     ``substitutions`` (from :func:`path_substitutions`) is used only by
     ``RemappedInlineFile``; ``bsa_temp_root`` (where the ``TEMP_BSA_FILES``
-    directives were built) only by ``CreateBSA``."""
+    directives were built) only by ``CreateBSA``. ``verify_hash=False`` skips
+    the hash check, for a file Wabbajack itself stores with a stale hash (an
+    MO2 profile's ``modlist.txt``). A failed directive leaves no file behind."""
     if isinstance(directive, UnknownDirective):
         return DirectiveResult(
             success=False, unsupported=True,
@@ -145,7 +165,7 @@ def apply_directive(directive: Directive, *, dest_root: Path, wabbajack_path: "s
         except VfsResolutionError as exc:
             return DirectiveResult(success=False, error=str(exc))
         shutil.copyfile(source, dest)
-        return _verify(directive, dest)
+        return _verify(directive, dest, verify_hash)
 
     if isinstance(directive, PatchedFromArchiveDirective):
         try:
@@ -157,12 +177,13 @@ def apply_directive(directive: Directive, *, dest_root: Path, wabbajack_path: "s
             return DirectiveResult(
                 success=False, error=f"patch data {directive.patch_id!r} not found in container")
         try:
-            bsdiff4.file_patch(str(source), str(dest), str(patch_path))
+            _apply_patch(source, patch_path, dest)
         except Exception as exc:
-            return DirectiveResult(success=False, error=f"bsdiff patch failed: {exc}")
+            dest.unlink(missing_ok=True)
+            return DirectiveResult(success=False, error=f"patch failed: {exc}")
         finally:
             patch_path.unlink(missing_ok=True)
-        return _verify(directive, dest)
+        return _verify(directive, dest, verify_hash)
 
     if isinstance(directive, (InlineFileDirective, RemappedInlineFileDirective)):
         if not wabbajack_file.extract_inline_file(wabbajack_path, directive.source_data_id, dest):
@@ -172,7 +193,7 @@ def apply_directive(directive: Directive, *, dest_root: Path, wabbajack_path: "s
         if isinstance(directive, RemappedInlineFileDirective):
             _remap_file(dest, substitutions or {})
             return DirectiveResult(success=True, path=dest)
-        return _verify(directive, dest)
+        return _verify(directive, dest, verify_hash)
 
     return DirectiveResult(success=False, unsupported=True,
                             error=f"no handler for {type(directive).__name__}")

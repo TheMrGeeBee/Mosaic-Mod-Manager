@@ -9,12 +9,17 @@ path inside the *previous* hop's container, which -- if more elements follow
 -- must itself be an archive (the classic case is a BSA bundled inside a
 7z).
 
-Resolution extracts only the specific member needed at each hop (not the
-whole container), and caches each hop's result on disk keyed by
+A zip or BSA/BA2 hop extracts only the member needed. A 7z or rar container
+is extracted whole, once, with Mosaic's regular extractor chain (native 7z →
+bsdtar → py7zr, ``Utils.mods.mod_install._extract_archive``) and every later
+member is served from that copy: py7zr alone can't read BCJ2-filtered 7z
+archives (real case: F4SE 0.6.23), and per-member extraction re-decompresses
+a solid archive for every file. Each hop's result is cached keyed by
 ``(container, member path)`` so the same nested file referenced by multiple
-directives is only extracted once.
+directives is only extracted once. Member paths are matched the way Windows
+does: ``\\`` or ``/`` separators, any casing.
 
-Containers can be zip, 7z, or a Bethesda BSA (v104/v105) / BA2 (read with
+Containers can be zip, 7z, rar, or a Bethesda BSA (v104/v105) / BA2 (read with
 ``Utils.archives.bsa_file_reader.BsaFile``). A DX10 texture read out of a
 BA2 comes back with a reconstructed DDS header, which may not match the
 bytes Wabbajack hashed -- the directive's hash check catches that rather
@@ -26,13 +31,15 @@ from __future__ import annotations
 import zipfile
 from pathlib import Path
 
-import py7zr
-
 from .wabbajack_hash import hash_file
 
 _ZIP_EXTS = (".zip",)
-_SEVENZ_EXTS = (".7z",)
+_EXTRACT_WHOLE_EXTS = (".7z", ".rar")
 _BETHESDA_EXTS = (".bsa", ".ba2")
+
+
+def _norm_member(path: str) -> str:
+    return path.replace("\\", "/").strip("/").lower()
 
 
 class VfsResolutionError(Exception):
@@ -49,6 +56,9 @@ class ArchiveIndex:
         self.scratch_dir.mkdir(parents=True, exist_ok=True)
         self._roots: "dict[str, Path]" = {}
         self._hop_cache: "dict[tuple[str, str], Path]" = {}
+        # Whole-extracted 7z/rar containers: container path -> {normalised
+        # member path -> extracted file}.
+        self._extracted: "dict[str, dict[str, Path]]" = {}
         self._next_id = 0
 
     def add_archive(self, content_hash: str, path: "str | Path") -> None:
@@ -85,13 +95,13 @@ class ArchiveIndex:
         return current
 
     def _extract_member(self, container: Path, member_path: str) -> Path:
+        ext = container.suffix.lower()
+        if ext in _EXTRACT_WHOLE_EXTS:
+            return self._member_of_whole_extract(container, member_path)
         self._next_id += 1
         dest = self.scratch_dir / f"{self._next_id}_{Path(member_path).name}"
-        ext = container.suffix.lower()
         if ext in _ZIP_EXTS:
             self._extract_from_zip(container, member_path, dest)
-        elif ext in _SEVENZ_EXTS:
-            self._extract_from_7z(container, member_path, dest)
         elif ext in _BETHESDA_EXTS:
             self._extract_from_bethesda(container, member_path, dest)
         else:
@@ -102,13 +112,23 @@ class ArchiveIndex:
         return dest
 
     @staticmethod
+    def _find_member(names: "list[str]", member_path: str, container: Path) -> str:
+        """The archive's own spelling of ``member_path``. Modlists record
+        Windows paths (``Data\\Scripts\\Math.pex``, any casing); zip and 7z
+        store ``Data/Scripts/Math.pex``."""
+        wanted = _norm_member(member_path)
+        exact = next((n for n in names if n.replace("\\", "/").strip("/") ==
+                      member_path.replace("\\", "/").strip("/")), None)
+        found = exact or next((n for n in names if _norm_member(n) == wanted), None)
+        if found is None:
+            raise VfsResolutionError(f"{member_path!r} not found in {container.name}")
+        return found
+
+    @staticmethod
     def _extract_from_zip(container: Path, member_path: str, dest: Path) -> None:
         try:
             with zipfile.ZipFile(container, "r") as zf:
-                names = set(zf.namelist())
-                target = member_path if member_path in names else member_path.lstrip("/")
-                if target not in names:
-                    raise VfsResolutionError(f"{member_path!r} not found in {container.name}")
+                target = ArchiveIndex._find_member(zf.namelist(), member_path, container)
                 dest.parent.mkdir(parents=True, exist_ok=True)
                 with zf.open(target) as src, open(dest, "wb") as out:
                     while True:
@@ -119,28 +139,28 @@ class ArchiveIndex:
         except zipfile.BadZipFile as exc:
             raise VfsResolutionError(f"{container}: not a valid zip ({exc})") from exc
 
-    @staticmethod
-    def _extract_from_7z(container: Path, member_path: str, dest: Path) -> None:
-        import tempfile
-        try:
-            with tempfile.TemporaryDirectory() as td:
-                with py7zr.SevenZipFile(container, mode="r") as arc:
-                    names = arc.getnames()
-                    target = next(
-                        (n for n in names if n == member_path or n.lstrip("/") == member_path),
-                        None)
-                    if target is None:
-                        raise VfsResolutionError(f"{member_path!r} not found in {container.name}")
-                    arc.extract(path=td, targets=[target])
-                extracted = Path(td) / target.lstrip("/")
-                if not extracted.is_file():
-                    raise VfsResolutionError(
-                        f"{member_path!r} extracted from {container.name} but not "
-                        "found at the expected path")
-                dest.parent.mkdir(parents=True, exist_ok=True)
-                extracted.replace(dest)
-        except py7zr.exceptions.ArchiveError as exc:
-            raise VfsResolutionError(f"{container}: 7z read failed ({exc})") from exc
+    def _member_of_whole_extract(self, container: Path, member_path: str) -> Path:
+        """``member_path`` from a 7z/rar container extracted whole, once, into
+        the scratch dir (so on the install's own filesystem, never /tmp)."""
+        key = str(container)
+        members = self._extracted.get(key)
+        if members is None:
+            from Utils.mods.mod_install import _extract_archive
+            self._next_id += 1
+            out = self.scratch_dir / f"{self._next_id}_{container.stem}.d"
+            out.mkdir(parents=True, exist_ok=True)
+            errors: "list[str]" = []
+            if not _extract_archive(str(container), str(out), lambda _m: None,
+                                    error_sink=errors):
+                detail = errors[-1].strip() if errors else "no extractor could read it"
+                raise VfsResolutionError(f"{container}: extraction failed ({detail})")
+            members = {_norm_member(p.relative_to(out).as_posix()): p
+                       for p in out.rglob("*") if p.is_file()}
+            self._extracted[key] = members
+        found = members.get(_norm_member(member_path))
+        if found is None:
+            raise VfsResolutionError(f"{member_path!r} not found in {container.name}")
+        return found
 
     @staticmethod
     def _extract_from_bethesda(container: Path, member_path: str, dest: Path) -> None:

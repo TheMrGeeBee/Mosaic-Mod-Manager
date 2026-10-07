@@ -110,6 +110,8 @@ class WabbajackInstallReport:
     held_profile_files: "list[str]" = field(default_factory=list)
     # Mods only other profiles use: not downloaded or built.
     skipped_mods: "list[str]" = field(default_factory=list)
+    # MO2 Root Builder mods converted to root-folder mods.
+    root_builder_mods: "list[str]" = field(default_factory=list)
     profile_used: str = ""
     cancelled: bool = False
 
@@ -234,6 +236,41 @@ def limit_to_profile_mods(plan: InstallPlan, listed: "set[str]") -> "list[str]":
     plan.bsa_inputs = [d for d in plan.bsa_inputs
                        if d.to.split("/", 1)[0].lower() in temp_ids]
     return sorted(skipped)
+
+
+def apply_root_builder_layout(plan: InstallPlan) -> "list[str]":
+    """Convert MO2 Root Builder mods into Mosaic root-folder mods.
+
+    Root Builder puts files that belong in the game's install folder under
+    ``<Mod>/Root/`` (real case, Horizon 1.4.4: F4SE's ``f4se_loader.exe``
+    and DLLs, a launcher ``.bat``, a downgrader). Mosaic's equivalent is a
+    whole-mod ``rootFolder=true`` flag (deployed verbatim from the game root),
+    so in such a mod ``Root/x`` becomes ``x`` and every other file moves
+    under ``Data/`` (``meta.ini`` stays put; a path already under ``Data/``
+    is kept). Returns the converted mod names, sorted; the caller flags
+    them in ``meta.ini``. Bethesda games only, like the rest of v1."""
+    by_mod: "dict[str, list[str]]" = {}
+    for d in plan.mod_directives:
+        mod, _, rest = d.to.partition("/")
+        by_mod.setdefault(mod, []).append(rest)
+    root_mods = {mod for mod, rests in by_mod.items()
+                 if any(r.split("/", 1)[0].lower() == "root" and "/" in r for r in rests)}
+    if not root_mods:
+        return []
+
+    def relocate(to: str) -> str:
+        mod, _, rest = to.partition("/")
+        if mod not in root_mods:
+            return to
+        head, _, tail = rest.partition("/")
+        if head.lower() == "root" and tail:
+            return f"{mod}/{tail}"
+        if rest.lower() == "meta.ini" or head.lower() == "data":
+            return to
+        return f"{mod}/Data/{rest}"
+
+    plan.mod_directives = [replace(d, to=relocate(d.to)) for d in plan.mod_directives]
+    return sorted(root_mods)
 
 
 def _profile_mod_names(plan: InstallPlan, wabbajack_path) -> "set[str] | None":
@@ -400,7 +437,10 @@ def _write_profile(profile_dir: Path, scratch: Path, built_mods: "set[str]",
         log(f"Wabbajack: kept {len(held)} profile file(s) in {dest} (not applied)")
 
 
-def _stamp_mod_meta(mod_dir: Path, modlist: ModList) -> None:
+def _stamp_mod_meta(mod_dir: Path, modlist: ModList, *, root_folder: bool = False) -> None:
+    """Record the modlist in ``meta.ini``; ``root_folder`` also sets MO2's
+    ``[General] rootFolder=true`` (read by ``Nexus.nexus_meta``), which
+    deploys the mod from the game root."""
     meta = mod_dir / "meta.ini"
     cp = configparser.ConfigParser(interpolation=None)
     cp.optionxform = str  # MO2 keys are case-sensitive
@@ -413,6 +453,10 @@ def _stamp_mod_meta(mod_dir: Path, modlist: ModList) -> None:
         cp.add_section("Wabbajack")
     cp["Wabbajack"]["modlist"] = modlist.name
     cp["Wabbajack"]["modlistVersion"] = modlist.version
+    if root_folder:
+        if not cp.has_section("General"):
+            cp.add_section("General")
+        cp["General"]["rootFolder"] = "true"
     with open(meta, "w", encoding="utf-8") as fh:
         cp.write(fh)
 
@@ -487,6 +531,10 @@ def run_wabbajack_install(*, wabbajack_path: "str | Path", modlist: ModList, gam
         if report.skipped_mods:
             log(f"Wabbajack: skipping {len(report.skipped_mods)} mod(s) the "
                 f"{plan.profile_name!r} profile doesn't use: {', '.join(report.skipped_mods)}")
+    report.root_builder_mods = apply_root_builder_layout(plan)
+    for name in report.root_builder_mods:
+        log(f"Wabbajack: {name} uses Root Builder; installing it as a root-folder mod "
+            "(Root/ files go to the game folder, the rest to Data/)")
 
     needed = plan.archive_hashes()
     archives = [a for a in modlist.archives if a.hash in needed]
@@ -518,9 +566,15 @@ def run_wabbajack_install(*, wabbajack_path: "str | Path", modlist: ModList, gam
             if cancel.is_set():
                 report.cancelled = True
                 return report
+            # Wabbajack rewrites a profile's modlist.txt when it compiles the
+            # list but keeps the original file's Size/Hash (real case: both
+            # Horizon 1.4.4 profiles, while all 51 other inline files match),
+            # so that one file can't be hash-checked.
+            stale_hash = dest_root is profile_scratch and directive.to.lower() == "modlist.txt"
             result = apply_directive(directive, dest_root=dest_root,
                                      wabbajack_path=wabbajack_path, archive_index=index,
-                                     substitutions=substitutions, bsa_temp_root=bsa_root)
+                                     substitutions=substitutions, bsa_temp_root=bsa_root,
+                                     verify_hash=not stale_hash)
             if result.note:
                 log(f"Wabbajack: {result.note}")
             if result.success:
@@ -538,7 +592,8 @@ def run_wabbajack_install(*, wabbajack_path: "str | Path", modlist: ModList, gam
     report.installed_mods = sorted(built_mods)
     for name in report.installed_mods:
         try:
-            _stamp_mod_meta(staging / name, modlist)
+            _stamp_mod_meta(staging / name, modlist,
+                            root_folder=name in report.root_builder_mods)
         except OSError as exc:
             log(f"Wabbajack: couldn't stamp {name}/meta.ini: {exc}")
     write_wabbajack_modlist_info(profile_dir, {

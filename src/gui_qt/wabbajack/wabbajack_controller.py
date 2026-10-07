@@ -37,6 +37,10 @@ def install_summary(report, profile_name: str) -> "tuple[str, bool]":
     if report.skipped_mods:
         parts.append(f"Skipped {len(report.skipped_mods)} mod(s) that only other "
                      "versions of the modlist use.")
+    if report.root_builder_mods:
+        parts.append(f"{len(report.root_builder_mods)} mod(s) use Root Builder and were "
+                     "set up to install into the game folder: "
+                     f"{', '.join(report.root_builder_mods)}.")
     if report.held_profile_files:
         parts.append(f"{len(report.held_profile_files)} profile settings file(s), such as "
                      "INIs, were saved in the profile's wabbajack_profile_files folder "

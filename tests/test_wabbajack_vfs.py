@@ -44,6 +44,63 @@ def test_resolve_single_hop_7z(tmp_path):
     assert resolved.read_bytes() == b"7z plugin bytes"
 
 
+@pytest.mark.parametrize("make, ext", [(_make_zip, "zip"), (_make_7z, "7z")])
+def test_resolve_windows_member_path(tmp_path, make, ext):
+    """Real modlists (Horizon, 2026-10-07) name members with backslashes and
+    Windows casing (``f4se_0_06_23\\Data\\Scripts\\Math.pex``); zip and 7z
+    store ``f4se_0_06_23/Data/Scripts/Math.pex``."""
+    archive = tmp_path / f"a.{ext}"
+    make(archive, {"f4se_0_06_23/Data/Scripts/Math.pex": b"pex bytes",
+                   "Interface/BarterMenu.swf": b"swf bytes"})
+    idx = ArchiveIndex(tmp_path / "scratch")
+    idx.add_archive("hash1", archive)
+
+    assert idx.resolve(["hash1", "f4se_0_06_23\\Data\\Scripts\\Math.pex"]).read_bytes() == b"pex bytes"
+    assert idx.resolve(["hash1", "interface\\bartermenu.swf"]).read_bytes() == b"swf bytes"
+
+
+def test_resolve_7z_when_system_temp_is_another_filesystem(tmp_path, monkeypatch):
+    """Real install (Horizon, 2026-10-07): /tmp is a tmpfs, the profile is on
+    /home, and moving a 7z member extracted into the system temp dir failed
+    with EXDEV. Extraction must stay on the scratch dir's filesystem."""
+    import errno
+    import os
+    import tempfile
+    from pathlib import Path
+
+    archive = tmp_path / "a.7z"
+    _make_7z(archive, {"mod/file.esp": b"7z plugin bytes"})
+    scratch = tmp_path / "scratch"
+    other_fs = tmp_path / "system-tmp"
+    other_fs.mkdir()
+    monkeypatch.setattr(tempfile, "tempdir", str(other_fs))
+
+    real_replace, real_rename = Path.replace, os.rename
+
+    def _cross_device(src, dst):
+        if Path(src).resolve().is_relative_to(other_fs.resolve()) and \
+                not Path(dst).resolve().is_relative_to(other_fs.resolve()):
+            raise OSError(errno.EXDEV, "Invalid cross-device link", str(src))
+
+    def fake_replace(self, target):
+        _cross_device(self, target)
+        return real_replace(self, target)
+
+    def fake_rename(src, dst, *a, **k):
+        _cross_device(src, dst)
+        return real_rename(src, dst, *a, **k)
+
+    monkeypatch.setattr(Path, "replace", fake_replace)
+    monkeypatch.setattr(os, "rename", fake_rename)
+
+    idx = ArchiveIndex(scratch)
+    idx.add_archive("hash1", archive)
+    resolved = idx.resolve(["hash1", "mod/file.esp"])
+    assert resolved.read_bytes() == b"7z plugin bytes"
+    assert resolved.resolve().is_relative_to(scratch.resolve())
+    assert list(other_fs.iterdir()) == []
+
+
 def test_resolve_nested_zip_in_zip(tmp_path):
     inner = tmp_path / "inner_payload.zip"
     _make_zip(inner, {"deep/data.bin": b"deeply nested bytes"})
@@ -101,12 +158,38 @@ def test_resolve_missing_member_in_zip_raises(tmp_path):
 
 
 def test_resolve_unsupported_container_extension_raises(tmp_path):
-    archive = tmp_path / "a.rar"
-    archive.write_bytes(b"not actually a rar, just needs to exist")
+    archive = tmp_path / "a.exe"
+    archive.write_bytes(b"not an archive format the VFS looks inside")
     idx = ArchiveIndex(tmp_path / "scratch")
     idx.add_archive("hash1", archive)
     with pytest.raises(VfsResolutionError, match="not a supported nested-container format"):
         idx.resolve(["hash1", "some/inner/path"])
+
+
+def test_resolve_unreadable_rar_raises_vfs_error(tmp_path):
+    archive = tmp_path / "a.rar"
+    archive.write_bytes(b"not actually a rar")
+    idx = ArchiveIndex(tmp_path / "scratch")
+    idx.add_archive("hash1", archive)
+    with pytest.raises(VfsResolutionError, match="extraction failed"):
+        idx.resolve(["hash1", "some/inner/path"])
+
+
+def test_resolve_7z_extracts_container_once(tmp_path, monkeypatch):
+    """Every member of a 7z comes from one whole extraction, not one
+    decompression pass per member."""
+    from Utils.mods import mod_install
+    archive = tmp_path / "a.7z"
+    _make_7z(archive, {"Data/a.esp": b"a", "Data/b.esp": b"b", "Root/x.exe": b"x"})
+    calls = []
+    real = mod_install._extract_archive
+    monkeypatch.setattr(mod_install, "_extract_archive",
+                        lambda *a, **k: calls.append(a[0]) or real(*a, **k))
+    idx = ArchiveIndex(tmp_path / "scratch")
+    idx.add_archive("hash1", archive)
+    assert [idx.resolve(["hash1", p]).read_bytes()
+            for p in ("Data\\a.esp", "data\\B.ESP", "Root\\x.exe")] == [b"a", b"b", b"x"]
+    assert calls == [str(archive)]
 
 
 def test_resolve_corrupt_zip_raises_vfs_error(tmp_path):
