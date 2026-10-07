@@ -356,7 +356,8 @@ def _download_automatic(archive: Archive, download_dir: Path, *, nexus_downloade
 
 def _download_all(archives: "list[Archive]", download_dir: Path, *, nexus_downloader,
                   game_root, max_workers: int, cb: WabbajackInstallCallbacks, cancel: threading.Event,
-                  report: WabbajackInstallReport) -> "dict[str, Path]":
+                  report: WabbajackInstallReport,
+                  manual_folders: "list[Path] | None" = None) -> "dict[str, Path]":
     have: "dict[str, Path]" = {}
     need_manual: "list[tuple[Archive, str]]" = []
     lock = threading.Lock()
@@ -381,6 +382,33 @@ def _download_all(archives: "list[Archive]", download_dir: Path, *, nexus_downlo
 
     run_smallest_first(order_by_size(archives, size_key=lambda a: a.size),
                        work, max_workers, stop=cancel)
+
+    # A file from the user's own game install can't be downloaded: if it's
+    # missing or a different version there's nothing to ask for (real case:
+    # 35 prompts for 1.11.221 game files on another game version).
+    game_files = [(a, why) for a, why in need_manual if isinstance(a.state, GameFileSourceState)]
+    for archive, why in game_files:
+        report.failed_archives.append((archive.name, why))
+    if game_files:
+        cb.on_log(f"Wabbajack: {len(game_files)} file(s) from your game folder don't match "
+                  "the modlist; it needs a different game version")
+    need_manual = [(a, why) for a, why in need_manual
+                   if not isinstance(a.state, GameFileSourceState)]
+
+    # Files the user already downloaded in their browser (a LoversLab or
+    # MediaFire page, say) are picked up from their download folders first.
+    if need_manual:
+        from .manual_downloads import download_folders, find_downloaded
+        folders = download_folders() if manual_folders is None else manual_folders
+        still: "list[tuple[Archive, str]]" = []
+        for archive, why in need_manual:
+            found = None if cancel.is_set() else find_downloaded(archive, folders)
+            if found is not None:
+                cb.on_log(f"Wabbajack: using {found} for {archive.name} (found in your downloads)")
+                have[archive.hash] = found
+            else:
+                still.append((archive, why))
+        need_manual = still
 
     # Manual fallbacks run one at a time: each one blocks on the user.
     for archive, why in need_manual:
@@ -500,6 +528,7 @@ def run_wabbajack_install(*, wabbajack_path: "str | Path", modlist: ModList, gam
                           max_downloads: int = 3,
                           callbacks: "WabbajackInstallCallbacks | None" = None,
                           control: "WabbajackInstallControl | None" = None,
+                          manual_folders: "list[Path] | None" = None,
                           ) -> WabbajackInstallReport:
     """Install ``modlist`` into ``profile_dir`` (see the module doc).
     ``profile_name`` is the MO2 profile to install (required when
@@ -541,7 +570,8 @@ def run_wabbajack_install(*, wabbajack_path: "str | Path", modlist: ModList, gam
     cb.on_status(f"Downloading {len(archives)} archive(s)…")
     have = _download_all(archives, download_dir, nexus_downloader=nexus_downloader,
                          game_root=game_root,
-                         max_workers=max_downloads, cb=cb, cancel=cancel, report=report)
+                         max_workers=max_downloads, cb=cb, cancel=cancel, report=report,
+                         manual_folders=manual_folders)
     if cancel.is_set():
         report.cancelled = True
         return report

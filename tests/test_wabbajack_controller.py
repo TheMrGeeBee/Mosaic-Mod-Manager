@@ -260,3 +260,57 @@ def test_controller_passes_the_chosen_profile_to_the_install(qapp, tmp_path, mon
     controller._start_install("Horizon - Steam")
     _wait_until(qapp, lambda: win.selected == ["Horizon"])
     assert seen["profile_name"] == "Horizon - Steam"
+
+
+def test_cancel_install_from_the_download_prompt_stops_the_install(qapp, tmp_path, monkeypatch):
+    """'Cancel install' on a Download needed prompt stops the whole install
+    instead of making the user Skip every remaining file."""
+    from Utils.exe_launch import game_helpers
+    from Utils.wabbajack import wabbajack_install
+    from Utils.wabbajack.downloaders import loverslab_auth
+    from Utils.wine_proton import portal_filechooser
+    from gui_qt.wabbajack import wabbajack_controller as wc
+
+    wj, _modlist, src = _build(tmp_path)
+    staging = tmp_path / "staging" / "mods"
+    profile_dir = tmp_path / "staging" / "profiles" / "Test_List"
+
+    def create_profile(game_name, name, profile_specific_mods=False):
+        profile_dir.mkdir(parents=True)
+        return str(profile_dir)
+
+    monkeypatch.setattr(game_helpers, "_create_profile", create_profile)
+    monkeypatch.setattr(game_helpers, "_profiles_for_game", lambda name: [])
+    monkeypatch.setattr("Utils.config_paths.get_download_cache_dir_for_game",
+                        lambda name: tmp_path / "downloads")
+    monkeypatch.setattr("Utils.ui_config.load_nexus_last_premium", lambda: False)
+    monkeypatch.setattr(loverslab_auth, "load_session", lambda: {})
+    monkeypatch.setattr(wabbajack_install, "_rebuild_index", lambda *a: None)
+    monkeypatch.setattr(wabbajack_install, "resolve_downloader", lambda state: (
+        lambda st, dest, **kw: WabbajackDownloadResult(success=False, error="manual")))
+    monkeypatch.setattr(portal_filechooser, "pick_file", lambda title, cb, filters=None: cb(src))
+
+    win = FakeWindow(FakeGame(staging))
+    win.show()
+    try:
+        controller = wc.WabbajackController(win)
+        controller._picked.emit(wj)
+        _wait_until(qapp, lambda: "wabbajack_import" in win._tabs.opened)
+        view, _ = win._tabs.opened["wabbajack_import"]
+        win.setCentralWidget(view)
+        qapp.processEvents()
+        QTest.mouseClick(_button(view, "Install as new profile"), Qt.LeftButton)
+        _wait_until(qapp, lambda: any(b.text() == "Cancel install" and b.isVisible()
+                                      for b in win.findChildren(QPushButton)))
+        QTest.mouseClick(_button(win, "Cancel install"), Qt.LeftButton)
+        _wait_until(qapp, lambda: not controller._running)
+        assert controller._control.cancel.is_set()
+        assert controller._overlay._summary.text().startswith("Install cancelled.")
+        assert not (staging / "ModA").exists()
+    finally:
+        import shiboken6
+        win.close()
+        qapp.processEvents()
+        if shiboken6.isValid(win):
+            shiboken6.delete(win)
+        qapp.processEvents()

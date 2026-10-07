@@ -635,3 +635,67 @@ def test_failed_file_is_not_left_in_staging(tmp_path, monkeypatch):
     assert [to for to, _ in report.failed_directives] == ["ModA/wrong.esp"]
     assert not (staging / "ModA" / "wrong.esp").exists()
     assert (staging / "ModA" / "ModA.esp").is_file()
+
+
+def test_manual_archive_already_in_downloads_is_used_without_asking(tmp_path, monkeypatch):
+    """Real lists ship LoversLab/MediaFire files as manual downloads; one the
+    user already downloaded in their browser is found by size + hash, past a
+    same-size wrong file and a browser's in-progress file."""
+    from Utils.wabbajack import manual_downloads
+    wj, modlist, src = _build(tmp_path)
+    downloads = tmp_path / "Downloads"
+    downloads.mkdir()
+    size = src.stat().st_size
+    (downloads / "decoy.zip").write_bytes(b"x" * size)
+    (downloads / "ModA (1).zip.crdownload").write_bytes(src.read_bytes())
+    shutil.copyfile(src, downloads / "ModA (1).zip")
+    monkeypatch.setattr(manual_downloads, "download_folders", lambda: [downloads])
+    asked = []
+    report, staging, *_ = _run(
+        tmp_path, wj, modlist, monkeypatch,
+        downloader=lambda state, dest, **kw: WabbajackDownloadResult(success=False, error="manual"),
+        callbacks=wi.WabbajackInstallCallbacks(
+            request_manual_download=lambda a, why: asked.append(a.name)))
+    assert asked == []
+    assert report.ok, (report.failed_archives, report.failed_directives)
+    assert (staging / "ModA" / "ModA.esp").is_file()
+
+
+def test_mismatched_game_file_fails_without_a_download_prompt(tmp_path, monkeypatch):
+    """A game-install file that differs (another game version) has nothing to
+    download: it's reported, never turned into a 'Download needed' prompt."""
+    from Utils.wabbajack.wabbajack_hash import hash_bytes
+    game = tmp_path / "game"
+    (game / "Data").mkdir(parents=True)
+    (game / "Data" / "DLCCoast.esm").write_bytes(b"your version")
+    gf_hash = hash_bytes(b"the curator's version")
+    modlist = {
+        "Name": "L", "GameType": "Fallout4",
+        "Archives": [{"Hash": gf_hash, "Name": "Data_DLCCoast.esm", "Size": 21,
+                      "State": {"$type": "GameFileSourceDownloader, Wabbajack.Lib",
+                                "Game": "Fallout4", "GameFile": "Data\\DLCCoast.esm",
+                                "GameVersion": "1.11.221.0", "Hash": gf_hash}}],
+        "Directives": [_from_archive("mods\\M\\DLCCoast.esm", gf_hash, "", gf_hash)],
+    }
+    modlist["Directives"][0]["ArchiveHashPath"] = [gf_hash]
+    wj = tmp_path / "l.wabbajack"
+    with zipfile.ZipFile(wj, "w") as zf:
+        zf.writestr("modlist", json.dumps(modlist))
+
+    class Game(FakeGame):
+        def get_game_path(self):
+            return game
+
+    monkeypatch.setattr(wi, "_rebuild_index", lambda *a: None)
+    asked = []
+    staging = tmp_path / "staging" / "mods"
+    profile = tmp_path / "staging" / "profiles" / "P"
+    profile.mkdir(parents=True)
+    report = wi.run_wabbajack_install(
+        wabbajack_path=wj, modlist=parse_modlist(modlist), game=Game(staging),
+        profile_dir=profile, download_dir=tmp_path / "dl",
+        callbacks=wi.WabbajackInstallCallbacks(
+            request_manual_download=lambda a, why: asked.append(a.name)))
+    assert asked == []
+    assert [n for n, _ in report.failed_archives] == ["Data_DLCCoast.esm"]
+    assert "1.11.221.0" in report.failed_archives[0][1]

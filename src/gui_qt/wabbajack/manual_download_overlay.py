@@ -2,16 +2,21 @@
 
 Shown (one archive at a time) for an archive with no automatic downloader --
 a ``ManualDownloader`` page -- or whose automatic download failed. Offers to
-open the archive's web page and to pick the downloaded file.
-``on_done(Path)`` with the chosen file, ``on_done(None)`` to skip it. The
-installer checks the chosen file against the modlist's hash.
+open the archive's web page; while open it watches the user's download
+folders (``Utils.wabbajack.manual_downloads``) and finishes by itself once a
+file with the right size and hash appears there, which is how LoversLab and
+MediaFire files in real lists get downloaded. Picking the file by hand still
+works. ``on_done(Path)`` with the file, ``on_done(None)`` to skip it,
+``on_done(CANCEL_INSTALL)`` to stop the whole install. The installer checks
+the file against the modlist's hash.
 """
 
 from __future__ import annotations
 
+import threading
 from pathlib import Path
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QPushButton, QWidget
 
 from gui_qt.overlay_base import OverlayBase
@@ -31,6 +36,9 @@ from Utils.wabbajack.wabbajack_manifest import (
 )
 
 
+CANCEL_INSTALL = "cancel-install"   # on_done() value: stop the whole install
+
+
 def archive_page_url(archive: Archive) -> str:
     """Where a person would go to download ``archive`` by hand ('' if unknown)."""
     s = archive.state
@@ -40,16 +48,21 @@ def archive_page_url(archive: Archive) -> str:
     if isinstance(s, GoogleDriveState) and s.file_id:
         return f"https://drive.google.com/file/d/{s.file_id}/view"
     if isinstance(s, (ManualState, HttpState, MediaFireState, MegaState, LoversLabState)):
-        return s.url
+        # Curators sometimes leave a note after the link (real case:
+        # ".../MiscHairstyle1.6_by_Atherisz.7z/file # MiscHairstyles1.6").
+        parts = (s.url or "").split()
+        return parts[0] if parts else ""
     return ""
 
 
 class ManualDownloadOverlay(OverlayBase):
-    CARD_W = 520
-    CARD_H = 290
+    CARD_W = 620
+    CARD_H = 330
     ESC_RESULT = None
 
     _picked = Signal(object)  # Path | None from the portal picker (worker thread)
+    _found = Signal(object)   # Path | None from a download-folder scan (worker thread)
+    SCAN_MS = 1500
 
     def __init__(self, host: QWidget, archive: Archive, reason: str, on_done):
         super().__init__(host, on_done=on_done)
@@ -71,12 +84,26 @@ class ManualDownloadOverlay(OverlayBase):
                  if reason else self.tr("This file has to be downloaded by hand.")]
         if prompt:
             lines.append(prompt)
-        lines.append(self.tr("Download it, then choose the downloaded file. "
-                             "Mosaic checks it matches what the modlist expects."))
+        lines.append(self.tr("Download it in your browser: Mosaic notices it in your "
+                             "downloads and carries on. Or choose the file yourself. "
+                             "Either way it's checked against what the modlist expects."))
         body = QLabel("\n\n".join(lines))
         body.setWordWrap(True)
         body.setStyleSheet(f"color:{_c(p,'TEXT_DIM')}; font-size:13px;")
         v.addWidget(body)
+
+        from Utils.wabbajack.manual_downloads import DownloadFinder, download_folders
+        folders = download_folders()
+        self._finder = DownloadFinder(archive.size, archive.hash, folders)
+        self._scanning = False
+        self._watch = QLabel(
+            self.tr("Watching {0} for it…").format(", ".join(str(f) for f in folders))
+            if folders else
+            self.tr("No download folder to watch (see Settings ▸ Downloads): "
+                    "choose the file when it's downloaded."))
+        self._watch.setWordWrap(True)
+        self._watch.setStyleSheet(f"color:{_c(p,'TEXT_DIM')}; font-size:12px; font-style:italic;")
+        v.addWidget(self._watch)
         v.addStretch(1)
 
         bar = QHBoxLayout()
@@ -87,6 +114,13 @@ class ManualDownloadOverlay(OverlayBase):
             open_btn.clicked.connect(self._open_page)
             bar.addWidget(open_btn)
         bar.addStretch(1)
+        stop = QPushButton(self.tr("Cancel install"))
+        stop.setObjectName("FormButton")
+        stop.setCursor(Qt.PointingHandCursor)
+        stop.setToolTip(self.tr("Stop installing this modlist. Files downloaded so far "
+                                "stay in the download cache."))
+        stop.clicked.connect(lambda: self._finish(CANCEL_INSTALL))
+        bar.addWidget(stop)
         skip = QPushButton(self.tr("Skip"))
         skip.setObjectName("FormButton")
         skip.setCursor(Qt.PointingHandCursor)
@@ -100,6 +134,12 @@ class ManualDownloadOverlay(OverlayBase):
         v.addLayout(bar)
 
         self._picked.connect(self._on_picked)
+        self._found.connect(self._on_found)
+        self._timer = QTimer(self)
+        self._timer.setInterval(self.SCAN_MS)
+        self._timer.timeout.connect(self._scan)
+        if folders:
+            self._timer.start()
         self._present()
 
     @classmethod
@@ -117,6 +157,30 @@ class ManualDownloadOverlay(OverlayBase):
         pick_file(self.tr("Choose the downloaded file"),
                   lambda path: safe_emit(self._picked, path),
                   filters=[("All files", ["*"])])
+
+    def _scan(self):
+        if self._done or self._scanning:
+            return
+        self._scanning = True
+        finder = self._finder
+
+        def work():
+            try:
+                found = finder.find()
+            except Exception:
+                found = None
+            safe_emit(self._found, found)
+
+        threading.Thread(target=work, daemon=True, name="wabbajack-watch-downloads").start()
+
+    def _on_found(self, path):
+        self._scanning = False
+        if path is not None and not self._done:
+            self._finish(Path(path))
+
+    def _finish(self, result=None):
+        self._timer.stop()
+        super()._finish(result)
 
     def _on_picked(self, path):
         if self._done:

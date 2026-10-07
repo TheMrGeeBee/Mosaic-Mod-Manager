@@ -108,6 +108,60 @@ class WabbajackController(QObject):
                   filters=[("Wabbajack modlist (*.wabbajack)", ["*.wabbajack"]),
                            ("All files", ["*"])])
 
+    # -- gallery browser ----------------------------------------------------------
+    BROWSER_KEY = "wabbajack_browser"
+
+    def open_browser(self) -> None:
+        """Open (or focus) the Wabbajack modlist browser tab."""
+        game = self._win._gs.game
+        if game is None or not game.is_configured():
+            self._win._notify(self.tr("No configured game selected."), "warning")
+            return
+        if self._win._tabs.has_key(self.BROWSER_KEY):
+            self._win._tabs.focus_key(self.BROWSER_KEY)
+            return
+        from Utils.config_paths import get_config_dir
+        from gui_qt.wabbajack.wabbajack_browser_view import WabbajackBrowserView
+        root = get_config_dir() / "wabbajack"
+        view = WabbajackBrowserView(
+            game, cache_path=root / "gallery.json", files_dir=root / "modlists",
+            on_file_ready=self.open_file, log_fn=self._win._append_log,
+            notify=self._win._notify)
+        self._browser = view
+        view.destroyed.connect(lambda *_: setattr(self, "_browser", None))
+        self._win._tabs.open_tab(view, self.tr("Wabbajack"), key=self.BROWSER_KEY)
+
+    def on_game_changed(self, game) -> None:
+        view = getattr(self, "_browser", None)
+        if view is None:
+            return
+        if game is None:
+            self._win._tabs.close_tab(self.BROWSER_KEY)
+            return
+        view.set_game(game)
+
+    def open_file(self, path) -> None:
+        """Read a ``.wabbajack`` file and open its import tab."""
+        if self._running:
+            self._win._notify(self.tr("A Wabbajack install is already running."), "warning")
+            return
+        self._on_picked(path)
+
+    # -- LoversLab ----------------------------------------------------------------
+    def loverslab_login(self) -> None:
+        from gui_qt.wabbajack.loverslab_login_overlay import LoversLabLoginOverlay
+
+        def done(ok):
+            if ok:
+                self._win._notify(self.tr("Logged in to LoversLab."), "info")
+
+        LoversLabLoginOverlay.show_over(self._win, done)
+
+    def loverslab_logout(self) -> None:
+        from Utils.wabbajack.downloaders import loverslab_auth
+        loverslab_auth.clear_session()
+        self._win._notify(self.tr("LoversLab login cleared."), "info")
+
     def _on_picked(self, picked) -> None:
         if not picked:
             return
@@ -211,7 +265,6 @@ class WabbajackController(QObject):
             on_download_finish=lambda h, ok: safe_emit(self._dl, "finish", (h, ok)),
             on_build_progress=lambda d, t: safe_emit(self._build, int(d), int(t)),
             request_manual_download=self._blocking(self._ask_manual, ("archive", "reason")),
-            request_loverslab_login=self._blocking(self._ask_login, ()),
         )
         api = self._win._ensure_nexus_api()
         threading.Thread(target=self._install_worker,
@@ -275,9 +328,17 @@ class WabbajackController(QObject):
         if self._control is not None and self._control.cancel.is_set():
             self._answer(payload, None)
             return
+        from gui_qt.wabbajack.manual_download_overlay import CANCEL_INSTALL
+
+        def done(result):
+            if result == CANCEL_INSTALL:
+                if self._control is not None:
+                    self._control.cancel.set()
+                result = None
+            self._answer(payload, result)
+
         ManualDownloadOverlay.show_over(
-            self._win, payload["archive"], payload["reason"],
-            lambda path: self._answer(payload, path))
+            self._win, payload["archive"], payload["reason"], done)
 
     def _on_ask_login(self, payload) -> None:
         from gui_qt.wabbajack.loverslab_login_overlay import LoversLabLoginOverlay

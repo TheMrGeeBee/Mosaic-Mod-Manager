@@ -128,6 +128,14 @@ _STATE_FACTORIES = {
     "mediafiredownloader": lambda d: MediaFireState(url=d.get("Url", ""), raw=d),
     "megadownloader": lambda d: MegaState(url=d.get("Url", ""), raw=d),
     "loverslabdownloader": lambda d: LoversLabState(url=d.get("Url", ""), raw=d),
+    # Wabbajack's current LoversLab / VectorPlexus states (IPS4 OAuth; per its
+    # source, 2026-10-07: IPS4Mod, IPS4File, IPS4Url, IsAttachment). Wabbajack
+    # itself now treats both as browser downloads. None of 12 real gallery
+    # lists checked used them -- those ship LoversLab files as ManualDownloader.
+    "loverslaboauthdownloader": lambda d: LoversLabState(
+        url=d.get("IPS4Url") or d.get("Url", ""), raw=d),
+    "vectorplexusoauthdownloader": lambda d: ManualState(
+        url=d.get("IPS4Url") or d.get("Url", ""), raw=d),
     "manualdownloader": lambda d: ManualState(
         url=d.get("Url", ""), prompt=d.get("Prompt", ""), raw=d),
     "gamefilesourcedownloader": lambda d: GameFileSourceState(

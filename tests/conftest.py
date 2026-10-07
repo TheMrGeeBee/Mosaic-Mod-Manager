@@ -34,3 +34,15 @@ def _offline_bg3_known_rules(tmp_path, monkeypatch):
     monkeypatch.setattr(K, "start_refresh", lambda log_fn=None: None)
     monkeypatch.setattr(K, "_cache_path", lambda: tmp_path / "bg3_known_rules.cache.json")
 
+
+
+@pytest.fixture(autouse=True)
+def _no_real_download_folders(monkeypatch):
+    """Wabbajack installs look for hand-downloaded archives in the user's
+    download folders; tests must never read the real ~/Downloads. A test that
+    wants folders passes ``manual_folders`` explicitly."""
+    try:
+        from Utils.wabbajack import manual_downloads as M
+    except Exception:
+        return
+    monkeypatch.setattr(M, "download_folders", lambda: [])

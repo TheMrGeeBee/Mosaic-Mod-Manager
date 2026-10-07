@@ -26,15 +26,16 @@ from .http_source import WabbajackDownloadResult
 # this list (and the keys below) against a real modlist's GameName values
 # before relying on it; see the plan's "key open risks" note.
 _NEXUS_DOMAIN_OVERRIDES = {
-    "FalloutNewVegas": "newvegas",
+    "falloutnewvegas": "newvegas",
+    # Nexus's game-independent tools section (nexusmods.com/site/...). Real
+    # case: Wasteland Genesis AE's BethINI Pie, GameName "ModdingTools".
+    "moddingtools": "site",
 }
 
 
 def nexus_domain_for(game_name: str) -> str:
-    override = _NEXUS_DOMAIN_OVERRIDES.get(game_name or "")
-    if override:
-        return override
-    return (game_name or "").strip().lower()
+    key = (game_name or "").strip().lower()
+    return _NEXUS_DOMAIN_OVERRIDES.get(key) or key
 
 
 def download_nexus(state: NexusState, downloader: NexusDownloader, dest_dir: Path, *,

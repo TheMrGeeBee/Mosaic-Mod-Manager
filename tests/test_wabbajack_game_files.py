@@ -79,7 +79,7 @@ def test_fetch_missing_file_and_unset_game_root(tmp_path):
 
 def test_preflight_blocks_on_missing_game_files_with_version(tmp_path):
     (tmp_path / "Data").mkdir()
-    (tmp_path / "Data" / "Dawnguard.esm").write_bytes(b"x")
+    (tmp_path / "Data" / "Dawnguard.esm").write_bytes(b"x" * REAL_ENTRY["Size"])
     present = dict(REAL_ENTRY, State=dict(REAL_ENTRY["State"], GameFile="Data\\Dawnguard.esm"))
     ml = parse_modlist({"Archives": [present, REAL_ENTRY]})
     [check] = check_game_files(ml, tmp_path)
@@ -91,8 +91,28 @@ def test_preflight_blocks_on_missing_game_files_with_version(tmp_path):
 
 def test_preflight_game_files_present_or_not_needed(tmp_path):
     (tmp_path / "Data").mkdir()
-    (tmp_path / "Data" / "ccbgssse025-advdsgs.esm").write_bytes(b"x")
+    (tmp_path / "Data" / "ccbgssse025-advdsgs.esm").write_bytes(b"x" * REAL_ENTRY["Size"])
     [check] = check_game_files(parse_modlist({"Archives": [REAL_ENTRY]}), tmp_path)
     assert check.ok
     assert check_game_files(parse_modlist({"Archives": []}), tmp_path) == []
     assert check_game_files(parse_modlist({"Archives": [REAL_ENTRY]}), None) == []
+
+
+def test_preflight_blocks_when_game_files_are_a_different_version(tmp_path):
+    """Real case (Wasteland Genesis AE): built from 1.11.221 game files, the
+    user's differed -- caught by size before any download."""
+    def entry(game_file, size):
+        return {"Hash": "h", "Name": game_file.replace("\\", "_"), "Size": size,
+                "State": {"$type": "GameFileSourceDownloader, Wabbajack.Lib",
+                          "Game": "Fallout4", "GameFile": game_file,
+                          "GameVersion": "1.11.221.0", "Hash": "h"}}
+    (tmp_path / "Data").mkdir()
+    (tmp_path / "Fallout4.exe").write_bytes(b"x" * 10)
+    (tmp_path / "Data" / "DLCCoast.esm").write_bytes(b"x" * 20)
+    (tmp_path / "Data" / "Fallout4.esm").write_bytes(b"x" * 30)
+    ml = parse_modlist({"Archives": [entry("Fallout4.exe", 11), entry("Data\\DLCCoast.esm", 21),
+                                     entry("Data\\Fallout4.esm", 30)]})
+    [check] = check_game_files(ml, tmp_path)
+    assert check.key == "game-version" and not check.ok and check.blocking
+    assert "1.11.221.0" in check.detail and "2 of the 3" in check.detail
+    assert "Fallout4.exe" in check.detail and "Fallout4.esm" not in check.detail

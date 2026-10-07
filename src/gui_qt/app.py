@@ -2022,6 +2022,20 @@ class MainWindow(QMainWindow):
                     (self.tr("Reset load order"), self._reset_collection_load_order),
                 ]),
             ]),
+            ("Wabbajack", self.tr("Wabbajack"), "wabbajack.png", [
+                (self.tr("Browse modlists…"),
+                 lambda: self._wabbajack_controller().open_browser()),
+                (self.tr("Import .wabbajack file…"),
+                 lambda: self._wabbajack_controller().start_import()),
+                None,
+                (self.tr("LoversLab"), [
+                    (self.tr("Log in…"),
+                     lambda: self._wabbajack_controller().loverslab_login()),
+                    (self.tr("Clear credentials"),
+                     lambda: self._wabbajack_controller().loverslab_logout()),
+                ]),
+                (self.tr("Open Wabbajack gallery website"), self._open_wabbajack_website),
+            ]),
         ]:
             # Proton's logo is a mono glyph — tint it white like the Settings
             # icon so it stays visible. The others are full-colour logos.
@@ -2124,6 +2138,14 @@ class MainWindow(QMainWindow):
         detail tabs are game-specific, so they're closed unconditionally."""
         game = self._gs.game
         domain = (getattr(game, "nexus_game_domain", "") or "") if game else ""
+
+        # The Wabbajack browser isn't tied to Nexus: it just re-filters.
+        wj = getattr(self, "_wabbajack", None)
+        if wj is not None:
+            try:
+                wj.on_game_changed(game)
+            except Exception as exc:
+                self._append_log(f"[wabbajack] retarget failed: {exc}")
 
         # Close per-collection detail tabs (they belong to the previous game).
         # Swallow (a game switch must not abort) but leave a trace — a failure
@@ -3298,6 +3320,11 @@ class MainWindow(QMainWindow):
             slug=coll_link.slug, game_domain=coll_link.game_domain)
         revision = coll_link.revision_id or None
         self._open_collection_detail_tab(collection, revision_number=revision)
+
+    def _open_wabbajack_website(self):
+        from Utils.wabbajack.wabbajack_gallery import GALLERY_WEBSITE
+        from Utils.xdg import open_url
+        open_url(GALLERY_WEBSITE, log_fn=self._append_log)
 
     def _open_game_on_nexus(self):
         """Open the current game's Nexus Mods page in the browser."""
@@ -7935,13 +7962,16 @@ class MainWindow(QMainWindow):
             self._export_profile_code()
         elif which == "import_code":
             self._import_profile_code()
-        elif which == "import_wabbajack":
-            if getattr(self, "_wabbajack", None) is None:
-                from gui_qt.wabbajack.wabbajack_controller import WabbajackController
-                self._wabbajack = WabbajackController(self)
-            self._wabbajack.start_import()
         else:
             self._append_log(f"[profile] {which} (not wired yet)")
+
+    def _wabbajack_controller(self):
+        """The Wabbajack controller (browser, import, install), created on
+        first use."""
+        if getattr(self, "_wabbajack", None) is None:
+            from gui_qt.wabbajack.wabbajack_controller import WabbajackController
+            self._wabbajack = WabbajackController(self)
+        return self._wabbajack
 
     def _open_export_profile_tab(self):
         """Open the Export Profile panel scoped over the MODLIST panel (like Profile
@@ -9399,8 +9429,6 @@ class MainWindow(QMainWindow):
             (self.tr("Import profile…"), lambda: self._on_profile_action("import")),
             (self.tr("Export code…"), lambda: self._on_profile_action("export_code")),
             (self.tr("Import code…"), lambda: self._on_profile_action("import_code")),
-            (self.tr("Import Wabbajack modlist…"),
-             lambda: self._on_profile_action("import_wabbajack")),
             (self.tr("Create/Publish Collection…"),
              lambda: self._on_profile_action("create_collection")),
         ])

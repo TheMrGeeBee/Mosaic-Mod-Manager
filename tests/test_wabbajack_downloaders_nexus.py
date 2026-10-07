@@ -65,3 +65,10 @@ def test_download_nexus_incomplete_reference_short_circuits(tmp_path):
     result = nexus_source.download_nexus(state, fake, tmp_path)
     assert not result.success
     assert fake.calls == []  # never called the real downloader with a bad reference
+
+
+def test_nexus_domain_for_real_game_names():
+    from Utils.wabbajack.downloaders.nexus_source import nexus_domain_for
+    assert nexus_domain_for("ModdingTools") == "site"     # BethINI Pie, nexusmods.com/site/mods/631
+    assert nexus_domain_for("FalloutNewVegas") == "newvegas"
+    assert nexus_domain_for("Fallout4") == "fallout4"

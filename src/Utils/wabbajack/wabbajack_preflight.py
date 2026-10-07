@@ -100,9 +100,11 @@ def check_sources(modlist: ModList, *, nexus_premium: bool,
             f"{_plural(by_kind[UnknownState], 'archive')} ({', '.join(names)})."))
     if by_kind[ManualState]:
         checks.append(Check(
-            "manual", False, "Some files must be downloaded by hand",
+            "manual", False, "Some files must be downloaded in your browser",
             f"{_plural(by_kind[ManualState], 'archive')} can only be downloaded from a "
-            "web page; Mosaic will open each one for you during the install.",
+            "web page. During the install Mosaic shows each page; download the file "
+            "in your browser and Mosaic picks it up from your downloads. Files "
+            "already there are used straight away.",
             blocking=False))
     if by_kind[NexusState] and not nexus_premium:
         checks.append(Check(
@@ -110,11 +112,15 @@ def check_sources(modlist: ModList, *, nexus_premium: bool,
             f"{_archives_come(by_kind[NexusState])} from Nexus Mods. Without "
             "Nexus Premium each one needs a click on the Nexus website.",
             blocking=False))
-    if by_kind[LoversLabState] and not loverslab_logged_in:
+    ll = by_kind[LoversLabState] + sum(
+        1 for a in modlist.archives
+        if isinstance(a.state, ManualState) and "loverslab.com" in (a.state.url or "").lower())
+    if ll and not loverslab_logged_in:
         checks.append(Check(
-            "loverslab", False, "Log in to LoversLab",
-            f"{_archives_come(by_kind[LoversLabState])} from LoversLab, which "
-            "needs you to be logged in.",
+            "loverslab", False, "LoversLab files",
+            f"{_archives_come(ll)} from LoversLab. You can download them in your "
+            "browser during the install, or log in to LoversLab here so Mosaic "
+            "can try them automatically.",
             blocking=False, fix=FIX_LOVERSLAB_LOGIN))
     if not checks:
         checks.append(Check("sources", True, "Mosaic can download every archive"))
@@ -122,21 +128,49 @@ def check_sources(modlist: ModList, *, nexus_premium: bool,
 
 
 def check_game_files(modlist: ModList, game_root: "str | Path | None") -> "list[Check]":
-    """Files the modlist takes from the game install must exist there. (Their
-    hashes are checked during the install, which is when they're read.)"""
-    wanted = [a.state for a in modlist.archives if isinstance(a.state, GameFileSourceState)]
+    """Files the modlist takes from the game install must be there and be the
+    same build the modlist was made from. Sizes are compared here (instant);
+    hashes are checked during the install, when the files are read. Real case
+    (2026-10-08): Wasteland Genesis AE, built from 1.11.221 game files, on a
+    downgraded install -- 35 of its 143 game files differed, which only showed
+    up after a 168 GB download."""
+    wanted = [a for a in modlist.archives if isinstance(a.state, GameFileSourceState)]
     if not wanted or not game_root:
         return []
-    missing = [s for s in wanted if resolve_game_file(game_root, s.game_file) is None]
-    if not missing:
+    missing, differ = [], []
+    for a in wanted:
+        path = resolve_game_file(game_root, a.state.game_file)
+        if path is None:
+            missing.append(a)
+            continue
+        try:
+            if a.size and path.stat().st_size != a.size:
+                differ.append(a)
+        except OSError:
+            missing.append(a)
+    if not missing and not differ:
         return [Check("game-files", True, "Game files the modlist uses are present")]
-    names = ", ".join(s.game_file for s in missing[:5])
-    more = f" and {len(missing) - 5} more" if len(missing) > 5 else ""
-    versions = sorted({s.game_version for s in missing if s.game_version})
-    expects = f" The modlist was built from game version {', '.join(versions)}." if versions else ""
-    return [Check("game-files", False, "Files missing from your game folder",
-                  f"{names}{more}. Install the DLC or Creation Club content they come "
-                  f"from.{expects}")]
+
+    def names(archives):
+        shown = ", ".join(a.state.game_file for a in archives[:5])
+        return shown + (f" and {len(archives) - 5} more" if len(archives) > 5 else "")
+
+    versions = sorted({a.state.game_version for a in missing + differ if a.state.game_version})
+    built = (f"This modlist was built from game version {', '.join(versions)}. "
+             if versions else "")
+    checks = []
+    if differ:
+        checks.append(Check(
+            "game-version", False, "Your game version doesn't match this modlist",
+            f"{built}{len(differ)} of the {len(wanted)} game files it uses are different "
+            f"in your game folder ({names(differ)}). The modlist can't be built from "
+            "them; install the matching game version, or choose a modlist made for yours."))
+    if missing:
+        checks.append(Check(
+            "game-files", False, "Files missing from your game folder",
+            f"{names(missing)}. Install the DLC or Creation Club content they come "
+            f"from.{(' ' + built.strip()) if built and not differ else ''}"))
+    return checks
 
 
 def run_preflight(modlist: ModList, *, active_game_name: str,
