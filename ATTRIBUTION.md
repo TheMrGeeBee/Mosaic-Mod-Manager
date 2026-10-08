@@ -17,3 +17,14 @@ software, and anyone is free to use, study, modify, and redistribute it
 under the same terms as the original.
 
 Thank you to ChrisDKN and everyone who contributed to the original Amethyst Mod Manager for the foundation this project was built on.
+
+## Third-party data
+
+- **Fallout 4 1.10.163 Steam depot manifests**
+  (`src/Utils/steam/versions/377160.json`) come from
+  [zerratar/fallout4-downgrader](https://github.com/zerratar/fallout4-downgrader)
+  (FO4Down, GPL-3.0), `src/FO4Down/DepotManager.cs` at commit
+  `9123b12ed8d1`. Only the depot→manifest id table is used, as data. The
+  Game version (Steam) wizard's code is original. One entry (Nuka-World
+  Russian, depot 393899) is left out because FO4Down lists it with the same
+  manifest as Nuka-World French, which is almost certainly a copy error.

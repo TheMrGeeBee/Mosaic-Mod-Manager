@@ -1217,6 +1217,14 @@ class BaseGame(ABC):
             dialog_class_path="wizards.reshade.ReShadeWizard",
             extra={"reshade_dll": self.reshade_dll, "reshade_arch": self.reshade_arch},
         ))
+        if self.steam_id:
+            tools.append(WizardTool(
+                id="game_version_steam",
+                label="Game version (Steam)",
+                description="Switch the game to another Steam build with Valve's own "
+                            "depot downloads, and back.",
+                dialog_class_path="wizards.game_version.GameVersionWizard",
+            ))
         return tools
 
     # -----------------------------------------------------------------------

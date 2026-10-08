@@ -151,15 +151,23 @@ class Fallout4DowngradeView(WizardViewBase):
                     ver, format_version(fo4.FROM_VERSION), format_version(fo4.TO_VERSION)))]
         blockers = a.blockers if a.build == "anniversary" else a.revert_blockers
         rows += [self._row(False, b) for b in blockers]
+        # A Game version (Steam) switch is active: its backup holds the files
+        # this wizard would patch or restore, so the two mustn't interleave.
+        from Utils.steam.depot_versions import load_state as load_version_state
+        switched = load_version_state(self._state_dir)
+        if switched:
+            rows.append(self._row(False, self.tr(
+                "Fallout 4 is switched to {0} by the Game version (Steam) wizard. Switch "
+                "back there first.").format(switched.get("current"))))
         self._check_label.setText("<br>".join(rows))
         self._set_status(self._check_status, "")
 
         deployed = fo4.launcher_swapped(self._game_root)
         self._restore_btn.setVisible(deployed)
         self._revert_btn.setVisible(a.downgraded)
-        self._revert_btn.setEnabled(a.can_revert)
+        self._revert_btn.setEnabled(a.can_revert and not switched)
         self._next_btn.setVisible(a.build == "anniversary")
-        self._next_btn.setEnabled(a.can_downgrade)
+        self._next_btn.setEnabled(a.can_downgrade and not switched)
 
     def _on_restore_clicked(self):
         run_restore = getattr(self._ctx, "run_restore", None)
