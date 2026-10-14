@@ -21,6 +21,7 @@ from PySide6.QtWidgets import (
 
 from gui_qt.theme.theme_qt import active_palette, _c, danger_close_button, button_qss, qc
 from gui_qt.safe_emit import safe_emit
+from Utils.config_paths import get_download_cache_dir_for_game
 from Utils.mods.mod_files_versions import resolve_latest_name_match, fmt_size, sort_key
 
 # File-row highlight colours, resolved from the active theme so a monotone /
@@ -525,7 +526,9 @@ class ChangeVersionView(QWidget):
             open_url_fn=self._open_url, log_fn=self._log, log_label=fname,
             mod_info_fallback=self._info_stub(domain, mod_id),
             on_archive=on_archive, on_progress=on_progress,
-            on_timeout=on_timeout)
+            on_timeout=on_timeout,
+            cache_dir=get_download_cache_dir_for_game(
+                getattr(self._game, "name", "") or ""))
         if not already_downloaded:
             self._status.setText(self.tr(
                 "Waiting for the browser download of '{0}' — click Cancel to "

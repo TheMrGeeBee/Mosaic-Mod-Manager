@@ -475,6 +475,10 @@ def collect_root_flagged_mods(modlist_path: Path, staging_root: Path,
 # Example: "A StoryWealth - Caves Of The Commonwealth-60927-1-1-1-1758182764"
 #           → mod_id=60927, trailing numbers = [1, 1, 1, 1758182764]
 _NEXUS_SUFFIX_RE = re.compile(r"-(\d+(?:-\d+)*)$")
+# Newer website naming: "<name> <mod_id> <version> <UTC date> <short hash>",
+# e.g. "TweakXL 4197 1.11.4 2026-07-30T19-32Z FKtYKrJzt"
+_NEXUS_SPACED_RE = re.compile(
+    r"\s(\d+)\s+(\S+)\s+\d{4}-\d{2}-\d{2}T\d{2}-\d{2}Z\s+\S+$")
 
 
 @dataclass
@@ -511,7 +515,14 @@ def parse_nexus_filename(filename_stem: str) -> Optional[NexusFilenameInfo]:
     """
     m = _NEXUS_SUFFIX_RE.search(filename_stem)
     if not m:
-        return None
+        sp = _NEXUS_SPACED_RE.search(filename_stem)
+        if not sp:
+            return None
+        return NexusFilenameInfo(
+            mod_id=int(sp.group(1)),
+            version_parts=[int(n) for n in re.findall(r"\d+", sp.group(2))],
+            raw_suffix=sp.group(0).strip(),
+        )
 
     numbers = [int(n) for n in m.group(1).split("-")]
     if not numbers:
@@ -528,6 +539,25 @@ def parse_nexus_filename(filename_stem: str) -> Optional[NexusFilenameInfo]:
 # ---------------------------------------------------------------------------
 # Auto-detect metadata for manually installed archives
 # ---------------------------------------------------------------------------
+
+def _pick_md5_hit(results: list, hint_mod_id: int = 0) -> dict:
+    """Choose one hit from an md5_search result. The same file hash can sit
+    under several mods (re-uploads, bundles), so prefer the hit for the mod
+    id the filename names, then one that still has a name, else the first."""
+    def _mid(h):
+        try:
+            return int((h.get("mod") or {}).get("mod_id", 0) or 0)
+        except (TypeError, ValueError):
+            return 0
+    if hint_mod_id:
+        for h in results:
+            if _mid(h) == hint_mod_id:
+                return h
+    for h in results:
+        if (h.get("mod") or {}).get("name"):
+            return h
+    return results[0]
+
 
 def resolve_nexus_meta_for_archive(
     archive_path: Path,
@@ -634,7 +664,8 @@ def resolve_nexus_meta_for_archive(
         results = api.get_file_by_md5(game_domain, md5_hex)
         if results:
             # Results is a list of dicts, each with 'mod' and 'file_details'
-            hit = results[0]
+            hit = _pick_md5_hit(
+                results, fn_info.mod_id if fn_info else 0)
             mod_data = hit.get("mod", {})
             file_data = hit.get("file_details", {})
 

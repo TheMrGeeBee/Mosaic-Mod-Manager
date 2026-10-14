@@ -18,6 +18,7 @@ Callbacks fire on the watcher THREAD — Qt callers must marshal (safe_emit).
 
 from __future__ import annotations
 
+import shutil
 import threading
 import time
 from pathlib import Path
@@ -33,6 +34,9 @@ from Nexus.nexus_download import _find_cached_archive, _get_downloads_dir
 _PARTIAL_SUFFIXES = (".part", ".crdownload", ".download")
 
 _POLL_S = 2.0
+# Nothing has arrived after this long → say which folders are being watched,
+# once (a download that lands outside them is otherwise a silent stall).
+_QUIET_HINT_S = 60.0
 # Give up after this long with NO change in the watched folders. Any change
 # (a growing partial included) re-arms it, so a slow multi-GB free download
 # never times out mid-transfer.
@@ -119,7 +123,32 @@ def _match_name(f) -> str:
     return (getattr(f, "name", "") or "").strip()
 
 
-def find_existing_archive(mod_id: int, files: list) -> "tuple[Path, object] | None":
+def move_into_cache(path: Path, cache_dir: "Path | None") -> Path:
+    """Move a browser-downloaded archive from the browser's save folder into
+    *cache_dir* (the per-game download cache) so it ends up beside the
+    API-downloaded ones. Returns the archive's new path; any failure — or an
+    existing, different file of the same name — leaves it where it was."""
+    if cache_dir is None:
+        return path
+    try:
+        cache_dir = Path(cache_dir)
+        if path.parent.resolve() == cache_dir.resolve():
+            return path
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        dest = cache_dir / path.name
+        if dest.exists():
+            if dest.stat().st_size != path.stat().st_size:
+                return path
+            path.unlink()               # same archive already cached
+            return dest
+        shutil.move(str(path), str(dest))
+        return dest
+    except OSError:
+        return path
+
+
+def find_existing_archive(mod_id: int, files: list,
+                          extra_dirs=()) -> "tuple[Path, object] | None":
     """Return ``(path, file)`` for an already-complete cached archive matching
     any of *files*, or ``None`` if nothing is on disk yet.
 
@@ -131,7 +160,7 @@ def find_existing_archive(mod_id: int, files: list) -> "tuple[Path, object] | No
     if not picks:
         return None
     mid = int(mod_id or 0)
-    for folder in scan_download_dirs():
+    for folder in [*scan_download_dirs(), *(Path(d) for d in extra_dirs or ())]:
         for f in picks:
             found, complete = _find_cached_archive(
                 folder, _match_name(f), _expected_size(f), mid,
@@ -151,6 +180,7 @@ def start_manual_install(
     on_archive: Callable[[Path, object, object], None] = lambda p, m, f: None,
     on_progress: Callable[[int, int], None] = lambda d, t: None,
     on_timeout: Callable[[], None] = lambda: None,
+    cache_dir: "Path | None" = None,
 ) -> "tuple[ManualDownloadWatcher, bool]":
     """Shared non-premium install flow (Nexus browser / Change Version /
     Reinstall — one implementation so new callers stay consistent).
@@ -168,12 +198,17 @@ def start_manual_install(
     backstop. ``on_progress(done, total)`` / ``on_timeout()`` also run on the
     watcher thread — marshal to the UI thread in the callbacks.
 
+    ``cache_dir`` (the game's download cache): also searched for an existing
+    archive, and a freshly downloaded archive is moved into it before
+    ``on_archive`` runs, so browser downloads land beside the API ones.
+
     ``log_label`` names the download in log lines (defaults to the first
     file's match name). Returns ``(watcher, already_downloaded)`` — the
     watcher is already started; keep it for cancel support."""
     from Nexus.nexus_meta import build_meta_from_download
 
-    already = find_existing_archive(mod_id, files) is not None
+    already = find_existing_archive(
+        mod_id, files, extra_dirs=[cache_dir] if cache_dir else ()) is not None
     label = log_label or (_match_name(files[0]) if files else "")
     if already:
         log_fn(f"Nexus: archive already downloaded for '{label}'; "
@@ -206,12 +241,28 @@ def start_manual_install(
                 archive_name=path.name, mod_info=info, file_info=file)
         except Exception:
             meta = None
-        log_fn(f"Nexus: found downloaded archive → {path}")
-        on_archive(path, meta, file)
+        moved = move_into_cache(path, cache_dir)
+        if moved != path:
+            log_fn(f"Nexus: moved {path.name} into the download cache.")
+        log_fn(f"Nexus: found downloaded archive → {moved}")
+        on_archive(moved, meta, file)
+
+    def _quiet(dirs):
+        if not dirs:
+            log_fn(f"Nexus: still waiting for '{label}' — no download folder "
+                   "is being watched. Turn on the default Downloads folder, "
+                   "or add your browser's save folder, under download "
+                   "locations.")
+            return
+        where = ", ".join(str(d) for d in dirs)
+        log_fn(f"Nexus: still waiting for '{label}' — nothing has arrived in "
+               f"the watched download folders ({where}). If your browser "
+               "saves elsewhere, add that folder under download locations.")
 
     watcher = ManualDownloadWatcher(
         mod_id=mod_id, files=files, on_found=_found,
-        on_progress=on_progress, on_timeout=on_timeout)
+        on_progress=on_progress, on_timeout=on_timeout, on_quiet=_quiet,
+        extra_dirs=[cache_dir] if cache_dir else ())
     watcher.start()
     return watcher, already
 
@@ -230,12 +281,16 @@ class ManualDownloadWatcher:
       on_found(path, file)        — a complete archive matched *file*
       on_progress(done, total)    — an in-flight download's bytes (best match)
       on_timeout()                — gave up (idle timeout / nothing to watch)
+      on_quiet(dirs)              — once, after _QUIET_HINT_S with nothing
+                                    arrived; *dirs* = folders being watched
     """
 
     def __init__(self, *, mod_id: int, files: list,
                  on_found: Callable[[Path, object], None],
                  on_progress: Callable[[int, int], None] = lambda d, t: None,
                  on_timeout: Callable[[], None] = lambda: None,
+                 on_quiet: Callable[[list], None] = lambda dirs: None,
+                 extra_dirs=(),
                  poll_s: float = _POLL_S,
                  idle_timeout_s: float = _IDLE_TIMEOUT_S):
         self._mod_id = int(mod_id or 0)
@@ -243,6 +298,8 @@ class ManualDownloadWatcher:
         self._on_found = on_found
         self._on_progress = on_progress
         self._on_timeout = on_timeout
+        self._on_quiet = on_quiet
+        self._extra_dirs = [Path(d) for d in extra_dirs or ()]
         self._poll_s = poll_s
         self._idle_timeout_s = idle_timeout_s
         self._stop = threading.Event()
@@ -309,10 +366,12 @@ class ManualDownloadWatcher:
         sigs: dict[str, object] = {}
         deadline = time.monotonic() + self._idle_timeout_s
         best_done = 0
+        quiet_at = time.monotonic() + _QUIET_HINT_S
+        hinted = False
         while not self._stop.is_set():
             prog_done = prog_total = 0
             any_change = False
-            for folder in scan_download_dirs():
+            for folder in [*scan_download_dirs(), *self._extra_dirs]:
                 sig = self._folder_sig(folder)
                 key = str(folder)
                 if sigs.get(key, ()) == sig:
@@ -346,6 +405,9 @@ class ManualDownloadWatcher:
                 if prog_done > best_done:
                     best_done = prog_done
                     self._on_progress(prog_done, prog_total)
+            if not hinted and best_done == 0 and time.monotonic() >= quiet_at:
+                hinted = True
+                self._on_quiet([*scan_download_dirs(), *self._extra_dirs])
             if time.monotonic() >= deadline:
                 self._on_timeout()
                 return
