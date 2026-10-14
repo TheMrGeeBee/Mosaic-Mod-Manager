@@ -20,6 +20,7 @@ back via signals. The active GAME determines the domain (game.nexus_game_domain)
 from __future__ import annotations
 
 import threading
+from Utils.config_paths import get_download_cache_dir_for_game
 
 from PySide6.QtCore import Qt, QTimer, Signal, QEvent, QDate
 from PySide6.QtWidgets import (
@@ -1144,9 +1145,9 @@ class NexusBrowserView(QWidget):
         if running:
             at = self._manual_batch_total - len(self._manual_batch)
             parts.append(self.tr(
-                "Browser downloads: file {0} of {1}. Click download on the "
-                "Nexus page that opened; the next page opens once it has "
-                "arrived.").format(at, self._manual_batch_total))
+                "Browser downloads: file {0} of {1}. Click Slow download on "
+                "the Nexus page that opened; the next page opens once the "
+                "file has arrived.").format(at, self._manual_batch_total))
         elif self._batch_busy:
             parts.append(self.tr("Preparing the download…"))
         self._sel_label.setText("   ·   ".join(parts))
@@ -1461,7 +1462,9 @@ class NexusBrowserView(QWidget):
             log_fn=self._log, log_label=file.file_name,
             mod_info=entry,          # card entry IS the NexusModInfo — no fetch
             on_archive=on_archive, on_progress=on_progress,
-            on_timeout=on_timeout)
+            on_timeout=on_timeout,
+            cache_dir=get_download_cache_dir_for_game(
+                getattr(self._game, "name", "") or ""))
         watchers[mod_id] = (watcher, dl_key)
         self._set_card_watching(mod_id, True)
         return dl_key

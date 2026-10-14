@@ -28,6 +28,7 @@ from gui_qt.flow_layout import FlowLayout
 from gui_qt.game_state import GameState
 from gui_qt.detachable_tabs import DetachableTabWidget
 from gui_qt import glue
+from Utils.config_paths import get_download_cache_dir_for_game
 from Utils.wine_proton.proton_tools import DOTNET_VERSIONS
 # Diagnostic prints here run on worker threads and use flush=True. Under
 # Flatpak/AppImage stdout often has no reader, so a full pipe buffer makes
@@ -323,6 +324,7 @@ class MainWindow(QMainWindow):
     # was found). (mod_name, archive_path, prebuilt_meta|None, dl_key).
     _reinstall_manual_found = Signal(object, object, object, object)
     _req_install_files = Signal(object, object)   # (ctx dict, files|None)
+    _req_batch_ready = Signal(object, object)     # ([(entry, files|None)]|None, premium)
     _req_install_dl = Signal(object, object, object)  # (archive|None, meta|None, dl_key)
     _req_install_prog = Signal(object, object, "qlonglong", "qlonglong")  # (dl_key, name, downloaded, total bytes; 64-bit: >2GB)
     # Collection reset-load-order worker → UI thread (result dict).
@@ -616,6 +618,13 @@ class MainWindow(QMainWindow):
         # Install-a-Nexus-mod-by-id (Missing Requirements) flow.
         self._req_installing = False
         self._req_install_files.connect(self._on_req_install_files)
+        # "Install selected" in Missing Requirements: non-premium files queue
+        # up and open one browser page at a time (_req_batch_key = dl_key of
+        # the file being watched now).
+        self._req_batch_busy = False
+        self._req_batch_queue = []
+        self._req_batch_key = ""
+        self._req_batch_ready.connect(self._on_req_batch_ready)
         self._req_install_dl.connect(self._on_req_install_dl)
         self._req_install_prog.connect(
             lambda key, name, d, t: self._nexus_download_progress(key, name, d, t))
@@ -5581,7 +5590,9 @@ class MainWindow(QMainWindow):
                 log_fn=lambda m, _nm=nm: self._append_log(f"[reinstall] {_nm} — {m}"),
                 log_label=nm,
                 on_archive=on_archive, on_progress=on_progress,
-                on_timeout=on_timeout)
+                on_timeout=on_timeout,
+                cache_dir=get_download_cache_dir_for_game(
+                    getattr(self._gs.game, "name", "") or ""))
             self._app_manual_watchers[int(mod_id or 0)] = (watcher, dl_key)
             if not already:
                 opened += 1
@@ -5603,6 +5614,7 @@ class MainWindow(QMainWindow):
             watcher, dl_key = t
             watcher.stop()
             self._nexus_download_progress(dl_key, "", 0, -1)
+            self._req_batch_watch_ended(dl_key)
 
     def _claim_app_manual_watch(self, mod_id, dl_key) -> bool:
         """Claim completion of an app-level manual watch (watcher thread).
@@ -6745,7 +6757,9 @@ class MainWindow(QMainWindow):
             api, game, specs, ignored, _save_ignored,
             on_close=self._close_missing_reqs_tab, log_fn=self._append_log,
             install_fn=self._install_nexus_mod_by_id,
-            ignore_req_fn=self._set_req_ignored)
+            ignore_req_fn=self._set_req_ignored,
+            install_many_fn=self._install_nexus_mods_batch,
+            stop_queue_fn=self._stop_req_batch)
         self._missing_reqs_view = view
         view.destroyed.connect(
             lambda *_: setattr(self, "_missing_reqs_view", None))
@@ -7567,6 +7581,159 @@ class MainWindow(QMainWindow):
             done, tot, phase, title=self.tr("Nexus Download"),
             bytes_mode=True, key="downloads")
 
+    def _resolve_req_premium(self, api) -> bool:
+        """Worker thread: is the account premium (direct downloads)? Falls back
+        to the last-known status on a validate() failure, and honours the
+        [dev] force_manual_install switch."""
+        from Utils.ui_config import load_nexus_last_premium, save_nexus_last_premium
+        try:
+            user = api.validate()
+            premium = bool(getattr(user, "is_premium", False))
+            try:
+                save_nexus_last_premium(premium)
+            except Exception:
+                pass
+        except Exception as exc:
+            # GH#278: a transient validate() failure (network hiccup, rate
+            # limit — most likely to hit the very first Nexus call of a
+            # session, racing _ensure_nexus_api()'s own startup validate())
+            # must not silently demote a premium user to manual mode, nor
+            # abort the install outright — fall back to the last
+            # successfully-validated status and keep going.
+            premium = bool(load_nexus_last_premium())
+            self._append_log(f"[nexus] premium check failed: {exc} — using "
+                             f"last-known status "
+                             f"({'premium' if premium else 'not premium'})")
+        if premium:
+            # [dev] force_manual_install = true → exercise the manual
+            # browser-download flow even on a premium account (same
+            # switch as the browser / Change Version / reinstall).
+            from Utils.ui_config import load_force_manual_install
+            if load_force_manual_install():
+                self._append_log("[nexus] [dev] force_manual_install — "
+                                 "using the manual browser-download flow.")
+                premium = False
+        return premium
+
+    def _install_nexus_mods_batch(self, items):
+        """Missing Requirements "Install selected": *items* is
+        [(mod_id, domain, name), ...]. Fetch every file list, let the user
+        review them in one batch chooser, then download (premium: concurrently)
+        or open the browser pages one at a time (non-premium)."""
+        if self._req_installing or self._req_batch_busy or self._req_batch_key:
+            self._notify(self.tr("An install is already in progress."), "info")
+            return
+        api = self._ensure_nexus_api()
+        if api is None:
+            self._notify(self.tr("Log in to Nexus first."), "warning")
+            return
+        items = [(int(m or 0), d, n) for m, d, n in items if int(m or 0) > 0]
+        if not items:
+            return
+        self._req_batch_busy = True
+        self._append_log(f"[nexus] fetching file lists for {len(items)} mod(s)…")
+        import threading
+        from types import SimpleNamespace
+
+        def worker():
+            from concurrent.futures import ThreadPoolExecutor
+            premium = self._resolve_req_premium(api)
+
+            def files_for(it):
+                mid, dom, nm = it
+                entry = SimpleNamespace(mod_id=mid, name=nm, domain_name=dom)
+                try:
+                    return entry, list(api.get_mod_files(dom, mid).files)
+                except Exception as exc:
+                    self._append_log(f"[nexus] couldn't fetch files for {nm}: {exc}")
+                    return entry, None
+
+            with ThreadPoolExecutor(max_workers=4) as pool:
+                mods = list(pool.map(files_for, items))
+            self._req_batch_ready.emit(mods, premium)
+
+        threading.Thread(target=worker, daemon=True,
+                         name="req-batch-files").start()
+
+    def _on_req_batch_ready(self, mods, premium):
+        from gui_qt.nexus.nexus_batch_chooser import NexusBatchChooser
+
+        def _done(plan):
+            self._req_batch_busy = False
+            if not plan:
+                self._append_log("[nexus] install selected cancelled.")
+                return
+            if premium:
+                self._start_req_batch_downloads(plan)
+            else:
+                self._req_batch_queue = [
+                    (e, f) for e, files in plan for f in files]
+                self._append_log(
+                    f"[nexus] {len(self._req_batch_queue)} file(s) to download "
+                    f"in your browser, one at a time. Click Slow download on "
+                    f"each Nexus page that opens; the next one opens once the "
+                    f"file has arrived.")
+                self._advance_req_batch()
+
+        NexusBatchChooser.show_over(self, mods, _done)
+
+    def _start_req_batch_downloads(self, plan):
+        import threading
+        try:
+            from Utils.ui_config import load_collection_settings
+            limit = max(1, int(load_collection_settings().get("max_concurrent", 8)))
+        except Exception:
+            limit = 4
+        sem = threading.BoundedSemaphore(limit)
+        n_files = sum(len(files) for _e, files in plan)
+        self._append_log(f"[nexus] downloading {n_files} file(s) from "
+                         f"{len(plan)} mod(s), up to {limit} at a time…")
+        for entry, files in plan:
+            ctx = {"mod_id": entry.mod_id, "domain": entry.domain_name,
+                   "name": entry.name}
+            for f in files:
+                self._start_req_download(ctx, f, sem=sem)
+
+    def _advance_req_batch(self):
+        """Open the next queued file's download page (non-premium). Called
+        again when the current file's watch ends — archive found, timed out,
+        or cancelled (incl. a 'Download with Mod Manager' that took over)."""
+        self._req_batch_key = ""
+        if not self._req_batch_queue:
+            self._update_req_batch_ui()
+            return
+        entry, f = self._req_batch_queue.pop(0)
+        ctx = {"mod_id": entry.mod_id, "domain": entry.domain_name,
+               "name": entry.name}
+        self._req_batch_key = self._start_req_manual(ctx, f) or ""
+        if not self._req_batch_key:
+            self._advance_req_batch()
+        else:
+            self._append_log(
+                f"[nexus] {len(self._req_batch_queue)} more file(s) queued "
+                "after this one.")
+            self._update_req_batch_ui()
+
+    def _update_req_batch_ui(self):
+        v = getattr(self, "_missing_reqs_view", None)
+        if v is not None:
+            v.set_queue_status(bool(self._req_batch_key),
+                               len(self._req_batch_queue))
+
+    def _stop_req_batch(self):
+        """Drop the queued files not yet opened. The current file's watch keeps
+        running — its download may already be under way in the browser."""
+        pending = len(self._req_batch_queue)
+        self._req_batch_queue = []
+        self._req_batch_key = ""
+        self._append_log(f"[nexus] stopped the browser download queue "
+                         f"({pending} file(s) not opened).")
+        self._update_req_batch_ui()
+
+    def _req_batch_watch_ended(self, dl_key):
+        if self._req_batch_key and dl_key == self._req_batch_key:
+            self._advance_req_batch()
+
     def _install_nexus_mod_by_id(self, mod_id: int, domain: str, name: str):
         if self._req_installing:
             self._notify(self.tr("An install is already in progress."), "info")
@@ -7586,34 +7753,7 @@ class MainWindow(QMainWindow):
 
         def worker():
             files = None
-            from Utils.ui_config import load_nexus_last_premium, save_nexus_last_premium
-            try:
-                user = api.validate()
-                premium = bool(getattr(user, "is_premium", False))
-                try:
-                    save_nexus_last_premium(premium)
-                except Exception:
-                    pass
-            except Exception as exc:
-                # GH#278: a transient validate() failure (network hiccup, rate
-                # limit — most likely to hit the very first Nexus call of a
-                # session, racing _ensure_nexus_api()'s own startup validate())
-                # must not silently demote a premium user to manual mode, nor
-                # abort the install outright — fall back to the last
-                # successfully-validated status and keep going.
-                premium = bool(load_nexus_last_premium())
-                self._append_log(f"[nexus] premium check failed: {exc} — using "
-                                 f"last-known status "
-                                 f"({'premium' if premium else 'not premium'})")
-            if premium:
-                # [dev] force_manual_install = true → exercise the manual
-                # browser-download flow even on a premium account (same
-                # switch as the browser / Change Version / reinstall).
-                from Utils.ui_config import load_force_manual_install
-                if load_force_manual_install():
-                    self._append_log("[nexus] [dev] force_manual_install — "
-                                     "using the manual browser-download flow.")
-                    premium = False
+            premium = self._resolve_req_premium(api)
             try:
                 # Fetch the file list for BOTH tiers: the chooser needs it, and
                 # the non-premium folder watcher needs real names + sizes.
@@ -7662,7 +7802,7 @@ class MainWindow(QMainWindow):
         else:
             start(ctx, picks[0])
 
-    def _start_req_download(self, ctx, f):
+    def _start_req_download(self, ctx, f, sem=None):
         domain, mod_id, name = ctx["domain"], ctx["mod_id"], ctx["name"]
         dl_label = f.file_name or name
         dl_key = self._new_dl_key()
@@ -7679,6 +7819,8 @@ class MainWindow(QMainWindow):
 
         def worker():
             archive = meta = None
+            if sem is not None:
+                sem.acquire()
             try:
                 from Nexus.nexus_download import NexusDownloader
                 from Utils.config_paths import get_download_cache_dir_for_game
@@ -7721,6 +7863,9 @@ class MainWindow(QMainWindow):
                                      f"{result.error or 'unknown error'}")
             except Exception as exc:
                 self._append_log(f"[nexus] download error: {exc}")
+            finally:
+                if sem is not None:
+                    sem.release()
             self._req_install_dl.emit(archive, meta, dl_key)
 
         threading.Thread(target=worker, daemon=True, name="req-install-dl").start()
@@ -7769,14 +7914,18 @@ class MainWindow(QMainWindow):
             log_fn=self._append_log, log_label=dl_label,
             mod_info_fallback=info,
             on_archive=on_archive, on_progress=on_progress,
-            on_timeout=on_timeout)
+            on_timeout=on_timeout,
+            cache_dir=get_download_cache_dir_for_game(
+                getattr(self._gs.game, "name", "") or ""))
         self._app_manual_watchers[int(mod_id or 0)] = (watcher, dl_key)
         # The watch runs in the background — release the guard so the user can
         # install other missing requirements meanwhile (watches are per-mod).
         self._req_installing = False
+        return dl_key
 
     def _on_req_install_dl(self, archive, meta, dl_key):
         self._req_installing = False
+        self._req_batch_watch_ended(dl_key)
         self._nexus_download_progress(dl_key, "", 0, -1)   # hide this download's card
         if not archive:
             return

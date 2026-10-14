@@ -57,8 +57,10 @@ class _ReqCard(QFrame):
     (downloads & installs the mod)."""
 
     def __init__(self, p, req, url, is_external, on_view, on_install,
-                 ignored=False, on_ignore=None):
+                 ignored=False, on_ignore=None, on_select=None):
         super().__init__()
+        self.req = req
+        self.select_cb = None
         self.setObjectName("ReqCard")
         self.setStyleSheet(
             f"#ReqCard{{background:{_c(p,'BG_PANEL')};"
@@ -66,6 +68,16 @@ class _ReqCard(QFrame):
         h = QHBoxLayout(self)
         h.setContentsMargins(12, 10, 12, 10)
         h.setSpacing(10)
+
+        # Multi-select for "Install selected" — Nexus-hosted requirements only
+        # (externals have nothing to download).
+        if on_select is not None and not is_external \
+                and int(getattr(req, "mod_id", 0) or 0) > 0:
+            self.select_cb = QCheckBox()
+            self.select_cb.setCursor(Qt.PointingHandCursor)
+            self.select_cb.setToolTip(self.tr("Select for Install selected"))
+            self.select_cb.toggled.connect(lambda _st: on_select())
+            h.addWidget(self.select_cb, 0, Qt.AlignTop)
 
         col = QVBoxLayout(); col.setContentsMargins(0, 0, 0, 0); col.setSpacing(3)
         name = req.mod_name or self.tr("Mod {0}").format(req.mod_id)
@@ -121,7 +133,8 @@ class MissingReqsView(QWidget):
     _reqs_ready = Signal(object, object)
 
     def __init__(self, api, game, mods, ignored_set, save_ignored_fn,
-                 on_close, log_fn=None, install_fn=None, ignore_req_fn=None):
+                 on_close, log_fn=None, install_fn=None, ignore_req_fn=None,
+                 install_many_fn=None, stop_queue_fn=None):
         super().__init__()
         self._api = api
         self._game = game
@@ -141,6 +154,13 @@ class MissingReqsView(QWidget):
         # per-requirement ignore into the owning mods' meta.ini (provided by
         # the window). None = no per-requirement Ignore checkboxes.
         self._ignore_req_fn = ignore_req_fn
+        # install_many_fn([(mod_id, domain, name), ...]) — batch install of the
+        # ticked requirements (provided by the window). None = no batch bar.
+        self._install_many_fn = install_many_fn
+        # stop_queue_fn() — drops the files of a free-account queue not yet
+        # opened (the current file's watch keeps running). Shown only while a
+        # queue runs; the window reports that through set_queue_status().
+        self._stop_queue_fn = stop_queue_fn
         # mod_id → card widget, so cards can be pruned once installed.
         self._cards: dict[int, _ReqCard] = {}
 
@@ -174,6 +194,30 @@ class MissingReqsView(QWidget):
         self._ignore_cb.setChecked(self._all_ignored())
         self._ignore_cb.toggled.connect(self._on_ignore_toggled)
         hb.addWidget(self._ignore_cb)
+
+        if self._install_many_fn is not None:
+            self._sel_all_btn = QPushButton(self.tr("Select all"))
+            self._sel_all_btn.setCursor(Qt.PointingHandCursor)
+            self._sel_all_btn.setStyleSheet(button_qss("BTN_GREY", padding="5px 14px"))
+            self._sel_all_btn.clicked.connect(self._toggle_select_all)
+            self._sel_all_btn.setVisible(False)
+            hb.addWidget(self._sel_all_btn)
+            self._install_sel_btn = QPushButton(self.tr("Install selected"))
+            self._install_sel_btn.setCursor(Qt.PointingHandCursor)
+            self._install_sel_btn.setStyleSheet(
+                button_qss("BTN_SUCCESS", padding="5px 14px"))
+            self._install_sel_btn.setEnabled(False)
+            self._install_sel_btn.clicked.connect(self._install_selected)
+            self._install_sel_btn.setVisible(False)
+            hb.addWidget(self._install_sel_btn)
+
+        self._stop_queue_btn = QPushButton(self.tr("Stop after this file"))
+        self._stop_queue_btn.setCursor(Qt.PointingHandCursor)
+        self._stop_queue_btn.setStyleSheet(
+            button_qss("BTN_DANGER", padding="5px 14px"))
+        self._stop_queue_btn.setVisible(False)
+        self._stop_queue_btn.clicked.connect(self._on_stop_queue)
+        hb.addWidget(self._stop_queue_btn)
 
         close = danger_close_button(pal=p)
         close.clicked.connect(lambda: self._on_close())
@@ -302,10 +346,13 @@ class MissingReqsView(QWidget):
                 p, r, url, is_external, self._open_url, self._install_req,
                 ignored=self._req_ignored(int(r.mod_id or 0)),
                 on_ignore=(self._toggle_req_ignored
-                           if self._ignore_req_fn is not None else None))
+                           if self._ignore_req_fn is not None else None),
+                on_select=(self._update_selection
+                           if self._install_many_fn is not None else None))
             self._cards_layout.insertWidget(insert_at, card)
             insert_at += 1
             self._cards[int(r.mod_id)] = card
+        self._update_selection()
 
     def prune_installed(self, installed_ids):
         """Remove the cards for any requirement whose mod_id is now installed
@@ -320,6 +367,65 @@ class MissingReqsView(QWidget):
         if not self._cards:
             self._status.setText(self.tr("No missing requirements found."))
             self._status.setVisible(True)
+        self._update_selection()
+
+    # ---- multi-select install ---------------------------------------------
+    def _selectable(self):
+        return [c for c in self._cards.values() if c.select_cb is not None]
+
+    def _selected_reqs(self) -> list:
+        return [c.req for c in self._selectable() if c.select_cb.isChecked()]
+
+    def _update_selection(self):
+        if self._install_many_fn is None:
+            return
+        cards = self._selectable()
+        n = len(self._selected_reqs())
+        self._sel_all_btn.setVisible(len(cards) > 1)
+        self._sel_all_btn.setText(
+            self.tr("Select none") if cards and n == len(cards)
+            else self.tr("Select all"))
+        self._install_sel_btn.setVisible(bool(cards))
+        self._install_sel_btn.setEnabled(n > 0)
+        self._install_sel_btn.setText(
+            self.tr("Install selected ({0})").format(n) if n
+            else self.tr("Install selected"))
+
+    def set_queue_status(self, running: bool, remaining: int = 0):
+        """Called by the window as the browser-download queue advances."""
+        if self._stop_queue_fn is None:
+            return
+        self._stop_queue_btn.setVisible(bool(running))
+        if running:
+            self._stop_queue_btn.setText(
+                self.tr("Stop after this file ({0} queued)").format(remaining)
+                if remaining else self.tr("Stop after this file"))
+
+    def _on_stop_queue(self):
+        if self._stop_queue_fn is not None:
+            self._stop_queue_fn()
+
+    def _toggle_select_all(self):
+        cards = self._selectable()
+        want = not (cards and len(self._selected_reqs()) == len(cards))
+        for c in cards:
+            c.select_cb.blockSignals(True)
+            c.select_cb.setChecked(want)
+            c.select_cb.blockSignals(False)
+        self._update_selection()
+
+    def _install_selected(self):
+        reqs = self._selected_reqs()
+        if not reqs or self._install_many_fn is None:
+            return
+        domain = self._domain()
+        self._install_many_fn([
+            (r.mod_id, domain, r.mod_name or f"Mod {r.mod_id}") for r in reqs])
+        for c in self._selectable():
+            c.select_cb.blockSignals(True)
+            c.select_cb.setChecked(False)
+            c.select_cb.blockSignals(False)
+        self._update_selection()
 
     def _domain(self) -> str:
         return getattr(self._game, "nexus_game_domain", "") or (
