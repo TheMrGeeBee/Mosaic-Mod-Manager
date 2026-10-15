@@ -57,14 +57,17 @@ class _ReqCard(QFrame):
     (downloads & installs the mod)."""
 
     def __init__(self, p, req, url, is_external, on_view, on_install,
-                 ignored=False, on_ignore=None, on_select=None):
+                 ignored=False, on_ignore=None, on_select=None, badge=""):
         super().__init__()
         self.req = req
         self.select_cb = None
+        # *badge*: "" for a real requirement, else the small label marking a
+        # soft / off-site entry (those also get a dashed border).
         self.setObjectName("ReqCard")
         self.setStyleSheet(
             f"#ReqCard{{background:{_c(p,'BG_PANEL')};"
-            f" border:1px solid {_c(p,'BORDER')}; border-radius:6px;}}")
+            f" border:{'2px dashed ' + _c(p,'ACCENT') if badge else '1px solid ' + _c(p,'BORDER')};"
+            f" border-radius:6px;}}")
         h = QHBoxLayout(self)
         h.setContentsMargins(12, 10, 12, 10)
         h.setSpacing(10)
@@ -81,13 +84,23 @@ class _ReqCard(QFrame):
 
         col = QVBoxLayout(); col.setContentsMargins(0, 0, 0, 0); col.setSpacing(3)
         name = req.mod_name or self.tr("Mod {0}").format(req.mod_id)
-        if is_external:
-            name += "  " + self.tr("(External)")
-        title = QLabel(name)
+        if badge:
+            # Dim inline tag after the name: wraps with the title, unlike a
+            # separate widget, and reads fine on every theme.
+            import html as _html
+            title = QLabel(
+                f"{_html.escape(name)} <span style=\"color:{_c(p,'ACCENT')};"
+                f" font-weight:bold; font-size:small;\">&nbsp;·&nbsp;"
+                f"{_html.escape(badge)}</span>")
+            title.setTextFormat(Qt.RichText)
+            title.setToolTip(self.tr(
+                "Listed by the author as an optional / off-site extra. It "
+                "isn't counted as missing and Select all leaves it unticked."))
+        else:
+            title = QLabel(name)
         title.setStyleSheet(f"color:{_c(p,'TEXT_MAIN')}; font-weight:600;")
         title.setWordWrap(True)
         col.addWidget(title)
-
         notes = (req.notes or "").strip() or self.tr("No description provided.")
         desc = QLabel(notes)
         desc.setStyleSheet(f"color:{_c(p,'TEXT_DIM')};")
@@ -163,6 +176,12 @@ class MissingReqsView(QWidget):
         self._stop_queue_fn = stop_queue_fn
         # mod_id → card widget, so cards can be pruned once installed.
         self._cards: dict[int, _ReqCard] = {}
+        # Off-site requirement cards: informational only (no mod id to track,
+        # install or ignore), so they live outside _cards.
+        self._ext_cards: list[_ReqCard] = []
+        # Mod ids of off-site entries that are really Nexus mods (see
+        # _external_reqs): installable and selectable, never ignorable.
+        self._linked_ids: set[int] = set()
 
         self.setObjectName("MissingReqsView")
         self._reqs_ready.connect(self._on_reqs_ready)
@@ -279,6 +298,8 @@ class MissingReqsView(QWidget):
                     mod_id = int(m.get("mod_id", 0) or 0)
                     domain = m.get("domain", "") or ""
                     want = set(m.get("missing_ids") or set())
+                    if not want:
+                        continue    # only off-site requirements — nothing to fetch
                     # Resolve via the owning mod's requirement graph (carries the
                     # requirement notes) when the mod is Nexus-hosted.
                     if mod_id > 0:
@@ -304,10 +325,47 @@ class MissingReqsView(QWidget):
             except Exception as e:
                 safe_emit(self._reqs_ready, None, str(e))
                 return
+            out.extend(self._external_reqs())
             err = ("; ".join(errors) if errors and not out else None)
             safe_emit(self._reqs_ready, out, err)
 
         threading.Thread(target=worker, daemon=True, name="missing-reqs-fetch").start()
+
+    def _external_reqs(self) -> list:
+        """Off-site requirements stored on the panel's mods (meta.ini), as
+        is_external NexusModRequirements — deduped by (name, link) across the
+        owning mods."""
+        from Nexus.nexus_api import NexusModRequirement
+        from Nexus.nexus_meta import nexus_mod_from_url
+        domain = self._domain().lower()
+        # Real (flagged) requirements are fetched separately — an off-site
+        # entry naming the same Nexus mod would only duplicate that card.
+        real = set()
+        for m in self._mods:
+            real |= {int(i) for i in (m.get("missing_ids") or ())}
+        out, seen, seen_ids = [], set(), set(real)
+        for m in self._mods:
+            for d in m.get("external") or ():
+                url = d.get("url") or ""
+                key = ((d.get("name") or "").lower(), url)
+                if key in seen:
+                    continue
+                seen.add(key)
+                # Authors sometimes list a Nexus mod as "off-site": treat it as
+                # the Nexus mod it is (Install, Select) — but a soft, unflagged,
+                # un-ignorable requirement, since it isn't in missing_ids.
+                nm = nexus_mod_from_url(url)
+                if nm and nm[0] == domain and nm[1] in seen_ids:
+                    continue        # already a card (real requirement / twin)
+                linked = bool(nm and nm[0] == domain)
+                if linked:
+                    seen_ids.add(nm[1])
+                    self._linked_ids.add(nm[1])
+                out.append(NexusModRequirement(
+                    mod_id=nm[1] if linked else 0,
+                    mod_name=d.get("name") or "", url=url,
+                    is_external=not linked, notes=d.get("notes") or ""))
+        return out
 
     def _resolve_single(self, domain, mod_id, errors):
         """Build a NexusModRequirement for a single required *mod_id* by fetching
@@ -346,12 +404,20 @@ class MissingReqsView(QWidget):
                 p, r, url, is_external, self._open_url, self._install_req,
                 ignored=self._req_ignored(int(r.mod_id or 0)),
                 on_ignore=(self._toggle_req_ignored
-                           if self._ignore_req_fn is not None else None),
+                           if self._ignore_req_fn is not None
+                           and int(r.mod_id or 0) not in self._linked_ids
+                           else None),
                 on_select=(self._update_selection
-                           if self._install_many_fn is not None else None))
+                           if self._install_many_fn is not None else None),
+                badge=(self.tr("Off-site") if is_external
+                       else self.tr("Soft requirement")
+                       if int(r.mod_id or 0) in self._linked_ids else ""))
             self._cards_layout.insertWidget(insert_at, card)
             insert_at += 1
-            self._cards[int(r.mod_id)] = card
+            if is_external:
+                self._ext_cards.append(card)
+            else:
+                self._cards[int(r.mod_id)] = card
         self._update_selection()
 
     def prune_installed(self, installed_ids):
@@ -364,7 +430,7 @@ class MissingReqsView(QWidget):
             card = self._cards.pop(mid)
             self._cards_layout.removeWidget(card)
             card.deleteLater()
-        if not self._cards:
+        if not self._cards and not self._ext_cards:
             self._status.setText(self.tr("No missing requirements found."))
             self._status.setVisible(True)
         self._update_selection()
@@ -376,15 +442,29 @@ class MissingReqsView(QWidget):
     def _selected_reqs(self) -> list:
         return [c.req for c in self._selectable() if c.select_cb.isChecked()]
 
+    def _core_cards(self):
+        """The cards Select all covers: real requirements. Soft off-site
+        entries that merely link a Nexus mod (_linked_ids) are tickable one by
+        one but never swept up by Select all."""
+        return [c for c in self._selectable()
+                if int(getattr(c.req, "mod_id", 0) or 0) not in self._linked_ids]
+
+    def _all_core_selected(self) -> bool:
+        core = self._core_cards()
+        return bool(core) and all(c.select_cb.isChecked() for c in core)
+
     def _update_selection(self):
         if self._install_many_fn is None:
             return
         cards = self._selectable()
         n = len(self._selected_reqs())
-        self._sel_all_btn.setVisible(len(cards) > 1)
+        self._sel_all_btn.setVisible(bool(self._core_cards()) and len(cards) > 1)
         self._sel_all_btn.setText(
-            self.tr("Select none") if cards and n == len(cards)
+            self.tr("Select none") if self._all_core_selected()
             else self.tr("Select all"))
+        self._sel_all_btn.setToolTip(self.tr(
+            "Selects the requirements only — optional extras the author "
+            "listed off-site stay unticked; tick those individually."))
         self._install_sel_btn.setVisible(bool(cards))
         self._install_sel_btn.setEnabled(n > 0)
         self._install_sel_btn.setText(
@@ -406,11 +486,13 @@ class MissingReqsView(QWidget):
             self._stop_queue_fn()
 
     def _toggle_select_all(self):
-        cards = self._selectable()
-        want = not (cards and len(self._selected_reqs()) == len(cards))
-        for c in cards:
+        # Select all ticks the real requirements only; Select none clears
+        # every tick, soft extras included.
+        select = not self._all_core_selected()
+        targets = self._core_cards() if select else self._selectable()
+        for c in targets:
             c.select_cb.blockSignals(True)
-            c.select_cb.setChecked(want)
+            c.select_cb.setChecked(select)
             c.select_cb.blockSignals(False)
         self._update_selection()
 
