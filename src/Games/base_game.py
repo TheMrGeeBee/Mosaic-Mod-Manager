@@ -1175,6 +1175,18 @@ class BaseGame(ABC):
         subdir = Path(exe).parent if exe else Path(".")
         return None if subdir == Path(".") else subdir
 
+    def offsite_mod_satisfied(self, name: str) -> bool:
+        """
+        True when a collection's off-site mod called *name* (a manual or direct
+        download outside Nexus) is already provided by this game's own setup, so
+        the collection must not ask for it again.
+
+        Used for things that live outside the mod list — e.g. Bloodlines'
+        Unofficial Patch base layer, which a collection lists as the installer
+        .exe even when a newer patch is installed. Default False.
+        """
+        return False
+
     @property
     def wizard_tools(self) -> list[WizardTool]:
         """

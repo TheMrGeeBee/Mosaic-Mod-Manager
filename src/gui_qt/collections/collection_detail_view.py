@@ -44,7 +44,7 @@ def _is_modio_auto_offsite(url: str, domain: str) -> bool:
     return domain == "baldursgate3" and bool(_MODIO_BROWSE_RE.match(url or ""))
 
 
-def _split_offsite_with_modio(manifest: dict, domain: str):
+def _split_offsite_with_modio(manifest: dict, domain: str, game=None):
     """``(manual, automatic)`` off-site mods, same as
     collection_manifest.extract_offsite_split but reclassifying a "browse"
     entry as automatic when it's a mod.io page Mosaic can resolve itself
@@ -60,6 +60,12 @@ def _split_offsite_with_modio(manifest: dict, domain: str):
             automatic.append((name, url))
         else:
             still_manual.append((name, url))
+    # Mods the game's own setup already provides (e.g. Bloodlines' Unofficial Patch
+    # installed at the same or a newer version) are not worth asking for.
+    satisfied = getattr(game, "offsite_mod_satisfied", None)
+    if callable(satisfied):
+        still_manual = [(n, u) for n, u in still_manual if not satisfied(n)]
+        automatic = [(n, u) for n, u in automatic if not satisfied(n)]
     return still_manual, automatic
 
 
@@ -848,7 +854,8 @@ class CollectionDetailView(QWidget):
                     load_collection_manifest)
                 manifest = load_collection_manifest(
                     self._api, game_name, slug, rev, dl_path, log_fn=self._log)
-                offsite, offsite_auto = _split_offsite_with_modio(manifest, self._domain)
+                offsite, offsite_auto = _split_offsite_with_modio(
+                    manifest, self._domain, self._game)
                 if manifest:
                     # Keep for the install worker (Tk _collection_schema_cache
                     # parity) so install never needs a second manifest download.

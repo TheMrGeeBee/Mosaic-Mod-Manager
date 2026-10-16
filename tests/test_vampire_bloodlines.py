@@ -504,3 +504,42 @@ def test_the_list_covers_every_file_the_patch_script_writes():
                 "materials/hud/new_ui/bloodbar/bloodbar.vmt",
                 "materials/hud/disciplines/bloodheal_base.ttz", "cfg/config.cfg"):
         assert rel in _module._MUTABLE_PATCH_FILES
+
+
+_COLLECTION_UP = "VTMBup115rc9.1.exe"     # the real off-site entry in "Enhanced Textures and SFX"
+
+
+def test_collection_off_site_patch_not_needed_when_same_or_newer_is_installed(tmp_path):
+    g = _game(tmp_path)
+    assert not g.offsite_mod_satisfied(_COLLECTION_UP)        # nothing installed yet
+    _ui_file(g._game_path / "Unofficial_Patch", "12.0")
+    assert g.offsite_mod_satisfied(_COLLECTION_UP)            # 12.0 >= 11.5
+    assert g.offsite_mod_satisfied("VTMBup120.6.exe")         # equal
+    assert not g.offsite_mod_satisfied("VTMBup121.exe")       # a newer one IS needed
+    assert not g.offsite_mod_satisfied("Some Other Tool.exe") # never swallows unrelated mods
+
+
+def test_base_games_never_skip_off_site_mods(tmp_path):
+    from Games.base_game import BaseGame
+    assert BaseGame.offsite_mod_satisfied(object(), _COLLECTION_UP) is False
+
+
+def test_collection_panel_drops_the_satisfied_off_site_patch_only(tmp_path):
+    from gui_qt.collections.collection_detail_view import _split_offsite_with_modio
+
+    manifest = {"mods": [
+        {"name": _COLLECTION_UP, "source": {
+            "type": "browse", "url": "https://www.moddb.com/mods/vtmb-unofficial-patch"}},
+        {"name": "Some Manual Tool", "source": {
+            "type": "browse", "url": "https://example.com/tool"}},
+    ]}
+    g = _game(tmp_path)
+    manual, auto = _split_offsite_with_modio(manifest, "vampirebloodlines", g)
+    assert [n for n, _u in manual] == [_COLLECTION_UP, "Some Manual Tool"]   # nothing installed
+
+    _ui_file(g._game_path / "Unofficial_Patch", "12.0")
+    manual, auto = _split_offsite_with_modio(manifest, "vampirebloodlines", g)
+    assert [n for n, _u in manual] == ["Some Manual Tool"]                  # the patch is gone
+    # and without a game, behaviour is unchanged
+    manual, _auto = _split_offsite_with_modio(manifest, "vampirebloodlines")
+    assert len(manual) == 2

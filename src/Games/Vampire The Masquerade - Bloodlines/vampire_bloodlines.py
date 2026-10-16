@@ -245,6 +245,17 @@ class VampireBloodlines(BaseGame):
                 folder = found[1]
         return {"Unofficial Patch": f"{folder}/resource/gameui_english.txt"}
 
+    def offsite_mod_satisfied(self, name: str) -> bool:
+        """A collection that lists the Unofficial Patch installer (VTMBup…exe) as an
+        off-site download doesn't need it when this patch or a newer one is already
+        installed — the patch is a base layer, not a mod, and collections often pin
+        an older one."""
+        from Utils.modding_tools.vtmb_patch import (
+            installed_version_satisfies, version_from_installer_name)
+        wanted = version_from_installer_name(name)
+        return (wanted is not None and self._game_path is not None
+                and installed_version_satisfies(self._game_path, wanted))
+
     @property
     def framework_launch_exes(self) -> dict[str, str]:
         # The Loader's own picker lists every mod folder in the game directory

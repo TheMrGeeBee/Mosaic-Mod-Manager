@@ -306,3 +306,36 @@ def test_installer_version_from_fake_tool_header(tmp_path):
                     reason="real Unofficial Patch installer / innoextract not present")
 def test_real_installer_reports_its_version():
     assert v.installer_version(_REAL) == "12.0"
+
+
+@pytest.mark.parametrize("name,expected", [
+    ("VTMBup115rc9.1.exe", "11.5"),                              # the real collection entry
+    ("VTMBup120.6.exe", "12.0"),
+    ("VTMBup120.6 80 12.0 2026-10-15T19-52Z sPCTRqnU.exe", "12.0"),   # Nexus-named download
+    ("vtmbup105.exe", "10.5"),
+    ("VTMBup-readme.txt", None),
+    ("VTMBup95.exe", None),                                      # too short to mean anything
+    ("SomeOtherPatch115.exe", None),
+    ("", None),
+])
+def test_version_from_installer_name(name, expected):
+    assert v.version_from_installer_name(name) == expected
+
+
+@pytest.mark.parametrize("installed,wanted,met", [
+    ("12.0", "11.5", True),      # newer installed than the collection asks for
+    ("12.0", "12.0", True),      # equal
+    ("11.5", "12.0", False),     # older installed: the collection's patch is newer
+    ("12.1", "12.0", True),
+    ("9.9", "12.0", False),      # numeric, not string, order
+])
+def test_installed_version_satisfies(tmp_path, installed, wanted, met):
+    root = _game_root(tmp_path)
+    _write_version_file(root / "Unofficial_Patch", _UI.replace("12.0", installed), "utf-16")
+    assert v.installed_version_satisfies(root, wanted) is met
+
+
+def test_nothing_installed_never_satisfies(tmp_path):
+    root = _game_root(tmp_path)
+    assert v.installed_version_satisfies(root, "11.5") is False
+    assert v.installed_version_satisfies(root, None) is False

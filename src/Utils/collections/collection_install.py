@@ -1746,6 +1746,11 @@ def run_collection_install(
                 continue
             _osname = _osmod.get("name") or ""
             _osurl = _osrc.get("url") or _osrc.get("fileUrl") or ""
+            _os_ok = getattr(game, "offsite_mod_satisfied", None)
+            if callable(_os_ok) and _os_ok(_osname):
+                log(f"Off-site mod '{_osname}' not needed — the game setup already "
+                    f"provides it (same or newer version installed).")
+                continue
             if _ostype == "browse" and _osurl:
                 _omodio_url = _resolve_modio_browse_url(_osurl, game_domain, log)
                 if _omodio_url:

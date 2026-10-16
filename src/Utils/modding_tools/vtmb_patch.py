@@ -136,6 +136,29 @@ def version_tuple(version: str | None) -> tuple[int, ...]:
         return ()
 
 
+_INSTALLER_NAME_RE = re.compile(r"^vtmbup(\d{3,})(?:\.\d+)?(?:rc[\d.]+)?\b", re.IGNORECASE)
+
+
+def version_from_installer_name(name: str) -> str | None:
+    """The patch version an installer file name stands for: ``VTMBup115rc9.1.exe``
+    is 11.5 (release candidate 9.1), ``VTMBup120.6 …exe`` is 12.0 (build 6) — the
+    last digit of the leading number is the minor version."""
+    m = _INSTALLER_NAME_RE.match((name or "").strip())
+    if not m:
+        return None
+    digits = m.group(1)
+    return f"{int(digits[:-1])}.{digits[-1]}"
+
+
+def installed_version_satisfies(game_root: Path, wanted: str | None) -> bool:
+    """True when the installed patch is the *wanted* version or newer. Compared on
+    major.minor only: a release candidate of the installed version counts as met."""
+    installed = read_installed_version(game_root)
+    if not installed or not wanted:
+        return False
+    return version_tuple(installed[0])[:2] >= version_tuple(wanted)[:2]
+
+
 def read_installed_version(game_root: Path) -> tuple[str, str] | None:
     """(version, folder it was found in) of the installed patch, or None."""
     for folder in _VERSION_DIRS:
