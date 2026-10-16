@@ -60,7 +60,8 @@ def read_meta_for_entries(entries: list[ModEntry], staging_dir: Path,
                           ignored_reqs: frozenset[str] = frozenset(),
                           profile_dir: "Path | None" = None,
                           is_bg3: bool = False,
-                          collection_order_mods: frozenset[str] = frozenset()):
+                          collection_order_mods: frozenset[str] = frozenset(),
+                          provided=None):
     """Return a MetaInfo-ish tuple keyed by mod name.
 
     versions[name]     -> version string ("" if none)
@@ -82,6 +83,9 @@ def read_meta_for_entries(entries: list[ModEntry], staging_dir: Path,
     (TW3 only; see Utils.mods.tw3_load_index.collection_governed_mod_names) —
     flagged so a drag-reorder in the Mod List doesn't silently break the
     curator's order without the user realizing it's collection-controlled.
+    *provided* — optional ``name -> bool`` (see
+    Utils.wine_proton.framework_detect.game_provides_requirement): requirements
+    the game's own setup already provides never raise the missing-requirements flag.
     """
     versions: dict[str, str] = {}
     installed: dict[str, str] = {}
@@ -189,6 +193,8 @@ def read_meta_for_entries(entries: list[ModEntry], staging_dir: Path,
                 getattr(meta, "ignored_requirements", "") or "")}
             if ign_ids:
                 pairs = [pr for pr in pairs if pr[0] not in ign_ids]
+            if provided is not None and pairs:
+                pairs = [pr for pr in pairs if not provided(pr[1])]
             if pairs:
                 raw_missing_pairs[e.name] = pairs
         # Collection-install provenance (stamped in meta.ini at install time).

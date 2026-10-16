@@ -54,8 +54,11 @@ class RequirementsView(QWidget):
     """Scoped-tab body showing a mod's requirement relationships."""
 
     def __init__(self, staging_fn, on_close, on_data_changed=None,
-                 on_focus_changed=None, on_view_missing=None):
+                 on_focus_changed=None, on_view_missing=None, provided_fn=None):
         super().__init__()
+        # provided_fn(requirement name) -> bool: True when the game's own setup
+        # already provides it (e.g. Bloodlines' Unofficial Patch base layer).
+        self._provided_fn = provided_fn or (lambda _name: False)
         # staging_fn() → current staging Path (profile-switch safe) or None.
         self._staging_fn = staging_fn
         self._on_close = on_close or (lambda: None)
@@ -269,6 +272,10 @@ class RequirementsView(QWidget):
                             continue
                         self._add_row(self._requires_list, folder, dim=False)
                         self.installed_requires.add(folder)
+                elif self._provided_fn(rname):
+                    self._add_row(self._requires_list,
+                                  self.tr("{0}  (provided by the game setup)").format(rname),
+                                  dim=False)
                 else:
                     self._add_row(self._requires_list,
                                   self.tr("{0}  (not installed)").format(rname),

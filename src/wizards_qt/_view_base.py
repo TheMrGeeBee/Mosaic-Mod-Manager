@@ -55,7 +55,8 @@ def parse_nexus_mod_url(url: str) -> "tuple[str, int] | None":
 
 def arm_nexus_auto_fetch(*, api, url: str, file_id: int, keywords: list[str],
                          label: str, cancel: threading.Event,
-                         status_cb, gate_cb, archive_cb, log_fn) -> bool:
+                         status_cb, gate_cb, archive_cb, log_fn,
+                         find_fn=None) -> bool:
     """Hands-free archive acquire for a wizard's manual-download step.
 
     Premium accounts download the pinned (mod_id-from-*url*, *file_id*)
@@ -69,6 +70,10 @@ def arm_nexus_auto_fetch(*, api, url: str, file_id: int, keywords: list[str],
     ``gate_cb(enabled)`` gates the page's manual Next button (disabled while
     a premium download streams, so a partial file can't be picked up by the
     locate scan), ``archive_cb(path)`` delivers the finished archive.
+    *find_fn* (optional) replaces the keyword archive scan used when there is
+    no API — for a file that isn't an archive (e.g. an installer ``.exe``).
+    It returns the newest candidate Path or None; the age/stability guards
+    still apply.
     Returns False when *url* has no parseable mod page / *file_id* is unset.
     """
     parsed = parse_nexus_mod_url(url)
@@ -85,7 +90,8 @@ def arm_nexus_auto_fetch(*, api, url: str, file_id: int, keywords: list[str],
         # Watch-mode fallback (no API): only accept archives that appeared
         # after the wizard opened — a stale keyword match in Downloads must
         # not hijack the flow (the locate page still offers it manually).
-        p = find_archive(get_downloads_dir(), list(keywords))
+        p = (find_fn() if find_fn is not None
+             else find_archive(get_downloads_dir(), list(keywords)))
         if p is None:
             return None
         try:
@@ -310,7 +316,7 @@ class WizardViewBase(QWidget):
     # ---- hands-free archive fetch for the manual-download page -------------------
     def _nexus_auto_fetch(self, *, url: str, file_id: int,
                           keywords: list[str], label: str,
-                          pages: tuple[int, ...], on_archive):
+                          pages: tuple[int, ...], on_archive, find_fn=None):
         """Arm the premium-download / folder-watch acquire for the wizard's
         pinned Nexus file. Call when the manual-download page is shown.
         *pages* are the stack indices (download / locate) where the fetched
@@ -333,7 +339,8 @@ class WizardViewBase(QWidget):
             status_cb=lambda t, c: safe_emit(self._auto_dl_status_sig, t, c),
             gate_cb=lambda on: safe_emit(self._auto_dl_gate_sig, on),
             archive_cb=lambda p: safe_emit(self._auto_dl_archive_sig, p),
-            log_fn=lambda m: self._log(f"{label} Wizard: {m}"))
+            log_fn=lambda m: self._log(f"{label} Wizard: {m}"),
+            find_fn=find_fn)
 
     def _on_auto_dl_status(self, text: str, color: str):
         if self._dl_status is not None:

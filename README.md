@@ -93,9 +93,9 @@ flatpak install --user flathub org.freedesktop.Platform.Compat.i386//24.08 org.f
 <tr><td>Monster Hunter Wilds</td><td></td><td>TCG Card Shop Simulator</td><td></td></tr>
 <tr><td>Monster Hunter World</td><td></td><td>The Last Caretaker</td><td></td></tr>
 <tr><td>Morrowind</td><td>Normal and OpenMW</td><td>The Sims 4</td><td></td></tr>
-<tr><td>Mount &amp; Blade II: Bannerlord</td><td></td><td>Valheim</td><td></td></tr>
-<tr><td>My Summer Car</td><td></td><td>Windrose</td><td></td></tr>
-<tr><td>No Mans Sky</td><td></td><td>Witcher 3</td><td></td></tr>
-<tr><td>Oblivion</td><td></td><td>X4 Foundations</td><td></td></tr>
-<tr><td>Oblivion Remastered</td><td></td><td></td><td></td></tr>
+<tr><td>Mount &amp; Blade II: Bannerlord</td><td></td><td>Vampire: The Masquerade - Bloodlines</td><td>With the Unofficial Patch wizard</td></tr>
+<tr><td>My Summer Car</td><td></td><td>Valheim</td><td></td></tr>
+<tr><td>No Mans Sky</td><td></td><td>Windrose</td><td></td></tr>
+<tr><td>Oblivion</td><td></td><td>Witcher 3</td><td></td></tr>
+<tr><td>Oblivion Remastered</td><td></td><td>X4 Foundations</td><td></td></tr>
 </table>

@@ -185,6 +185,8 @@ REGISTRY: dict[str, QtWizardSpec] = {
         QtWizardSpec(_simple("wizards_qt.fallout_downgrade_view", "FalloutDowngradeView")),
     "wizards.fallout4_downgrade.Fallout4DowngradeWizard":
         QtWizardSpec(_simple("wizards_qt.fallout4_downgrade_view", "Fallout4DowngradeView")),
+    "wizards.vtmb_patch.VtmbPatchWizard":
+        QtWizardSpec(_simple("wizards_qt.vtmb_patch_view", "VtmbPatchView")),
     "wizards.game_version.GameVersionWizard":
         QtWizardSpec(_simple("wizards_qt.game_version_view", "GameVersionView")),
     "wizards.skyrim_runtime.SkyrimRuntimeWizard":

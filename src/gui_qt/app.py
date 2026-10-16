@@ -29,6 +29,7 @@ from gui_qt.game_state import GameState
 from gui_qt.detachable_tabs import DetachableTabWidget
 from gui_qt import glue
 from Utils.config_paths import get_download_cache_dir_for_game
+from Utils.wine_proton.framework_detect import game_provides_requirement
 from Utils.wine_proton.proton_tools import DOTNET_VERSIONS
 # Diagnostic prints here run on worker threads and use flush=True. Under
 # Flatpak/AppImage stdout often has no reader, so a full pipe buffer makes
@@ -6906,7 +6907,8 @@ class MainWindow(QMainWindow):
             on_close=self._close_view_requirements_tab,
             on_data_changed=self._apply_requirement_highlights,
             on_focus_changed=self._on_view_requirements_focus_changed,
-            on_view_missing=self._view_requirements_open_missing)
+            on_view_missing=self._view_requirements_open_missing,
+            provided_fn=lambda name: game_provides_requirement(self._gs.game)(name))
         self._view_requirements_view = view
         # destroyed fires on EVERY teardown path (✕ button, tab-bar close,
         # game change) — restore normal highlights from the one place.
@@ -12700,7 +12702,8 @@ class MainWindow(QMainWindow):
                         payload = read_meta_for_entries(
                             meta_entries, staging, ignored,
                             profile_dir=pdir_meta, is_bg3=is_bg3,
-                            collection_order_mods=collection_order_mods)
+                            collection_order_mods=collection_order_mods,
+                            provided=game_provides_requirement(game_meta))
                 except Exception as exc:
                     print(f"[gui_qt] meta read failed: {exc}", flush=True)
                     payload = None   # still emit — the conflict rebuild chains
@@ -12899,7 +12902,8 @@ class MainWindow(QMainWindow):
              missing_reqs, _desc, authors) = read_meta_for_entries(
                 entries, staging, self._ignored_missing_reqs,
                 profile_dir=self._gs.profile_dir(),
-                is_bg3=(getattr(self._gs.game, "game_id", "") == "baldurs_gate_3"))
+                is_bg3=(getattr(self._gs.game, "game_id", "") == "baldurs_gate_3"),
+                provided=game_provides_requirement(self._gs.game))
         except Exception:
             return
         # Safety net, independent of the guard above. A full refresh returning

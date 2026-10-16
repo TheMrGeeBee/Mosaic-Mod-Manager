@@ -127,6 +127,39 @@ def _load_staged_keys(filemap_path) -> set[str]:
     return keys
 
 
+def game_provides_requirement(game):
+    """Predicate ``name -> bool``: True when *name* (a Nexus requirement's title)
+    is something the game's own setup already provides, so it must not be reported
+    as missing from the mod list.
+
+    A game declares such things in ``frameworks``: an entry counts as present when
+    its file exists in the game root (or the user marked it externally managed),
+    and a requirement matches when the entry's label appears in its name — the
+    same rule the deploy warning uses. e.g. Bloodlines' "Unofficial Patch" is a
+    base layer installed by a wizard, not a mod, yet nearly every mod lists it.
+    """
+    try:
+        frameworks = dict(game.frameworks or {}) if game is not None else {}
+    except Exception:
+        frameworks = {}
+    if not frameworks:
+        return lambda _name: False
+    try:
+        game_root = game.get_game_path()
+    except Exception:
+        game_root = None
+    external = set(getattr(game, "externally_managed_frameworks", None) or [])
+    present = [label.lower() for label, rel in frameworks.items()
+               if label in external
+               or (game_root is not None and file_exists_ci(game_root, Path(rel)))]
+
+    def _provided(name: str) -> bool:
+        low = (name or "").lower()
+        return bool(low) and any(label in low for label in present)
+
+    return _provided
+
+
 def detect_frameworks(game, filemap_path, modlist_path,
                       rf_toggle_enabled: bool = True) -> list[FrameworkStatus]:
     """Return one FrameworkStatus per framework the *game* declares, in order.
