@@ -139,6 +139,16 @@ class VampireBloodlines(BaseGame):
         return "vampirebloodlines"
 
     @property
+    def reshade_dll(self) -> str | None:
+        # Source engine on DirectX 9 (the engine loads shaderapidx9.dll).
+        return "d3d9.dll"
+
+    @property
+    def reshade_arch(self) -> int | None:
+        # vampire.exe is a 32-bit (x86) executable.
+        return 32
+
+    @property
     def plugin_extensions(self) -> list[str]:
         return []
 

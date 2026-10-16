@@ -543,3 +543,9 @@ def test_collection_panel_drops_the_satisfied_off_site_patch_only(tmp_path):
     # and without a game, behaviour is unchanged
     manual, _auto = _split_offsite_with_modio(manifest, "vampirebloodlines")
     assert len(manual) == 2
+
+
+def test_reshade_wizard_hints_match_the_32_bit_directx9_engine():
+    g = VampireBloodlines()
+    assert g.reshade_dll == "d3d9.dll"      # shaderapidx9.dll => DirectX 9
+    assert g.reshade_arch == 32             # vampire.exe is machine 0x14c (x86)
