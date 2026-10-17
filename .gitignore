@@ -23,6 +23,7 @@ decky/
 MosaicModManager-AppImage/
 *.AppImage.zsync
 src/appimage/dist/
+CLAUDE.md
 
 # Name->SHA record of the 107 pre-rename local-only tags (v0.1.0-v2.0.5-beta.2,
 # Feb-Jul 2026), deleted 2026-08-30 because the post-rename version reset to
