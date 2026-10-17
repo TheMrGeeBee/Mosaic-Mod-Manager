@@ -17,6 +17,7 @@ from __future__ import annotations
 from collections import Counter
 from pathlib import Path
 from typing import Callable
+from urllib.parse import urlparse
 
 from Utils.collections.collection_preflight import Check, check_disk_space
 
@@ -89,6 +90,11 @@ def check_directives(modlist: ModList) -> "list[Check]":
                   f"{parts}. Installing it now would leave the setup incomplete.")]
 
 
+def _is_loverslab_url(url: str) -> bool:
+    host = (urlparse(url or "").hostname or "").lower()
+    return host == "loverslab.com" or host.endswith(".loverslab.com")
+
+
 def check_sources(modlist: ModList, *, nexus_premium: bool,
                   loverslab_logged_in: bool) -> "list[Check]":
     by_kind: Counter = Counter(type(a.state) for a in modlist.archives)
@@ -114,7 +120,7 @@ def check_sources(modlist: ModList, *, nexus_premium: bool,
             blocking=False))
     ll = by_kind[LoversLabState] + sum(
         1 for a in modlist.archives
-        if isinstance(a.state, ManualState) and "loverslab.com" in (a.state.url or "").lower())
+        if isinstance(a.state, ManualState) and _is_loverslab_url(a.state.url))
     if ll and not loverslab_logged_in:
         checks.append(Check(
             "loverslab", False, "LoversLab files",
