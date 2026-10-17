@@ -4,10 +4,19 @@ reset to v1.0.0; they keep Amethyst Mod Manager's original numbering, which
 overlaps the numbers above, and the prefix is what keeps the two apart (and
 keeps release tooling from matching the wrong section).
 
+- v1.12.1
+### Additions
+- Added support for mods in VTMB that have several options, so it is similar to how a FOMOD/BAIN file works.
+- Added support for .vtm files so that they install correctly into the root folder.
+
+---
+
 - v1.12.0
 ### Additions
 - Added support for Vampire: The Masquerade - Blodlines
 - Added support for Wabbajack
+
+---
 
 - v1.11.1
 ### Additions
