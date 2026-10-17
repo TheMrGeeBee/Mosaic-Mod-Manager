@@ -4,6 +4,10 @@ reset to v1.0.0; they keep Amethyst Mod Manager's original numbering, which
 overlaps the numbers above, and the prefix is what keeps the two apart (and
 keeps release tooling from matching the wrong section).
 
+- v1.12.2
+### Bug Fixes
+- AppImage enviroment could go stale after an update.
+
 - v1.12.1
 ### Additions
 - Added support for mods in VTMB that have several options, so it is similar to how a FOMOD/BAIN file works.
