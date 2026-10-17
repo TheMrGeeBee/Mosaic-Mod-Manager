@@ -11,6 +11,16 @@ keeps release tooling from matching the wrong section).
 
 ---
 
+- v1.11.2
+### Additions
+- The Missing Requirements tab now lists requirements an author entered as "off-site" instead of dropping them. Nexus's own data already carried their names, links and notes; Mosaic just threw them away. A link to a non-Nexus page shows as "Off-site" with a View button. A link that turns out to be a Nexus mod of the same game (a Virtual Atelier store lists its dozens of items this way) shows as a "Soft requirement" with Install and a checkbox, and disappears once that mod is installed. Both kinds have a dashed accent-coloured border and a tag so they are easy to tell from real requirements on any theme, never raise the warning flag (Mosaic can't tell whether an off-site extra is installed), and have no Ignore box. Mods installed before this update get their off-site list the next time Check for Updates runs
+- Select all in the Missing Requirements tab now ticks the real requirements only; soft and off-site entries are ticked one by one. Select none clears every tick
+
+### Bug Fixes
+- Fixed the right-click "Missing Requirements" item disappearing after ticking "Ignore requirements" for a whole mod: ignoring cleared the warning flag, and the menu item only appeared while the flag was set, so there was no way back into the tab to un-ignore it or install a requirement after all. The item now stays for any mod that still has missing requirements and is ignored, or that has off-site requirements
+
+---
+
 - v1.11.1
 ### Additions
 - Added multi-select install to the Missing Requirements tab: every Nexus-hosted requirement now has a checkbox, with Select all and Install selected. It fetches the file lists, shows the same batch review screen as the Nexus browser's Download selected, then downloads on Premium (several at a time, the same limit collections use) or, on a free account, opens one Nexus download page at a time and moves on as soon as each file has arrived. Nexus still requires a click on Slow download for every free-account file -- the queue only removes the opening, tracking and installing around it. A red "Stop after this file" button drops the files not yet opened
