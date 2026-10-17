@@ -6,8 +6,10 @@ keeps release tooling from matching the wrong section).
 
 - v1.12.0
 ### Additions
-- Added support for Vampire: The Masquerade - Blodlines
+- Added support for Vampire: The Masquerade - Bloodlines
 - Added support for Wabbajack
+
+---
 
 - v1.11.1
 ### Additions
