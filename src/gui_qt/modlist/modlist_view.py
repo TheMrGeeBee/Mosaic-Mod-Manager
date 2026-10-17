@@ -118,6 +118,10 @@ class ModListView(QTreeView):
 
         # Right-click context menu.
         self.staging_dir = None   # set by the window for Open-folder
+        # Names of mods whose "Ignore requirements" box is ticked (the window
+        # points this at its live set) — the menu keeps Missing Requirements
+        # for them so the panel stays reachable to un-ignore.
+        self.ignored_missing_reqs = frozenset()
         self.game = None          # set by the window (for full mod removal)
         self.setContextMenuPolicy(Qt.CustomContextMenu)
         self.customContextMenuRequested.connect(self._on_context_menu)

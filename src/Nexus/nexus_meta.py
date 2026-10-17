@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import configparser
 import copy
+import json
 import os
 import re
 from dataclasses import dataclass, field
@@ -66,6 +67,7 @@ class NexusModMeta:
     ignored_version: str = ""          # latest_version at the time ignore was set
     missing_requirements: str = ""     # semicolon-separated "modId:name" pairs
     nexus_requirements: str = ""       # FULL requirements list, "modId:name" pairs (externals as 0:name)
+    external_requirements: str = ""    # off-Nexus requirements, JSON [{"name","url","notes"}] (listed in the panel, never flagged)
     ignored_requirements: str = ""     # user-ignored requirement ids, "modId:name" pairs (suppress the ⚠ flag; still listed in the panel)
     is_fomod: bool = False             # True if installed via FOMOD installer
     is_bain: bool = False              # True if installed via BAIN sub-package installer
@@ -153,6 +155,7 @@ _KEY_MAP: dict[str, str] = {
     "missingRequirements": "missing_requirements",
     "nexusRequirements": "nexus_requirements",
     "ignoredRequirements": "ignored_requirements",
+    "externalRequirements": "external_requirements",
     "FOMOD":             "is_fomod",
     "BAIN":              "is_bain",
     "rootFolder":        "root_folder",
@@ -384,6 +387,57 @@ def scan_installed_mods(staging_root: Path) -> list[NexusModMeta]:
             results.append(meta)
 
     return results
+
+
+_NEXUS_MOD_URL_RE = re.compile(
+    r"^https?://(?:www\.)?nexusmods\.com/([^/?#]+)/mods/(\d+)", re.IGNORECASE)
+
+
+def nexus_mod_from_url(url: str) -> "tuple[str, int] | None":
+    """``(game_domain, mod_id)`` for a Nexus mod page URL, else None. Authors
+    sometimes list a Nexus-hosted mod as an "off-site" requirement; this lets
+    the Missing Requirements panel treat it as the Nexus mod it is."""
+    m = _NEXUS_MOD_URL_RE.match((url or "").strip())
+    return (m.group(1).lower(), int(m.group(2))) if m else None
+
+
+def parse_external_reqs(raw: str) -> list[dict]:
+    """Parse a meta.ini ``external_requirements`` JSON value into a list of
+    ``{"name", "url", "notes"}`` dicts. Anything malformed yields []."""
+    if not (raw or "").strip():
+        return []
+    try:
+        data = json.loads(raw)
+    except ValueError:
+        return []
+    out = []
+    for d in data if isinstance(data, list) else []:
+        if not isinstance(d, dict):
+            continue
+        name = str(d.get("name") or "").strip()
+        url = str(d.get("url") or "").strip()
+        if name or url:
+            out.append({"name": name, "url": url,
+                        "notes": str(d.get("notes") or "").strip()})
+    return out
+
+
+def format_external_reqs(reqs) -> str:
+    """Serialise the external (off-Nexus) requirements among *reqs*
+    (NexusModRequirement-likes) to the ``external_requirements`` JSON value,
+    deduped by (name, url) and with notes capped. "" when there are none."""
+    seen, out = set(), []
+    for r in reqs or ():
+        if not getattr(r, "is_external", False):
+            continue
+        name = (getattr(r, "mod_name", "") or "").strip()
+        url = (getattr(r, "url", "") or "").strip()
+        if not (name or url) or (name.lower(), url) in seen:
+            continue
+        seen.add((name.lower(), url))
+        out.append({"name": name, "url": url,
+                    "notes": (getattr(r, "notes", "") or "").strip()[:500]})
+    return json.dumps(out) if out else ""
 
 
 def parse_req_pairs(raw: str) -> list[tuple[int, str]]:

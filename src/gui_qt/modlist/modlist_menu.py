@@ -595,8 +595,17 @@ def _has_missing_reqs(view, name: str) -> bool:
     if bits & FLAG_MISSING_REQS:
         return True
     meta = _read_mod_meta(view, name)
-    return bool(meta is not None
-                and getattr(meta, "ignored_requirements", ""))
+    if meta is None:
+        return False
+    if getattr(meta, "ignored_requirements", ""):
+        return True
+    # Off-Nexus requirements are listed in the panel but never flagged.
+    if getattr(meta, "external_requirements", ""):
+        return True
+    # Whole-mod "Ignore requirements" also clears the ⚠ flag; the panel must
+    # stay reachable to un-ignore it or to install a requirement after all.
+    return bool(name in getattr(view, "ignored_missing_reqs", ())
+                and getattr(meta, "missing_requirements", ""))
 
 
 def _quick_update(view, names):

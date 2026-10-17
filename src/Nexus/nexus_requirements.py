@@ -28,7 +28,9 @@ from typing import Callable, Optional
 import requests
 
 from Nexus.nexus_api import NexusAPI, NexusModRequirement, NexusModUpdateInfo
-from Nexus.nexus_meta import NexusModMeta, scan_installed_mods, write_meta
+from Nexus.nexus_meta import (
+    NexusModMeta, format_external_reqs, scan_installed_mods, write_meta,
+)
 from Utils.ca_bundle import resolve_ca_bundle
 from Utils.config_paths import get_requirement_external_tool_mod_ids_path
 
@@ -405,7 +407,14 @@ def check_missing_requirements(
                 external_set, alternatives_dict, log=_log)
 
         # 5. Record results for each local mod entry under this mod_id
+        external_str = format_external_reqs(reqs)   # listed in the panel only
         for meta in metas:
+            if (save_results and not missing
+                    and meta.external_requirements != external_str):
+                # Nothing missing → the branches below don't write; persist a
+                # changed off-site list here, then fall through as before.
+                meta.external_requirements = external_str
+                write_meta(staging_root / meta.mod_name / "meta.ini", meta)
             if missing:
                 info = MissingRequirementInfo(
                     mod_name=meta.mod_name,
@@ -422,6 +431,7 @@ def check_missing_requirements(
                     meta.missing_requirements = ";".join(
                         f"{r.mod_id}:{r.mod_name}" for r in missing
                     )
+                    meta.external_requirements = external_str
                     meta_path = staging_root / meta.mod_name / "meta.ini"
                     write_meta(meta_path, meta)
             else:
@@ -571,6 +581,10 @@ def check_requirements_from_gql(
             for r in reqs
         )
         missing_str = ";".join(f"{r.mod_id}:{r.mod_name}" for r in missing)
+        # Off-Nexus requirements can't be detected as installed, so they never
+        # raise the ⚠ flag — they are only listed (with their link) in the
+        # Missing Requirements panel.
+        external_str = format_external_reqs(reqs)
 
         for meta in metas:
             if missing:
@@ -584,9 +598,11 @@ def check_requirements_from_gql(
                 suffix = f" (+{len(missing) - 3} more)" if len(missing) > 3 else ""
                 _log(f"  ⚠ {meta.mod_name}: missing {names}{suffix}")
             if save_results and (meta.missing_requirements != missing_str
-                                 or meta.nexus_requirements != full_str):
+                                 or meta.nexus_requirements != full_str
+                                 or meta.external_requirements != external_str):
                 meta.missing_requirements = missing_str
                 meta.nexus_requirements = full_str
+                meta.external_requirements = external_str
                 write_meta(staging_root / meta.mod_name / "meta.ini", meta)
 
     _log(f"Requirements check complete: {len(results)} mod(s) with missing dependencies.")

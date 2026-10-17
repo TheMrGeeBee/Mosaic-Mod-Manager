@@ -29,7 +29,10 @@ from gui_qt.game_state import GameState
 from gui_qt.detachable_tabs import DetachableTabWidget
 from gui_qt import glue
 from Utils.config_paths import get_download_cache_dir_for_game
+<<<<<<< HEAD
 from Utils.wine_proton.framework_detect import game_provides_requirement
+=======
+>>>>>>> main
 from Utils.wine_proton.proton_tools import DOTNET_VERSIONS
 # Diagnostic prints here run on worker threads and use flush=True. Under
 # Flatpak/AppImage stdout often has no reader, so a full pipe buffer makes
@@ -6734,7 +6737,8 @@ class MainWindow(QMainWindow):
             self._notify(self.tr("No mod staging folder for this profile."), "warning")
             return
         names = [target] if isinstance(target, str) else list(target or ())
-        from Nexus.nexus_meta import read_meta
+        from Nexus.nexus_meta import (
+            read_meta, parse_external_reqs, nexus_mod_from_url)
         from gui_qt.modlist.modlist_data import _parse_missing_req_pairs
         # meta.ini keeps the FULL seeded requirement list on purpose (so a
         # requirement reappears if its mod is later removed) — filter out the
@@ -6749,7 +6753,17 @@ class MainWindow(QMainWindow):
             raw = getattr(meta, "missing_requirements", "") or ""
             ids = {mid for mid, _ in _parse_missing_req_pairs(raw)}
             ids -= installed_ids
-            if not ids:
+            # Off-Nexus requirements (e.g. a store's soft requirements): listed
+            # with their link, never counted as missing.
+            external = parse_external_reqs(
+                getattr(meta, "external_requirements", "") or "")
+            # An "off-site" entry that links a Nexus mod of this game and is
+            # already installed has nothing left to show.
+            external = [d for d in external
+                        if not ((nm := nexus_mod_from_url(d.get("url", "")))
+                                and nm[0] == domain.lower()
+                                and nm[1] in installed_ids)]
+            if not ids and not external:
                 continue
             ignored_ids = {mid for mid, _ in _parse_missing_req_pairs(
                 getattr(meta, "ignored_requirements", "") or "")}
@@ -6757,6 +6771,7 @@ class MainWindow(QMainWindow):
                           "mod_id": int(getattr(meta, "mod_id", 0) or 0),
                           "domain": getattr(meta, "game_domain", "") or domain,
                           "missing_ids": ids,
+                          "external": external,
                           "ignored_ids": ignored_ids & ids})
         if not specs:
             self._notify(self.tr("No missing requirements."), "info")
@@ -6861,6 +6876,8 @@ class MainWindow(QMainWindow):
                     from Utils.profile.profile_state import read_ignored_missing_requirements
                     self._ignored_missing_reqs = frozenset(
                         read_ignored_missing_requirements(pdir))
+                    self._modlist_view.ignored_missing_reqs = (
+                        self._ignored_missing_reqs)
                 except Exception:
                     pass
             self._refresh_modlist_flags()
@@ -12558,6 +12575,7 @@ class MainWindow(QMainWindow):
         self._modlist_view.on_flag_clicked = self._on_modlist_flag_clicked
         # Missing Requirements: right-click item + clicking the ⚠ flag icon.
         self._modlist_view.on_missing_reqs = self._open_missing_reqs_tab
+        self._modlist_view.ignored_missing_reqs = self._ignored_missing_reqs
         # View Requirements: right-click item (offline, reads meta.ini data).
         self._modlist_view.on_view_requirements = self._open_view_requirements_tab
         # Quick Update: right-click on update-flagged mods (premium direct DL).
