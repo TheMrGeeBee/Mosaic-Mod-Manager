@@ -281,27 +281,12 @@ def run_installer(allow_prerelease: bool = False):
         f"nohup {shlex.quote(target_path)} &>/dev/null &"
     )
 
-    # Build a clean environment: start from the current env then strip every
-    # variable that the AppImage runtime injects and that would be invalid once
-    # the mount is gone.
-    _APPIMAGE_ENV_PREFIXES = (
-        "APPDIR", "APPIMAGE", "OWD",
-        "SSL_CERT_FILE", "SSL_CERT_DIR",
-        "CURL_CA_BUNDLE",
-        "LD_LIBRARY_PATH",
-        "LD_PRELOAD",
-        "PYTHONHOME", "PYTHONPATH",
-        "GDK_PIXBUF_MODULEDIR", "GDK_PIXBUF_MODULE_FILE",
-        "GIO_MODULE_DIR",
-        "GSETTINGS_SCHEMA_DIR",
-        "GTK_PATH", "GTK_IM_MODULE_FILE",
-        "QT_PLUGIN_PATH",
-        "PERLLIB", "PERL5LIB",
-    )
-    clean_env = {
-        k: v for k, v in os.environ.items()
-        if not any(k.startswith(p) for p in _APPIMAGE_ENV_PREFIXES)
-    }
+    # Build a clean environment without anything the AppImage runtime injected
+    # (invalid once the mount is gone). Uses the shared list: a private, shorter
+    # copy here once missed MOD_MANAGER_GAMES, so the relaunched app read its
+    # game handlers from the OLD mount and lost the last few games.
+    from Utils.appimage_env import strip_appimage_vars
+    clean_env = strip_appimage_vars(os.environ.copy())
 
     try:
         subprocess.Popen(
