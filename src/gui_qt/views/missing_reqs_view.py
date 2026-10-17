@@ -57,19 +57,12 @@ class _ReqCard(QFrame):
     (downloads & installs the mod)."""
 
     def __init__(self, p, req, url, is_external, on_view, on_install,
-<<<<<<< HEAD
-                 ignored=False, on_ignore=None, on_select=None):
-        super().__init__()
-        self.req = req
-        self.select_cb = None
-=======
                  ignored=False, on_ignore=None, on_select=None, badge=""):
         super().__init__()
         self.req = req
         self.select_cb = None
         # *badge*: "" for a real requirement, else the small label marking a
         # soft / off-site entry (those also get a dashed border).
->>>>>>> main
         self.setObjectName("ReqCard")
         self.setStyleSheet(
             f"#ReqCard{{background:{_c(p,'BG_PANEL')};"
@@ -411,14 +404,6 @@ class MissingReqsView(QWidget):
                 p, r, url, is_external, self._open_url, self._install_req,
                 ignored=self._req_ignored(int(r.mod_id or 0)),
                 on_ignore=(self._toggle_req_ignored
-<<<<<<< HEAD
-                           if self._ignore_req_fn is not None else None),
-                on_select=(self._update_selection
-                           if self._install_many_fn is not None else None))
-            self._cards_layout.insertWidget(insert_at, card)
-            insert_at += 1
-            self._cards[int(r.mod_id)] = card
-=======
                            if self._ignore_req_fn is not None
                            and int(r.mod_id or 0) not in self._linked_ids
                            else None),
@@ -433,7 +418,6 @@ class MissingReqsView(QWidget):
                 self._ext_cards.append(card)
             else:
                 self._cards[int(r.mod_id)] = card
->>>>>>> main
         self._update_selection()
 
     def prune_installed(self, installed_ids):
@@ -458,8 +442,6 @@ class MissingReqsView(QWidget):
     def _selected_reqs(self) -> list:
         return [c.req for c in self._selectable() if c.select_cb.isChecked()]
 
-<<<<<<< HEAD
-=======
     def _core_cards(self):
         """The cards Select all covers: real requirements. Soft off-site
         entries that merely link a Nexus mod (_linked_ids) are tickable one by
@@ -471,18 +453,11 @@ class MissingReqsView(QWidget):
         core = self._core_cards()
         return bool(core) and all(c.select_cb.isChecked() for c in core)
 
->>>>>>> main
     def _update_selection(self):
         if self._install_many_fn is None:
             return
         cards = self._selectable()
         n = len(self._selected_reqs())
-<<<<<<< HEAD
-        self._sel_all_btn.setVisible(len(cards) > 1)
-        self._sel_all_btn.setText(
-            self.tr("Select none") if cards and n == len(cards)
-            else self.tr("Select all"))
-=======
         self._sel_all_btn.setVisible(bool(self._core_cards()) and len(cards) > 1)
         self._sel_all_btn.setText(
             self.tr("Select none") if self._all_core_selected()
@@ -490,7 +465,6 @@ class MissingReqsView(QWidget):
         self._sel_all_btn.setToolTip(self.tr(
             "Selects the requirements only — optional extras the author "
             "listed off-site stay unticked; tick those individually."))
->>>>>>> main
         self._install_sel_btn.setVisible(bool(cards))
         self._install_sel_btn.setEnabled(n > 0)
         self._install_sel_btn.setText(
@@ -512,13 +486,6 @@ class MissingReqsView(QWidget):
             self._stop_queue_fn()
 
     def _toggle_select_all(self):
-<<<<<<< HEAD
-        cards = self._selectable()
-        want = not (cards and len(self._selected_reqs()) == len(cards))
-        for c in cards:
-            c.select_cb.blockSignals(True)
-            c.select_cb.setChecked(want)
-=======
         # Select all ticks the real requirements only; Select none clears
         # every tick, soft extras included.
         select = not self._all_core_selected()
@@ -526,7 +493,6 @@ class MissingReqsView(QWidget):
         for c in targets:
             c.select_cb.blockSignals(True)
             c.select_cb.setChecked(select)
->>>>>>> main
             c.select_cb.blockSignals(False)
         self._update_selection()
 

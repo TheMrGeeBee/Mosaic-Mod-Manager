@@ -29,10 +29,7 @@ from gui_qt.game_state import GameState
 from gui_qt.detachable_tabs import DetachableTabWidget
 from gui_qt import glue
 from Utils.config_paths import get_download_cache_dir_for_game
-<<<<<<< HEAD
 from Utils.wine_proton.framework_detect import game_provides_requirement
-=======
->>>>>>> main
 from Utils.wine_proton.proton_tools import DOTNET_VERSIONS
 # Diagnostic prints here run on worker threads and use flush=True. Under
 # Flatpak/AppImage stdout often has no reader, so a full pipe buffer makes
