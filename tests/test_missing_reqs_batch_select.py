@@ -106,8 +106,6 @@ def test_move_into_cache(tmp_path):
     c.write_bytes(b"different-size")                     # name clash, new content
     assert move_into_cache(c, cache) == c and c.exists()
     assert move_into_cache(c, None) == c
-<<<<<<< HEAD
-=======
 
 
 def test_menu_keeps_missing_reqs_for_whole_mod_ignore(tmp_path, monkeypatch):
@@ -253,4 +251,3 @@ def test_nexus_mod_from_url():
     assert nexus_mod_from_url("http://nexusmods.com/Cyberpunk2077/mods/5?tab=files") == ("cyberpunk2077", 5)
     assert nexus_mod_from_url("https://example.org/mods/5") is None
     assert nexus_mod_from_url("") is None
->>>>>>> main

@@ -888,7 +888,8 @@ def mods_matching_root_rules(
     forward or back slashes).  Only rules with ``dest == ""`` and
     ``to_prefix is False`` are considered.
     """
-    root_rules = [r for r in rules if r.dest == "" and not r.to_prefix]
+    root_rules = [r for r in rules
+                  if (r.dest == "" or r.root_install) and not r.to_prefix]
     if not root_rules or not mod_files:
         return set()
     norm = [_normalise_rule(r) for r in root_rules]

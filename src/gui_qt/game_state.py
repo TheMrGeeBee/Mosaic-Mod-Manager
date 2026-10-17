@@ -288,7 +288,7 @@ class GameState:
         root_rule: set = set()
         try:
             rules = list(getattr(g, "custom_routing_rules", None) or [])
-            if any(r.dest == "" and not r.to_prefix for r in rules):
+            if any((r.dest == "" or r.root_install) and not r.to_prefix for r in rules):
                 from Utils.deploy.deploy_custom_rules import mods_matching_root_rules
                 with span("flag_mods: root-rule match"):
                     mod_files = {

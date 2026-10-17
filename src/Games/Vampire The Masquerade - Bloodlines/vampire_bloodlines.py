@@ -33,9 +33,12 @@ from pathlib import Path
 
 from Games.base_game import BaseGame, WizardTool
 from Utils.deploy.deploy import (
+    CustomRule,
     LinkMode,
     deploy_core,
+    deploy_custom_rules,
     deploy_filemap,
+    restore_custom_rules,
     load_per_mod_strip_prefixes,
     load_separator_deploy_paths,
     expand_separator_deploy_paths,
@@ -183,6 +186,26 @@ class VampireBloodlines(BaseGame):
 
     @property
     def mod_auto_strip_until_required(self) -> bool:
+        return True
+
+    def _routing_rules(self, profile: str | None = None) -> list[CustomRule]:
+        return [
+            # Loader plug-ins are read from <game root>/Bin/loader, not from the
+            # -game folder; they need the Unofficial Patch's Loader.
+            CustomRule(dest="Bin/loader", extensions=[".vtm"], flatten=True,
+                       root_install=True),
+            # A loose .res (UI scheme, e.g. trackerscheme.res) belongs in resource/.
+            CustomRule(dest=f"{self.get_mod_dir_name(profile)}/resource",
+                       extensions=[".res"], loose_only=True, flatten=True),
+        ]
+
+    @property
+    def custom_routing_rules(self) -> list[CustomRule]:
+        return self._routing_rules()
+
+    @property
+    def supports_bain(self) -> bool:
+        # Option-folder packs ("With / Without Unofficial Patch version") are common.
         return True
 
     @property
@@ -511,6 +534,15 @@ class VampireBloodlines(BaseGame):
         _log(f"Step 2: Transferring mod files into {mod_dir.name}/ ({mode.name}) ...")
         profile_dir = self.get_profile_root() / "profiles" / profile
         per_mod_strip = load_per_mod_strip_prefixes(profile_dir)
+        custom_exclude = deploy_custom_rules(
+            filemap, self._game_path, staging,
+            rules=self._routing_rules(profile),
+            mode=mode,
+            strip_prefixes=self.mod_folder_strip_prefixes,
+            per_mod_strip_prefixes=per_mod_strip,
+            log_fn=_log,
+            progress_fn=progress_fn,
+        )
         _sep_deploy = load_separator_deploy_paths(profile_dir)
         _sep_entries = read_modlist(profile_dir / "modlist.txt") if _sep_deploy else []
         per_mod_deploy = expand_separator_deploy_paths(_sep_deploy, _sep_entries) or None
@@ -520,11 +552,17 @@ class VampireBloodlines(BaseGame):
             strip_prefixes=self.mod_folder_strip_prefixes,
             per_mod_strip_prefixes=per_mod_strip,
             per_mod_deploy_dirs=per_mod_deploy,
+            exclude=custom_exclude or None,
             log_fn=_log,
             progress_fn=progress_fn,
             core_dir=mod_dir.parent / (mod_dir.name + "_Core"),
         )
         _log(f"  Transferred {linked_mod} mod file(s).")
+        # A routed loose .res overrides the patch's copy of resource/<name>.
+        placed |= {
+            f"resource/{Path(r).name}".lower()
+            for r in custom_exclude if r.lower().endswith(".res") and "/" not in r
+        }
 
         patch_dir = self.get_patch_path()
         linked_patch = 0
@@ -562,6 +600,8 @@ class VampireBloodlines(BaseGame):
         _entries = read_modlist(_profile_dir / "modlist.txt") if _profile_dir else []
         cleanup_custom_deploy_dirs(_profile_dir, _entries, log_fn=_log)
 
+        restore_custom_rules(self.get_effective_filemap_path(), self._game_path,
+                             rules=self.custom_routing_rules, log_fn=_log)
         self._drop_unchanged_private_copies(mod_dir, self._active_profile_dir, _log)
 
         _log(f"Restore: clearing {mod_dir.name}/ ...")

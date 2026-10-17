@@ -549,3 +549,46 @@ def test_reshade_wizard_hints_match_the_32_bit_directx9_engine():
     g = VampireBloodlines()
     assert g.reshade_dll == "d3d9.dll"      # shaderapidx9.dll => DirectX 9
     assert g.reshade_arch == 32             # vampire.exe is machine 0x14c (x86)
+
+
+def test_vtm_loader_plugins_and_loose_res_files_are_routed_and_restored(tmp_path):
+    """Container Stack Fix ships Bin/loader/*.vtm (read from the game root, not the
+    -game folder); Plain Dialogue ships a loose trackerscheme.res (belongs in resource/)."""
+    g = _game(tmp_path)
+    root = g._game_path
+    _patch_file(g, "resource/trackerscheme.res", b"patch")
+    _patch_file(g, "resource/other.res", b"patch-other")
+    _stage_mod_file(g, "StackFix", "Bin/loader/container-stack-fix.vtm", b"vtm")
+    _stage_mod_file(g, "Dialogue", "trackerscheme.res", b"mod")
+    _stage_mod_file(g, "Dialogue", "resource/nested.res", b"nested")
+    _empty_filemap(g, "Bin/loader/container-stack-fix.vtm\tStackFix\n"
+                      "trackerscheme.res\tDialogue\n"
+                      "resource/nested.res\tDialogue\n")
+
+    g.deploy(mode=LinkMode.HARDLINK, profile="default")
+
+    assert (root / "Bin" / "loader" / "container-stack-fix.vtm").read_bytes() == b"vtm"
+    res = root / "Mosaic_default" / "resource"
+    assert (res / "trackerscheme.res").read_bytes() == b"mod"     # mod wins over the patch
+    assert (res / "other.res").read_bytes() == b"patch-other"
+    assert (res / "nested.res").read_bytes() == b"nested"          # already in resource/
+    assert not (root / "Mosaic_default" / "trackerscheme.res").exists()
+    assert not (root / "Mosaic_default" / "Bin").exists()
+
+    g.restore()
+    assert not (root / "Bin" / "loader" / "container-stack-fix.vtm").exists()
+
+
+def test_vtm_mods_are_flagged_as_root_installs_but_res_mods_are_not():
+    from Utils.deploy.deploy_custom_rules import mods_matching_root_rules
+
+    flagged = mods_matching_root_rules(
+        {"StackFix": ["Bin/loader/container-stack-fix.vtm", "README.txt"],
+         "Dialogue": ["trackerscheme.res"],
+         "Textures": ["materials/a.vmt"]},
+        VampireBloodlines().custom_routing_rules)
+    assert flagged == {"StackFix"}
+
+
+def test_option_folder_packs_get_the_sub_package_picker():
+    assert VampireBloodlines().supports_bain

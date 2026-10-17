@@ -639,6 +639,9 @@ class CustomRule:
                  caller to pass ``prefix_root`` to ``deploy_custom_rules``;
                  rules with ``to_prefix=True`` are skipped when no prefix
                  is available.
+    root_install — when True, mods owning matched files get the Root install
+                 flag in the mod list although ``dest`` is not empty (e.g. a
+                 game-root subfolder outside the game's mod folder).
     mirror_dests — additional destination dirs (resolved under the same
                  base as ``dest``) that every matched file is also placed
                  into.  Used for Steam/GOG dual My Games folders where the
@@ -667,6 +670,7 @@ class CustomRule:
     to_prefix: bool = False
     mirror_dests: list[str] = field(default_factory=list)
     exclude_extensions: list[str] = field(default_factory=list)
+    root_install: bool = False   # flag owning mods as root installs even when dest != ""
 
 
 @dataclass
