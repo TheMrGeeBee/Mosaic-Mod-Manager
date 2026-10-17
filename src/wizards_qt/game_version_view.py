@@ -61,7 +61,7 @@ class GameVersionView(WizardViewBase):
         self._current = None
         self._entry = None
         self._plan = None
-        self._depot_rows: "dict[str, tuple[QLabel, QPushButton]]" = {}
+        self._depot_rows: "dict[str, tuple[QLabel, QPushButton, QPushButton]]" = {}
         self._found: "dict[str, object]" = {}
         self._watching = False
 
@@ -376,13 +376,30 @@ class GameVersionView(WizardViewBase):
             copy = QPushButton(self.tr("Copy"))
             copy.setCursor(Qt.PointingHandCursor)
             copy.clicked.connect(lambda _=False, t=cmd.text(): QGuiApplication.clipboard().setText(t))
+            clear = self._orange_btn(self.tr("Clear old download"))
+            clear.setToolTip(self.tr(
+                "Steam's download folder for this depot holds another version. Steam doesn't "
+                "shorten files that got smaller, so downloading over it can leave old bytes "
+                "at the end of files. Clear it first, then paste the command."))
+            clear.clicked.connect(lambda _=False, d=depot: self._clear_depot(d))
+            clear.hide()
             state = QLabel(self.tr("waiting"))
-            state.setMinimumWidth(110)
+            state.setMinimumWidth(150)
             rh.addWidget(cmd, 1)
             rh.addWidget(copy)
+            rh.addWidget(clear)
             rh.addWidget(state)
             self._depot_vlay.addWidget(row)
-            self._depot_rows[depot] = (state, copy)
+            self._depot_rows[depot] = (state, copy, clear)
+
+    def _clear_depot(self, depot: str):
+        status = self._found.get(depot)
+        folder = getattr(status, "folder", None)
+        if folder is None:
+            return
+        self._log(f"Game version: clearing {folder} before downloading again")
+        self._dv.clear_depot_folder(self._state_dir, folder)
+        self._poll_downloads()
 
     def _poll_downloads(self):
         if self._plan is None or self._watching:
@@ -390,7 +407,7 @@ class GameVersionView(WizardViewBase):
         if not self._depot_rows:
             self._build_depot_rows()
         self._watching = True
-        plan, app = list(self._plan.download), self._app_id
+        plan, app, state_dir = list(self._plan.download), self._app_id, self._state_dir
 
         def worker():
             found = {}
@@ -398,8 +415,8 @@ class GameVersionView(WizardViewBase):
                 log_text = "\n".join(p.read_text(encoding="utf-8", errors="replace")
                                      for p in self._dv.content_log_paths())
                 for depot, manifest in plan:
-                    found[depot] = self._dv.find_downloaded_depot(app, depot, manifest,
-                                                                 log_text=log_text)
+                    found[depot] = self._dv.depot_status(app, depot, manifest,
+                                                         state_dir=state_dir, log_text=log_text)
             finally:
                 safe_emit(self._downloads_sig, found)
 
@@ -409,10 +426,16 @@ class GameVersionView(WizardViewBase):
         self._watching = False
         self._found = found
         done = 0
-        for depot, (label, _copy) in self._depot_rows.items():
-            if found.get(depot) is not None:
+        for depot, (label, copy, clear) in self._depot_rows.items():
+            st = found.get(depot)
+            state = getattr(st, "state", "waiting")
+            copy.setVisible(state != "needs_clear")
+            clear.setVisible(state == "needs_clear")
+            if state == "downloaded":
                 done += 1
                 label.setText(f'<span style="color:{ok_text()}">✓ {self.tr("downloaded")}</span>')
+            elif state == "needs_clear":
+                label.setText(f'<span style="color:{err_text()}">{self.tr("holds another version")}</span>')
             else:
                 label.setText(self.tr("waiting"))
         total = len(self._depot_rows)
@@ -425,7 +448,8 @@ class GameVersionView(WizardViewBase):
         self._watch_timer.stop()
         self._goto(_PG_APPLY)
         self._set_status(self._run_status, self.tr("Backing up and switching… (large files take a while)"))
-        entry, dirs = self._entry, {d: self._found[d] for d, _ in self._plan.download}
+        entry = self._entry
+        dirs = {d: self._found[d].folder for d, _ in self._plan.download}
         from_label = self._current.label if self._current else "previous"
         game_root, state_dir, exe = self._game_root, self._state_dir, self._exe_file
         running, active = self._game_running(), self._deploy_active()

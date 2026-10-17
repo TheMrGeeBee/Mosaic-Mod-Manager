@@ -28,3 +28,10 @@ Thank you to ChrisDKN and everyone who contributed to the original Amethyst Mod 
   Game version (Steam) wizard's code is original. One entry (Nuka-World
   Russian, depot 393899) is left out because FO4Down lists it with the same
   manifest as Nuka-World French, which is almost certainly a copy error.
+- **The DDS header written for BA2 textures during a Wabbajack install**
+  (`src/Utils/wabbajack/wabbajack_dds.py`) follows
+  [wabbajack-tools/wabbajack](https://github.com/wabbajack-tools/wabbajack)
+  (GPL-3.0), `Wabbajack.Compression.BSA/BA2Archive/DX10Entry.cs` and
+  `Wabbajack.Compression.BSA/DirectXTexUtil.cs` at commit `e35cdf469bf4`:
+  the same pixel-format table, pitch rules and flags, reimplemented in
+  Python, so that patches built against Wabbajack's extracted textures apply.

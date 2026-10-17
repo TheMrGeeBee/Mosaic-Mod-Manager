@@ -73,6 +73,30 @@
       "unverified_depots": {
         "393899": "Nuka-World Russian: FO4Down lists the same manifest as Nuka-World French (4271967849859961419), almost certainly a copy error; left out."
       }
+    },
+    {
+      "label": "1.11.221",
+      "title": "Anniversary Edition (Steam build 22848228, 27 May 2026)",
+      "exe_version": "1.11.221.0",
+      "source": "SteamDB, build 22848228 (27 May 2026) 'changed files' page, cross-checked against build 24564252 (18 Aug 2026), whose old manifests equal May's new ones. Depots neither update changed keep the manifests of an 18 Aug 2026 install. Exe depot 377162 verified 2026-10-08: Fallout4.exe reports 1.11.221.0. Only English and the Automatron Japanese depot are known; other language depots are left out rather than guessed.",
+      "remove": [],
+      "depots": {
+        "377161": "5983086794954940044",
+        "377162": "387388833281246371",
+        "377163": "8363807899725426636",
+        "377164": "8492427313392140315",
+        "435870": "1213339795579796878",
+        "435871": "4060235024162383907",
+        "404091": "1731476318140038644",
+        "435880": "7797822138743384972",
+        "435881": "1207717296920736193",
+        "435882": "8482181819175811242",
+        "480630": "5527412439359349504",
+        "480631": "6588493486198824788",
+        "393885": "5000262035721758737",
+        "490650": "4873048792354485093",
+        "393895": "7677765994120765493"
+      }
     }
   ]
 }

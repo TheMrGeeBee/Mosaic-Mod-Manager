@@ -3,6 +3,8 @@
 failure cases)."""
 from __future__ import annotations
 
+import shutil
+import subprocess
 import zipfile
 
 import py7zr
@@ -231,3 +233,20 @@ def test_resolve_missing_member_in_bsa_raises(tmp_path):
     idx.add_archive("h", bsa)
     with pytest.raises(VfsResolutionError, match="not found"):
         idx.resolve(["h", "meshes/missing.nif"])
+
+
+@pytest.mark.skipif(shutil.which("7z") is None, reason="needs the native 7z")
+def test_resolve_ppmd_zip_falls_back_to_7z(tmp_path):
+    """Python's zipfile can't decompress PPMd (method 98) members; real
+    Nexus zips use it (Goodneighbor View, Wasteland Gardening)."""
+    src = tmp_path / "src" / "Data"
+    src.mkdir(parents=True)
+    (src / "plugin.esp").write_bytes(b"ppmd plugin bytes " * 50)
+    archive = tmp_path / "ppmd.zip"
+    subprocess.run(["7z", "a", "-tzip", "-mm=PPMd", str(archive), "Data"],
+                   cwd=tmp_path / "src", check=True, capture_output=True)
+    with zipfile.ZipFile(archive) as zf:
+        assert {i.compress_type for i in zf.infolist() if not i.is_dir()} == {98}
+    idx = ArchiveIndex(tmp_path / "scratch")
+    idx.add_archive("hash1", archive)
+    assert idx.resolve(["hash1", "Data\\Plugin.esp"]).read_bytes() == b"ppmd plugin bytes " * 50

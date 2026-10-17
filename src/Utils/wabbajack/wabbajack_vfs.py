@@ -9,7 +9,8 @@ path inside the *previous* hop's container, which -- if more elements follow
 -- must itself be an archive (the classic case is a BSA bundled inside a
 7z).
 
-A zip or BSA/BA2 hop extracts only the member needed. A 7z or rar container
+A zip or BSA/BA2 hop extracts only the member needed. A 7z or rar container,
+or a zip using a method Python's zipfile can't decompress (PPMd, Deflate64),
 is extracted whole, once, with Mosaic's regular extractor chain (native 7z →
 bsdtar → py7zr, ``Utils.mods.mod_install._extract_archive``) and every later
 member is served from that copy: py7zr alone can't read BCJ2-filtered 7z
@@ -21,9 +22,8 @@ does: ``\\`` or ``/`` separators, any casing.
 
 Containers can be zip, 7z, rar, or a Bethesda BSA (v104/v105) / BA2 (read with
 ``Utils.archives.bsa_file_reader.BsaFile``). A DX10 texture read out of a
-BA2 comes back with a reconstructed DDS header, which may not match the
-bytes Wabbajack hashed -- the directive's hash check catches that rather
-than installing a different file. Any other container format raises
+BA2 gets the DDS header Wabbajack itself writes (``wabbajack_dds``), since
+Wabbajack hashed and built its patches against that exact file. Any other container format raises
 :class:`VfsResolutionError`.
 """
 from __future__ import annotations
@@ -36,6 +36,8 @@ from .wabbajack_hash import hash_file
 _ZIP_EXTS = (".zip",)
 _EXTRACT_WHOLE_EXTS = (".7z", ".rar")
 _BETHESDA_EXTS = (".bsa", ".ba2")
+# ba2_extract._make_dds_header: magic + DDS_HEADER + DDS_HEADER_DXT10.
+_MOSAIC_DDS_HEADER_LEN = 4 + 124 + 20
 
 
 def _norm_member(path: str) -> str:
@@ -101,7 +103,13 @@ class ArchiveIndex:
         self._next_id += 1
         dest = self.scratch_dir / f"{self._next_id}_{Path(member_path).name}"
         if ext in _ZIP_EXTS:
-            self._extract_from_zip(container, member_path, dest)
+            try:
+                self._extract_from_zip(container, member_path, dest)
+            except NotImplementedError:
+                # zipfile can't decompress PPMd (98) or Deflate64 (9) members
+                # (real cases: VRAMr, Goodneighbor View); native 7z can.
+                dest.unlink(missing_ok=True)
+                return self._member_of_whole_extract(container, member_path)
         elif ext in _BETHESDA_EXTS:
             self._extract_from_bethesda(container, member_path, dest)
         else:
@@ -140,7 +148,8 @@ class ArchiveIndex:
             raise VfsResolutionError(f"{container}: not a valid zip ({exc})") from exc
 
     def _member_of_whole_extract(self, container: Path, member_path: str) -> Path:
-        """``member_path`` from a 7z/rar container extracted whole, once, into
+        """``member_path`` from a 7z/rar (or PPMd/Deflate64 zip) container
+        extracted whole, once, into
         the scratch dir (so on the install's own filesystem, never /tmp)."""
         key = str(container)
         members = self._extracted.get(key)
@@ -170,6 +179,14 @@ class ArchiveIndex:
                 if member_path not in archive:
                     raise VfsResolutionError(f"{member_path!r} not found in {container.name}")
                 data = archive.read(member_path)
+                info = archive.dx10_info(member_path)
+                if info is not None:
+                    # Swap Mosaic's DDS header for the one Wabbajack hashed.
+                    from .wabbajack_dds import wabbajack_dds_header
+                    data = wabbajack_dds_header(
+                        height=info["height"], width=info["width"],
+                        mip_count=info["num_mips"], dxgi_format=info["dxgi_format"],
+                        is_cubemap=info["is_cubemap"]) + data[_MOSAIC_DDS_HEADER_LEN:]
         except BsaReadError as exc:
             raise VfsResolutionError(f"{container}: BSA/BA2 read failed ({exc})") from exc
         dest.parent.mkdir(parents=True, exist_ok=True)

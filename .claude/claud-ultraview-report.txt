@@ -1,0 +1,12 @@
+Confirmed: single request, no pagination loop, nodesCount requested but never read. Bug_006 is real, though only a latent nit today since get_collection_status has no caller yet — create_collection_view.py, which will call it, exists locally but wasn't part of the review's tracked-file scope, so this reviewer didn't know it's about to become reachable.
+
+Now checking the "missing module" finding — since the ultrareview scope was only the 2 tracked-modified files (nexus_api.py, app.py), and create_collection_view.py is a local untracked file (git status shows ??) that the review never saw. Locally it exists, defines CreateCollectionView(QWidget) with a matching __init__(self, window, game, api, log_fn=None) signature, and parses cleanly — so that finding is a false positive against your working tree, an artifact of the review only covering committed/tracked changes.
+Invalid tool parameters
+
+● Code review(review · 1 finding)
+src/Nexus/nexus_api.py
+  ● 3205 [correctness] get_collection_status's owner-side lookup via get_my_collections() is capped at 50 collections with no pagination, so a curator with >50 collections whose target is an older draft/unlisted one gets a false "missing" result instead of "ok".
+
+The other reported finding ("missing create_collection_view module") was a false positive — that file exists in your working tree (untracked, ?? src/gui_qt/views/create_collection_view.py) with a matching CreateCollectionView class and constructor signature; the cloud review's scope was only the 2 tracked-modified files, so it never saw it.
+
+The one real issue: get_collection_status in src/Nexus/nexus_api.py:3205 caps its owner-collection lookup at 50 (no pagination, nodesCount requested but never consulted). It's latent today since nothing calls it yet, but create_collection_view.py — which you have staged locally — is about to call it, and a curator with >50 collections targeting an older draft/unlisted one would get a false "missing" and risk creating a duplicate collection on publish. Worth fixing before that view lands, since the docstring already documents this exact failure mode as the thing to avoid.

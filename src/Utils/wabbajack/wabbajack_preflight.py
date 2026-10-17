@@ -127,14 +127,59 @@ def check_sources(modlist: ModList, *, nexus_premium: bool,
     return checks
 
 
+def _game_files_mosaic_builds_from(modlist: ModList) -> "set[str]":
+    """Hashes of game-file archives that feed files Mosaic actually installs
+    (``mods/`` and ``profiles/``). Real case (Wasteland Genesis AE): all 21
+    game files that differed on the user's install only fed the list's
+    ``Game Root\\`` folder (the curator's own game files copied over the game,
+    which Mosaic skips), so they must not block."""
+    used: "set[str]" = set()
+    for d in modlist.directives:
+        ahp = getattr(d, "archive_hash_path", None) or []
+        top = (getattr(d, "to", "") or "").replace("\\", "/").split("/", 1)[0].lower()
+        if ahp and top in ("mods", "profiles"):
+            used.add(ahp[0])
+    return used
+
+
+def check_game_version(modlist: ModList, game_root: "str | Path | None") -> "list[Check]":
+    """A warning (never a block) when the game's exe reports a different
+    version than the game files the modlist was built from: Mosaic can still
+    build it, but its plugins may need that version to run. Switch with
+    Wizard ▸ Game version (Steam)."""
+    if not game_root:
+        return []
+    exes = [a for a in modlist.archives if isinstance(a.state, GameFileSourceState)
+            and a.state.game_version and "/" not in a.state.game_file.replace("\\", "/")
+            and a.state.game_file.lower().endswith(".exe")]
+    if not exes:
+        return []
+    from Utils.wizard_support.pe_version import format_version, read_file_version
+    target = exes[0].state.game_version
+    path = resolve_game_file(game_root, exes[0].state.game_file)
+    version = read_file_version(path) if path is not None else None
+    if version is None:
+        return []
+    have = format_version(version)
+    if have == target:
+        return [Check("game-runtime", True, f"Your game is version {have}, as the modlist expects")]
+    return [Check("game-runtime", False, "Different game version",
+                  f"This modlist was built for game version {target}; yours is {have}. Mosaic "
+                  "can install it, but its mods may need that version to run. Switch first "
+                  "with Wizard ▸ Game version (Steam) if one is available for it.",
+                  blocking=False)]
+
+
 def check_game_files(modlist: ModList, game_root: "str | Path | None") -> "list[Check]":
-    """Files the modlist takes from the game install must be there and be the
-    same build the modlist was made from. Sizes are compared here (instant);
-    hashes are checked during the install, when the files are read. Real case
-    (2026-10-08): Wasteland Genesis AE, built from 1.11.221 game files, on a
-    downgraded install -- 35 of its 143 game files differed, which only showed
-    up after a 168 GB download."""
-    wanted = [a for a in modlist.archives if isinstance(a.state, GameFileSourceState)]
+    """Game files that files Mosaic installs are built from must be there and
+    be the build the modlist was made from (sizes compared here, instantly;
+    hashes during the install). Real case (2026-10-08): Wasteland Genesis AE,
+    built from 1.11.221 game files -- a mismatch must show before a 168 GB
+    download, not after. Game files that only feed parts Mosaic skips (e.g.
+    ``Game Root\\``) are left out."""
+    used = _game_files_mosaic_builds_from(modlist)
+    wanted = [a for a in modlist.archives
+              if isinstance(a.state, GameFileSourceState) and a.hash in used]
     if not wanted or not game_root:
         return []
     missing, differ = [], []
@@ -162,9 +207,9 @@ def check_game_files(modlist: ModList, game_root: "str | Path | None") -> "list[
     if differ:
         checks.append(Check(
             "game-version", False, "Your game version doesn't match this modlist",
-            f"{built}{len(differ)} of the {len(wanted)} game files it uses are different "
-            f"in your game folder ({names(differ)}). The modlist can't be built from "
-            "them; install the matching game version, or choose a modlist made for yours."))
+            f"{built}{len(differ)} of the {len(wanted)} game files it builds from are different "
+            f"in your game folder ({names(differ)}). Switch the game to that version (Wizard ▸ "
+            "Game version (Steam)), or choose a modlist made for yours."))
     if missing:
         checks.append(Check(
             "game-files", False, "Files missing from your game folder",
@@ -182,6 +227,7 @@ def run_preflight(modlist: ModList, *, active_game_name: str,
     return [
         *check_game(modlist, active_game_name),
         *check_game_files(modlist, game_root),
+        *check_game_version(modlist, game_root),
         *check_directives(modlist),
         *check_sources(modlist, nexus_premium=nexus_premium,
                        loverslab_logged_in=loverslab_logged_in),

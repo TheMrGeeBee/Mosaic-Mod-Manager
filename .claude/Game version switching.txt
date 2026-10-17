@@ -1,0 +1,198 @@
+All the code for Wabbajack are implemented and functional. The issue that remains is that some lists/collections are using different version of the game. So this case is a matter on how to implement the control of being able to switch game version.   A base wizard tool, "Game version (Steam)…", for every game with a steam_id. It's registered in wizards_qt/__init__.py REGISTRY and in the base wizard tools, so it appears under Wizard for any Steam game.
+
+   1. Check: current version (exe PE version + whether it matches a known table entry), deployed state (button: Restore via ctx.run_restore), exe-only-downgrade state, free disk space.
+   2. Choose: a list of table versions (plus "Add a version…": a paste box for depot→manifest pairs from SteamDB, with a link to steamdb.info/app/<app>/depots/). It shows which depots will download and their sizes when known.
+   3. Download: an "Open Steam console" button (open_url("steam://open/console")), each download_depot line with Copy, and Copy all. A watcher thread polls the content folders and the logs (Phase 0 format) and ticks each depot off. Mosaic can't type into the console, so you paste.
+   4. Apply: back up, swap, verify, done. It notes "Launch with the f4se_loader.exe entry, not Play via Steam: Steam may update the game back" and suggests Steam's "Only update this game when I launch it". Mosaic doesn't touch the appmanifest.
+   5. Switch back: offered on the Check page whenever version_state.json exists.
+
+   After a switch, the downloaded steamapps/content/... folders can be deleted ("Free X GB") or kept for faster re-switching.
+
+   Phase 3 — profiles and Wabbajack hook
+
+   - Required version per profile: merge_profile_settings(profile, {"game_version": "1.11.221"}). Wabbajack installs set it from GameFileSourceState.game_version; collections from manifest_game_versions. Deploy and preflight warn when the game's version differs.
+   - Wabbajack preflight: when the "Your game version doesn't match" check fails and a table entry matches the version, show a fix button, "Switch Fallout 4 to 1.11.221…", which opens the wizard preselected.
+   - Verification bonus: after switching, the Wabbajack preflight's game-file size check (already built) confirms the files match. For a list like Wasteland Genesis AE (143 game-file hashes) a full hash check can be offered.
+
+   Files
+
+   - New: src/Utils/steam/depot_versions.py, src/Utils/steam/acf.py (tiny VDF reader), src/Games/Bethesda/steam_versions/fallout4.json, src/wizards_qt/game_version_view.py, tests tests/test_depot_versions.py and tests/test_game_version_view.py.
+   - Changed:
+     - src/wizards_qt/__init__.py (registry);
+     - src/Games/base_game.py (base wizard tool for Steam games);
+     - src/Utils/wabbajack/wabbajack_preflight.py + src/gui_qt/wabbajack/wabbajack_controller.py (fix button);
+     - ATTRIBUTION.md (FO4Down GPL-3 manifest table);
+     - Changelog.
+
+   Verification
+
+   - Unit tests: ACF parsing (the real Fallout 4 appmanifest shape), plan_switch (language/DLC intersection), apply/revert on a fake game folder (backup hashes, rollback on a failing os.replace, refuses when deployed/running/exe-only downgraded), log parsing from the Phase 0 sample, and an offscreen Qt view test (copy commands, watcher ticks a depot).
+   - Real run, user-driven:
+     a. Phase 0 sample.
+     b. Switch to 1.11.221 with the depots the user pastes from SteamDB.
+     c. Wasteland Genesis AE preflight passes the game-version check.
+     d. Switch back from backup → A_StoryWealth_Rev281 launches via the f4se_loader entry.
+   - Safety: snapshot-diff the game folder before and after every apply/revert, as with the Horizon install.
+
+And my question then is: Would it be possible, instead of downloading the depots over and over, to create a binary patch and keep that stored, and if switched from one profile to another, use the correct binary patch instead of download everything again?
+
+Yes—Mosaic already uses this exact model for Skyrim's runtime swap, applying stored hpatchz patches with sha256 verification and managing the hpatchz binary. I'll fold this in as a local patch store in the plan.
+
+# Game version switching via Steam depots (Fallout 4 first, game-agnostic)
+
+## Context
+
+Some Wabbajack lists need a specific game build. Wasteland Genesis AE needs Fallout 4 1.11.221, and preflight blocks it because 35 of its 143 game files differ. The user wants Mosaic to move the game to a chosen build, the way they already do it by hand: `steam://open/console`, look up the manifest on SteamDB, then `download_depot <app> <depot> <manifest>`. That uses the user's own licence and Valve's servers, and Mosaic holds no credentials.
+
+Rejected: MulderLoad's patch CDN (no licence, untrusted author) and upstream's MulderLoad-under-Proton wizard. Hard rule from `wizards_qt/CLAUDE.md`: Mosaic never edits Steam's `appmanifest`.
+
+Facts gathered by the local session (2026-10-08):
+- `appmanifest_<app>.acf` → `InstalledDepots` lists exactly the user's depots (language, owned DLC) with their manifest IDs.
+- SteamDB returns 403 to scripts, so manifests come from a shipped table plus user paste.
+- Seed data is `zerratar/fallout4-downgrader` (GPL-3), `src/FO4Down/DepotManager.cs`: the full Fallout 4 depot→manifest table for 1.10.163. It must be credited in ATTRIBUTION.md.
+
+## Review corrections (verified against origin/main 8d770de)
+
+1. **`skyrim_runtime` isn't reusable as-is.** `Transition`/`FileSwap`/`apply_transition` are hpatchz-patch based (`FileSwap.forward_patch`) and refuse any app id but Skyrim's.
+   - Reuse: `is_deployed()`, `_sha256`, `_free_bytes`, and the staging/`os.replace`/rollback/state-file *pattern*.
+   - Don't reuse: anything else. Write a whole-file copy variant in the new module rather than calling `apply_transition`.
+2. **Phase 3 depends on unpushed local work.** The Wabbajack "game version doesn't match" check and the game-file size check aren't on main (`check_game_files` only checks existence). They come from the user's local session and must land on main before Phase 3 starts.
+3. **Where `download_depot` writes is unknown.** Steam normally puts it under the *Steam root's* `steamapps/content/app_<app>/depot_<depot>`, not the game's library. Don't assume a location. Phase 0 must record the real path, and the code should take it from Steam's "Depot download complete" log line, with a fallback search of the Steam root and every library's `steamapps/content`.
+4. **Disk space covers three things.** A depot download is the *whole* depot at that manifest; Fallout 4's data depot is tens of GB. The backup of replaced files can be similar. So the free-space precondition must cover all three: downloads, backup, and staged copies (same filesystem as the game). The download location's filesystem may differ from the game's.
+5. **Files only in the current build.** `download_depot` brings the target's files, but nothing tells Mosaic which existing files the target lacks. Steam's `depotcache/*.manifest` files are binary protobuf, which is out of scope. So keep the per-entry curated `remove` list, back those files up too, and treat "unknown extra files" as a known limit of a table entry.
+
+## Phase 0: one real sample before writing parsers
+
+The user runs one small real download from Steam's console: Fallout 4's exe depot 377162 at the 1.10.163 manifest 5847529232406005096, about 55 MB. It records:
+- the console and log lines (`~/.local/share/Steam/logs/console_log.txt`, `content_log.txt`): start, progress, and "Depot download complete" with its path;
+- the real landing folder;
+- whether pasting several `download_depot` lines at once works.
+
+Nothing in the game folder changes. The log parsers and "finished" detection are built from this sample and its lines become test fixtures.
+
+## Phase 1: core, `src/Utils/steam/` (no Qt)
+
+- **`acf.py`**: a tiny VDF/ACF reader. `parse_vdf_libraries` in `steam_finder.py` only handles libraryfolders, so write a general nested-key reader and test it on the real Fallout 4 appmanifest shape.
+- **`depot_versions.py`**:
+  - **Reading Steam:**
+    - `steam_root()`, a public helper over `steam_finder._STEAM_CANDIDATES`.
+    - `read_installed_depots(game_root, app_id) -> {depot: manifest}`, reading the appmanifest found via `library_steamapps_for`.
+    - `find_downloaded_depot(app, depot)`, which takes the log line first, then the fallback search (correction 3).
+  - **Version table (data):**
+    - Shipped per game in `src/Games/Bethesda/steam_versions/fallout4.json`, with a user-local `games/<game>/steam_versions.user.json`.
+    - Entry: `{label, date, exe: {file, version}, depots: {depot: manifest}, remove: [paths], source}`.
+    - Fallout 4 ships 1.10.163, credited to FO4Down.
+    - The currently installed version is captured automatically on first run, from `InstalledDepots` plus the exe's PE version (`Utils/wizard_support/pe_version.read_file_version`), so switching back works the same way.
+  - **Planning:**
+    - `plan_switch(entry, installed) -> [(depot, manifest)]` takes only depots that are both installed and in the entry, so language and owned DLC follow the user's install.
+    - `console_commands(plan)` returns the `download_depot` lines.
+  - **Detecting downloads:** `downloaded_depots(app, plan)` checks for the folder and the logged completion line, using the Phase 0 format.
+  - **`apply_version(...)` / `revert_version(...)`**, a whole-file copy variant of the skyrim_runtime pattern:
+    - Preconditions:
+      - not deployed (`skyrim_runtime.is_deployed`);
+      - the game isn't running;
+      - disk space per correction 4;
+      - no exe-only Fallout 4 downgrade mid-flight conflict (see below).
+    - **Back up**: every game file the downloaded depots would replace, plus the entry's `remove` list, copied to `games/<game>/version_backup/<from_label>/` with sha256.
+    - **Swap**: stage each file next to its target (`.mosaic-version`), then `os.replace`, rolling back everything on any failure.
+    - **Verify**: the exe's PE version equals `entry.exe.version`.
+    - **State**: `games/<game>/version_state.json` holds `{current, from, at, backup_dir, files{path:{original_sha256,new_sha256}}}`, written via tmp + replace.
+    - **Revert**: hash-check the backup set and restore it; on a mismatch, refuse and point to Steam's Verify.
+- **Coexisting with the exe-only Fallout 4 wizard** (`Utils/modding_tools/fo4_downgrade.py`, `downgrade_state.json`):
+  - A switch starts from whatever is installed, so the backup captures a 1.10.163 exe + Steam data setup as-is. Switching back restores exactly what A_StoryWealth_Rev281 needs.
+  - The exe-only wizard is blocked while `version_state.json` exists, so the two can't interleave.
+
+## Phase 1b: local patch store (download each version once, then switch offline)
+
+The user's question: instead of re-downloading depots on every switch, keep binary patches and apply the right one when switching profiles. Yes. This is the model `skyrim_runtime` already uses: stored hpatchz patches, with sha256 checks of each file before and after.
+
+**How it works:**
+- **First switch A→B.** Download the depots once. At that moment both versions of every changed file are on disk: the A copy (being replaced) and the B copy (from the depot). Build a patch set for each direction, then delete the downloaded depot folders and the full-copy backup.
+- **Store layout.** `games/<game>/version_store/<A>__<B>/` holds a `manifest.json` plus one forward and one reverse patch per changed file. Each entry records source sha256, target sha256 and size.
+- **Files that exist in only one version.** Files added in B are stored compressed: there's nothing to diff against. Files removed by B are stored compressed for the reverse direction.
+- **Unchanged files** cost nothing.
+- **Switching later (A↔B)** is fully offline. Each file's source hash is checked, then the patch is applied, then the target hash is checked. Everything is staged and swapped with the same `os.replace` + rollback as Phase 1.
+- **Routing.** Patch sets form a graph, and a switch follows the shortest path, e.g. B→A→C. Only an edge that has never been taken needs a download.
+- **Steam changing files behind Mosaic's back.** If Steam updates or verifies the game and changes files, the source hashes no longer match. The switch then refuses before touching anything, saying the game changed since the version was stored and offering a fresh download, which rebuilds the edge.
+
+**Tool:**
+- `hdiffz` builds the patches and `hpatchz` applies them. Both come from HDiffPatch.
+  - Mosaic already manages `hpatchz` (`skyrim_runtime.ensure_hpatchz`).
+  - Extend that so `hdiffz` is fetched the same way, from the same HDiffPatch release.
+- `hdiffz` handles multi-GB files with bounded memory. `bsdiff4`, which is already a dependency, doesn't: building a diff needs memory several times the file size, so it's impractical for BA2s.
+
+**Unknown until measured: the real saving.** A patch is only small when old and new files share content. Exes and plugins diff well. A BA2 that Bethesda re-packed or recompressed may produce a patch nearly as large as the file.
+- After building a patch set, the wizard reports, per file, patch size vs. file size.
+- Any file whose patch exceeds about 90% of its size is stored compressed instead of as a patch. The store is still offline and always smaller than two full copies.
+- The first real 1.10.163 ↔ 1.11.221 switch gives the actual numbers.
+
+**Disk use** is roughly the patch sizes (both directions) plus added/removed files. The Phase 1 full backup becomes temporary, kept only until the patch set has been verified by a round trip:
+1. Build the patches.
+2. Re-create each A file from B plus the reverse patch.
+3. Hash-check the result before deleting the backup.
+
+**Profiles:**
+- Phase 3's per-profile `game_version` is what drives switching.
+- On a profile switch or a deploy, when the profile needs a different version and the store has a route to it, Mosaic offers "Switch Fallout 4 to 1.11.221 (stored locally, no download)".
+- This is a prompt, never automatic. A switch rewrites game files, and the game must not be deployed or running.
+
+## Phase 2: wizard, `src/wizards_qt/game_version_view.py`
+
+Built on `wizards_qt/_view_base.py` (WizardViewBase) and registered in `wizards_qt/__init__.py` REGISTRY. It's offered as a base wizard tool, "Game version (Steam)…", for every game with a `steam_id` (`Games/base_game.py`).
+
+1. **Check**:
+   - the current version (PE version, plus any matching table entry);
+   - deploy state, with a Restore button via `ctx.run_restore`;
+   - exe-only downgrade state;
+   - free space;
+   - "Switch back", whenever `version_state.json` exists.
+2. **Choose**: the table versions, plus "Add a version…": a paste box for depot→manifest pairs with a link to `steamdb.info/app/<app>/depots/` (opened with `Utils/xdg.open_url`). Shows the depots to download and their sizes where known.
+3. **Download**: an "Open Steam console" button (`steam://open/console`), each command with Copy, and Copy all. A watcher thread ticks each depot off from the logs and folders. Mosaic never types into the console.
+4. **Apply**: back up, swap, verify. The result notes to launch with the f4se_loader entry rather than Steam's Play, and suggests Steam's "Only update this game when I launch it". Mosaic still never touches the appmanifest.
+5. **Afterwards**: offer to delete the downloaded content folders ("Free X GB"), or keep them for re-switching.
+
+## Phase 3: profiles and Wabbajack hook (after the local preflight work lands)
+
+- Required version per profile: `profile_state.merge_profile_settings(profile, {"game_version": ...})`.
+  - Wabbajack installs set it from `GameFileSourceState.game_version`.
+  - Collections set it from `collection_preflight.manifest_game_versions`.
+  - Deploy and preflight warn when the game differs.
+- When the (local) "game version doesn't match" check fails and a table entry matches the version, preflight gets a fix button, "Switch Fallout 4 to 1.11.221…", which opens the wizard preselected (`wabbajack_preflight.py` and `gui_qt/wabbajack/wabbajack_controller.py`).
+- After switching, the (local) game-file size check confirms the result. For lists like Wasteland Genesis AE, offer a full hash check over all 143 files.
+
+## Files
+
+- **New:**
+  - `src/Utils/steam/acf.py`, `src/Utils/steam/depot_versions.py`;
+  - `src/Utils/steam/version_store.py` (build, verify and apply patch sets; route between versions), plus `tests/test_version_store.py`:
+    - round trip A→B→A byte-identical;
+    - added and removed files;
+    - large-patch fallback to compressed copies;
+    - refuses on a changed source hash without touching anything;
+    - multi-hop routing;
+    - rollback when a step fails partway;
+  - `src/Games/Bethesda/steam_versions/fallout4.json`;
+  - `src/wizards_qt/game_version_view.py`;
+  - `tests/test_steam_acf.py`, `tests/test_depot_versions.py`, `tests/test_game_version_view.py`.
+- **Changed:**
+  - `src/wizards_qt/__init__.py`, `src/Games/base_game.py`;
+  - `Utils/modding_tools/fo4_downgrade.py` + `wizards_qt/fallout4_downgrade_view.py` (block while a switch is active);
+  - Phase 3: `wabbajack_preflight.py`, `wabbajack_controller.py`, `profile_state.py`;
+  - `ATTRIBUTION.md`, Changelog.
+
+## Verification
+
+- **Unit tests:**
+  - ACF parsing on the real appmanifest shape;
+  - `plan_switch` (the depot intersection);
+  - log parsing from the Phase 0 fixtures and the content-folder fallback search;
+  - `apply_version`/`revert_version` on a fake game folder: backup hashes; rollback when an `os.replace` fails partway; refuses when deployed, running, short on space, or the exe-only downgrade conflicts; revert refuses on a backup hash mismatch;
+  - the offscreen Qt view: copy commands, the watcher ticking a depot, Switch back shown when there's state.
+- **Real run, user-driven:**
+  1. The Phase 0 sample.
+  2. Switch to 1.11.221 with depots pasted from SteamDB.
+  3. Wasteland Genesis AE passes the version check.
+  4. Switch back from the backup; A_StoryWealth_Rev281 launches via f4se_loader.
+  5. Build the 1.10.163 ↔ 1.11.221 patch set, and record its size per file against the full download.
+  6. Switch again with the network off: it must work offline and leave the game folder hash-identical to a fresh depot download.
+- **Safety:** snapshot-diff the game folder before and after every apply and revert, as with the Horizon install.

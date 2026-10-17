@@ -114,15 +114,18 @@ def _norm_path(raw: str) -> Path:
 
 
 def completed_downloads(log_text: str) -> "dict[tuple[str, str], Path]":
-    """``{(depot, manifest): folder}`` for every "Depot download complete"
-    line, latest wins."""
-    out: "dict[tuple[str, str], Path]" = {}
+    """``{(depot, manifest): folder}`` for what each depot folder holds NOW:
+    Steam reuses one ``depot_<id>`` folder for every manifest, so only the
+    latest "Depot download complete" line per folder counts. Real case
+    (2026-10-08): the 1.10.163 exe depot was downloaded, then the same
+    folder got the 1.11.240 exe; the older line must no longer match."""
+    latest: "dict[Path, tuple[str, str]]" = {}
     for m in _DONE_RE.finditer(log_text or ""):
         folder = _norm_path(m.group(1))
         dm = re.search(r"depot_(\d+)$", folder.name)
         if dm:
-            out[(dm.group(1), m.group(2))] = folder
-    return out
+            latest[folder] = (dm.group(1), m.group(2))
+    return {key: folder for folder, key in latest.items()}
 
 
 def download_sizes(log_text: str) -> "dict[str, tuple[int, str]]":
@@ -148,6 +151,112 @@ def find_downloaded_depot(app_id: str, depot: str, manifest: str, *,
     if folder is not None and folder.is_dir() and f"app_{app_id}" in folder.parent.name:
         return folder
     return None
+
+
+# ---------------------------------------------------------------------------
+# Trusting a depot folder
+# ---------------------------------------------------------------------------
+# Steam reuses one depot_<id> folder for every manifest and does NOT shorten
+# a file that got smaller: real case (2026-10-08), the 1.11.221 Fallout4.exe
+# (55,293,864 bytes) was written over the 1.10.163 one (65,503,104) and kept
+# its last 10.2 MB -- the version resource still read 1.11.221.0. So a
+# folder is only trusted when Mosaic knows it started empty ("clean start":
+# seen absent, or cleared by Mosaic) and every download completed into it
+# since then was the wanted manifest.
+
+DOWNLOADS_FILENAME = "depot_downloads.json"
+_DONE_TS_RE = re.compile(
+    r'^\[(\d{4}-\d\d-\d\d \d\d:\d\d:\d\d)\] Depot download complete : "(.+)" \(manifest (\d+)\)',
+    re.MULTILINE)
+
+
+def _now_stamp() -> str:
+    """Local time in Steam's log format, so stamps compare as strings."""
+    return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+
+def download_history(log_text: str) -> "dict[Path, list[tuple[str, str]]]":
+    """``{folder: [(timestamp, manifest), ...]}`` in log order."""
+    out: "dict[Path, list[tuple[str, str]]]" = {}
+    for m in _DONE_TS_RE.finditer(log_text or ""):
+        out.setdefault(_norm_path(m.group(2)), []).append((m.group(1), m.group(3)))
+    return out
+
+
+def _load_records(state_dir) -> dict:
+    try:
+        return json.loads((Path(state_dir) / DOWNLOADS_FILENAME).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+
+
+def _save_records(state_dir, records: dict) -> None:
+    p = Path(state_dir) / DOWNLOADS_FILENAME
+    p.parent.mkdir(parents=True, exist_ok=True)
+    tmp = p.with_suffix(".tmp")
+    tmp.write_text(json.dumps(records, indent=2), encoding="utf-8")
+    os.replace(tmp, p)
+
+
+def mark_clean_start(state_dir, folder: Path, when: "str | None" = None) -> None:
+    records = _load_records(state_dir)
+    records[str(folder)] = {"clean_since": when or _now_stamp()}
+    _save_records(state_dir, records)
+
+
+def clear_depot_folder(state_dir, folder: Path) -> None:
+    """Delete a depot download folder (and Steam's resume file for it) so the
+    next download starts empty, and record that clean start."""
+    folder = Path(folder)
+    shutil.rmtree(folder, ignore_errors=True)
+    dm = re.search(r"depot_(\d+)$", folder.name)
+    am = re.search(r"app_(\d+)$", folder.parent.name)
+    if dm and am:
+        (folder.parent / f"state_{am.group(1)}_{dm.group(1)}.patch").unlink(missing_ok=True)
+    mark_clean_start(state_dir, folder)
+
+
+def expected_depot_folder(app_id: str, depot: str,
+                          roots: "list[Path] | None" = None) -> "Path | None":
+    """Where ``download_depot`` writes: the existing folder if any, else
+    ``<first Steam root>/steamrt64/steamapps/content/...`` (as observed)."""
+    found = content_folder_candidates(app_id, depot, roots)
+    if found:
+        return found[0]
+    rs = roots if roots is not None else steam_roots()
+    return (rs[0] / "steamrt64" / "steamapps" / "content" / f"app_{app_id}"
+            / f"depot_{depot}") if rs else None
+
+
+@dataclass
+class DepotStatus:
+    state: str                     # "downloaded" | "waiting" | "needs_clear"
+    folder: "Path | None" = None
+    holds: str = ""                # needs_clear: the manifest last written there, if known
+
+
+def depot_status(app_id: str, depot: str, manifest: str, *, state_dir,
+                 log_text: "str | None" = None,
+                 roots: "list[Path] | None" = None) -> DepotStatus:
+    if log_text is None:
+        log_text = "\n".join(p.read_text(encoding="utf-8", errors="replace")
+                             for p in content_log_paths(roots))
+    folder = expected_depot_folder(app_id, depot, roots)
+    if folder is None:
+        return DepotStatus("waiting")
+    history = download_history(log_text).get(folder, [])
+    if not folder.exists():
+        mark_clean_start(state_dir, folder)      # absent == clean
+        return DepotStatus("waiting", folder)
+    rec = _load_records(state_dir).get(str(folder))
+    if rec is None:
+        return DepotStatus("needs_clear", folder, history[-1][1] if history else "")
+    since = [(ts, man) for ts, man in history if ts >= rec.get("clean_since", "")]
+    if not since:
+        return DepotStatus("waiting", folder)
+    if all(man == str(manifest) for _ts, man in since):
+        return DepotStatus("downloaded", folder)
+    return DepotStatus("needs_clear", folder, since[-1][1])
 
 
 def content_folder_candidates(app_id: str, depot: str,

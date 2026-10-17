@@ -244,3 +244,72 @@ def test_depot_paths_match_the_game_folder_case_insensitively(tmp_path):
     assert (game / "data" / "fallout4.esm").read_bytes() == b"new"
     dv.revert_version(game, tmp_path / "state")
     assert (game / "data" / "fallout4.esm").read_bytes() == b"old"
+
+
+def test_a_folder_only_counts_for_the_latest_manifest_completed_into_it(tmp_path):
+    """Real sequence (2026-10-08): depot 377162 downloaded at the 1.10.163
+    manifest, then at the current one into the same folder. The 1.10.163
+    line must no longer count."""
+    folder = tmp_path / "steamrt64" / "steamapps" / "content" / "app_377160" / "depot_377162"
+    folder.mkdir(parents=True)
+    path = f"{tmp_path}/steamrt64\\\\steamapps\\\\content\\\\app_377160\\\\depot_377162"
+    log = (f'[2026-10-08 03:07:57] Depot download complete : "{path}" (manifest 5847529232406005096)\n'
+           f'[2026-10-08 03:55:37] Depot download complete : "{path}" (manifest 4737695048810094469)\n')
+    assert dv.find_downloaded_depot("377160", "377162", "5847529232406005096", log_text=log) is None
+    assert dv.find_downloaded_depot("377160", "377162", "4737695048810094469", log_text=log) == folder
+
+
+# ---------------------------------------------------------------------------
+# Trusting a depot folder (Steam doesn't shorten files that got smaller)
+# ---------------------------------------------------------------------------
+
+def _line(ts, root, depot, manifest):
+    return (f'[{ts}] Depot download complete : "{root}/steamrt64\\\\steamapps\\\\content'
+            f'\\\\app_377160\\\\depot_{depot}" (manifest {manifest})\n')
+
+
+def test_depot_status_follows_clean_starts(tmp_path, monkeypatch):
+    monkeypatch.setattr(dv, "_now_stamp", lambda: "2026-10-08 04:17:02")
+    root, state = tmp_path / "Steam", tmp_path / "state"
+    folder = root / "steamrt64" / "steamapps" / "content" / "app_377160" / "depot_377162"
+    want = "387388833281246371"
+
+    # Absent: a clean start is recorded.
+    st = dv.depot_status("377160", "377162", want, state_dir=state, log_text="", roots=[root])
+    assert st.state == "waiting"
+
+    # Completed after the clean start, only the wanted manifest: trusted.
+    folder.mkdir(parents=True)
+    log = _line("2026-10-08 04:20:00", root, "377162", want)
+    assert dv.depot_status("377160", "377162", want, state_dir=state, log_text=log,
+                           roots=[root]).state == "downloaded"
+
+    # Another manifest written into it afterwards: no longer trusted.
+    log += _line("2026-10-08 04:25:00", root, "377162", "4737695048810094469")
+    st = dv.depot_status("377160", "377162", want, state_dir=state, log_text=log, roots=[root])
+    assert (st.state, st.holds) == ("needs_clear", "4737695048810094469")
+
+
+def test_reused_folder_without_a_clean_start_must_be_cleared(tmp_path, monkeypatch):
+    """Tonight's real sequence: 1.10.163 downloaded, then 1.11.221 written
+    into the same folder -- the 1.11.221 line alone must not be trusted."""
+    monkeypatch.setattr(dv, "_now_stamp", lambda: "2026-10-08 04:17:02")
+    root, state = tmp_path / "Steam", tmp_path / "state"
+    folder = root / "steamrt64" / "steamapps" / "content" / "app_377160" / "depot_377162"
+    folder.mkdir(parents=True)
+    (folder / "Fallout4.exe").write_bytes(b"old")
+    (folder.parent / "state_377160_377162.patch").write_bytes(b"resume")
+    log = (_line("2026-10-08 03:07:57", root, "377162", "5847529232406005096")
+           + _line("2026-10-08 04:05:26", root, "377162", "387388833281246371"))
+    st = dv.depot_status("377160", "377162", "387388833281246371", state_dir=state,
+                         log_text=log, roots=[root])
+    assert (st.state, st.holds) == ("needs_clear", "387388833281246371")
+    dv.clear_depot_folder(state, st.folder)
+    assert not folder.exists() and not (folder.parent / "state_377160_377162.patch").exists()
+    # The old lines predate the clean start, so nothing counts yet.
+    folder.mkdir()
+    assert dv.depot_status("377160", "377162", "387388833281246371", state_dir=state,
+                           log_text=log, roots=[root]).state == "waiting"
+    log += _line("2026-10-08 04:30:00", root, "377162", "387388833281246371")
+    assert dv.depot_status("377160", "377162", "387388833281246371", state_dir=state,
+                           log_text=log, roots=[root]).state == "downloaded"

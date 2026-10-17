@@ -160,7 +160,8 @@ class BsaFile:
                     chunks.append({"data_offset": data_offset, "packed_size": packed_size,
                                    "unpacked_size": unpacked_size})
                 records.append({"height": height, "width": width, "num_mips": num_mips,
-                                "dxgi_format": dxgi_format, "chunks": chunks})
+                                "dxgi_format": dxgi_format, "is_cubemap": bool(_unk16 & 0xFF),
+                                "chunks": chunks})
 
         f.seek(name_table_offset)
         names: list[str] = []
@@ -192,6 +193,17 @@ class BsaFile:
     def read(self, path: str) -> bytes:
         """The decompressed bytes of *path*. Raises BsaReadError if absent/corrupt."""
         return self._read(path, None)
+
+    def dx10_info(self, path: str) -> "dict | None":
+        """Height, width, mip count, DXGI format and cubemap flag of a texture
+        in a DX10 BA2 (``None`` for anything else) -- what a caller needs to
+        write a different DDS header than :meth:`read` does."""
+        if self._kind != "ba2" or self._ba2_type != "DX10":
+            return None
+        rec = self._records.get(self._norm(path))
+        if rec is None:
+            return None
+        return {k: rec[k] for k in ("height", "width", "num_mips", "dxgi_format", "is_cubemap")}
 
     def read_head(self, path: str, n: int = 128) -> bytes:
         """The first *n* decompressed bytes of *path* — for sniffing a file's

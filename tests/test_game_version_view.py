@@ -85,6 +85,7 @@ def test_switch_and_switch_back_through_the_wizard(qapp, tmp_path, monkeypatch):
     log.write_text("")
     monkeypatch.setattr(config_paths, "get_game_config_dir", lambda name: state)
     monkeypatch.setattr(dv, "content_log_paths", lambda roots=None: [log])
+    monkeypatch.setattr(dv, "steam_roots", lambda: [tmp_path / "Steam"])
     monkeypatch.setattr(exe_launch, "_wine_process_alive", lambda exe: False)
     # The fake exe has no PE header; skip the version check for this test.
     table = dv.load_table("377160")
@@ -112,11 +113,12 @@ def test_switch_and_switch_back_through_the_wizard(qapp, tmp_path, monkeypatch):
         assert cmd == "download_depot 377160 377162 5847529232406005096"
         assert not view._apply_btn.isEnabled()
 
-        # Steam finishes the download: folder + the real log line format.
+        # The folder didn't exist when the wizard looked: that's a clean start.
+        # Steam then finishes the download (real log line format).
         depot = tmp_path / "Steam" / "steamrt64" / "steamapps" / "content" / "app_377160" / "depot_377162"
         depot.mkdir(parents=True)
         (depot / "Fallout4.exe").write_bytes(b"exe 1.10.163")
-        log.write_text(f'[2026-10-08 03:07:57] Depot download complete : '
+        log.write_text(f'[2099-01-01 00:00:00] Depot download complete : '
                        f'"{tmp_path}/Steam/steamrt64\\steamapps\\content\\app_377160\\depot_377162" '
                        f'(manifest 5847529232406005096)\n')
         view._poll_downloads()
