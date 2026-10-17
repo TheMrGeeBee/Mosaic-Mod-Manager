@@ -4,6 +4,11 @@ reset to v1.0.0; they keep Amethyst Mod Manager's original numbering, which
 overlaps the numbers above, and the prefix is what keeps the two apart (and
 keeps release tooling from matching the wrong section).
 
+- v1.12.0
+### Additions
+- Added support for Vampire: The Masquerade - Blodlines
+- Added support for Wabbajack
+
 - v1.11.1
 ### Additions
 - Added multi-select install to the Missing Requirements tab: every Nexus-hosted requirement now has a checkbox, with Select all and Install selected. It fetches the file lists, shows the same batch review screen as the Nexus browser's Download selected, then downloads on Premium (several at a time, the same limit collections use) or, on a free account, opens one Nexus download page at a time and moves on as soon as each file has arrived. Nexus still requires a click on Slow download for every free-account file -- the queue only removes the opening, tracking and installing around it. A red "Stop after this file" button drops the files not yet opened
