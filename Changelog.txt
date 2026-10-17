@@ -4,22 +4,10 @@ reset to v1.0.0; they keep Amethyst Mod Manager's original numbering, which
 overlaps the numbers above, and the prefix is what keeps the two apart (and
 keeps release tooling from matching the wrong section).
 
-<<<<<<< HEAD
 - v1.12.0
 ### Additions
 - Added support for Vampire: The Masquerade - Blodlines
 - Added support for Wabbajack
-=======
-- v1.11.2
-### Additions
-- The Missing Requirements tab now lists requirements an author entered as "off-site" instead of dropping them. Nexus's own data already carried their names, links and notes; Mosaic just threw them away. A link to a non-Nexus page shows as "Off-site" with a View button. A link that turns out to be a Nexus mod of the same game (a Virtual Atelier store lists its dozens of items this way) shows as a "Soft requirement" with Install and a checkbox, and disappears once that mod is installed. Both kinds have a dashed accent-coloured border and a tag so they are easy to tell from real requirements on any theme, never raise the warning flag (Mosaic can't tell whether an off-site extra is installed), and have no Ignore box. Mods installed before this update get their off-site list the next time Check for Updates runs
-- Select all in the Missing Requirements tab now ticks the real requirements only; soft and off-site entries are ticked one by one. Select none clears every tick
-
-### Bug Fixes
-- Fixed the right-click "Missing Requirements" item disappearing after ticking "Ignore requirements" for a whole mod: ignoring cleared the warning flag, and the menu item only appeared while the flag was set, so there was no way back into the tab to un-ignore it or install a requirement after all. The item now stays for any mod that still has missing requirements and is ignored, or that has off-site requirements
-
----
->>>>>>> main
 
 - v1.11.1
 ### Additions
