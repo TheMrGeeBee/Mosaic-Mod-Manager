@@ -4,6 +4,12 @@ reset to v1.0.0; they keep Amethyst Mod Manager's original numbering, which
 overlaps the numbers above, and the prefix is what keeps the two apart (and
 keeps release tooling from matching the wrong section).
 
+- v1.12.3
+### Bug Fixes
+- Flatpak was missing the xxhash and pycryptodomex Python packages, which broke LoversLab login and Wabbajack downloads ("No module named 'xxhash'").
+
+---
+
 - v1.12.2
 ### Bug Fixes
 - AppImage enviroment could go stale after an update.
