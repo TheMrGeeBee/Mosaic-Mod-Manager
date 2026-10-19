@@ -216,6 +216,7 @@ def deploy_root_flagged_mods(
 
     # Build a quick dir-resolution cache for game_root lookups
     _dir_cache: dict = {}
+    _src_cache: dict = {}
     _top_seen: dict[str, bool] = {}
     tasks: list[tuple[Path, Path, str]] = []  # (src, dst, rel_posix)
 
@@ -229,6 +230,18 @@ def deploy_root_flagged_mods(
                 _candidates.extend(strip_prefixes)
             for prefix in _candidates:
                 candidate = staging_root / mod_name / prefix / rel_str
+                if candidate.is_file():
+                    src = candidate
+                    break
+        if not src.is_file():
+            # The filemap normalises folder case across mods, so staging may
+            # hold the same folders in another case (Data/skse/plugins on disk,
+            # Data/SKSE/Plugins in the filemap) -- a miss on a case-sensitive fs.
+            for base in [staging_root / mod_name,
+                         *((staging_root / mod_name / p) for p in
+                           ((per_mod_strip_prefixes or {}).get(mod_name) or ())
+                           + tuple(strip_prefixes or ()))]:
+                candidate = _resolve_root_path(base, Path(rel_str), _src_cache)
                 if candidate.is_file():
                     src = candidate
                     break
