@@ -32,13 +32,13 @@ class FakeGame:
         return self.staging
 
 
-def _inline(to, data_id, kind="InlineFile"):
-    return {"$type": f"{kind}, Wabbajack.Lib", "To": to, "Hash": "", "Size": 1,
+def _inline(to, data_id, kind="InlineFile", size=1):
+    return {"$type": f"{kind}, Wabbajack.Lib", "To": to, "Hash": "", "Size": size,
             "SourceDataID": data_id}
 
 
-def _from_archive(to, archive_hash, member, file_hash):
-    return {"$type": "FromArchive, Wabbajack.Lib", "To": to, "Hash": file_hash, "Size": 1,
+def _from_archive(to, archive_hash, member, file_hash, size=1):
+    return {"$type": "FromArchive, Wabbajack.Lib", "To": to, "Hash": file_hash, "Size": size,
             "ArchiveHashPath": [archive_hash, member]}
 
 
@@ -68,10 +68,10 @@ def _build(tmp_path, *, archive_state="HttpDownloader", extra=None):
                                 "Url": "https://example.com/ModA.zip"}}],
         "Directives": [
             *(extra(a_hash) if extra else []),
-            _from_archive("mods\\ModA\\ModA.esp", a_hash, "plugin.esp", hash_bytes(b"ESP BYTES")),
+            _from_archive("mods\\ModA\\ModA.esp", a_hash, "plugin.esp", hash_bytes(b"ESP BYTES"), size=9),
             _from_archive("mods\\ModA\\textures\\a.dds", a_hash, "textures/a.dds",
-                          hash_bytes(b"DDS BYTES")),
-            _inline("mods\\ModB\\config.json", "cfg"),
+                          hash_bytes(b"DDS BYTES"), size=9),
+            _inline("mods\\ModB\\config.json", "cfg", size=14),
             _inline("profiles\\Main\\modlist.txt", "mo2-modlist"),
             _inline("profiles\\Main\\plugins.txt", "plugins"),
             _inline("profiles\\Main\\loadorder.txt", "loadorder"),
@@ -97,18 +97,19 @@ def _fake_http(src, calls=None):
     return download
 
 
-def _run(tmp_path, wj, modlist, monkeypatch, *, downloader, callbacks=None, control=None):
+def _run(tmp_path, wj, modlist, monkeypatch, *, downloader, callbacks=None, control=None,
+         resume=False):
     monkeypatch.setattr(wi, "resolve_downloader", lambda state: downloader)
     rebuilt = []
     monkeypatch.setattr(wi, "_rebuild_index", lambda game, profile_dir, log: rebuilt.append(1))
     staging = tmp_path / "staging" / "mods"
     profile = tmp_path / "staging" / "profiles" / "Test"
-    profile.mkdir(parents=True)
+    profile.mkdir(parents=True, exist_ok=True)
     report = wi.run_wabbajack_install(
         wabbajack_path=wj, modlist=modlist, game=FakeGame(staging), profile_dir=profile,
         download_dir=tmp_path / "downloads",
         substitutions=path_substitutions(game_path="Z:\\Games\\Skyrim"),
-        callbacks=callbacks, control=control)
+        callbacks=callbacks, control=control, resume=resume)
     return report, staging, profile, rebuilt
 
 
@@ -168,6 +169,35 @@ def test_cached_archive_is_reused_without_downloading(tmp_path, monkeypatch):
     report, *_ = _run(tmp_path, wj, modlist, monkeypatch, downloader=_fake_http(src, calls))
     assert report.ok
     assert calls == []
+
+
+def test_resume_keeps_built_files_and_fetches_only_what_is_missing(tmp_path, monkeypatch):
+    wj, modlist, src = _build(tmp_path)
+    _run(tmp_path, wj, modlist, monkeypatch, downloader=_fake_http(src))
+    shutil.rmtree(tmp_path / "downloads")
+
+    def needed(callbacks_log):
+        return wi.WabbajackInstallCallbacks(
+            on_archives_needed=lambda n, b: callbacks_log.append((n, b)))
+
+    # Nothing missing: no download, no archive needed, mods still reported.
+    calls, seen = [], []
+    report, staging, profile, _ = _run(
+        tmp_path, wj, modlist, monkeypatch, downloader=_fake_http(src, calls),
+        callbacks=needed(seen), resume=True)
+    assert report.ok and calls == [] and seen == [(0, 0)]
+    assert report.installed_mods == ["ModA", "ModB"]
+
+    # One file lost (and one truncated): only the archive behind it is fetched.
+    (staging / "ModA" / "ModA.esp").unlink()
+    (staging / "ModA" / "textures" / "a.dds").write_bytes(b"DD")
+    calls, seen = [], []
+    report, staging, profile, _ = _run(
+        tmp_path, wj, modlist, monkeypatch, downloader=_fake_http(src, calls),
+        callbacks=needed(seen), resume=True)
+    assert report.ok and len(calls) == 1 and seen[0][0] == 1
+    assert (staging / "ModA" / "ModA.esp").read_bytes() == b"ESP BYTES"
+    assert (staging / "ModA" / "textures" / "a.dds").read_bytes() == b"DDS BYTES"
 
 
 def test_hash_mismatch_falls_back_to_manual_download(tmp_path, monkeypatch):

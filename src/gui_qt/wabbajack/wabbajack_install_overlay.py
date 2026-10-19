@@ -118,6 +118,12 @@ class WabbajackInstallOverlay(OverlayBase):
         self._finished_archives += 1
         self._render_downloads()
 
+    def set_download_totals(self, archives: int, total_bytes: int) -> None:
+        """Replace the modlist-wide totals with what this run really needs."""
+        self._total_archives = archives
+        self._total_bytes = max(1, total_bytes)
+        self._render_downloads()
+
     def build_progress(self, done: int, total: int) -> None:
         self._build_bar.setRange(0, max(1, total))
         self._build_bar.setValue(done)

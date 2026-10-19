@@ -46,12 +46,16 @@ def source_breakdown(modlist: ModList) -> str:
 
 class WabbajackImportView(QWidget):
     def __init__(self, modlist: ModList, checks, *, on_install, on_login,
-                 profiles=(), parent=None):
+                 profiles=(), repair_profile=None, on_repair=None, parent=None):
         """``on_install(profile)`` gets the chosen profile name, or ``None``
-        when the modlist has at most one profile (``profiles``)."""
+        when the modlist has at most one profile (``profiles``).
+        ``repair_profile`` names an existing profile installed from this same
+        modlist; ``on_repair(profile)`` then builds only its missing files."""
         super().__init__(parent)
         self._blocked = False
         self._installing = False
+        self._on_repair = on_repair
+        self._repair_btn = None
         self._profile_combo = None
         self._modlist = modlist
         self._on_install = on_install
@@ -137,6 +141,15 @@ class WabbajackImportView(QWidget):
         self._login_btn.clicked.connect(lambda: self._on_login())
         bar.addWidget(self._login_btn)
         bar.addStretch(1)
+        if repair_profile and on_repair is not None:
+            self._repair_btn = QPushButton(self.tr("Repair '{0}'").format(repair_profile))
+            self._repair_btn.setObjectName("FormButton")
+            self._repair_btn.setCursor(Qt.PointingHandCursor)
+            self._repair_btn.setToolTip(self.tr(
+                "Keep the files already built in this profile and build only what is missing."))
+            self._repair_btn.clicked.connect(
+                lambda: self._on_repair(self.selected_profile()))
+            bar.addWidget(self._repair_btn)
         self._install_btn = QPushButton(self.tr("Install as new profile"))
         self._install_btn.setObjectName("PrimaryButton")
         self._install_btn.setCursor(Qt.PointingHandCursor)
@@ -170,7 +183,10 @@ class WabbajackImportView(QWidget):
 
     def _refresh_install(self) -> None:
         needs_profile = self._profile_combo is not None and self.selected_profile() is None
-        self._install_btn.setEnabled(not (self._blocked or needs_profile or self._installing))
+        enabled = not (self._blocked or needs_profile or self._installing)
+        self._install_btn.setEnabled(enabled)
+        if self._repair_btn is not None:
+            self._repair_btn.setEnabled(enabled)
         if self._blocked:
             tip = self.tr("Resolve the problems above first.")
         elif needs_profile:

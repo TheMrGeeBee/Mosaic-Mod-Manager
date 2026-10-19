@@ -69,6 +69,7 @@ class WabbajackController(QObject):
     _log = Signal(str)
     _dl = Signal(str, object)                # "start"|"progress"|"finish", payload
     _build = Signal(int, int)
+    _needed = Signal(int, object)             # archives, bytes this run needs
     _finished = Signal(object, object)       # report | None, error | None
     _ask_manual = Signal(object)             # {"archive", "reason", "holder", "event"}
     _ask_login = Signal(object)              # {"holder", "event"}
@@ -86,6 +87,8 @@ class WabbajackController(QObject):
         self._log.connect(lambda t: self._win._append_log(t))
         self._dl.connect(self._on_dl)
         self._build.connect(lambda d, t: self._overlay and self._overlay.build_progress(d, t))
+        self._needed.connect(
+            lambda n, b: self._overlay and self._overlay.set_download_totals(n, b))
         self._finished.connect(self._on_finished)
         self._ask_manual.connect(self._on_ask_manual)
         self._ask_login.connect(self._on_ask_login)
@@ -211,6 +214,8 @@ class WabbajackController(QObject):
         from Utils.wabbajack.wabbajack_install import profile_choices
         self._view = WabbajackImportView(
             modlist, self._preflight(modlist), profiles=profile_choices(modlist),
+            repair_profile=self._repair_target(),
+            on_repair=lambda prof: self._start_install(prof, repair=self._repair_target()),
             on_install=self._start_install, on_login=self._login_from_view)
         self._win._tabs.open_tab(
             self._view, self.tr("Wabbajack: {0}").format(modlist.name or path.stem), key=key)
@@ -225,7 +230,22 @@ class WabbajackController(QObject):
         LoversLabLoginOverlay.show_over(self._win, done)
 
     # -- install ----------------------------------------------------------------
-    def _start_install(self, profile=None) -> None:
+    def _repair_target(self) -> "str | None":
+        """Name of an existing profile installed from this same modlist
+        (name and version), or None."""
+        from Utils.exe_launch.game_helpers import _profiles_for_game
+        from Utils.profile.profile_state import read_wabbajack_modlist_info
+        game, modlist = self._win._gs.game, self._modlist
+        if game is None or modlist is None:
+            return None
+        for name in _profiles_for_game(game.name):
+            info = read_wabbajack_modlist_info(Path(game.get_profile_root()) / "profiles" / name)
+            if (info and info.get("name") == modlist.name
+                    and info.get("version") == modlist.version):
+                return name
+        return None
+
+    def _start_install(self, profile=None, repair=None) -> None:
         from Utils.exe_launch.game_helpers import _create_profile, _profiles_for_game
         from Utils.wabbajack.wabbajack_install import (
             WabbajackInstallCallbacks,
@@ -241,11 +261,15 @@ class WabbajackController(QObject):
         name, n = base, 2
         while name in existing:
             name, n = f"{base}_{n}"[:64], n + 1
-        try:
-            profile_dir = Path(_create_profile(game.name, name, profile_specific_mods=True))
-        except Exception as exc:
-            self._win._notify(self.tr("Could not create profile: {0}").format(exc), "error")
-            return
+        if repair:
+            name = repair
+            profile_dir = Path(game.get_profile_root()) / "profiles" / name
+        else:
+            try:
+                profile_dir = Path(_create_profile(game.name, name, profile_specific_mods=True))
+            except Exception as exc:
+                self._win._notify(self.tr("Could not create profile: {0}").format(exc), "error")
+                return
 
         self._running = True
         self._mo2_profile = profile
@@ -264,14 +288,15 @@ class WabbajackController(QObject):
             on_download_progress=lambda h, c, t: safe_emit(self._dl, "progress", (h, c, t)),
             on_download_finish=lambda h, ok: safe_emit(self._dl, "finish", (h, ok)),
             on_build_progress=lambda d, t: safe_emit(self._build, int(d), int(t)),
+            on_archives_needed=lambda n, b: safe_emit(self._needed, int(n), int(b)),
             request_manual_download=self._blocking(self._ask_manual, ("archive", "reason")),
         )
         api = self._win._ensure_nexus_api()
         threading.Thread(target=self._install_worker,
-                         args=(game, api, profile_dir, callbacks, self._control),
+                         args=(game, api, profile_dir, callbacks, self._control, bool(repair)),
                          daemon=True, name="wabbajack-install").start()
 
-    def _install_worker(self, game, api, profile_dir, callbacks, control) -> None:
+    def _install_worker(self, game, api, profile_dir, callbacks, control, resume=False) -> None:
         from Nexus.nexus_download import NexusDownloader
         from Utils.config_paths import get_download_cache_dir_for_game
         from Utils.wabbajack.wabbajack_directives import path_substitutions
@@ -294,7 +319,8 @@ class WabbajackController(QObject):
                 profile_name=self._mo2_profile,
                 nexus_downloader=(NexusDownloader(api, download_dir=download_dir)
                                   if api is not None else None),
-                substitutions=substitutions, callbacks=callbacks, control=control)
+                substitutions=substitutions, callbacks=callbacks, control=control,
+                resume=resume)
             safe_emit(self._finished, report, None)
         except Exception as exc:
             import traceback

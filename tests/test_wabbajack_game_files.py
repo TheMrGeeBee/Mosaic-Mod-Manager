@@ -149,3 +149,36 @@ def test_game_version_warning_does_not_block(tmp_path, monkeypatch):
     monkeypatch.setattr(pe_version, "read_file_version", lambda p: (1, 11, 221, 0))
     [check] = pf.check_game_version(ml, tmp_path)
     assert check.ok
+
+
+def test_extender_built_for_an_older_exe_warns_even_when_game_files_match(tmp_path, monkeypatch):
+    """Real case (LoreRim): game files from 1.7.104.0, SKSE for 1.6.1170."""
+    from Utils.wabbajack import wabbajack_preflight as pf
+    from Utils.wizard_support import pe_version
+    (tmp_path / "SkyrimSE.exe").write_bytes(b"exe")
+    exe = {"Hash": "exe", "Name": "SkyrimSE.exe", "Size": 3,
+           "State": {"$type": "GameFileSourceDownloader, Wabbajack.Lib",
+                     "Game": "SkyrimSpecialEdition", "GameFile": "SkyrimSE.exe",
+                     "GameVersion": "1.7.104.0", "Hash": "exe"}}
+    ml = _uses(exe, under="Stock Game")
+    ml.directives.append(parse_modlist({"Directives": [
+        {"$type": "InlineFile, Wabbajack.Lib", "To": "mods\\SKSE\\skse64_1_6_1170.dll",
+         "Hash": "x", "Size": 1, "SourceDataID": "d"}]}).directives[0])
+    monkeypatch.setattr(pe_version, "read_file_version", lambda p: (1, 7, 104, 0))
+    [check] = pf.check_game_version(ml, tmp_path)
+    assert not check.ok and not check.blocking and "1.6.1170" in check.title
+    monkeypatch.setattr(pe_version, "read_file_version", lambda p: (1, 6, 1170, 0))
+    # exe already switched to the extender's version: that is the right state
+    [check] = pf.check_game_version(ml, tmp_path)
+    assert check.ok
+
+
+def test_resolve_prefers_the_parked_original_while_mods_are_deployed(tmp_path):
+    """Deployed: Data/ has the mods' (cleaned) file, Data_Core/ the game's own."""
+    (tmp_path / "Data").mkdir()
+    (tmp_path / "Data" / "Dawnguard.esm").write_bytes(b"cleaned")
+    (tmp_path / "Data_Core").mkdir()
+    (tmp_path / "Data_Core" / "dawnguard.esm").write_bytes(b"original")
+    assert resolve_game_file(tmp_path, "Data\\Dawnguard.esm").read_bytes() == b"original"
+    (tmp_path / "Data_Core" / "dawnguard.esm").unlink()
+    assert resolve_game_file(tmp_path, "Data\\Dawnguard.esm").read_bytes() == b"cleaned"

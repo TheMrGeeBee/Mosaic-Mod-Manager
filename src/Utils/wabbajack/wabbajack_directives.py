@@ -148,10 +148,18 @@ def apply_directive(directive: Directive, *, dest_root: Path, wabbajack_path: "s
     if isinstance(directive, CreateBSADirective):
         if bsa_temp_root is None:
             return DirectiveResult(success=False, error="no archive input folder given")
+        # Built under a temporary name so an interrupted run never leaves a
+        # truncated archive that a resumed install would take for finished.
+        part = dest.with_name(dest.name + ".part")
         try:
-            build_archive(directive, bsa_temp_root, dest)
+            build_archive(directive, bsa_temp_root, part)
+            part.replace(dest)
         except ArchiveBuildError as exc:
+            part.unlink(missing_ok=True)
             return DirectiveResult(success=False, error=f"couldn't build archive: {exc}")
+        except BaseException:
+            part.unlink(missing_ok=True)
+            raise
         if directive.hash and not hashes_match(directive.hash, hash_file(dest)):
             return DirectiveResult(
                 success=True, path=dest,

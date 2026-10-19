@@ -88,6 +88,9 @@ class WabbajackInstallCallbacks:
     on_download_progress: Callable[[str, int, int], None] = _noop  # hash, cur, total
     on_download_finish: Callable[[str, bool], None] = _noop        # hash, ok
     on_build_progress: Callable[[int, int], None] = _noop          # done, total
+    # Once known: how many archives (and bytes) this run actually needs --
+    # fewer than the modlist's when resuming an install.
+    on_archives_needed: Callable[[int, int], None] = _noop         # count, bytes
     # Blocking: ask the user to fetch an archive by hand (with why the
     # automatic download didn't work); returns its path, or None to skip it.
     # Unset means "can't ask" -- the archive just fails.
@@ -287,6 +290,47 @@ def _profile_mod_names(plan: InstallPlan, wabbajack_path) -> "set[str] | None":
         if not wabbajack_file.extract_inline_file(wabbajack_path, entry.source_data_id, dest):
             return None
         return {e.name for e in read_modlist(dest) if not e.is_separator}
+
+
+_ARCHIVE_MAGICS = (b"BSA\x00", b"BTDX")
+
+
+def _already_built(directive: Directive, staging: Path) -> bool:
+    """True if a previous run already produced this mod file. Plain files
+    must match the directive's size (an interrupted write is shorter); a
+    rebuilt BSA/BA2 isn't byte-identical, so it only has to look like one
+    (archives are written to a ``.part`` file and renamed, so a file under
+    the final name was completed)."""
+    dest = staging / directive.to
+    try:
+        if isinstance(directive, CreateBSADirective):
+            if not dest.is_file():
+                return False
+            with open(dest, "rb") as fh:
+                return fh.read(4) in _ARCHIVE_MAGICS
+        if isinstance(directive, (FromArchiveDirective, PatchedFromArchiveDirective,
+                                  InlineFileDirective)):
+            return dest.is_file() and dest.stat().st_size == directive.size
+    except OSError:
+        pass
+    return False
+
+
+def drop_built_directives(plan: InstallPlan, staging: Path) -> "list[Directive]":
+    """Remove from ``plan`` the mod files (and rebuilt archives) that already
+    exist in ``staging`` and return them. The loose files that only fed a
+    rebuilt archive are dropped with it: they are never needed again."""
+    built = [d for d in plan.mod_directives if _already_built(d, staging)]
+    if not built:
+        return []
+    gone = {id(d) for d in built}
+    plan.mod_directives = [d for d in plan.mod_directives if id(d) not in gone]
+    done_temp = {d.temp_id.lower() for d in built if isinstance(d, CreateBSADirective)}
+    pending_temp = {d.temp_id.lower() for d in plan.mod_directives
+                    if isinstance(d, CreateBSADirective)}
+    plan.bsa_inputs = [d for d in plan.bsa_inputs
+                       if d.to.split("/", 1)[0].lower() not in done_temp - pending_temp]
+    return built
 
 
 # ---------------------------------------------------------------------------
@@ -529,11 +573,14 @@ def run_wabbajack_install(*, wabbajack_path: "str | Path", modlist: ModList, gam
                           callbacks: "WabbajackInstallCallbacks | None" = None,
                           control: "WabbajackInstallControl | None" = None,
                           manual_folders: "list[Path] | None" = None,
+                          resume: bool = False,
                           ) -> WabbajackInstallReport:
     """Install ``modlist`` into ``profile_dir`` (see the module doc).
     ``profile_name`` is the MO2 profile to install (required when
     :func:`profile_choices` offers more than one). ``substitutions`` comes
-    from ``wabbajack_directives.path_substitutions``."""
+    from ``wabbajack_directives.path_substitutions``. ``resume`` installs
+    into a profile that already holds an earlier run: files that are already
+    built are kept, and only what's missing is downloaded and built."""
     cb = callbacks or WabbajackInstallCallbacks()
     cancel = (control or WabbajackInstallControl()).cancel
     log = cb.on_log
@@ -565,8 +612,12 @@ def run_wabbajack_install(*, wabbajack_path: "str | Path", modlist: ModList, gam
         log(f"Wabbajack: {name} uses Root Builder; installing it as a root-folder mod "
             "(Root/ files go to the game folder, the rest to Data/)")
 
+    prebuilt = drop_built_directives(plan, staging) if resume else []
+    if prebuilt:
+        log(f"Wabbajack: {len(prebuilt)} file(s) are already built; keeping them")
     needed = plan.archive_hashes()
     archives = [a for a in modlist.archives if a.hash in needed]
+    cb.on_archives_needed(len(archives), sum(a.size for a in archives))
     cb.on_status(f"Downloading {len(archives)} archive(s)…")
     have = _download_all(archives, download_dir, nexus_downloader=nexus_downloader,
                          game_root=game_root,
@@ -589,7 +640,7 @@ def run_wabbajack_install(*, wabbajack_path: "str | Path", modlist: ModList, gam
             + [(d, profile_scratch) for d in plan.profile_directives]
             + [(d, bsa_root) for d in plan.bsa_inputs]
             + [(d, staging) for d in archives])
-    built_mods: "set[str]" = set()
+    built_mods: "set[str]" = {d.to.split("/", 1)[0] for d in prebuilt}
     cb.on_status("Building files…")
     try:
         for done, (directive, dest_root) in enumerate(jobs, start=1):

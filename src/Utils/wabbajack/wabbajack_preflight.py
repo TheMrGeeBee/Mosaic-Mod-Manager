@@ -14,6 +14,7 @@ downloads, Nexus without Premium, LoversLab without a login) is a warning.
 """
 from __future__ import annotations
 
+import re
 from collections import Counter
 from pathlib import Path
 from typing import Callable
@@ -148,6 +149,26 @@ def _game_files_mosaic_builds_from(modlist: ModList) -> "set[str]":
     return used
 
 
+_EXTENDER_DLL_RE = re.compile(r"(?:skse64|f4se)_(\d+)_(\d+)_(\d+)\.dll$", re.IGNORECASE)
+
+
+def _extender_runtime(modlist: ModList) -> "str | None":
+    """The game version the modlist's script extender is built for, from its
+    ``skse64_1_6_1170.dll``-style file under ``mods\\``; ``None`` unless
+    there is exactly one such version. Real case (LoreRim, 2026-10-19): the
+    game files come from 1.7.104.0 but the list's own "Stock Game" patches the
+    exe back to 1.6.1170, which Mosaic doesn't build -- the SKSE loader then
+    refuses to start on the 1.7.104.0 exe."""
+    found: "set[str]" = set()
+    for d in modlist.directives:
+        parts = (getattr(d, "to", "") or "").replace("\\", "/").split("/")
+        if len(parts) >= 3 and parts[0].lower() == "mods":
+            m = _EXTENDER_DLL_RE.search(parts[-1])
+            if m:
+                found.add(".".join(m.groups()))
+    return found.pop() if len(found) == 1 else None
+
+
 def check_game_version(modlist: ModList, game_root: "str | Path | None") -> "list[Check]":
     """A warning (never a block) when the game's exe reports a different
     version than the game files the modlist was built from: Mosaic can still
@@ -168,7 +189,22 @@ def check_game_version(modlist: ModList, game_root: "str | Path | None") -> "lis
         return []
     have = format_version(version)
     if have == target:
+        runs_on = _extender_runtime(modlist)
+        if runs_on and not f"{have}.".startswith(f"{runs_on}."):
+            return [Check(
+                "game-runtime", False, f"The game exe must be switched to {runs_on}",
+                f"Your game files are version {have}, which is what this modlist's game "
+                f"files (DLC, Creation Club) were taken from. But its script extender is "
+                f"built for {runs_on}, and the modlist's own game copy patches the exe back "
+                f"to that version, which Mosaic doesn't build. Switch the exe to {runs_on} "
+                "with the Skyrim runtime swap before launching, and don't verify the "
+                "game's files in Steam afterwards (that restores the newer exe).",
+                blocking=False)]
         return [Check("game-runtime", True, f"Your game is version {have}, as the modlist expects")]
+    runs_on = _extender_runtime(modlist)
+    if runs_on and f"{have}.".startswith(f"{runs_on}."):
+        return [Check("game-runtime", True, f"Your game exe is version {have}, as the "
+                      "modlist's script extender expects")]
     return [Check("game-runtime", False, "Different game version",
                   f"This modlist was built for game version {target}; yours is {have}. Mosaic "
                   "can install it, but its mods may need that version to run. Switch first "

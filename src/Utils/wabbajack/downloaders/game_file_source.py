@@ -16,12 +16,8 @@ from ..wabbajack_manifest import GameFileSourceState
 from .http_source import WabbajackDownloadResult
 
 
-def resolve_game_file(game_root: "str | Path", game_file: str) -> "Path | None":
-    """The on-disk path of ``game_file`` (``Data\\Foo.esm``) under
-    ``game_root``, matching each path part case-insensitively -- Windows
-    paths in the modlist, a case-sensitive filesystem here. ``None`` if
-    it isn't there."""
-    current = Path(game_root)
+def _resolve_under(base: Path, game_file: str) -> "Path | None":
+    current = base
     for part in game_file.replace("\\", "/").strip("/").split("/"):
         if not part:
             continue
@@ -34,6 +30,26 @@ def resolve_game_file(game_root: "str | Path", game_file: str) -> "Path | None":
         except (StopIteration, OSError):
             return None
     return current if current.is_file() else None
+
+
+def resolve_game_file(game_root: "str | Path", game_file: str) -> "Path | None":
+    """The on-disk path of ``game_file`` (``Data\\Foo.esm``) under
+    ``game_root``, matching each path part case-insensitively -- Windows
+    paths in the modlist, a case-sensitive filesystem here. ``None`` if
+    it isn't there.
+
+    While mods are deployed, ``Data/`` holds the mods' files (a cleaned
+    ``Dawnguard.esm`` where the game's own was) and the game's originals are
+    parked in ``Data_Core/``; that is where the original is read from then.
+    Real case (LoreRim, 2026-10-19): 50 "different" game files were really
+    the deployed cleaned plugins."""
+    root = Path(game_root)
+    parts = game_file.replace("\\", "/").strip("/").split("/")
+    if parts and parts[0].lower() == "data":
+        core = _resolve_under(root / "Data_Core", "/".join(parts[1:]))
+        if core is not None:
+            return core
+    return _resolve_under(root, game_file)
 
 
 def fetch_game_file(state: GameFileSourceState, game_root: "str | Path | None",
