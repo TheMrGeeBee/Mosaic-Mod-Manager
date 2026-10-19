@@ -203,6 +203,19 @@ def test_resolve_corrupt_zip_raises_vfs_error(tmp_path):
         idx.resolve(["hash1", "whatever"])
 
 
+@pytest.mark.skipif(shutil.which("7z") is None, reason="needs native 7z")
+def test_resolve_7z_saved_with_zip_extension(tmp_path):
+    """Nexus authors sometimes ship a RAR/7z named ".zip"; the modlist hash
+    still matches, so it must resolve via the content-sniffing extractor."""
+    real = tmp_path / "real.7z"
+    _make_7z(real, {"Meshes/a.nif": b"nif bytes"})
+    archive = tmp_path / "misnamed.zip"
+    real.rename(archive)
+    idx = ArchiveIndex(tmp_path / "scratch")
+    idx.add_archive("hash1", archive)
+    assert idx.resolve(["hash1", "Meshes\\a.nif"]).read_bytes() == b"nif bytes"
+
+
 def test_resolve_file_inside_bsa_inside_zip(tmp_path):
     """The classic Wabbajack chain: a downloaded archive that ships a BSA,
     with the directive reaching a file inside that BSA."""

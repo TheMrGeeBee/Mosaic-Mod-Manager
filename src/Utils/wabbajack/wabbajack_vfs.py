@@ -48,6 +48,10 @@ class VfsResolutionError(Exception):
     """A directive's ArchiveHashPath couldn't be resolved to a real file."""
 
 
+class _BadZipContainer(VfsResolutionError):
+    """A ``.zip``-named container Python's zipfile can't read."""
+
+
 class ArchiveIndex:
     """Maps a top-level Archive's content hash to its on-disk path, and
     caches each resolved nested-path hop so repeated directives referencing
@@ -110,6 +114,16 @@ class ArchiveIndex:
                 # (real cases: VRAMr, Goodneighbor View); native 7z can.
                 dest.unlink(missing_ok=True)
                 return self._member_of_whole_extract(container, member_path)
+            except _BadZipContainer as bad:
+                # Not a readable zip to Python, but the hash matched: a RAR/7z
+                # saved as ".zip" (KittyVFX), or a zip with a broken central
+                # directory (Bow of Shadows). Native 7z sniffs content and
+                # tolerates both, as Wabbajack's own extractor does.
+                dest.unlink(missing_ok=True)
+                try:
+                    return self._member_of_whole_extract(container, member_path)
+                except VfsResolutionError:
+                    raise bad
         elif ext in _BETHESDA_EXTS:
             self._extract_from_bethesda(container, member_path, dest)
         else:
@@ -145,7 +159,7 @@ class ArchiveIndex:
                             break
                         out.write(chunk)
         except zipfile.BadZipFile as exc:
-            raise VfsResolutionError(f"{container}: not a valid zip ({exc})") from exc
+            raise _BadZipContainer(f"{container}: not a valid zip ({exc})") from exc
 
     def _member_of_whole_extract(self, container: Path, member_path: str) -> Path:
         """``member_path`` from a 7z/rar (or PPMd/Deflate64 zip) container
