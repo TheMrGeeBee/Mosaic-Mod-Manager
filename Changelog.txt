@@ -5,8 +5,18 @@ overlaps the numbers above, and the prefix is what keeps the two apart (and
 keeps release tooling from matching the wrong section).
 
 - v1.12.3
-### Bug Fixes
-- Flatpak was missing the xxhash and pycryptodomex Python packages, which broke LoversLab login and Wabbajack downloads ("No module named 'xxhash'").
+  ### Additions
+  - Added a Repair button to the Wabbajack import tab. When a profile was already installed from the same modlist (same name and version), Repair builds into it again, keeps every file that is already built and valid, and downloads and builds only what is missing, so an interrupted or partly failed install no longer means rebuilding hundreds of thousands of files. Rebuilt BSA/BA2 archives are now written to a temporary file and renamed, so an interrupted run never leaves a truncated archive that looks finished.
+  - The Wabbajack preflight now checks the game exe against the script extender the modlist ships. A modlist built from newer game files whose own game copy patches the exe back to an older version (LoreRim: game files 1.7.104.0, SKSE for 1.6.1170) now says the exe must be switched with the Skyrim runtime swap, and passes once it has been.
+
+  ### Changes
+  - While mods are deployed, the Wabbajack game-file checks and installs now read the game's original files from Data_Core instead of the deployed mod files, and after a runtime swap they read the pre-swap originals Mosaic keeps in its backup. This removes false "your game version doesn't match this modlist" errors on a deployed profile or a swapped game.
+
+  ### Bug Fixes
+  - Flatpak was missing the xxhash and pycryptodomex Python packages, which broke LoversLab login and Wabbajack downloads ("No module named 'xxhash'").
+  - Fixed Wabbajack archives that are really a RAR or 7z saved with a .zip name, or a zip with a broken central directory, failing to build their files. Mosaic now falls back to the 7-Zip extractor, which reads both.
+  - Fixed the Wabbajack install overlay counting the whole modlist (every archive and the full download size) instead of only what the run needs, and fixed its byte total overflowing above 2 GB.
+  - Fixed root-flagged mods (for example Engine Fixes after a Wabbajack install with Root Builder) not deploying files whose folders differ in case between the mod and the file map (Data/skse/plugins against Data/SKSE/Plugins) on case-sensitive file systems.
 
 ---
 
