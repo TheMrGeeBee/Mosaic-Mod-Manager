@@ -182,3 +182,35 @@ def test_resolve_prefers_the_parked_original_while_mods_are_deployed(tmp_path):
     assert resolve_game_file(tmp_path, "Data\\Dawnguard.esm").read_bytes() == b"original"
     (tmp_path / "Data_Core" / "dawnguard.esm").unlink()
     assert resolve_game_file(tmp_path, "Data\\Dawnguard.esm").read_bytes() == b"cleaned"
+
+
+def test_resolve_reads_runtime_swap_originals_before_the_patched_game_file(tmp_path):
+    """After the runtime swap, Data/Dawnguard.esm is the 1.6.1170 version; the
+    modlist builds from the 1.7.104 original kept in the swap's backup."""
+    (tmp_path / "Data").mkdir()
+    (tmp_path / "Data" / "Dawnguard.esm").write_bytes(b"patched")
+    backup = tmp_path / "backup" / "Data"
+    backup.mkdir(parents=True)
+    (backup / "Dawnguard.esm").write_bytes(b"original")
+    got = resolve_game_file(tmp_path, "Data\\Dawnguard.esm", [tmp_path / "backup"])
+    assert got.read_bytes() == b"original"
+    # deployed: Data_Core holds the patched file too, the original still wins
+    (tmp_path / "Data_Core").mkdir()
+    (tmp_path / "Data_Core" / "Dawnguard.esm").write_bytes(b"patched")
+    assert resolve_game_file(tmp_path, "Data\\Dawnguard.esm", [tmp_path / "backup"]).read_bytes() == b"original"
+    # files the swap did not touch still come from the game folder
+    (tmp_path / "Data" / "Other.esm").write_bytes(b"x")
+    assert resolve_game_file(tmp_path, "Data\\Other.esm", [tmp_path / "backup"]).read_bytes() == b"x"
+
+
+def test_runtime_swap_originals_only_when_a_swap_is_applied(tmp_path, monkeypatch):
+    import json
+    from Utils import config_paths
+    from Utils.wabbajack.downloaders.game_file_source import runtime_swap_originals
+    monkeypatch.setattr(config_paths, "get_game_config_dir", lambda name: tmp_path)
+    assert runtime_swap_originals("Skyrim Special Edition") == []
+    (tmp_path / "runtime_backup").mkdir()
+    (tmp_path / "runtime_state.json").write_text(json.dumps({"applied": False}))
+    assert runtime_swap_originals("Skyrim Special Edition") == []
+    (tmp_path / "runtime_state.json").write_text(json.dumps({"applied": True}))
+    assert runtime_swap_originals("Skyrim Special Edition") == [tmp_path / "runtime_backup"]

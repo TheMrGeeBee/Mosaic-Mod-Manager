@@ -186,6 +186,7 @@ class WabbajackController(QObject):
         from Utils.config_paths import get_download_cache_dir_for_game
         from Utils.ui_config import load_nexus_last_premium
         from Utils.wabbajack.downloaders import loverslab_auth
+        from Utils.wabbajack.downloaders.game_file_source import runtime_swap_originals
         from Utils.wabbajack.wabbajack_preflight import run_preflight
         game = self._win._gs.game
         nexus_ok = self._win._ensure_nexus_api() is not None and bool(load_nexus_last_premium())
@@ -198,6 +199,7 @@ class WabbajackController(QObject):
             staging_root=game.get_effective_mod_staging_path(),
             cache_dir=get_download_cache_dir_for_game(game.name),
             nexus_premium=nexus_ok, game_root=game_root,
+            originals=runtime_swap_originals(game.name),
             loverslab_logged_in=bool(loverslab_auth.load_session()))
 
     def _on_parsed(self, path, modlist, error) -> None:

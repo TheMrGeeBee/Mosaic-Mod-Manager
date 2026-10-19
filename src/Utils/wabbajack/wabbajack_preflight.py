@@ -212,7 +212,8 @@ def check_game_version(modlist: ModList, game_root: "str | Path | None") -> "lis
                   blocking=False)]
 
 
-def check_game_files(modlist: ModList, game_root: "str | Path | None") -> "list[Check]":
+def check_game_files(modlist: ModList, game_root: "str | Path | None",
+                     originals: "list[Path] | None" = None) -> "list[Check]":
     """Game files that files Mosaic installs are built from must be there and
     be the build the modlist was made from (sizes compared here, instantly;
     hashes during the install). Real case (2026-10-08): Wasteland Genesis AE,
@@ -226,7 +227,7 @@ def check_game_files(modlist: ModList, game_root: "str | Path | None") -> "list[
         return []
     missing, differ = [], []
     for a in wanted:
-        path = resolve_game_file(game_root, a.state.game_file)
+        path = resolve_game_file(game_root, a.state.game_file, originals)
         if path is None:
             missing.append(a)
             continue
@@ -264,11 +265,12 @@ def run_preflight(modlist: ModList, *, active_game_name: str,
                   staging_root: "str | Path | None", cache_dir: "str | Path | None",
                   nexus_premium: bool, loverslab_logged_in: bool,
                   game_root: "str | Path | None" = None,
+                  originals: "list[Path] | None" = None,
                   free_fn: "Callable[[Path], int] | None" = None) -> "list[Check]":
     """Every preflight check for ``modlist``, in display order."""
     return [
         *check_game(modlist, active_game_name),
-        *check_game_files(modlist, game_root),
+        *check_game_files(modlist, game_root, originals),
         *check_game_version(modlist, game_root),
         *check_directives(modlist),
         *check_sources(modlist, nexus_premium=nexus_premium,

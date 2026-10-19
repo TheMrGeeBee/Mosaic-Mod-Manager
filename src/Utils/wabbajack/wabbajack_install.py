@@ -50,7 +50,7 @@ from Utils.plugins.plugins import invalidate_plugins_cache
 from Utils.profile.profile_state import write_wabbajack_modlist_info
 
 from .downloaders import resolve_downloader
-from .downloaders.game_file_source import fetch_game_file
+from .downloaders.game_file_source import fetch_game_file, runtime_swap_originals
 from .downloaders.nexus_source import download_nexus
 from .wabbajack_directives import apply_directive
 from . import wabbajack_file
@@ -359,7 +359,7 @@ def _cached(archive: Archive, download_dir: Path) -> "Path | None":
 
 
 def _download_automatic(archive: Archive, download_dir: Path, *, nexus_downloader,
-                        game_root, cb: WabbajackInstallCallbacks,
+                        game_root, originals=None, cb: WabbajackInstallCallbacks,
                         cancel: threading.Event) -> "tuple[Path | None, str]":
     """``(verified path, "")`` or ``(None, why)``. Never asks the user
     anything except the LoversLab login (one retry after a successful one)."""
@@ -369,7 +369,7 @@ def _download_automatic(archive: Archive, download_dir: Path, *, nexus_downloade
     state = archive.state
     if isinstance(state, GameFileSourceState):
         # Used in place and already hash-checked; never unlinked below.
-        result = fetch_game_file(state, game_root, archive.hash)
+        result = fetch_game_file(state, game_root, archive.hash, originals)
         return (result.file_path, "") if result.success else (None, result.error)
     if isinstance(state, NexusState):
         if nexus_downloader is None:
@@ -399,7 +399,7 @@ def _download_automatic(archive: Archive, download_dir: Path, *, nexus_downloade
 
 
 def _download_all(archives: "list[Archive]", download_dir: Path, *, nexus_downloader,
-                  game_root, max_workers: int, cb: WabbajackInstallCallbacks, cancel: threading.Event,
+                  game_root, originals=None, max_workers: int, cb: WabbajackInstallCallbacks, cancel: threading.Event,
                   report: WabbajackInstallReport,
                   manual_folders: "list[Path] | None" = None) -> "dict[str, Path]":
     have: "dict[str, Path]" = {}
@@ -416,7 +416,7 @@ def _download_all(archives: "list[Archive]", download_dir: Path, *, nexus_downlo
         if path is None:
             path, why = _download_automatic(
                 archive, download_dir, nexus_downloader=nexus_downloader,
-                game_root=game_root, cb=cb, cancel=cancel)
+                game_root=game_root, originals=originals, cb=cb, cancel=cancel)
         cb.on_download_finish(archive.hash, path is not None)
         with lock:
             if path is not None:
@@ -621,6 +621,7 @@ def run_wabbajack_install(*, wabbajack_path: "str | Path", modlist: ModList, gam
     cb.on_status(f"Downloading {len(archives)} archive(s)…")
     have = _download_all(archives, download_dir, nexus_downloader=nexus_downloader,
                          game_root=game_root,
+                         originals=runtime_swap_originals(getattr(game, "name", "")),
                          max_workers=max_downloads, cb=cb, cancel=cancel, report=report,
                          manual_folders=manual_folders)
     if cancel.is_set():
