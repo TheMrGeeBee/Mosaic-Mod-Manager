@@ -17,7 +17,7 @@ def test_flatpak_pypi_deps_cover_vendor_requirements():
     for line in (ROOT / "src" / "requirements-vendor.txt").read_text().splitlines():
         line = line.split("#", 1)[0].strip()
         if line:
-            required.add(_norm(re.split(r"[=<>~!\[; ]", line, 1)[0]))
+            required.add(_norm(re.split(r"[=<>~!\[; ]", line, maxsplit=1)[0]))
     yaml_text = (ROOT / "flatpak" / "pypi-dependencies.yaml").read_text()
     present = {_norm(m) for m in re.findall(r"^  - name: python3-(\S+)", yaml_text, re.M)}
     assert required - present == set()
