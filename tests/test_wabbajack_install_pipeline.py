@@ -651,6 +651,13 @@ def test_root_builder_mods_become_root_folder_mods(tmp_path, monkeypatch):
     assert not read_meta(staging / "Better Console" / "meta.ini").root_folder
 
 
+def test_root_builder_layout_skipped_for_cyberpunk(tmp_path, monkeypatch):
+    monkeypatch.setattr(wi, "mosaic_game_for", lambda game_type: "Cyberpunk 2077")
+    report, staging, _, _ = _install_real_shapes(tmp_path, monkeypatch)
+    assert report.root_builder_mods == []
+    assert not (staging / "F4SE" / "Data").exists()
+
+
 def test_failed_file_is_not_left_in_staging(tmp_path, monkeypatch):
     """A directive that fails its hash check must not leave the wrong bytes
     where a deploy would pick them up (real case: a 0-byte BetterConsole.mem

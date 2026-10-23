@@ -49,7 +49,8 @@ def test_parse_entry_and_game_matching_ignores_case():
     e = g.parse_entry(_entry("A", game="Fallout4"), "repo")
     assert (e.title, e.machine_url, e.repository, e.mosaic_game) == ("A", "A", "repo", "Fallout 4")
     assert (e.archive_count, e.archives_size, e.install_size) == (3, 5000, 9000)
-    assert g.parse_entry(_entry("B", game="cyberpunk2077")).mosaic_game is None
+    assert g.parse_entry(_entry("B", game="cyberpunk2077")).mosaic_game == "Cyberpunk 2077"
+    assert g.parse_entry(_entry("C", game="baldursgate3")).mosaic_game is None
     assert g.mosaic_game_for_gallery("skyrimspecialedition") == "Skyrim Special Edition"
 
 

@@ -66,6 +66,7 @@ from .wabbajack_manifest import (
     NexusState,
     PatchedFromArchiveDirective,
     RemappedInlineFileDirective,
+    mosaic_game_for,
 )
 from .wabbajack_vfs import ArchiveIndex
 
@@ -74,6 +75,9 @@ PROFILE_FILES_DIR = "wabbajack_profile_files"
 # TEMP_BSA_FILES/<TempID>/ before its CreateBSA directive packs them.
 _BSA_TEMP_DIR = "temp_bsa_files"
 _LOAD_ORDER_FILES = ("plugins.txt", "loadorder.txt")
+# Games whose mods aren't laid out under Data/, so the Root Builder -> Data/
+# relocation (Bethesda layout) must not run.
+_NO_DATA_FOLDER_GAMES = frozenset({"Cyberpunk 2077"})
 
 
 def _noop(*_a, **_k):
@@ -607,7 +611,8 @@ def run_wabbajack_install(*, wabbajack_path: "str | Path", modlist: ModList, gam
         if report.skipped_mods:
             log(f"Wabbajack: skipping {len(report.skipped_mods)} mod(s) the "
                 f"{plan.profile_name!r} profile doesn't use: {', '.join(report.skipped_mods)}")
-    report.root_builder_mods = apply_root_builder_layout(plan)
+    if mosaic_game_for(modlist.game_type) not in _NO_DATA_FOLDER_GAMES:
+        report.root_builder_mods = apply_root_builder_layout(plan)
     for name in report.root_builder_mods:
         log(f"Wabbajack: {name} uses Root Builder; installing it as a root-folder mod "
             "(Root/ files go to the game folder, the rest to Data/)")

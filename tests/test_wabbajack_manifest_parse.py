@@ -189,6 +189,7 @@ def test_every_mapped_game_is_a_real_mosaic_game_name():
 
 def test_mosaic_game_for_known_and_unknown():
     assert mosaic_game_for("SkyrimSpecialEdition") == "Skyrim Special Edition"
+    assert mosaic_game_for("Cyberpunk2077") == "Cyberpunk 2077"
     assert mosaic_game_for("CyberpunkTheGame") is None
     assert mosaic_game_for("") is None
     assert mosaic_game_for(None) is None

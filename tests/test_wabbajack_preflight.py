@@ -30,9 +30,14 @@ def test_game_supported_and_active():
 
 
 def test_game_unsupported_blocks():
-    [check] = check_game(_modlist(game="Cyberpunk2077"), "Cyberpunk 2077")
+    [check] = check_game(_modlist(game="BaldursGate3"), "Baldur's Gate 3")
     assert not check.ok and check.blocking
-    assert "Cyberpunk2077" in check.detail
+    assert "BaldursGate3" in check.detail
+
+
+def test_cyberpunk_supported_and_active():
+    [check] = check_game(_modlist(game="Cyberpunk2077"), "Cyberpunk 2077")
+    assert check.ok
 
 
 def test_game_mismatch_with_active_game_blocks():

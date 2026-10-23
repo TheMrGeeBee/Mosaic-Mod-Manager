@@ -4,6 +4,12 @@ reset to v1.0.0; they keep Amethyst Mod Manager's original numbering, which
 overlaps the numbers above, and the prefix is what keeps the two apart (and
 keeps release tooling from matching the wrong section).
 
+- v1.13.4
+### Addition
+  - Wabbajack modlists can now be browsed and installed for Cyberpunk 2077. Previously the Wabbajack tab reported "no modlists" for it because only Bethesda games were supported. Root Builder's Data/ relocation is skipped for Cyberpunk, whose mods don't use a Data folder.
+
+---
+
 - v1.12.3
   ### Additions
   - Added a Repair button to the Wabbajack import tab. When a profile was already installed from the same modlist (same name and version), Repair builds into it again, keeps every file that is already built and valid, and downloads and builds only what is missing, so an interrupted or partly failed install no longer means rebuilding hundreds of thousands of files. Rebuilt BSA/BA2 archives are now written to a temporary file and renamed, so an interrupted run never leaves a truncated archive that looks finished.

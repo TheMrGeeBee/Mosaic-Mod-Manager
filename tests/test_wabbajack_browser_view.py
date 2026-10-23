@@ -92,7 +92,8 @@ def _view(qapp, tmp_path, monkeypatch, game_name=SSE):
     cache = tmp_path / "gallery.json"
     cache.write_text(json.dumps({"fetched_at": time.time(), "entries": [
         _entry("Alpha", tags=["Lore"], official=True), _entry("Beta", tags=["Combat"]),
-        _entry("Other Game", game="fallout4")]}))
+        _entry("Other Game", game="fallout4"),
+        _entry("Night City", game="Cyberpunk2077")]}))
     opened = []
     host = QMainWindow()
     host.resize(1400, 900)
@@ -119,6 +120,8 @@ def test_view_lists_filters_and_follows_a_game_switch(qapp, tmp_path, monkeypatc
         view.set_game(SimpleNamespace(name="Fallout 4"))
         assert [c.entry.title for c in view._cards] == ["Other Game"]
         view.set_game(SimpleNamespace(name="Cyberpunk 2077"))
+        assert [c.entry.title for c in view._cards] == ["Night City"]
+        view.set_game(SimpleNamespace(name="Baldur's Gate 3"))
         assert view._cards == [] and "no modlists" in view._empty.text()
     finally:
         _teardown(qapp, host)
