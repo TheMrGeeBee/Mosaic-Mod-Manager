@@ -275,18 +275,19 @@ def test_worn_pieces_follow_the_body_weight(app, view, catalog):
 
 def test_in_between_weights_blend_the_slim_and_heavy_meshes(app, view, catalog):
     _ready(app, view)
-    got = _capture_builds(view)
+    by_gen = {}                                      # worker builds can finish out of order: key by generation
+    view._build_ready.connect(lambda gen, res: by_gen.__setitem__(gen, res))
+    current = lambda: by_gen.get(view._gen)         # noqa: E731
     view.equip(entry(catalog, "meshes/armor/iron/f/cuirass_1.nif"))
     view.equip(entry(catalog, "meshes/armor/iron/f/boots_1.nif"))
     _wait(app, lambda: len(view._pieces) == 2)
-    _wait(app, lambda: got and "boots" in [s.name for s in got[-1]["scene"].shapes])
-    reach = lambda: next(s for s in got[-1]["scene"].shapes if s.name == "cuirass_f").positions[3]   # noqa: E731
+    _wait(app, lambda: current() and "boots" in [s.name for s in current()["scene"].shapes])
+    reach = lambda: next(s for s in current()["scene"].shapes if s.name == "cuirass_f").positions[3]   # noqa: E731
     for pct, want in ((50, 2.0), (25, 1.5), (75, 2.5)):                     # linear between x1 (slim) and x3 (heavy)
-        n = len(got)
         _set_weight(view, pct)
-        _wait(app, lambda: len(got) > n)
+        _wait(app, lambda: current() is not None)
         assert reach() == pytest.approx(want), pct
-        assert got[-1]["blended"] == ["cuirass_1.nif"] and got[-1]["matched"] == []   # boots have no pair: not blended
+        assert current()["blended"] == ["cuirass_1.nif"] and current()["matched"] == []   # boots have no pair: not blended
         assert f"blended at weight {pct}%: cuirass_1.nif" in view._info.text()
 
 
