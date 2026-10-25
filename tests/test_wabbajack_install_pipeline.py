@@ -651,19 +651,11 @@ def test_root_builder_mods_become_root_folder_mods(tmp_path, monkeypatch):
     assert not read_meta(staging / "Better Console" / "meta.ini").root_folder
 
 
-def test_root_builder_layout_for_cyberpunk_hoists_root_without_data(tmp_path, monkeypatch):
+def test_root_builder_layout_skipped_for_cyberpunk(tmp_path, monkeypatch):
     monkeypatch.setattr(wi, "mosaic_game_for", lambda game_type: "Cyberpunk 2077")
-    from Nexus.nexus_meta import read_meta
     report, staging, _, _ = _install_real_shapes(tmp_path, monkeypatch)
-    f4se = staging / "F4SE"
-    # Root/ files move up a level (real case: Cyberpunk's RED4ext/root/red4ext/RED4ext.dll
-    # was deployed as root/red4ext/... and the game never saw it) ...
-    assert (f4se / "f4se_loader.exe").read_bytes() == b"LOADER EXE"
-    assert not (f4se / "Root").exists()
-    # ... but nothing goes under Data/, and no root-folder flag is needed.
-    assert (f4se / "Scripts" / "Math.pex").is_file() and not (f4se / "Data").exists()
     assert report.root_builder_mods == []
-    assert not read_meta(f4se / "meta.ini").root_folder
+    assert not (staging / "F4SE" / "Data").exists()
 
 
 def test_failed_file_is_not_left_in_staging(tmp_path, monkeypatch):

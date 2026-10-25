@@ -73,12 +73,6 @@ class OverlayBase(QWidget):
         self._reposition()
         self.show()
         self.raise_()
-        # Keyboard focus would otherwise stay on whatever the user last clicked
-        # behind the overlay (the game picker), so Space/Enter pressed it.
-        # A subclass that already focused one of its own widgets keeps it.
-        if self.focusWidget() is None:
-            self.setFocusPolicy(Qt.StrongFocus)
-            self.setFocus()
 
     # -- lifecycle ------------------------------------------------------------
     def _reposition(self):

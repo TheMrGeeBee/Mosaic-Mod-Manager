@@ -484,12 +484,6 @@ def _write_state(state_dir, state: dict) -> None:
     os.replace(tmp, p)
 
 
-def _is_wine_prefix(path: str) -> bool:
-    """A Wine prefix, or a Proton one (``<dir>/pfx`` holds the real prefix)."""
-    return any(os.path.isdir(os.path.join(path, *sub, "drive_c"))
-               for sub in ((), ("pfx",)))
-
-
 def deployment_traces(game_root, *, deploy_active: bool = False) -> "list[str]":
     """Why the game folder may still hold mod files, for any game (empty if
     clean). Real case (Fallout 4, 2026-10-08): Mosaic's record said deployed
@@ -507,9 +501,6 @@ def deployment_traces(game_root, *, deploy_active: bool = False) -> "list[str]":
     if baks:
         traces.append(f"{baks[0]} exists (the launcher is swapped for a script extender)")
     for dirpath, dirnames, filenames in os.walk(root):
-        # A Wine/Proton prefix inside the game folder (Cyberpunk 2077:
-        # bin/x64/prefix_proton-*) is full of its own symlinks, none of them mods.
-        dirnames[:] = [n for n in dirnames if not _is_wine_prefix(os.path.join(dirpath, n))]
         hit = next((n for n in dirnames + filenames if os.path.islink(os.path.join(dirpath, n))), None)
         if hit is not None:
             rel = os.path.relpath(os.path.join(dirpath, hit), root)

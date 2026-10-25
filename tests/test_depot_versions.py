@@ -313,19 +313,3 @@ def test_reused_folder_without_a_clean_start_must_be_cleared(tmp_path, monkeypat
     log += _line("2026-10-08 04:30:00", root, "377162", "387388833281246371")
     assert dv.depot_status("377160", "377162", "387388833281246371", state_dir=state,
                            log_text=log, roots=[root]).state == "downloaded"
-
-
-def test_deployment_traces_ignores_a_proton_prefix_in_the_game_folder(tmp_path):
-    """Real case (Cyberpunk 2077, 2026-10-23): bin/x64/prefix_proton-cachyos-slr
-    holds Wine's own symlinks (dosdevices/c:, Application Data), which are not
-    mod files and made the version check fail after a clean restore."""
-    prefix = tmp_path / "bin" / "x64" / "prefix_proton-cachyos-slr" / "pfx"
-    (prefix / "drive_c" / "users" / "steamuser").mkdir(parents=True)
-    (prefix / "dosdevices").mkdir()
-    os.symlink("../drive_c", prefix / "dosdevices" / "c:")
-    assert dv.deployment_traces(tmp_path) == []
-    # A real linked mod file next to it is still caught.
-    (tmp_path / "mod.dll").write_bytes(b"x")
-    os.symlink(tmp_path / "mod.dll", tmp_path / "bin" / "x64" / "linked.dll")
-    [trace] = dv.deployment_traces(tmp_path)
-    assert "linked.dll" in trace
