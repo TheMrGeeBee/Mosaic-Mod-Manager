@@ -245,7 +245,7 @@ def limit_to_profile_mods(plan: InstallPlan, listed: "set[str]") -> "list[str]":
     return sorted(skipped)
 
 
-def apply_root_builder_layout(plan: InstallPlan) -> "list[str]":
+def apply_root_builder_layout(plan: InstallPlan, *, data_folder: bool = True) -> "list[str]":
     """Convert MO2 Root Builder mods into Mosaic root-folder mods.
 
     Root Builder puts files that belong in the game's install folder under
@@ -255,7 +255,9 @@ def apply_root_builder_layout(plan: InstallPlan) -> "list[str]":
     so in such a mod ``Root/x`` becomes ``x`` and every other file moves
     under ``Data/`` (``meta.ini`` stays put; a path already under ``Data/``
     is kept). Returns the converted mod names, sorted; the caller flags
-    them in ``meta.ini``. Bethesda games only, like the rest of v1."""
+    them in ``meta.ini``. With ``data_folder=False`` (games whose mods have
+    no ``Data/``, like Cyberpunk 2077, where every file already deploys to the
+    game folder) only ``Root/x`` -> ``x`` happens and other files stay put."""
     by_mod: "dict[str, list[str]]" = {}
     for d in plan.mod_directives:
         mod, _, rest = d.to.partition("/")
@@ -272,7 +274,7 @@ def apply_root_builder_layout(plan: InstallPlan) -> "list[str]":
         head, _, tail = rest.partition("/")
         if head.lower() == "root" and tail:
             return f"{mod}/{tail}"
-        if rest.lower() == "meta.ini" or head.lower() == "data":
+        if rest.lower() == "meta.ini" or head.lower() == "data" or not data_folder:
             return to
         return f"{mod}/Data/{rest}"
 
@@ -611,7 +613,12 @@ def run_wabbajack_install(*, wabbajack_path: "str | Path", modlist: ModList, gam
         if report.skipped_mods:
             log(f"Wabbajack: skipping {len(report.skipped_mods)} mod(s) the "
                 f"{plan.profile_name!r} profile doesn't use: {', '.join(report.skipped_mods)}")
-    if mosaic_game_for(modlist.game_type) not in _NO_DATA_FOLDER_GAMES:
+    if mosaic_game_for(modlist.game_type) in _NO_DATA_FOLDER_GAMES:
+        # Everything deploys to the game folder already, so these mods need no
+        # root-folder flag; only their Root/ files must move up a level.
+        for name in apply_root_builder_layout(plan, data_folder=False):
+            log(f"Wabbajack: {name} uses Root Builder; moved its Root/ files to the mod's top level")
+    else:
         report.root_builder_mods = apply_root_builder_layout(plan)
     for name in report.root_builder_mods:
         log(f"Wabbajack: {name} uses Root Builder; installing it as a root-folder mod "
