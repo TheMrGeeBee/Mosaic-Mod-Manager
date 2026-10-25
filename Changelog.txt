@@ -4,8 +4,16 @@ reset to v1.0.0; they keep Amethyst Mod Manager's original numbering, which
 overlaps the numbers above, and the prefix is what keeps the two apart (and
 keeps release tooling from matching the wrong section).
 
-- v1.13.4
-### Addition
+- v1.12.5
+  ### Bug Fixes
+  - Fixed Cyberpunk 2077 Wabbajack installs leaving the files of Root Builder mods (RED4ext, Cyber Engine Tweaks) in a root/ folder inside the mod, so they deployed to the wrong place and the game reported both as not present. Their Root/ files are now moved up to the mod's top level during the install. A profile installed with 1.12.4 can be fixed by moving the contents of root/ up one level in those two mods.
+  - Fixed Space (and Enter) opening the game selector behind an overlay such as the Wabbajack install progress. Overlays now take keyboard focus when they open.
+  - Fixed the game version switcher saying "Mods are deployed: restore first" on a clean game folder when a Wine/Proton prefix lives inside it (Cyberpunk 2077 keeps one in bin/x64/prefix_proton-*). The check counted the prefix's own symlinks as linked mod files, so it could never pass, even right after a restore. Wine and Proton prefixes are now skipped.
+
+---
+
+- v1.12.4
+  ### Additions
   - Wabbajack modlists can now be browsed and installed for Cyberpunk 2077. Previously the Wabbajack tab reported "no modlists" for it because only Bethesda games were supported. Root Builder's Data/ relocation is skipped for Cyberpunk, whose mods don't use a Data folder.
 
 ---
