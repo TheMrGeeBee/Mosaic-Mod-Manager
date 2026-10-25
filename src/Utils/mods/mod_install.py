@@ -20,6 +20,7 @@ from __future__ import annotations
 import os
 import re
 import shutil
+import stat
 import subprocess
 import tarfile
 import tempfile
@@ -729,6 +730,24 @@ def _fix_nonutf8_names_extracted_tree(extract_dir: str, log_fn: LogFn) -> int:
     return repair_nonutf8_names(extract_dir, log_fn=log_fn)
 
 
+def _ensure_owner_access(root: str) -> None:
+    """Make every extracted dir owner-rwx and file owner-rw (best effort)."""
+    def _fix(path: str, add: int) -> None:
+        try:
+            mode = os.lstat(path).st_mode
+            if not stat.S_ISLNK(mode) and (mode & add) != add:
+                os.chmod(path, mode | add)
+        except OSError:
+            pass
+
+    _fix(root, 0o700)
+    for cur, dirs, files in os.walk(root):
+        for d in dirs:
+            _fix(os.path.join(cur, d), 0o700)
+        for f in files:
+            _fix(os.path.join(cur, f), 0o600)
+
+
 def _extract_archive(archive_path: str, dest_dir: str, log_fn: LogFn,
                      cancel=None, error_sink: "list[str] | None" = None,
                      progress_cb: "Callable[[int], None] | None" = None,
@@ -777,6 +796,9 @@ def _extract_archive(archive_path: str, dest_dir: str, log_fn: LogFn,
             # fall through to the generic extractors
 
     def _ok() -> bool:
+        # Some archives store Unix modes without owner read/write; 7z restores
+        # them verbatim and the later copy into the profile fails with EACCES.
+        _ensure_owner_access(dest_dir)
         # Native extractors (7z/bsdtar) and Python zipfile reproduce Windows
         # backslash member names as literal flat filenames; repair them into a
         # real tree so staging can resolve the paths (fixes "nothing staged").
