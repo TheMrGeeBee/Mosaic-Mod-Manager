@@ -27,6 +27,34 @@ class Starfield(Fallout_3):
     ccc_in_my_games = True
     synthesis_registry_name = "Starfield"
 
+    def catalog_vanilla_plugins(self) -> list[str]:
+        """Bethesda's own Creations (sfbgs*) listed in the game's ContentCatalog.txt.
+
+        Starfield ships no Starfield.ccc, and Creations downloaded in-game land in
+        Data/ after the Data_Core snapshot, so without this the free CC masters
+        (e.g. sfbgs019.esm) look missing. Third-party Creations are left alone.
+        """
+        import json
+        names: list[str] = []
+        if self._prefix_path is None:
+            return names
+        catalog = self._prefix_path / self._APPDATA_SUBPATH / "ContentCatalog.txt"
+        try:
+            data = json.loads(catalog.read_text(encoding="utf-8-sig", errors="ignore"))
+        except (OSError, ValueError):
+            return names
+        if not isinstance(data, dict):
+            return names
+        for entry in data.values():
+            files = entry.get("Files") if isinstance(entry, dict) else None
+            if not isinstance(files, list):
+                continue
+            for f in files:
+                if (isinstance(f, str) and f.lower().startswith("sfbgs")
+                        and f.lower().endswith((".esm", ".esl", ".esp"))):
+                    names.append(f)
+        return names
+
     @property
     def reshade_dll(self) -> str:
         return "dxgi.dll"

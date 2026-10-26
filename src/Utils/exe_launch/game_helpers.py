@@ -113,7 +113,8 @@ def _vanilla_plugins_for_game(game) -> dict[str, str]:
         if name.lower() in present:
             result[name.lower()] = name
 
-    if not dlc_plugins and not ccc_name:
+    if (not dlc_plugins and not ccc_name
+            and not hasattr(game, "catalog_vanilla_plugins")):
         return result
 
     for name in dlc_plugins:
@@ -129,6 +130,14 @@ def _read_ccc_manifest(game, ccc_name: str, present: "set[str]") -> dict[str, st
     """Return {lower: original} for CC plugins listed in the .ccc manifest that
     are present on disk. *present* is the set of lowercased filenames in Data/."""
     result: dict[str, str] = {}
+    catalog_fn = getattr(game, "catalog_vanilla_plugins", None)
+    if catalog_fn is not None:
+        try:
+            for n in catalog_fn():
+                if n.lower() in present:
+                    result.setdefault(n.lower(), n)
+        except Exception:
+            pass
     if not ccc_name:
         return result
     candidates: list = []
