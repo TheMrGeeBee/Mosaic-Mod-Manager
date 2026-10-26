@@ -21,3 +21,9 @@
 
 ## Gotchas
 - Collection install metadata (uploader, category, endorsement) is populated via a background GraphQL fetch during install, reconciled in a Step 5 pass — don't assume it's synchronous
+
+## Commits, Tag, Push, 
+- Never commit unless user has approved, always ask first
+- Never tag anything unless user has approved, always ask first
+- Never push anything unless user has approved, always ask first
+- Never tag push anything unless user has approved, always ask first

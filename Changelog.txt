@@ -4,6 +4,12 @@ reset to v1.0.0; they keep Amethyst Mod Manager's original numbering, which
 overlaps the numbers above, and the prefix is what keeps the two apart (and
 keeps release tooling from matching the wrong section).
 
+- v1.12.6
+  ### Bug Fixes
+  - Fixed Starfield showing "missing master" for free Bethesda Creations (e.g. sfbgs019.esm, needed by Red Mile - New Dawn) that were downloaded in-game. Starfield has no Starfield.ccc, and Creations downloaded after Mosaic's Data_Core snapshot looked like mod files. Mosaic now reads the game's ContentCatalog.txt to recognise Bethesda's own Creations (sfbgs*) as part of the base game. Third-party Creations are unaffected.
+
+---
+
 - v1.12.5
   ### Bug Fixes
   - Fixed Cyberpunk 2077 Wabbajack installs leaving the files of Root Builder mods (RED4ext, Cyber Engine Tweaks) in a root/ folder inside the mod, so they deployed to the wrong place and the game reported both as not present. Their Root/ files are now moved up to the mod's top level during the install. A profile installed with 1.12.4 can be fixed by moving the contents of root/ up one level in those two mods.
