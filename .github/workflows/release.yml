@@ -73,10 +73,23 @@ permissions:
   contents: write
 
 jobs:
+  # Fail a mismatched tag before anything is built or published (v1.12.6 shipped
+  # still reporting v1.12.5 and the updater re-offered it forever). Tag pushes
+  # only; a manual dispatch runs from a branch ref, so there is no tag to check.
+  check:
+    name: Check version
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Tag matches version.py and Changelog.txt
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: ./check-release.sh --ci "$GITHUB_REF_NAME"
+
   # Build both artifacts via the shared reusable workflow (also used by
   # test-build.yml for manual test builds).
   build:
     name: Build
+    needs: check
     uses: ./.github/workflows/build.yml
     # Passes the FLATPAK_GPG_* secrets through so the flatpak job can sign its
     # export commits (required for the bundle's embedded --gpg-keys to verify).
