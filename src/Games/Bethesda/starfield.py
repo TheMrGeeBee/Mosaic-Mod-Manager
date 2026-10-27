@@ -27,12 +27,13 @@ class Starfield(Fallout_3):
     ccc_in_my_games = True
     synthesis_registry_name = "Starfield"
 
-    def catalog_vanilla_plugins(self) -> list[str]:
-        """Bethesda's own Creations (sfbgs*) listed in the game's ContentCatalog.txt.
+    def content_catalog_files(self) -> list[str]:
+        """Every Data/ file name the game's ContentCatalog.txt claims.
 
-        Starfield ships no Starfield.ccc, and Creations downloaded in-game land in
-        Data/ after the Data_Core snapshot, so without this the free CC masters
-        (e.g. sfbgs019.esm) look missing. Third-party Creations are left alone.
+        The catalog is the game's own record of Creations installed from the
+        in-game menu — Bethesda's free CC content and third-party ones alike,
+        plugins plus their .ba2 archives. Those files sit in Data/ but belong
+        to the game, not to Mosaic.
         """
         import json
         names: list[str] = []
@@ -49,11 +50,103 @@ class Starfield(Fallout_3):
             files = entry.get("Files") if isinstance(entry, dict) else None
             if not isinstance(files, list):
                 continue
-            for f in files:
-                if (isinstance(f, str) and f.lower().startswith("sfbgs")
-                        and f.lower().endswith((".esm", ".esl", ".esp"))):
-                    names.append(f)
+            names.extend(f for f in files if isinstance(f, str) and f.strip())
         return names
+
+    def catalog_vanilla_plugins(self) -> list[str]:
+        """Plugins the in-game Creations menu installed, per ContentCatalog.txt.
+
+        Starfield ships no Starfield.ccc, and Creations downloaded in-game land
+        in Data/ after the Data_Core snapshot, so without this the CC masters
+        (e.g. sfbgs019.esm) look missing. Everything the catalog lists is the
+        game's: Bethesda's free CC content (sfbgs*), its paid Creations
+        (sfta*, kgcdoom) and third-party ones alike — the game downloaded them
+        and Mosaic never staged them. The exception is a Creation the active
+        profile also installs as a mod (the same content from Nexus): that copy
+        IS Mosaic's, so it stays a mod row.
+        """
+        plugins = [f for f in self.content_catalog_files()
+                   if f.lower().endswith((".esm", ".esl", ".esp"))]
+        if not plugins:
+            return plugins
+        mod_owned = self._mod_deployed_plugin_names()
+        return [f for f in plugins if f.lower() not in mod_owned]
+
+    def _mod_deployed_plugin_names(self) -> set[str]:
+        """Lowercased top-level plugin names the active profile's mods deploy.
+
+        Read from filemap.txt, whose second field names the owning mod. The
+        overwrite folder is not a mod — a Creation that an older build swept
+        in there is still the game's content, not Mosaic's.
+        """
+        names: set[str] = set()
+        try:
+            filemap = self.get_effective_filemap_path()
+        except Exception:
+            return names
+        try:
+            with filemap.open(encoding="utf-8", errors="surrogateescape") as fh:
+                for line in fh:
+                    rel, _, mod = line.rstrip("\n").partition("\t")
+                    if not mod or mod == "Overwrite":
+                        continue
+                    rel = rel.replace("\\", "/")
+                    if "/" in rel:
+                        continue  # top-level plugins only
+                    low = rel.lower()
+                    if low.endswith((".esm", ".esl", ".esp")):
+                        names.add(low)
+        except OSError:
+            pass
+        return names
+
+    def plugins_txt_listed_vanilla(self) -> set[str]:
+        """Creations must be listed in Plugins.txt or the engine ignores them.
+
+        Only the hardcoded base masters (``vanilla_plugins``) are implicitly
+        active in Starfield — libloadorder force-loads those and nothing else.
+        A Creation is vanilla to Mosaic (the game owns the files) but still
+        needs its ``*`` entry, so keep it out of the blanket vanilla exclusion
+        in save_plugins.
+
+        Only Creations whose file is actually in Data/ count. The catalog
+        keeps listing a Creation whose files have gone (deleted by hand, or
+        swept out by an older build's restore), and an entry for a missing
+        plugin is one the panel's phantom prune strips straight back out —
+        re-adding it every reload would just fight that prune.
+        """
+        names = {f.lower() for f in self.catalog_vanilla_plugins()}
+        return (names & self._present_plugin_names()) if names else names
+
+    def _present_plugin_names(self) -> set[str]:
+        """Lowercased plugin file names currently in the game's Data dir."""
+        try:
+            data_dir = self.get_vanilla_plugins_path()
+            if data_dir is None or not data_dir.is_dir():
+                return set()
+            return {e.name.lower() for e in data_dir.iterdir() if e.is_file()}
+        except OSError:
+            return set()
+
+    @property
+    def restore_whitelist(self) -> list:
+        """Leave in-game Creations downloads in the game folder on restore.
+
+        A Creation installed from the in-game menu while a profile is deployed
+        lands in the live Data/ as a plain file: it is not in Data_Core (it
+        postdates the snapshot) and not in any filemap, so the restore sweep
+        read it as a runtime file and moved it into the profile's overwrite/,
+        where deleting the profile destroyed it. The game put those files
+        there and the game tracks them in ContentCatalog.txt, so whitelist
+        them (and the game-root Creations/ staging folder) to keep them in
+        place instead.
+        """
+        from Utils.deploy.deploy import RestoreWhitelistRule
+        rules = [RestoreWhitelistRule(path="", folders=["Creations"])]
+        catalog_files = self.content_catalog_files()
+        if catalog_files:
+            rules.append(RestoreWhitelistRule(path="Data", filenames=catalog_files))
+        return rules
 
     @property
     def reshade_dll(self) -> str:

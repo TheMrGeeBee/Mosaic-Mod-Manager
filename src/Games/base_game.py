@@ -919,6 +919,18 @@ class BaseGame(ABC):
         """
         return False
 
+    def plugins_txt_listed_vanilla(self) -> set[str]:
+        """Lowercased vanilla plugin names that still need a plugins.txt entry.
+
+        plugins_include_vanilla=False rests on the engine force-loading its
+        vanilla plugins from a hardcoded list, so entries for them are
+        pointless. Content the engine does NOT force-load but Mosaic does not
+        own either (Starfield Creations installed from the in-game menu) is
+        vanilla for display and ownership, yet stays inert unless listed —
+        name it here so save_plugins keeps writing it out.
+        """
+        return set()
+
     @property
     def vanilla_plugins(self) -> list[str]:
         """Hardcoded vanilla plugin filenames for this game."""
