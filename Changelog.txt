@@ -4,6 +4,16 @@ reset to v1.0.0; they keep Amethyst Mod Manager's original numbering, which
 overlaps the numbers above, and the prefix is what keeps the two apart (and
 keeps release tooling from matching the wrong section).
 
+- v1.12.8
+  ### Additions
+  - Starfield Creations can now be switched off in the plugins panel. They are shown as game content rather than mods, but unlike the base masters the engine only loads them when Plugins.txt says so, so the checkbox still means something — useful for matching the plugin list an older save was made with.
+  ### Bug Fixes
+  - Fixed Restore removing Starfield Creations that were installed from the in-game menu. A Creation downloaded while a profile is deployed lands in the live Data/ folder, so it is not in Mosaic's Data_Core snapshot and belongs to no mod — Restore read it as a runtime file and moved it into the profile's overwrite folder, where deleting the profile destroyed it. Mosaic now reads the game's ContentCatalog.txt and leaves those files in the game folder, plugins and .ba2 archives alike, along with the game-root Creations/ folder.
+  - Fixed Starfield Creations other than Bethesda's free CC content showing as part of a collection in the plugins panel. 1.12.6 only recognised sfbgs* names, so Bethesda's paid Creations (sfta*, kgcdoom) and third-party ones still looked like mods Mosaic manages. Everything ContentCatalog.txt lists now counts as game content — except a Creation the active profile also installs as a mod, which stays a mod row.
+  - Fixed Starfield Creations being dropped from Plugins.txt, which stopped the game loading them at all. Vanilla plugins are left out of Plugins.txt because the engine force-loads them, but that only holds for the hardcoded base masters: a Creation is inert without its entry, and so is any mod that has it as a master. 1.12.6 removed the entries for the Creations it recognised (e.g. sfbgs019.esm, sfbgs021.esm, sfbgs00c.esm), so they stopped loading from that build onward. Mosaic now keeps them listed and restores the entries in a profile that already lost them.
+
+---
+
 - v1.12.7
   ### Bug Fixes
   - Fixed the update prompt coming back after every update to 1.12.6. That build was released still reporting itself as v1.12.5, so Mosaic kept offering 1.12.6 as a new version. 1.12.7 reports its version correctly. Anyone on 1.12.6 needs to update once more.
