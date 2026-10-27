@@ -81,6 +81,11 @@ class PluginRow:
     enabled: bool
     flags: int = 0
     vanilla: bool = False
+    # Vanilla content that nonetheless lives in plugins.txt (Starfield
+    # Creations). The engine does not force-load it, so — unlike a base
+    # master — the user can turn it off, e.g. to match the plugin list a
+    # save was made with.
+    listed_vanilla: bool = False
     # Per-flag detail captured while computing the flag bits, so the Flags-column
     # tooltip can show the same content the Tk app shows (Tk parity).
     missing_masters: list[str] | None = None
@@ -440,16 +445,27 @@ def load_plugins(game, profile: str,
     seen: set[str] = set()
 
     # Vanilla pinned first (in saved order where known, else ext-sorted).
+    # Base masters are always-on, but a listed Creation keeps whatever
+    # plugins.txt says: the engine honours its "*", so the user's choice
+    # (e.g. switched off to match an older save) has to survive a reload.
+    listed_vanilla = _listed_vanilla(game)
+    listed_state = {e.name.lower(): e.enabled for e in entries}
+
+    def _vanilla_entry(low: str, orig: str) -> PluginEntry:
+        if low in listed_vanilla:
+            return PluginEntry(orig, listed_state.get(low, True))
+        return PluginEntry(orig, True)
+
     for name in saved_order:
         low = name.lower()
         if low in seen:
             continue
         if low in vanilla:
-            ordered.append(PluginEntry(vanilla[low], True)); seen.add(low)
+            ordered.append(_vanilla_entry(low, vanilla[low])); seen.add(low)
     for low, orig in sorted(vanilla.items(),
                             key=lambda kv: (_EXT_ORDER.get(Path(kv[0]).suffix, 9), kv[0])):
         if low not in seen:
-            ordered.append(PluginEntry(orig, True)); seen.add(low)
+            ordered.append(_vanilla_entry(low, orig)); seen.add(low)
 
     # Mods in saved loadorder order, then any leftovers from plugins.txt.
     for name in saved_order:
@@ -582,10 +598,17 @@ def load_plugins(game, profile: str,
             p, star, [PluginEntry(name=n, enabled=True) for n in recovered
                       if n.lower() in still])
 
+    # Vanilla content the engine does NOT force-load (Starfield Creations)
+    # still needs its plugins.txt entry — see _sync_listed_vanilla.
+    if _active_matches:
+        _sync_listed_vanilla(game, p, star, ordered, vanilla)
+
     if cancelled():
         return None
     with span("plugins.header_flags(to_row)"):
-        rows = [_to_row(e, vanilla, resolved, data_dir) for e in ordered]
+        _listed = _listed_vanilla(game)
+        rows = [_to_row(e, vanilla, resolved, data_dir, _listed)
+                for e in ordered]
     if cancelled():
         return None
     with span("plugins.master_checks"):
@@ -655,6 +678,60 @@ def _scan_orphan_plugins(game, data_dir: Path | None,
     return orphans
 
 
+def _listed_vanilla(game) -> set[str]:
+    """Lowercased vanilla names the game still wants written to plugins.txt."""
+    try:
+        return {n.lower() for n in game.plugins_txt_listed_vanilla()}
+    except Exception:
+        return set()
+
+
+def _in_plugins_txt(game, name_lower: str, is_vanilla: bool,
+                    listed_vanilla: set[str]) -> bool:
+    """Whether this plugin gets an entry in plugins.txt."""
+    if not is_vanilla:
+        return True
+    if getattr(game, "plugins_include_vanilla", False):
+        return True
+    return name_lower in listed_vanilla
+
+
+def _sync_listed_vanilla(game, plugins_path: Path, star: bool,
+                         ordered: list[PluginEntry],
+                         vanilla: dict[str, str]) -> None:
+    """Write back vanilla plugins that must be listed but are missing.
+
+    Starfield Creations are vanilla (the game owns the files) yet the engine
+    only force-loads the hardcoded base masters, so a Creation without its
+    plugins.txt entry is simply not loaded — along with any mod that masters
+    it. A build that treated them as plain vanilla dropped those entries, so
+    repair the file here instead of waiting for a panel edit. The whole file
+    is rewritten in panel order: appending would put a Creation master after
+    the mods that depend on it.
+    """
+    listed = _listed_vanilla(game)
+    if not listed:
+        return
+    try:
+        current = {e.name.lower()
+                   for e in read_plugins(plugins_path, star_prefix=star)}
+    except Exception:
+        return
+    missing = [e.name for e in ordered
+               if e.name.lower() in listed and e.name.lower() not in current]
+    if not missing:
+        return
+    entries = [e for e in ordered
+               if _in_plugins_txt(game, e.name.lower(),
+                                  e.name.lower() in vanilla, listed)]
+    try:
+        write_plugins(plugins_path, entries, star_prefix=star)
+    except Exception:
+        return
+    app_log(f"Plugins: restored {len(missing)} Creation(s) to plugins.txt "
+            f"(the engine does not load them unlisted): {', '.join(missing)}")
+
+
 def _append_orphans_to_plugins(plugins_path: Path, star: bool,
                                orphans: list[PluginEntry]) -> None:
     """Append plugins missing from plugins.txt (manually-installed Data/
@@ -701,7 +778,8 @@ def _prune_phantom_plugins(plugins_path: Path, star: bool,
 
 
 def _to_row(e: PluginEntry, vanilla: dict, resolved: dict[str, Path],
-            data_dir: Path | None) -> PluginRow:
+            data_dir: Path | None,
+            listed_vanilla: set[str] | None = None) -> PluginRow:
     low = e.name.lower()
     flags = 0
     path = resolved.get(low) or ((data_dir / e.name) if data_dir else None)
@@ -722,7 +800,8 @@ def _to_row(e: PluginEntry, vanilla: dict, resolved: dict[str, Path],
             flags |= PF_ESL
         if low.endswith(".esm"):
             flags |= PF_MASTER
-    return PluginRow(e.name, e.enabled, flags, low in vanilla)
+    return PluginRow(e.name, e.enabled, flags, low in vanilla,
+                     listed_vanilla=bool(listed_vanilla and low in listed_vanilla))
 
 
 def _apply_master_checks(rows: list[PluginRow], resolved: dict[str, Path],
@@ -1443,15 +1522,19 @@ def save_plugins(game, profile: str, rows: list[PluginRow]) -> None:
     if p is None:
         return
     star = getattr(game, "plugins_use_star_prefix", True)
-    include_vanilla = bool(getattr(game, "plugins_include_vanilla", False))
     # The whole vanilla set — base masters, DLC AND .ccc-listed Creation Club
     # content (incl. _ResourcePack.esl, which ships inside Skyrim.ccc) — stays
     # out of plugins.txt: the engine force-loads it at fixed early positions
     # before reading the file, ignores any entries for it, and strips them when
     # it rewrites plugins.txt on launch. MO2 (primaryPlugins skip), Vortex
     # (nativePlugins filter) and libloadorder/LOOT all exclude it the same way.
+    # plugins_txt_listed_vanilla() names the exceptions: vanilla content the
+    # engine does not force-load (Starfield Creations), which is inert unless
+    # it keeps its entry.
+    listed_vanilla = _listed_vanilla(game)
     mod_entries = [PluginEntry(r.name, r.enabled) for r in rows
-                   if include_vanilla or not r.vanilla]
+                   if _in_plugins_txt(game, r.name.lower(), r.vanilla,
+                                      listed_vanilla)]
     write_plugins(p, mod_entries, star_prefix=star)
     full = [PluginEntry(r.name, True) for r in rows]
     write_loadorder(p.parent / "loadorder.txt", full)

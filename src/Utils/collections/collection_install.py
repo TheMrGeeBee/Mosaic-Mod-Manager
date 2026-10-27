@@ -2559,7 +2559,14 @@ def _write_collection_plugins(game, profile_dir, plugins_path, collection_schema
             # The full vanilla set (base + DLC + .ccc-listed CC content) stays out
             # of plugins.txt: the engine force-loads it before reading the file and
             # strips any such entries on launch. MO2/Vortex/LOOT exclude it too.
-            vanilla_lower = set() if plugins_include_vanilla else set(vanilla_map.keys())
+            # ...except vanilla content the engine does NOT force-load
+            # (Starfield Creations): unlisted, the game simply ignores it.
+            try:
+                _listed = {n.lower() for n in game.plugins_txt_listed_vanilla()}
+            except Exception:
+                _listed = set()
+            vanilla_lower = (set() if plugins_include_vanilla
+                             else set(vanilla_map.keys()) - _listed)
             deployed = _filemap_deployed_plugins(game, profile_dir)
             # Drop manifest plugins whose file was never installed. A collection's
             # ``plugins`` array covers ALL its mods including optional ones the
