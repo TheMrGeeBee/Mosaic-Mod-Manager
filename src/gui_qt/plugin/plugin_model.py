@@ -172,8 +172,8 @@ class PluginModel(QAbstractTableModel):
 
     def toggle(self, i: int):
         r = self._rows[i]
-        if r.vanilla:
-            return   # vanilla plugins are always-on; can't be disabled
+        if r.vanilla and not r.listed_vanilla:
+            return   # base masters are force-loaded; can't be disabled
         r.enabled = not r.enabled
         # Whole row: enabled state dims the text in every column.
         self.dataChanged.emit(self.index(i, 0),
@@ -185,10 +185,14 @@ class PluginModel(QAbstractTableModel):
         self._save()
 
     def set_enabled(self, indices, enabled: bool):
-        """Enable/disable the given rows (skips vanilla — always-on), persist +
-        repaint. Mirrors toggle() for the context menu's Enable/Disable items."""
+        """Enable/disable the given rows, persist + repaint. Skips base
+        masters (always-on) but not listed Creations, which the engine only
+        loads when plugins.txt says so. Mirrors toggle() for the context
+        menu's Enable/Disable items."""
         changed = [i for i in indices
-                   if 0 <= i < len(self._rows) and not self._rows[i].vanilla]
+                   if 0 <= i < len(self._rows)
+                   and (not self._rows[i].vanilla
+                        or self._rows[i].listed_vanilla)]
         if not changed:
             return
         for i in changed:
