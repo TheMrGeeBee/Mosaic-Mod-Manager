@@ -1,27 +1,24 @@
 app-id: io.github.TheMrGeeBee.MosaicModManager
 runtime: org.kde.Platform
-runtime-version: "6.11"
+runtime-version: "6.9"
 sdk: org.kde.Sdk
 # PySide6 comes prebuilt from the PySide BaseApp (Flathub-standard for
 # PySide apps); Qt itself is shared from the KDE runtime.
 base: io.qt.PySide.BaseApp
-base-version: "6.11"
+base-version: "6.9"
 
 # 32-bit support for running Proton's bundled `wine` binary (ELF i386) during
 # Synthesis prefix setup. Without these, exec'ing wine fails with ENOENT — the
 # kernel reports the missing 32-bit ld-linux.so.2 interpreter as the error.
-# NOTE: these MUST match the runtime's freedesktop base, or the extension
-# never resolves and 32-bit wine is back to failing with ENOENT. KDE 6.9 was
-# 24.08; KDE 6.11 is 25.08 (confirmed from the runtime's own metadata, which
-# declares versions = 25.08;25.08-extra;1.4 for GL32).
+# NOTE: version 24.08 matches KDE 6.9's freedesktop base (was 25.08 on GNOME 50).
 add-extensions:
   org.freedesktop.Platform.Compat.i386:
     directory: lib/i386-linux-gnu
-    version: '25.08'
+    version: '24.08'
   org.freedesktop.Platform.GL32:
     directory: lib/i386-linux-gnu/GL
     version: '1.4'
-    versions: 25.08;1.4
+    versions: 24.08;1.4
     subdirectories: true
     no-autodownload: false
     autodelete: false
@@ -132,9 +129,7 @@ modules:
       # Fail the build if src/LOOT lacks a loot.cpython-3XX .so matching the
       # runtime's Python ABI — otherwise LOOT sorting silently disables at
       # runtime. Rebuild with src/LOOT/rebuild_libloot.sh using the runtime's
-      # Python version (3.12 on org.kde.Platform 6.9, 3.13 on 6.11). In CI
-      # that version is the python-version pin in build.yml's libloot-flatpak
-      # job — if this import starts failing after a runtime bump, fix it there.
+      # Python version (3.12 on org.kde.Platform 6.9).
       - cd /app/share/mosaic-mod-manager && python3 -c 'import LOOT.loot'
 
       - install -d /app/bin
