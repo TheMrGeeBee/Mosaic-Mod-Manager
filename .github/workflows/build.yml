@@ -342,8 +342,8 @@ jobs:
         run: quick-sharun --test src/appimage/dist/*.AppImage
 
   # ────────────────────────────────────────────────────────────────────
-  # Flatpak bundle (KDE 6.11 runtime + PySide BaseApp).
-  # Pulls the matching libloot from libloot-flatpak, drops it into src/LOOT/
+  # Flatpak bundle (KDE 6.9 runtime + PySide BaseApp).
+  # Pulls the cp312 libloot from libloot-flatpak, drops it into src/LOOT/
   # so the manifest's `cp -a src/LOOT` step picks it up.
   # ────────────────────────────────────────────────────────────────────
   flatpak:
@@ -352,7 +352,7 @@ jobs:
     needs: libloot-flatpak
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/flathub-infra/flatpak-github-actions:kde-6.11
+      image: ghcr.io/flathub-infra/flatpak-github-actions:kde-6.9
       options: --privileged
     env:
       # Callers must pass `secrets: inherit` for these to be non-empty.
@@ -364,9 +364,8 @@ jobs:
       - name: Download libloot extension
         uses: actions/download-artifact@v4
         with:
-          name: libloot-${{ needs.libloot-flatpak.outputs.py-tag }}
+          name: libloot-cp312
           path: src/LOOT/
-
 
       # Sign the export commits at BUILD time (the action passes --gpg-sign to
       # flatpak-builder). Without this the bundle's commit is unsigned, and a
