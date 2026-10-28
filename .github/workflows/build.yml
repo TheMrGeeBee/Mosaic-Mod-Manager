@@ -261,6 +261,15 @@ jobs:
               sudo
 
       - name: Install debloated packages
+        # get-debloated-pkgs resolves its package list from
+        # api.github.com/repos/pkgforge-dev/archlinux-pkgs-debloated/releases/latest.
+        # Unauthenticated that call is capped at 60/hour PER IP, shared with
+        # every other job on the runner, so it 403s whenever the pool is busy —
+        # it killed the v1.12.8 release build. The script wraps wget/curl with
+        # an "Authorization: Bearer $GITHUB_TOKEN" header when this is set,
+        # which moves the call onto the repo's own quota instead.
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
           # icu-mini: ICU is qt6-base's largest dependency; libxml2-mini:
           # small, still a transitive dep. qt6-base-mini: debloated qt6-base
