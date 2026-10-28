@@ -34,13 +34,8 @@ jobs:
   # ────────────────────────────────────────────────────────────────────
   # libloot must be built once per target Python ABI:
   #   - Arch container (AppImage): Python 3.14 → cp314 .so
-  #   - KDE 6.11 runtime (Flatpak): Python 3.13 → cp313 .so
-  #     The runtime's Python moves with the runtime (KDE 6.9 shipped 3.12,
-  #     on freedesktop 24.08; 6.11 is on 25.08). A mismatched .so would not
-  #     fail the build on its own — it just makes `import LOOT.loot` fail
-  #     inside the Flatpak, silently disabling LOOT sorting there — so the
-  #     manifest imports it during the build as a guard. If that import
-  #     fails after a runtime bump, python-version below is what to fix.
+  #   - KDE 6.9 runtime (Flatpak): Python 3.12 → cp312 .so
+  #     (freedesktop-sdk 24.08, which KDE 6.9 inherits, ships Python 3.12)
   # Each is cached independently keyed on libloot HEAD + Python version.
   # ────────────────────────────────────────────────────────────────────
   libloot-arch:
@@ -95,23 +90,20 @@ jobs:
           if-no-files-found: error
           retention-days: 1
 
-  # libloot for Python 3.13 — needed by the Flatpak (KDE 6.11 runtime
-  # ships Python 3.13). Built on a plain Ubuntu runner with
+  # libloot for Python 3.12 — needed by the Flatpak (KDE 6.9 runtime
+  # ships Python 3.12). Built on a plain Ubuntu runner with
   # actions/setup-python because the Flathub container has no usable
   # package manager and the Arch container ships Python 3.14.
   libloot-flatpak:
-    name: libloot (KDE 6.11 / cp313)
+    name: libloot (KDE 6.9 / cp312)
     if: ${{ inputs.build_flatpak }}
     runs-on: ubuntu-latest
-    outputs:
-      py-tag: ${{ steps.detect.outputs.py-tag }}
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-python@v5
         with:
-          # Must equal the KDE runtime's Python — see the note above.
-          python-version: '3.13'
+          python-version: '3.12'
 
       - name: Resolve libloot revision
         id: detect
@@ -136,7 +128,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: libloot-${{ steps.detect.outputs.py-tag }}
+          name: libloot-cp312
           path: src/LOOT/loot.cpython-*-x86_64-linux-gnu.so
           if-no-files-found: error
           retention-days: 1
