@@ -20,14 +20,17 @@ a solid archive for every file. Each hop's result is cached keyed by
 directives is only extracted once. Member paths are matched the way Windows
 does: ``\\`` or ``/`` separators, any casing.
 
-Containers can be zip, 7z, rar, or a Bethesda BSA (v104/v105) / BA2 (read with
-``Utils.archives.bsa_file_reader.BsaFile``). A DX10 texture read out of a
+Containers can be zip, 7z, rar, an Inno Setup installer (``.exe``, extracted
+with ``innoextract``; see :func:`_extract_inno`), or a Bethesda BSA
+(v104/v105) / BA2 (read with ``Utils.archives.bsa_file_reader.BsaFile``). A DX10 texture read out of a
 BA2 gets the DDS header Wabbajack itself writes (``wabbajack_dds``), since
 Wabbajack hashed and built its patches against that exact file. Any other container format raises
 :class:`VfsResolutionError`.
 """
 from __future__ import annotations
 
+import shutil
+import subprocess
 import zipfile
 from pathlib import Path
 
@@ -36,6 +39,10 @@ from .wabbajack_hash import hash_file
 _ZIP_EXTS = (".zip",)
 _EXTRACT_WHOLE_EXTS = (".7z", ".rar")
 _BETHESDA_EXTS = (".bsa", ".ba2")
+# Inno Setup installers. Wabbajack extracts these with innoextract and records
+# the member paths innoextract produces, so Mosaic has to use it too -- see
+# _extract_inno.
+_INNO_EXTS = (".exe",)
 # ba2_extract._make_dds_header: magic + DDS_HEADER + DDS_HEADER_DXT10.
 _MOSAIC_DDS_HEADER_LEN = 4 + 124 + 20
 
@@ -44,12 +51,49 @@ def _norm_member(path: str) -> str:
     return path.replace("\\", "/").strip("/").lower()
 
 
+
 class VfsResolutionError(Exception):
     """A directive's ArchiveHashPath couldn't be resolved to a real file."""
 
 
 class _BadZipContainer(VfsResolutionError):
     """A ``.zip``-named container Python's zipfile can't read."""
+
+
+def _extract_inno(container: Path, out: Path) -> None:
+    """Extract an Inno Setup installer whole with ``innoextract``.
+
+    ``--collisions=rename-all`` is what makes the member paths line up with
+    the modlist: an Inno installer can ship several variants of one file
+    chosen by component at install time (real case: VtMB's Unofficial Patch
+    ships ``vdata/system/stats.txt`` three times, for its basic/plus/standard
+    components), and Wabbajack records those as ``stats.txt#basic`` /
+    ``stats.txt#plus`` -- innoextract's own collision-suffix spelling. The
+    default mode leaves one variant unsuffixed and would silently resolve the
+    wrong bytes for it, so every colliding variant has to be suffixed. No
+    ``--default-language``: a multi-language installer's variants are
+    suffixed the same way, and forcing one language would drop the others.
+    """
+    exe = shutil.which("innoextract")
+    if exe is None:
+        raise VfsResolutionError(
+            f"{container.name} is an Inno Setup installer and innoextract is "
+            "not installed; install it (Debian/Ubuntu: 'apt install "
+            "innoextract', Arch: 'pacman -S innoextract', Fedora: 'dnf "
+            "install innoextract') and run Repair to finish these files")
+    try:
+        proc = subprocess.run(
+            [exe, "--extract", "--collisions=rename-all", "--silent",
+             "--output-dir", str(out), str(container)],
+            stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
+            errors="replace", check=False)
+    except OSError as exc:
+        raise VfsResolutionError(f"{container}: innoextract failed to run ({exc})") from exc
+    if proc.returncode != 0:
+        detail = (proc.stdout or "").strip().splitlines()
+        raise VfsResolutionError(
+            f"{container}: innoextract failed "
+            f"({detail[-1] if detail else f'exit {proc.returncode}'})")
 
 
 class ArchiveIndex:
@@ -102,7 +146,7 @@ class ArchiveIndex:
 
     def _extract_member(self, container: Path, member_path: str) -> Path:
         ext = container.suffix.lower()
-        if ext in _EXTRACT_WHOLE_EXTS:
+        if ext in _EXTRACT_WHOLE_EXTS or ext in _INNO_EXTS:
             return self._member_of_whole_extract(container, member_path)
         self._next_id += 1
         dest = self.scratch_dir / f"{self._next_id}_{Path(member_path).name}"
@@ -162,21 +206,26 @@ class ArchiveIndex:
             raise _BadZipContainer(f"{container}: not a valid zip ({exc})") from exc
 
     def _member_of_whole_extract(self, container: Path, member_path: str) -> Path:
-        """``member_path`` from a 7z/rar (or PPMd/Deflate64 zip) container
-        extracted whole, once, into
+        """``member_path`` from a 7z/rar/Inno-installer (or PPMd/Deflate64
+        zip) container extracted whole, once, into
         the scratch dir (so on the install's own filesystem, never /tmp)."""
         key = str(container)
         members = self._extracted.get(key)
         if members is None:
-            from Utils.mods.mod_install import _extract_archive
             self._next_id += 1
             out = self.scratch_dir / f"{self._next_id}_{container.stem}.d"
             out.mkdir(parents=True, exist_ok=True)
-            errors: "list[str]" = []
-            if not _extract_archive(str(container), str(out), lambda _m: None,
-                                    error_sink=errors):
-                detail = errors[-1].strip() if errors else "no extractor could read it"
-                raise VfsResolutionError(f"{container}: extraction failed ({detail})")
+            if container.suffix.lower() in _INNO_EXTS:
+                _extract_inno(container, out)
+            else:
+                from Utils.mods.mod_install import _extract_archive
+                errors: "list[str]" = []
+                if not _extract_archive(str(container), str(out), lambda _m: None,
+                                        error_sink=errors):
+                    detail = (errors[-1].strip() if errors
+                              else "no extractor could read it")
+                    raise VfsResolutionError(
+                        f"{container}: extraction failed ({detail})")
             members = {_norm_member(p.relative_to(out).as_posix()): p
                        for p in out.rglob("*") if p.is_file()}
             self._extracted[key] = members

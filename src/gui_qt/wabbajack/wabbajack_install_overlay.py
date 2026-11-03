@@ -34,7 +34,13 @@ class WabbajackInstallOverlay(OverlayBase):
         self._total_bytes = max(1, total_bytes)
         self._active: "dict[str, list]" = {}   # hash -> [name, cur, total]
         self._done_bytes = 0
-        self._finished_archives = 0
+        # An archive can finish more than once: the installer reports every
+        # source with no automatic downloader as finished-unsuccessfully during
+        # the automatic pass, then reports it again once the find-in-downloads
+        # or manual-prompt stage resolves it. Counting per hash keeps the
+        # archive tally honest and stops a second success double-adding bytes.
+        self._settled: "set[str]" = set()      # any finish, successful or not
+        self._counted: "set[str]" = set()      # successful finishes, bytes added
         self._running = True
         p = active_palette()
         self._p = p
@@ -113,9 +119,10 @@ class WabbajackInstallOverlay(OverlayBase):
 
     def dl_finish(self, archive_hash: str, ok: bool) -> None:
         entry = self._active.pop(archive_hash, None)
-        if entry is not None and ok:
-            self._done_bytes += entry[2] or entry[1]
-        self._finished_archives += 1
+        if ok and archive_hash not in self._counted:
+            self._counted.add(archive_hash)
+            self._done_bytes += (entry[2] or entry[1]) if entry is not None else 0
+        self._settled.add(archive_hash)
         self._render_downloads()
 
     def set_download_totals(self, archives: int, total_bytes: int) -> None:
@@ -145,7 +152,7 @@ class WabbajackInstallOverlay(OverlayBase):
         frac = min(1.0, (self._done_bytes + in_flight) / self._total_bytes)
         self._dl_bar.setValue(int(frac * 1000))
         self._dl_label.setText(self.tr("Downloads: {0} of {1} archives ({2} of {3})").format(
-            min(self._finished_archives, self._total_archives), self._total_archives,
+            min(len(self._settled), self._total_archives), self._total_archives,
             fmt_size(self._done_bytes + in_flight), fmt_size(self._total_bytes)))
         rows = []
         for name, cur, total in list(self._active.values())[:_MAX_ACTIVE_SHOWN]:

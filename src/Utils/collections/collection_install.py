@@ -106,20 +106,48 @@ def _build_collision_suffix_map(
     return result
 
 
+def deploys_at_data_root(rel_path: str, strip_prefixes: "set[str]") -> bool:
+    """True when *rel_path* (a file's path relative to its mod folder) lands at
+    the TOP LEVEL of the game's data dir once deployed.
+
+    A Bethesda engine only loads plugins sitting directly in Data/. Plenty of
+    mods ship a spare copy of their plugins in a subfolder — "here are the
+    patches for mods you might also have" — e.g. ``Better Ship Part Flips/
+    Optional/BSPF-USU-Patch.esm``. Those deploy to ``Data/Optional/`` and are
+    inert, so registering them as plugins gives the user phantom rows, phantom
+    "missing master" warnings for mods they never installed, and phantom
+    entries for LOOT to sort. Worse, enough of them trip the plugin panel's
+    mass-miss guard (``_PRUNE_MAX``), which then refuses to prune ANY stale
+    entry, so they persist for the life of the profile. Observed on Starfield
+    Revisited Rev67: 18 such plugins from three mods, 12 of them reporting a
+    master that collection never included.
+
+    A leading strip-prefix segment is removed first (``game.mod_folder_strip_
+    prefixes``, e.g. Bethesda's ``Data``), because the filemap builder strips it
+    too — ``Customizable Item Sorter/Data/Item Sorter.esm`` really does deploy to
+    the root. Mirrors ``plugin_state._filemap_deployed_plugins``, which already
+    applies this rule ("top-level plugins only (matches deploy layout)") to the
+    finished filemap.
+    """
+    parts = [seg for seg in rel_path.replace("\\", "/").split("/") if seg]
+    if len(parts) > 1 and parts[0].lower() in {p.lower() for p in (strip_prefixes or ())}:
+        parts = parts[1:]
+    return len(parts) == 1
+
+
 def _fomod_choices_from_collection(choices: dict) -> "dict[str, dict[str, list[str]]]":
     """Convert a collection.json FOMOD ``choices`` block to the saved_selections
-    format ``{str(step_idx): {group: [plugins]}}`` that ``resolve_files`` expects."""
-    result: dict = {}
-    for step_idx, step in enumerate(choices.get("options", [])):
-        groups: dict = {}
-        for group in step.get("groups", []):
-            group_name = group.get("name", "")
-            plugin_names = [c["name"] for c in group.get("choices", []) if c.get("name")]
-            if plugin_names:
-                groups[group_name] = plugin_names
-        if groups:
-            result[str(step_idx)] = groups
-    return result
+    format ``{str(step_idx): {group: [plugins]}}`` that ``resolve_files`` expects.
+
+    One implementation, in ``collection_fomod_audit``, shared with the installer's
+    apply-time resolution and the CLI auditor. It keeps a group the author left
+    empty as an explicit ``[]`` rather than dropping it: ``_selected_in_group``
+    treats an explicit empty entry as "the author chose nothing here" and an
+    ABSENT group as "fall back to the cross-step group-name map", so dropping it
+    let another step's same-named group bleed in.
+    """
+    from Utils.collections.collection_fomod_audit import convert_choices
+    return convert_choices(choices)
 
 
 # ---------------------------------------------------------------------------
@@ -151,6 +179,10 @@ class CollectionSchemaIndex:
     file_id_to_suffix: "dict[int, str]"
     pos_to_name: "dict[int, str]"
     fomod_by_file_id: "dict[int, dict]"
+    # fileId -> the raw manifest ``choices`` block, kept alongside the converted
+    # selections so the installer can resolve the author's picks against the
+    # ModuleConfig.xml it actually downloaded and report any that don't match.
+    fomod_raw_by_file_id: "dict[int, dict]"
     bain_by_file_id: "dict[int, dict]"
     # fileId -> [{"path","md5"}, …]. Vortex records a FOMOD author's install
     # EITHER as replayable ``choices`` OR as ``hashes`` — the resulting file
@@ -186,6 +218,7 @@ def _build_schema_index(collection_schema: dict) -> CollectionSchemaIndex:
     # modlist) — manual mode prompts in the order the author listed the mods.
     schema_file_id_to_arrayidx: dict[int, int] = {}
     fomod_by_file_id: dict[int, dict] = {}
+    fomod_raw_by_file_id: dict[int, dict] = {}
     bain_by_file_id: dict[int, dict] = {}
     file_id_to_hashes: dict[int, list[dict]] = {}
     _raw_logical: dict[int, str] = {}
@@ -244,12 +277,20 @@ def _build_schema_index(collection_schema: dict) -> CollectionSchemaIndex:
             except (TypeError, ValueError):
                 schema_file_id_to_phase[fid] = 0
             choices = schema_mod.get("choices") or {}
+            # .get, not []: a manifest carrying the type but no "selections" key
+            # would otherwise raise KeyError straight out of this index build,
+            # which is called unwrapped — aborting the ENTIRE collection install
+            # over one malformed entry instead of just that mod.
             if choices.get("type") == "fomod":
                 fomod_by_file_id[fid] = _fomod_choices_from_collection(choices)
+                # The raw block too: at apply time the FOMOD is parsed, so the
+                # author's picks can be matched against the options this
+                # download actually has (and ``idx`` can rescue a renamed one).
+                fomod_raw_by_file_id[fid] = choices
             elif choices.get("type") == "fomod_selections":
-                fomod_by_file_id[fid] = choices["selections"]
+                fomod_by_file_id[fid] = choices.get("selections") or {}
             elif choices.get("type") == "bain_selections":
-                bain_by_file_id[fid] = choices["selections"]
+                bain_by_file_id[fid] = choices.get("selections") or {}
             # Only entries carrying BOTH a path and an md5 are usable; a
             # partial list would resolve to a partial install.
             _hs = [h for h in (schema_mod.get("hashes") or [])
@@ -276,6 +317,7 @@ def _build_schema_index(collection_schema: dict) -> CollectionSchemaIndex:
         file_id_to_suffix=schema_file_id_to_suffix,
         pos_to_name=schema_pos_to_name,
         fomod_by_file_id=fomod_by_file_id,
+        fomod_raw_by_file_id=fomod_raw_by_file_id,
         bain_by_file_id=bain_by_file_id,
         file_id_to_hashes=file_id_to_hashes,
     )
@@ -411,7 +453,7 @@ class _PipelineState:
       ``dl_results``, ``per_mod_prev`` and ``dl_last_emit``.
     * ``install_lock`` guards ``install_counters``, ``install_results``,
       ``fomod_deferred``, ``bain_deferred``, ``archive_use_count``,
-      ``external_archive_paths`` and ``mod_outcomes``.
+      ``external_archive_paths``, ``mod_outcomes`` and ``fomod_outcomes``.
     * ``iq_seq_lock`` guards only the install-queue sequence counter.
 
     ``mod_outcomes`` is also written unlocked during the single-threaded
@@ -443,6 +485,11 @@ class _PipelineState:
     archive_use_count: "dict[str, int]" = field(default_factory=dict)
     external_archive_paths: "set[str]" = field(default_factory=set)
     mod_outcomes: "dict[int, dict]" = field(default_factory=dict)
+    # display name -> how its FOMOD was answered (author_choices | author_hashes
+    # | defaults | wizard), for the end-of-install FOMOD summary. Keyed on the
+    # name rather than the fileId so off-site mods, which have none, are counted
+    # too — and the name is what the summary prints anyway. (install_lock)
+    fomod_outcomes: "dict[str, str]" = field(default_factory=dict)
 
 
 # ---------------------------------------------------------------------------
@@ -546,11 +593,54 @@ _RETRYABLE_STATUSES = frozenset({"download_failed"})
 _PLAIN_ONLY_STATUSES = frozenset({"stage_empty", "deferred", "unknown"})
 
 
+def build_fomod_summary(fomod_outcomes: "dict[str, str]") -> dict:
+    """Group ``{mod name: outcome}`` into the end-of-install FOMOD summary.
+
+    This is the answer to "did the installer follow the collection's FOMOD
+    settings?" — a question the log could not answer before, because every
+    FOMOD logged the same line whether the author had recorded its choices or
+    not. ``unspecified`` is the list that matters: mods the collection recorded
+    nothing for, which were installed with the FOMOD's own defaults.
+    """
+    counts = {"author_choices": 0, "author_hashes": 0, "defaults": 0, "wizard": 0}
+    unspecified: list[str] = []
+    answered: list[str] = []
+    for name, outcome in fomod_outcomes.items():
+        if outcome in counts:
+            counts[outcome] += 1
+        if outcome == "defaults":
+            unspecified.append(name)
+        elif outcome == "wizard":
+            answered.append(name)
+    return {"counts": counts, "total": len(fomod_outcomes),
+            "unspecified": sorted(unspecified), "answered_by_user": sorted(answered)}
+
+
+def log_fomod_summary(summary: dict, log) -> None:
+    """Write *summary* to the install log. No-op when the collection had no
+    FOMODs at all, so a collection of plain archives stays quiet."""
+    if not summary.get("total"):
+        return
+    c = summary["counts"]
+    log(f"Collection FOMOD summary: {c['author_choices']} used the author's "
+        f"recorded choices, {c['author_hashes']} used a recorded file manifest, "
+        f"{c['defaults']} had no recorded choices and used the FOMOD's own "
+        f"defaults, {c['wizard']} asked you.")
+    if summary["unspecified"]:
+        log("  The collection left these mods' FOMOD options unspecified — "
+            "defaults were applied, review them if a mod looks wrong:")
+        for _n in summary["unspecified"]:
+            log(f"    • {_n}")
+
+
 def build_install_report(missing, *, total: int, slug: str = "",
-                         revision: "int | None" = None) -> dict:
+                         revision: "int | None" = None,
+                         fomod: "dict | None" = None) -> dict:
     """The end-of-install report: which mods are not in the profile and why.
 
     *missing* is the audit's list of ``(name, mod_id, file_id, status, detail)``.
+    *fomod* is :func:`build_fomod_summary`'s output, carried so the profile's
+    ``install_report.json`` records which mods the collection didn't specify.
     """
     failed = []
     for name, mod_id, file_id, status, detail in missing:
@@ -563,7 +653,8 @@ def build_install_report(missing, *, total: int, slug: str = "",
             "retryable": status in _RETRYABLE_STATUSES,
         })
     return {"collection": slug, "revision": revision, "total": int(total),
-            "failed_count": len(failed), "failed": failed, "warnings": []}
+            "failed_count": len(failed), "failed": failed, "warnings": [],
+            "fomod": fomod or {}}
 
 
 def write_install_report(profile_dir: "Path | None", report: dict) -> "Path | None":
@@ -1439,6 +1530,7 @@ def run_collection_install(
 
         archive_path = str(result.file_path)
         auto_fomod = idx.fomod_by_file_id.get(mod.file_id)
+        auto_choices = idx.fomod_raw_by_file_id.get(mod.file_id)
         auto_bain = idx.bain_by_file_id.get(mod.file_id)
         # Only consulted when the author recorded no replayable choices — see
         # CollectionSchemaIndex.file_id_to_hashes.
@@ -1450,8 +1542,12 @@ def run_collection_install(
         _mem_budget.acquire(_extract_est)
         _fomod_flag = {"value": False}
 
-        def _capture_fomod(is_fomod=False):
+        def _capture_fomod(is_fomod=False, fomod_outcome=""):
             _fomod_flag["value"] = is_fomod
+            if fomod_outcome:
+                with state.install_lock:
+                    state.fomod_outcomes[_preferred or (mod.mod_name or "")] = \
+                        fomod_outcome
 
         cb.on_extract_add(mod.file_id, _preferred or (mod.mod_name or mod.file_name or ""))
         try:
@@ -1460,7 +1556,13 @@ def run_collection_install(
                 progress_fn=lambda d, t, p=None, _f=mod.file_id:
                     cb.on_extract_update(_f, int(d), int(t)),
                 fomod_auto_selections=auto_fomod, bain_auto_selections=auto_bain,
-                fomod_auto_hashes=auto_hashes,
+                fomod_auto_hashes=auto_hashes, fomod_auto_choices=auto_choices,
+                # Unattended: a FOMOD the manifest records nothing for has no
+                # author intent to follow, so install what the FOMOD itself
+                # defaults to instead of stopping the whole collection on a
+                # wizard. The end-of-install summary names every mod that took
+                # this path so they can be reviewed.
+                fomod_no_choice_action="defaults",
                 prebuilt_meta=_pmeta, preferred_name=_preferred,
                 skip_index_update=True, overwrite_existing=overwrite_existing,
                 # Always True here, not (auto_fomod is None): this caller always
@@ -1581,9 +1683,15 @@ def run_collection_install(
     def _write_preliminary_plugins_txt(label: str) -> None:
         try:
             import os as _os
-            _plugin_exts = (".esm", ".esl", ".esp")
+            # The game's own list, not a hardcoded one (BG3 and friends differ).
+            _plugin_exts = tuple(
+                e.lower() for e in (getattr(game, "plugin_extensions", None) or ())
+            ) or (".esm", ".esl", ".esp")
+            _strip = set(getattr(game, "mod_folder_strip_prefixes", None) or ())
+            _strip |= set(getattr(game, "mod_folder_strip_prefixes_post", None) or ())
             _pre_plugins: list = []
             _seen_plugins: set = set()
+            _skipped_nested = 0
             _pre_staging = game.get_effective_mod_staging_path()
             with state.install_lock:
                 _pre_results = dict(state.install_results)
@@ -1593,17 +1701,29 @@ def run_collection_install(
                     continue
                 for _root, _dirs, _files in _os.walk(str(_mod_dir)):
                     for _fn in _files:
-                        if _fn.lower().endswith(_plugin_exts):
-                            _pname_low = _fn.lower()
-                            if _pname_low not in _seen_plugins:
-                                _seen_plugins.add(_pname_low)
-                                _pre_plugins.append(PluginEntry(name=_fn, enabled=True))
+                        if not _fn.lower().endswith(_plugin_exts):
+                            continue
+                        # Only plugins that actually land in the data dir's top
+                        # level — a subfolder copy never loads, so listing it
+                        # here is a phantom entry the panel can never clear.
+                        _rel = _os.path.relpath(_os.path.join(_root, _fn),
+                                                str(_mod_dir))
+                        if not deploys_at_data_root(_rel, _strip):
+                            _skipped_nested += 1
+                            continue
+                        _pname_low = _fn.lower()
+                        if _pname_low not in _seen_plugins:
+                            _seen_plugins.add(_pname_low)
+                            _pre_plugins.append(PluginEntry(name=_fn, enabled=True))
             if _pre_plugins:
                 _star_pre = getattr(game, "plugins_use_star_prefix", True)
                 write_plugins(profile_dir / "plugins.txt", _pre_plugins, star_prefix=_star_pre)
                 write_loadorder(profile_dir / "loadorder.txt", _pre_plugins)
                 log(f"Collection install: wrote preliminary plugins.txt "
-                    f"({len(_pre_plugins)} plugin(s)) — {label}.")
+                    f"({len(_pre_plugins)} plugin(s)) — {label}."
+                    + (f" Skipped {_skipped_nested} plugin(s) in mod subfolders "
+                       f"(they deploy below the data root and never load)."
+                       if _skipped_nested else ""))
         except Exception as _pre_exc:
             log(f"Collection install: preliminary plugins.txt skipped — {_pre_exc}")
 
@@ -1739,6 +1859,13 @@ def run_collection_install(
     if not _col_stop.is_set():
         _offsite_unresolved: "list[tuple[str, str]]" = []
         _offsite_dirs = _scan_dirs(include_all=True)
+
+        def _mk_offsite_fomod_recorder(name: str):
+            def _rec(is_fomod=False, fomod_outcome=""):
+                if fomod_outcome:
+                    with state.install_lock:
+                        state.fomod_outcomes[name] = fomod_outcome
+            return _rec
         for _oi, _osmod in enumerate(idx.mods):
             _osrc = _osmod.get("source") or {}
             _ostype = (_osrc.get("type") or "").lower()
@@ -1820,12 +1947,28 @@ def run_collection_install(
                     game_domain=game_domain, mod_id=0, file_id=0,
                     archive_name=_found.name, from_collection=_slug)
                 _opmeta.nexus_name = _osname
+                # Off-site entries carry no fileId, so none of the fileId-keyed
+                # maps can reach them — but the manifest entry is right here, so
+                # read the author's recording straight off it. Without this an
+                # off-site FOMOD was the one kind that always fell through to the
+                # wizard even when the collection had recorded every pick.
+                _ochoices = _osmod.get("choices") or {}
+                _ofomod = (_fomod_choices_from_collection(_ochoices)
+                           if _ochoices.get("type") == "fomod" else None)
+                _oraw = _ochoices if _ochoices.get("type") == "fomod" else None
+                _ohashes = [h for h in (_osmod.get("hashes") or [])
+                            if isinstance(h, dict) and h.get("path") and h.get("md5")]
                 _ofolder = install_collection_archive(
                     str(_found), game, profile_dir, log_fn=log,
+                    fomod_auto_selections=_ofomod,
+                    fomod_auto_hashes=_ohashes or None,
+                    fomod_auto_choices=_oraw,
+                    fomod_no_choice_action="defaults",
                     prebuilt_meta=_opmeta, preferred_name=_osname,
                     skip_index_update=True, overwrite_existing=overwrite_existing,
                     defer_interactive_fomod=True, defer_interactive_bain=True,
                     resolve_fomod=cb.resolve_fomod, resolve_bain=cb.resolve_bain,
+                    on_installed=_mk_offsite_fomod_recorder(_osname),
                     cancel=_col_stop)
             except Exception as _oexc:
                 log(f"Off-site mod install failed for '{_osname}': {_oexc}")
@@ -1899,7 +2042,9 @@ def run_collection_install(
             state.install_counters, state.install_lock, state.archive_use_count,
             state.external_archive_paths, _col_stop, _slug, overwrite_existing,
             _write_preliminary_plugins_txt, _maybe_delete_archive, cb, log, _set_status,
-            file_id_to_hashes=idx.file_id_to_hashes)
+            file_id_to_hashes=idx.file_id_to_hashes,
+            fomod_raw_by_file_id=idx.fomod_raw_by_file_id,
+            fomod_outcomes=state.fomod_outcomes)
 
     installed += state.install_counters["installed"]
     skipped += state.install_counters["skipped"]
@@ -2108,9 +2253,13 @@ def run_collection_install(
                                      getattr(mod, "mod_id", 0) or 0, fid,
                                      oc.get("status", "unknown"),
                                      oc.get("detail", "")))
+            with state.install_lock:
+                _fomod_summary = build_fomod_summary(dict(state.fomod_outcomes))
+            log_fomod_summary(_fomod_summary, log)
             _report = build_install_report(
                 _missing, total=len([m for m in ordered_mods if getattr(m, "file_id", 0)]),
-                slug=collection_slug, revision=revision_number)
+                slug=collection_slug, revision=revision_number,
+                fomod=_fomod_summary)
             _report["warnings"] = _audit_profile(game, profile_dir, modlist_path,
                                                   _final_staging, log)
             write_install_report(profile_dir, _report)
@@ -2137,7 +2286,18 @@ def run_collection_install(
             _extra_meta_ready.wait(timeout=30.0)
             if _extra_meta:
                 from Nexus.nexus_meta import read_meta, write_meta
-                _staging_for_backfill = game.get_effective_mod_staging_path()
+                # The staging path captured for THIS install, not a fresh
+                # game.get_effective_mod_staging_path() — same reason as the
+                # verification block above, which already carries this fix. The
+                # active profile has been restored to old_profile_dir by now, so
+                # a fresh call resolves the PREVIOUS profile's mods dir and this
+                # pass backfills the wrong profile: observed 2026-10-28
+                # installing a second Starfield collection while another profile
+                # was active, which wrote Odyssey's category/endorsement into 112
+                # of Starfield Revisited's mods (every folder name the two
+                # collections share) and reconciled none of the mods actually
+                # just installed.
+                _staging_for_backfill = staging_path
                 _updated = 0
                 for fid, folder in state.install_results.items():
                     mid = idx.file_id_to_mod_id.get(fid, 0)
@@ -2197,7 +2357,8 @@ def _process_deferred(
         _install_counters, _install_lock, _archive_use_count,
         _external_archive_paths, _col_stop, _slug, overwrite_existing,
         _write_preliminary_plugins_txt, _maybe_delete_archive, cb, log, _set_status,
-        *, file_id_to_hashes=None):
+        *, file_id_to_hashes=None, fomod_raw_by_file_id=None,
+        fomod_outcomes=None):
     from Nexus.nexus_meta import build_meta_from_download
 
     def _mk_meta_and_name(mod, domain):
@@ -2227,6 +2388,17 @@ def _process_deferred(
         pref = (logical or schema_name or mod.mod_name or "") \
             + schema_file_id_to_suffix.get(mod.file_id, "")
         return pmeta, pref
+
+    def _mk_fomod_recorder(name: str):
+        """``on_installed`` callback that files this mod's FOMOD outcome under
+        *name* for the end-of-install summary. The deferred pass is where the
+        mods with no recorded choices end up, so leaving it out would omit
+        exactly the ones worth naming."""
+        def _rec(is_fomod=False, fomod_outcome=""):
+            if fomod_outcome and fomod_outcomes is not None:
+                with _install_lock:
+                    fomod_outcomes[name] = fomod_outcome
+        return _rec
 
     def _record(mod, folder):
         with _install_lock:
@@ -2309,10 +2481,13 @@ def _process_deferred(
                     # without this it would then open the wizard despite the
                     # author having recorded the exact file set.
                     fomod_auto_hashes=(file_id_to_hashes or {}).get(_mod.file_id),
+                    fomod_auto_choices=(fomod_raw_by_file_id or {}).get(_mod.file_id),
+                    fomod_no_choice_action="defaults",
                     bain_auto_selections=bain_by_file_id.get(_mod.file_id),
                     prebuilt_meta=_pmeta, preferred_name=_pref,
                     skip_index_update=True, overwrite_existing=overwrite_existing,
                     resolve_fomod=cb.resolve_fomod, resolve_bain=cb.resolve_bain,
+                    on_installed=_mk_fomod_recorder(_pref or (_mod.mod_name or "")),
                     cancel=_col_stop)
             except Exception as _exc:
                 log(f"Collection install: failed to install deferred FOMOD "

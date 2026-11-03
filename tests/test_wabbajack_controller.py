@@ -199,15 +199,42 @@ def test_import_view_requires_a_profile_choice_when_there_are_several(qapp):
                                on_install=chosen.append, on_login=lambda: None)
     view.show()
     qapp.processEvents()
-    install = next(b for b in view.findChildren(QPushButton) if b.text() == "Install as new profile")
+    install = next(b for b in view.findChildren(QPushButton)
+                   if b.text() == "Install as new profile")
     assert not install.isEnabled()  # nothing preselected
-    assert view._profile_combo.currentData() is None
+    assert view.selected_profiles() == []
 
-    view._profile_combo.setCurrentIndex(2)
+    view._profile_list.item(1).setCheckState(Qt.Checked)
     qapp.processEvents()
     assert install.isEnabled()
     QTest.mouseClick(install, Qt.LeftButton)
-    assert chosen == ["Horizon - Steam"]
+    assert chosen == [["Horizon - Steam"]]
+
+
+def test_import_view_installs_every_ticked_profile(qapp):
+    """A modlist's profiles are variants of one setup, so several can be
+    installed at once -- the VtMB list Fashionista - Steam ships 17."""
+    from gui_qt.wabbajack.wabbajack_import_view import WabbajackImportView
+    from Utils.wabbajack.wabbajack_manifest import parse_modlist
+    chosen = []
+    view = WabbajackImportView(parse_modlist({"Name": "Fashionista"}), [],
+                               profiles=["Fashionista", "LA by Night", "War Games"],
+                               on_install=chosen.append, on_login=lambda: None)
+    view.show()
+    qapp.processEvents()
+    QTest.mouseClick(next(b for b in view.findChildren(QPushButton)
+                          if b.text() == "Select all"), Qt.LeftButton)
+    qapp.processEvents()
+    install = next(b for b in view.findChildren(QPushButton)
+                   if b.text() == "Install as 3 new profiles")
+    assert install.isEnabled()
+    QTest.mouseClick(install, Qt.LeftButton)
+    assert chosen == [["Fashionista", "LA by Night", "War Games"]]
+
+    QTest.mouseClick(next(b for b in view.findChildren(QPushButton)
+                          if b.text() == "Select none"), Qt.LeftButton)
+    qapp.processEvents()
+    assert not install.isEnabled() and view.selected_profiles() == []
 
 
 def test_import_view_has_no_picker_for_a_single_profile(qapp):
@@ -216,10 +243,10 @@ def test_import_view_has_no_picker_for_a_single_profile(qapp):
     chosen = []
     view = WabbajackImportView(parse_modlist({}), [], profiles=["Main"],
                                on_install=chosen.append, on_login=lambda: None)
-    assert view._profile_combo is None
+    assert view._profile_list is None
     QTest.mouseClick(next(b for b in view.findChildren(QPushButton)
                           if b.text() == "Install as new profile"), Qt.LeftButton)
-    assert chosen == [None]
+    assert chosen == [[]]
 
 
 def test_install_summary_groups_skipped_files():
@@ -257,9 +284,9 @@ def test_controller_passes_the_chosen_profile_to_the_install(qapp, tmp_path, mon
     controller = wc.WabbajackController(win)
     controller._path = tmp_path / "Horizon.wabbajack"
     controller._modlist = parse_modlist({"Name": "Horizon"})
-    controller._start_install("Horizon - Steam")
-    _wait_until(qapp, lambda: win.selected == ["Horizon"])
-    assert seen["profile_name"] == "Horizon - Steam"
+    controller._start_install(["Horizon - Steam"])
+    _wait_until(qapp, lambda: win.selected == ["Horizon_-_Steam"])
+    assert list(seen["profile_dirs"]) == ["Horizon - Steam"]
 
 
 def test_cancel_install_from_the_download_prompt_stops_the_install(qapp, tmp_path, monkeypatch):
@@ -314,3 +341,47 @@ def test_cancel_install_from_the_download_prompt_stops_the_install(qapp, tmp_pat
         if shiboken6.isValid(win):
             shiboken6.delete(win)
         qapp.processEvents()
+
+
+def test_manual_archive_bytes_reach_the_progress_total(qapp):
+    """An archive with no automatic downloader must still count its bytes once
+    the find-in-downloads or manual stage resolves it.
+
+    Regression, real case: installing "Fashionista - Steam" with all 17
+    profiles sat at "275 of 275 archives (54.6 GB of 57.2 GB)" for the whole
+    build. ``_download_all`` reports every source without an automatic
+    downloader as finished-unsuccessfully during the automatic pass, so the
+    archive tally completed early while the 71 ModDB archives' 2.53 GiB never
+    landed -- the shortfall was exactly their combined size.
+    """
+    from gui_qt.wabbajack.wabbajack_install_overlay import WabbajackInstallOverlay
+
+    host = QMainWindow()
+    host.resize(900, 600)
+    overlay = WabbajackInstallOverlay.show_over(
+        host, "Installing", total_archives=2, total_bytes=300, on_cancel=lambda: None)
+    qapp.processEvents()
+
+    # One ordinary archive downloaded automatically.
+    overlay.dl_start("auto", "auto.7z", 100)
+    overlay.dl_progress("auto", 100, 100)
+    overlay.dl_finish("auto", True)
+
+    # One manual archive: the automatic pass gives up on it...
+    overlay.dl_start("manual", "manual.7z", 200)
+    overlay.dl_finish("manual", False)
+    assert overlay._done_bytes == 100
+    assert len(overlay._settled) == 2          # both archives already tallied
+
+    # ...then it's found in the user's downloads and re-reported.
+    overlay.dl_start("manual", "manual.7z", 200)
+    overlay.dl_finish("manual", True)
+
+    assert overlay._done_bytes == 300, "manual archive's bytes must reach the total"
+    assert len(overlay._settled) == 2, "re-reporting must not inflate the archive count"
+
+    # A third success for the same hash must not double-add.
+    overlay.dl_start("manual", "manual.7z", 200)
+    overlay.dl_finish("manual", True)
+    assert overlay._done_bytes == 300
+    host.close()

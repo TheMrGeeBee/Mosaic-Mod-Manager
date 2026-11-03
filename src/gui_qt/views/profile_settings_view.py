@@ -27,6 +27,7 @@ from gui_qt.icons import icon
 from gui_qt.safe_emit import safe_emit
 from Utils.profile.profile_state import (
     read_profile_settings, merge_profile_settings, profile_uses_specific_mods,
+    shared_mods_dependents, hand_over_shared_mods, read_shared_mods,
 )
 from Utils.xdg import xdg_open
 
@@ -407,12 +408,44 @@ class ProfileSettingsView(QWidget):
             def proceed():
                 self._start_remove_worker(profile, is_deployed)
 
+            shared = (profile_dir / "mods").is_symlink()
+            borrowers = [] if shared else shared_mods_dependents(
+                profile_dir.parent, profile_dir)
             if profile_dir.is_dir() and profile_uses_specific_mods(profile_dir):
+                # A profile installed from a multi-profile Wabbajack modlist
+                # shares its mods with its siblings, so removing it deletes
+                # only its own settings -- saying otherwise would scare the
+                # user off a safe action.
+                if shared:
+                    whose = (
+                        "the other profiles from the same Wabbajack modlist"
+                        if read_shared_mods(profile_dir) else "another profile")
+                    body = (
+                        f"The '{profile}' profile shares its installed mods with "
+                        f"{whose}.\n\n"
+                        "Removing it deletes this profile's modlist and settings. The "
+                        "shared mods stay until the last of those profiles is removed. "
+                        "Continue?"
+                    )
+                elif borrowers:
+                    # Duplicates of this profile are using its mods folder; it
+                    # moves to the first of them instead of being deleted.
+                    names = ", ".join(f"'{d.name}'" for d in borrowers)
+                    body = (
+                        f"The '{profile}' profile's installed mods are also used by "
+                        f"{names}.\n\n"
+                        f"Removing it deletes this profile's modlist and settings, and "
+                        f"hands the mods to '{borrowers[0].name}' so those profiles keep "
+                        "working. Continue?"
+                    )
+                else:
+                    body = (
+                        f"The '{profile}' profile has profile-specific mods.\n\n"
+                        "Removing it will permanently delete its installed mods and "
+                        "modlist. Continue?"
+                    )
                 ConfirmOverlay.show_over(
-                    self._overlay_host(), "Remove Profile",
-                    f"The '{profile}' profile has profile-specific mods.\n\n"
-                    "Removing it will permanently delete its installed mods and "
-                    "modlist. Continue?",
+                    self._overlay_host(), "Remove Profile", body,
                     on_done=lambda ok2: proceed() if ok2 else None,
                     confirm_label=self.tr("Remove"))
             else:
@@ -449,13 +482,29 @@ class ProfileSettingsView(QWidget):
         from Utils.exe_launch.game_helpers import _GAMES
         game = _GAMES.get(self._game_name)
 
+        # Resolve before the delete: afterwards the link is gone.
+        shared_dir = None
+        try:
+            mods = profile_dir / "mods"
+            shared_dir = mods.resolve() if mods.is_symlink() else None
+        except OSError:
+            pass
+
         def worker():
             ok = True
             try:
                 if is_deployed and game is not None:
                     self._restore_before_remove(game, profile_dir)
                 if profile_dir.is_dir():
+                    # Duplicates link at this profile's mods folder; move it to
+                    # one of them before the delete takes it with us.
+                    heir = hand_over_shared_mods(profile_dir.parent, profile_dir)
+                    if heir is not None:
+                        self._log(f"Moved the mods shared with other profiles "
+                                  f"to '{heir.name}'.")
                     shutil.rmtree(profile_dir)
+                if shared_dir is not None:
+                    self._sweep_shared_mods(profile_dir.parent, shared_dir)
             except Exception as exc:
                 ok = False
                 self._log(f"Remove failed: {exc}")
@@ -464,6 +513,24 @@ class ProfileSettingsView(QWidget):
                 safe_emit(self._remove_finished, profile, ok)
 
         threading.Thread(target=worker, daemon=True, name="profile-remove").start()
+
+    def _sweep_shared_mods(self, profiles_dir: Path, shared_dir: Path) -> None:
+        """Delete a shared mods folder once no profile links to it any more.
+        It lives outside every profile, so removing the last of a modlist's
+        profiles would otherwise leave its mods behind for good."""
+        from Utils.profile.profile_state import shared_mods_users
+        if shared_mods_users(profiles_dir, shared_dir):
+            return
+        if Path(profiles_dir).resolve() in Path(shared_dir).resolve().parents:
+            # Not a pool of its own: these mods belong to another profile, and
+            # that profile's own removal is what cleans them up.
+            return
+        try:
+            shutil.rmtree(shared_dir)
+            self._log(f"Removed the shared mods folder {shared_dir.name} "
+                      "(no profile uses it any more).")
+        except OSError as exc:
+            self._log(f"Could not remove the shared mods folder {shared_dir}: {exc}")
 
     def _restore_before_remove(self, game, profile_dir: Path):
         """Restore the deployed game folder for *profile_dir* before deleting it.

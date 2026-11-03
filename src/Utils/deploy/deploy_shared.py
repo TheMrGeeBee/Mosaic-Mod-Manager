@@ -1085,7 +1085,31 @@ def _do_link_ex(src: str, dst: str, mode: LinkMode) -> tuple["LinkMode | None", 
     Returns (effective_mode, None) on success — effective_mode reflects the
     real transfer used after any hardlink → symlink → copy fallback, so the
     caller can report a per-mode breakdown. Returns (None, OSError) on failure.
+
+    An ENOENT whose destination parent is missing is retried once after
+    creating it. Callers pre-create the directories they expect to need, but a
+    gap there turns into a silently skipped mod file: the transfer fails, a
+    WARN is logged among thousands of lines, and the deploy still reports
+    success. Seen 2026-10-28 on a Starfield profile whose filemap spelled a
+    folder "Video/" while the deployed one was "video/" — three mod files,
+    including a main-menu replacement, never reached the game and the stock
+    file silently stood in.
     """
+    eff, err = _link_attempt(src, dst, mode)
+    if err is None or getattr(err, "errno", None) != errno.ENOENT:
+        return eff, err
+    parent = os.path.dirname(dst)
+    if not parent or os.path.isdir(parent) or not os.path.lexists(src):
+        return eff, err          # not a missing-parent ENOENT — report as-is
+    try:
+        os.makedirs(parent, exist_ok=True)
+    except OSError:
+        return eff, err
+    return _link_attempt(src, dst, mode)
+
+
+def _link_attempt(src: str, dst: str, mode: LinkMode) -> tuple["LinkMode | None", OSError | None]:
+    """One transfer attempt, with the hardlink → symlink → copy fallbacks."""
     try:
         if mode is LinkMode.HARDLINK:
             try:

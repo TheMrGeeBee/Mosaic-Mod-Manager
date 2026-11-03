@@ -1159,6 +1159,7 @@ def restore_data_core(
     index_path: Path | None = None,
     log_fn=None,
     restore_whitelist=None,
+    runtime_dirs: "set[str] | None" = None,
 ) -> int:
     """Undo a deploy: clear deploy_dir and move core_dir contents back.
 
@@ -1176,6 +1177,15 @@ def restore_data_core(
                      root (e.g. Profiles/<game>/mods/).
     strip_prefixes — top-level folder names to try when resolving staging paths
                      (e.g. {"Data"} for Bethesda games).
+    runtime_dirs   — top-level folders (lowercase) holding state the game
+                     writes at runtime, e.g. {"save"}.  A real file under one
+                     of these is ALWAYS rescued to overwrite/, never matched
+                     against the mod index: a mod shipping a file at the same
+                     relative path would otherwise make the player's own file
+                     look like a mod file and get it deleted.  Real case: VtMB
+                     saves to save/autosave.sav and three mods in Fashionista's
+                     pool ship that exact path, so a profile switch destroyed
+                     the savegame.
     restore_whitelist — optional matcher (over lowercased deploy_dir-relative
                      paths) whose matches are kept in the game folder: moved
                      into core_dir so the swap restores them in place, never
@@ -1225,6 +1235,7 @@ def restore_data_core(
         # or hardlink).  An "original" deploy shares the core inode (hardlink)
         # or matches size+mtime (copy).  A replaced file fails both checks.
         _t_rescue_start = _time.perf_counter()
+        _runtime_tops = {d.strip("/").lower() for d in (runtime_dirs or ()) if d}
 
         def _lstat_or_none(p: str) -> "os.stat_result | None":
             try:
@@ -1415,6 +1426,19 @@ def restore_data_core(
             if (_ds is not None and st.st_size == _ds[0]
                     and abs(st.st_mtime_ns - _ds[1]) <= _MTIME_TOLERANCE_NS):
                 continue  # unmodified deployed file — discard, don't rescue
+            if _runtime_tops and rel_lower.split("/", 1)[0] in _runtime_tops:
+                # Runtime state the game owns (see runtime_dirs).  Checked
+                # before the filemap/modindex match so a mod shipping the same
+                # relative path can't make the player's file look like a mod
+                # file.  Deployed mod copies never reach here: symlinks and
+                # hardlinks were filtered out above, so this is a real file the
+                # game wrote.
+                dst_str = _overwrite_str + "/" + rel_str
+                _move_crash_safe(src_str, dst_str)
+                rescued += 1
+                rescued_to_overwrite += 1
+                rescued_overwrite_rels.append(rel_str)
+                continue
             if rel_lower in filemap_root_lower:
                 # Root-flagged mod file deployed into deploy_dir (e.g. a
                 # mod shipping its own Data/Fallout4.esm).  Owned by

@@ -8,6 +8,7 @@ from Utils.wabbajack.wabbajack_preflight import (
     FIX_LOVERSLAB_LOGIN,
     check_directives,
     check_game,
+    check_inno_tool,
     check_sources,
     run_preflight,
 )
@@ -119,3 +120,39 @@ def test_run_preflight_includes_disk_space_with_modlist_wording(tmp_path):
     assert not disk.ok and disk.blocking
     assert disk.detail.startswith("The modlist needs")
     assert [c.key for c in checks] == ["game", "directives", "sources", "disk-space"]
+
+
+# --- Inno Setup installers --------------------------------------------------
+
+def _inno_modlist(*, used=True, name="setup.exe"):
+    """A modlist whose files come from inside an installer archive."""
+    archive = {"Hash": "exe1", "Name": name, "Size": 1,
+               "State": {"$type": "HttpDownloader, Wabbajack.Lib"}}
+    path = ["exe1", r"app\\data\\thing.txt"] if used else ["exe1"]
+    directive = {"$type": "FromArchive, Wabbajack.Lib", "To": "mods/M/thing.txt",
+                 "Hash": "h", "Size": 1, "ArchiveHashPath": path}
+    return _modlist(archives=[archive], directives=[directive])
+
+
+def test_inno_installer_without_innoextract_blocks():
+    [check] = check_inno_tool(_inno_modlist(), which=lambda _n: None)
+    assert not check.ok and check.blocking
+    assert "innoextract" in check.detail
+    assert "setup.exe" in check.detail
+
+
+def test_inno_installer_with_innoextract_passes():
+    [check] = check_inno_tool(_inno_modlist(), which=lambda _n: "/usr/bin/innoextract")
+    assert check.ok
+
+
+def test_exe_archive_not_used_as_a_container_is_not_flagged():
+    """An .exe that is only downloaded (never opened to pull files out of)
+    needs no extractor -- real case: a modlist shipping an installer for the
+    user to run by hand."""
+    assert check_inno_tool(_inno_modlist(used=False), which=lambda _n: None) == []
+
+
+def test_modlist_without_exe_archives_is_not_flagged():
+    assert check_inno_tool(_modlist(archives=[_archive("HttpDownloader")]),
+                           which=lambda _n: None) == []

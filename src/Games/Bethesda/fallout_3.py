@@ -9,6 +9,7 @@ Mod structure:
 All other Bethesda-family games subclass Fallout_3.
 """
 
+import filecmp
 import shutil
 from pathlib import Path
 
@@ -1653,6 +1654,41 @@ class Fallout_3(BaseGame):
         exe_name = self._launcher_name()
         launcher = self._game_path / exe_name
         backup   = self._game_path / (Path(exe_name).stem + ".bak")
+
+        # Is the launcher ALREADY the script extender, i.e. has the swap run
+        # before? Without this check the rename below moves the extender on
+        # top of the backup and the real game executable is gone for good —
+        # silently, with the log still reporting a normal swap. That happened
+        # on 2026-10-28: a redeploy over an already-swapped folder destroyed
+        # Starfield.exe and it had to be recovered with a Steam file verify.
+        try:
+            already_swapped = (launcher.is_file()
+                               and filecmp.cmp(str(launcher), str(se), shallow=False))
+        except OSError:
+            already_swapped = False
+
+        if backup.is_file():
+            if not already_swapped:
+                # A backup exists AND the launcher is a different binary: two
+                # plausible real executables and no way to tell which is which.
+                # Touching either could destroy the game, so touch neither.
+                _log(f"  WARNING: {backup.name} already exists and {exe_name} is "
+                     f"not {self._script_extender_exe} — leaving both alone. "
+                     f"Restore first, then deploy again.")
+                return
+            shutil.copy2(se, launcher)
+            _log(f"  {exe_name} is already {self._script_extender_exe} — "
+                 f"refreshed it; {backup.name} holds the real executable.")
+            return
+
+        if already_swapped:
+            # Extender in place but no backup: the real executable is missing.
+            # Renaming now would only create a second copy of the extender.
+            _log(f"  WARNING: {exe_name} is already {self._script_extender_exe} "
+                 f"but {backup.name} is missing — the real game executable is "
+                 f"not present. Skipping the swap; verify your game files.")
+            return
+
         if launcher.is_file():
             launcher.rename(backup)
             _log(f"  Renamed {exe_name} → {backup.name}.")

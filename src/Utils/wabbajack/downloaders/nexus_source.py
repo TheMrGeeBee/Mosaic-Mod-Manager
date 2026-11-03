@@ -30,6 +30,10 @@ _NEXUS_DOMAIN_OVERRIDES = {
     # Nexus's game-independent tools section (nexusmods.com/site/...). Real
     # case: Wasteland Genesis AE's BethINI Pie, GameName "ModdingTools".
     "moddingtools": "site",
+    # Nexus renamed this game's section; "vtmb" is Wabbajack's name for it and
+    # the API answers "No Game Found: vtmb". Real case: unPause's Fashionista,
+    # where all 182 Nexus archives carry GameName "VtMB".
+    "vtmb": "vampirebloodlines",
 }
 
 

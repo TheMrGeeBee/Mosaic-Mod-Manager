@@ -122,9 +122,10 @@ def test_classify_normalises_separators_and_picks_profile_with_modlist(tmp_path)
     plan = wi.classify_directives(modlist)
     assert sorted(d.to for d in plan.mod_directives) == [
         "ModA/ModA.esp", "ModA/textures/a.dds", "ModB/config.json"]
-    assert plan.profile_name == "Main"
+    assert plan.profile_names == ["Main"]
+    # The profile segment is kept, so one run can build several profiles.
     assert sorted(d.to for d in plan.profile_directives) == [
-        "Skyrim.ini", "loadorder.txt", "modlist.txt", "plugins.txt"]
+        "Main/Skyrim.ini", "Main/loadorder.txt", "Main/modlist.txt", "Main/plugins.txt"]
     assert sorted(plan.unplaced) == ["ModOrganizer.ini", "profiles/Other/plugins.txt"]
     assert len(plan.archive_hashes()) == 1
 
@@ -339,9 +340,10 @@ def test_classify_refuses_to_guess_between_profiles():
 
 def test_classify_uses_only_the_chosen_profile_and_skips_backups():
     plan = wi.classify_directives(_horizon_like(), "Horizon - Steam")
-    assert plan.profile_name == "Horizon - Steam"
+    assert plan.profile_names == ["Horizon - Steam"]
     assert sorted(d.to for d in plan.profile_directives) == [
-        "loadorder.txt", "modlist.txt", "plugins.txt"]
+        "Horizon - Steam/loadorder.txt", "Horizon - Steam/modlist.txt",
+        "Horizon - Steam/plugins.txt"]
     assert sorted(plan.unplaced) == [
         "ModOrganizer.exe", "dlls/qt.dll",
         "profiles/Horizon - GOG/modlist.txt", "profiles/Horizon - GOG/plugins.txt",
@@ -744,3 +746,248 @@ def test_mismatched_game_file_fails_without_a_download_prompt(tmp_path, monkeypa
     assert asked == []
     assert [n for n, _ in report.failed_archives] == ["Data_DLCCoast.esm"]
     assert "1.11.221.0" in report.failed_archives[0][1]
+
+
+# ---------------------------------------------------------------------------
+# Shapes from the first VtMB list (Fashionista - Steam 2.4.8.1, 2026-10-31)
+# ---------------------------------------------------------------------------
+
+def _install_vtmb_shapes(tmp_path, monkeypatch, *, profile="Fashionista"):
+    """How VtMB's Root Builder mods are laid out: ``Root/Vampire/`` patches
+    the game's vanilla data folder while the rest of ``Root/`` (the Loader,
+    its Bin/loader plug-ins, ReShade) belongs in the install root -- and the
+    mod ships its own copy of some of the ``Root/Vampire/`` paths."""
+    from Utils.wabbajack.wabbajack_hash import hash_bytes
+
+    files = {
+        "materials/wall.vtf": b"VTF",
+        "maps/graphs/hw.ain": b"THE MOD'S OWN GRAPH",
+        "Root/Vampire/maps/graphs/hw.ain": b"THE VANILLA PATCH GRAPH",
+        "Root/Vampire/python/vamputil.py": b"PY",
+        "Root/Bin/loader/protean.vtm": b"VTM",
+        "Root/Loader.exe": b"LOADER",
+    }
+    src = tmp_path / "internet" / "UP.zip"
+    src.parent.mkdir()
+    with zipfile.ZipFile(src, "w") as zf:
+        for name, data in files.items():
+            zf.writestr(name, data)
+    a_hash = hash_file(src)
+
+    def fa(mod, rel):
+        data = files[rel]
+        return {"$type": "FromArchive, Wabbajack.Lib",
+                "To": f"mods\\{mod}\\" + rel.replace("/", "\\"),
+                "Hash": hash_bytes(data), "Size": len(data),
+                "ArchiveHashPath": [a_hash, rel]}
+
+    curated = b"-Scenery_separator\r\n+Unofficial Patch Plus\r\n-Skins Only\r\n"
+    modlist = {
+        "Name": "Fashion", "Version": "2.4.8.1", "GameType": "VtMB",
+        "Archives": [{"Hash": a_hash, "Name": "UP.zip", "Size": src.stat().st_size,
+                      "State": {"$type": "HttpDownloader, Wabbajack.Lib", "Url": "https://x/up"}}],
+        "Directives": [fa("Unofficial Patch Plus", rel) for rel in files]
+                      + [fa("Skins Only", "Root/Vampire/python/vamputil.py"),
+                         {"$type": "InlineFile, Wabbajack.Lib",
+                          "To": f"profiles\\{profile}\\modlist.txt",
+                          "Hash": "", "Size": len(curated), "SourceDataID": "curated"}],
+    }
+    wj = tmp_path / "list.wabbajack"
+    with zipfile.ZipFile(wj, "w") as zf:
+        zf.writestr("modlist", json.dumps(modlist))
+        zf.writestr("curated", curated)
+    monkeypatch.setattr(wi, "resolve_downloader", lambda state: _fake_http(src))
+    monkeypatch.setattr(wi, "_rebuild_index", lambda *a: None)
+    staging = tmp_path / "staging" / "mods"
+    profile_dir = tmp_path / "staging" / "profiles" / "P"
+    profile_dir.mkdir(parents=True)
+    game = FakeGame(staging)
+    # What the real handler declares; the split reads it to tell the two
+    # halves of a Root/ folder apart.
+    game.mod_folder_strip_prefixes = {"vampire", "unofficial_patch"}
+    report = wi.run_wabbajack_install(
+        wabbajack_path=wj, modlist=parse_modlist(modlist), game=game,
+        profile_dir=profile_dir, download_dir=tmp_path / "downloads")
+    return report, staging, profile_dir
+
+
+def test_vtmb_root_builder_mod_is_split_in_two(tmp_path, monkeypatch):
+    from Nexus.nexus_meta import read_meta
+    report, staging, _ = _install_vtmb_shapes(tmp_path, monkeypatch)
+    assert report.ok, (report.failed_archives, report.failed_directives)
+    up, root = staging / "Unofficial Patch Plus", staging / "Unofficial Patch Plus - Root"
+    # The game-root half is its own mod, flagged so deploy sends it to the root.
+    assert report.root_builder_mods == ["Unofficial Patch Plus - Root"]
+    assert (root / "Bin" / "loader" / "protean.vtm").read_bytes() == b"VTM"
+    assert (root / "Loader.exe").read_bytes() == b"LOADER"
+    assert read_meta(root / "meta.ini").root_folder
+    # The mod keeps its own files, is not root-flagged, and has no Root/ left.
+    assert (up / "materials" / "wall.vtf").is_file()
+    assert not (up / "Root").exists() and not (up / "Vampire").exists()
+    assert not read_meta(up / "meta.ini").root_folder
+
+
+def test_vtmb_vanilla_overlay_folds_into_the_mod_and_loses_to_its_own_copy(
+        tmp_path, monkeypatch):
+    """Root/Vampire/ patches the vanilla folder, which Mosaic never writes --
+    the profile's -game folder overlays it instead. Where the mod ships the
+    same path itself, that copy is the one the engine loads."""
+    _, staging, _ = _install_vtmb_shapes(tmp_path, monkeypatch)
+    up = staging / "Unofficial Patch Plus"
+    assert (up / "python" / "vamputil.py").read_bytes() == b"PY"      # hoisted
+    assert (up / "maps" / "graphs" / "hw.ain").read_bytes() == b"THE MOD'S OWN GRAPH"
+
+
+def test_vtmb_mod_with_only_vanilla_overlay_gets_no_root_sibling(tmp_path, monkeypatch):
+    _, staging, _ = _install_vtmb_shapes(tmp_path, monkeypatch)
+    assert (staging / "Skins Only" / "python" / "vamputil.py").is_file()
+    assert not (staging / "Skins Only - Root").exists()
+
+
+def test_vtmb_root_sibling_follows_its_parent_in_the_modlist(tmp_path, monkeypatch):
+    """The two halves are one mod, so the generated sibling sits next to its
+    parent and shares its enabled state rather than being appended disabled."""
+    _, _, profile_dir = _install_vtmb_shapes(tmp_path, monkeypatch)
+    entries = [(e.name, e.enabled) for e in read_modlist(profile_dir / "modlist.txt")]
+    assert entries == [("Scenery_separator", True),
+                       ("Unofficial Patch Plus", True),
+                       ("Unofficial Patch Plus - Root", True),
+                       ("Skins Only", False)]
+
+
+# ---------------------------------------------------------------------------
+# Several of the modlist's profiles from one run
+# ---------------------------------------------------------------------------
+
+def _two_profile_list(tmp_path, monkeypatch):
+    """A modlist whose two MO2 profiles share a mod pool and enable
+    different subsets -- the shape every VtMB list has (Fashionista - Steam
+    ships 17 profiles over 405 mods)."""
+    from Utils.wabbajack.wabbajack_hash import hash_bytes
+
+    src = tmp_path / "internet" / "Pool.zip"
+    src.parent.mkdir()
+    blobs = {"a.esp": b"A", "b.esp": b"B", "c.esp": b"C"}
+    with zipfile.ZipFile(src, "w") as zf:
+        for name, data in blobs.items():
+            zf.writestr(name, data)
+    a_hash = hash_file(src)
+
+    def fa(mod, member):
+        data = blobs[member]
+        return {"$type": "FromArchive, Wabbajack.Lib", "To": f"mods\\{mod}\\{member}",
+                "Hash": hash_bytes(data), "Size": len(data),
+                "ArchiveHashPath": [a_hash, member]}
+
+    lists = {"Light": b"+ModA\r\n-ModB\r\n-ModC\r\n", "Heavy": b"-ModA\r\n+ModB\r\n+ModC\r\n"}
+    modlist = {
+        "Name": "Twin", "Version": "1.0", "GameType": "Fallout4",
+        "Archives": [{"Hash": a_hash, "Name": "Pool.zip", "Size": src.stat().st_size,
+                      "State": {"$type": "HttpDownloader, Wabbajack.Lib", "Url": "https://x/p"}}],
+        "Directives": [fa("ModA", "a.esp"), fa("ModB", "b.esp"), fa("ModC", "c.esp")]
+                      + [{"$type": "InlineFile, Wabbajack.Lib",
+                          "To": f"profiles\\{prof}\\modlist.txt", "Hash": "",
+                          "Size": len(body), "SourceDataID": f"ml-{prof}"}
+                         for prof, body in lists.items()],
+    }
+    wj = tmp_path / "list.wabbajack"
+    with zipfile.ZipFile(wj, "w") as zf:
+        zf.writestr("modlist", json.dumps(modlist))
+        for prof, body in lists.items():
+            zf.writestr(f"ml-{prof}", body)
+    monkeypatch.setattr(wi, "resolve_downloader", lambda state: _fake_http(src))
+    monkeypatch.setattr(wi, "_rebuild_index", lambda *a: None)
+    return wj, parse_modlist(modlist)
+
+
+def test_one_run_writes_every_selected_profile_from_one_staged_pool(tmp_path, monkeypatch):
+    wj, modlist = _two_profile_list(tmp_path, monkeypatch)
+    staging = tmp_path / "staging" / "mods"
+    dirs = {}
+    for prof in ("Light", "Heavy"):
+        d = tmp_path / "staging" / "profiles" / prof
+        d.mkdir(parents=True)
+        dirs[prof] = d
+    report = wi.run_wabbajack_install(
+        wabbajack_path=wj, modlist=modlist, game=FakeGame(staging),
+        profile_dirs=dirs, download_dir=tmp_path / "downloads")
+
+    assert report.ok, (report.failed_archives, report.failed_directives)
+    assert report.profiles_used == ["Light", "Heavy"]
+    # Built once, into the one staging folder both profiles point at.
+    assert report.installed_mods == ["ModA", "ModB", "ModC"]
+    assert sorted(p.name for p in staging.iterdir()) == ["ModA", "ModB", "ModC"]
+    # ... and each profile keeps its own enabled set.
+    assert [(e.name, e.enabled) for e in read_modlist(dirs["Light"] / "modlist.txt")] == [
+        ("ModA", True), ("ModB", False), ("ModC", False)]
+    assert [(e.name, e.enabled) for e in read_modlist(dirs["Heavy"] / "modlist.txt")] == [
+        ("ModA", False), ("ModB", True), ("ModC", True)]
+
+
+def test_every_profile_records_which_mo2_profile_it_came_from(tmp_path, monkeypatch):
+    """Repair has to tell two profiles of the same modlist apart."""
+    wj, modlist = _two_profile_list(tmp_path, monkeypatch)
+    dirs = {}
+    for prof in ("Light", "Heavy"):
+        d = tmp_path / "staging" / "profiles" / prof
+        d.mkdir(parents=True)
+        dirs[prof] = d
+    wi.run_wabbajack_install(
+        wabbajack_path=wj, modlist=modlist, game=FakeGame(tmp_path / "staging" / "mods"),
+        profile_dirs=dirs, download_dir=tmp_path / "downloads")
+    for prof, d in dirs.items():
+        info = read_wabbajack_modlist_info(d)
+        assert info["name"] == "Twin" and info["mo2_profile"] == prof
+
+
+def test_selecting_one_profile_ignores_the_others(tmp_path, monkeypatch):
+    wj, modlist = _two_profile_list(tmp_path, monkeypatch)
+    d = tmp_path / "staging" / "profiles" / "Only"
+    d.mkdir(parents=True)
+    report = wi.run_wabbajack_install(
+        wabbajack_path=wj, modlist=modlist, game=FakeGame(tmp_path / "staging" / "mods"),
+        profile_dirs={"Light": d}, download_dir=tmp_path / "downloads")
+    assert report.profiles_used == ["Light"]
+    assert [e.name for e in read_modlist(d / "modlist.txt")] == ["ModA", "ModB", "ModC"]
+    assert not (d / "wabbajack_profile_files").exists()
+
+
+def test_manual_archive_found_in_downloads_is_reported_as_a_successful_download(tmp_path):
+    """An archive with no automatic downloader is reported finished-unsuccessfully
+    by the automatic pass; once the find-in-downloads stage resolves it, the
+    real outcome must be reported too, or its bytes never reach the progress
+    total.
+
+    Regression, real case: "Fashionista - Steam" sat at "275 of 275 archives
+    (54.6 GB of 57.2 GB)" for the whole build -- the 2.53 GiB shortfall was
+    exactly the 71 ModDB archives, all of which were resolved from the user's
+    Downloads folder without ever being counted.
+    """
+    from Utils.wabbajack.wabbajack_hash import hash_file
+    from Utils.wabbajack.wabbajack_manifest import Archive, ManualState
+
+    downloads = tmp_path / "Downloads"
+    downloads.mkdir()
+    payload = downloads / "by-hand.7z"
+    payload.write_bytes(b"manual archive payload")
+
+    archive = Archive(hash=hash_file(payload), name="by-hand.7z",
+                      size=payload.stat().st_size,
+                      state=ManualState(url="https://www.moddb.com/downloads/start/1"))
+
+    finishes: "list[tuple[str, bool]]" = []
+    starts: "list[tuple[str, str, int]]" = []
+    cb = wi.WabbajackInstallCallbacks(
+        on_download_start=lambda h, n, s: starts.append((h, n, s)),
+        on_download_finish=lambda h, ok: finishes.append((h, ok)))
+
+    have = wi._download_all(
+        [archive], tmp_path / "cache", nexus_downloader=None, game_root=tmp_path / "game",
+        max_workers=1, cb=cb, cancel=threading.Event(),
+        report=wi.WabbajackInstallReport(), manual_folders=[downloads])
+
+    assert have[archive.hash] == payload
+    assert finishes == [(archive.hash, False), (archive.hash, True)], (
+        "the automatic pass reports failure, the find-in-downloads stage must "
+        f"then report success; got {finishes}")
+    assert starts[-1] == (archive.hash, archive.name, archive.size)

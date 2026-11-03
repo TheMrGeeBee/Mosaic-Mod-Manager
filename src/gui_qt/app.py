@@ -8109,6 +8109,8 @@ class MainWindow(QMainWindow):
                 self._append_log("[profile] no game selected.")
                 return
             self._new_profile_bar.open_for()
+        elif which == "duplicate":
+            self._duplicate_current_profile()
         elif which == "remove":
             self._remove_current_profile()
         elif which == "settings":
@@ -8422,6 +8424,58 @@ class MainWindow(QMainWindow):
             return view._is_profile_locked(self._gs.profile)
         except Exception:
             return True
+
+    def _duplicate_current_profile(self):
+        """Copy the active profile under a new name, sharing its mods.
+
+        The copy gets the load order, the enabled set and the settings, so a
+        fixed setup (a Wabbajack modlist, a collection) can be branched and
+        experimented with while the original stays as it was. The mods
+        themselves are shared, not copied -- duplicating "Fashionista - Steam"
+        would otherwise mean another 71 GB.
+        """
+        if self._gs.game_name is None or self._gs.profile is None:
+            self._notify(self.tr("No profile selected."), "warning")
+            return
+        from Utils.exe_launch.game_helpers import _profiles_for_game
+        source = self._gs.profile
+        existing = set(_profiles_for_game(self._gs.game_name))
+        suggestion = self.tr("Copy of {0}").format(source)
+        if suggestion in existing:
+            n = 2
+            while f"{suggestion} {n}" in existing:
+                n += 1
+            suggestion = f"{suggestion} {n}"
+
+        from gui_qt.overlays.text_input_overlay import TextInputOverlay
+        TextInputOverlay(
+            self, self.tr("Duplicate profile"),
+            self.tr("Name for the copy of '{0}':").format(source),
+            lambda name: self._do_duplicate_profile(source, name),
+            initial=suggestion, ok_label=self.tr("Duplicate"))
+
+    def _do_duplicate_profile(self, source: str, new_name) -> None:
+        if not new_name:
+            return                      # cancelled
+        new_name = str(new_name).strip()
+        from Utils.exe_launch.game_helpers import duplicate_profile, _profiles_for_game
+        if not new_name or new_name != Path(new_name).name or new_name in (".", ".."):
+            self._notify(self.tr("That name can't be used for a profile."), "warning")
+            return
+        if new_name in set(_profiles_for_game(self._gs.game_name)):
+            self._notify(
+                self.tr("A profile named '{0}' already exists.").format(new_name),
+                "warning")
+            return
+        try:
+            duplicate_profile(self._gs.game_name, source, new_name)
+        except Exception as exc:
+            self._notify(self.tr("Could not duplicate the profile: {0}").format(exc),
+                         "error")
+            return
+        self._append_log(f"[profile] duplicated '{source}' as '{new_name}'")
+        self._notify(self.tr("Duplicated '{0}' as '{1}'.").format(source, new_name), "ok")
+        self._select_installed_collection_profile(new_name)
 
     def _remove_current_profile(self):
         """Remove the active profile via the same flow as Profile Settings'
@@ -9572,7 +9626,12 @@ class MainWindow(QMainWindow):
             add_opts = {}
         actions.append(
             (self.tr("Add new profile…"), lambda: self._on_profile_action("add"),
-             add_opts))
+             {} if self._gs.profile is not None else add_opts))
+        if self._gs.profile is not None:
+            actions.append(
+                (self.tr("Duplicate current profile…"),
+                 lambda: self._on_profile_action("duplicate"),
+                 {} if can_remove else {"separator_after": True}))
         if can_remove:
             actions.append(
                 (self.tr("Remove current profile…"),

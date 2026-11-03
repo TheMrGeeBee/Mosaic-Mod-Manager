@@ -15,6 +15,7 @@ downloads, Nexus without Premium, LoversLab without a login) is a warning.
 from __future__ import annotations
 
 import re
+import shutil
 from collections import Counter
 from pathlib import Path
 from typing import Callable
@@ -89,6 +90,43 @@ def check_directives(modlist: ModList) -> "list[Check]":
     parts = "; ".join(_plural_label(n, label) for label, n in counts.most_common())
     return [Check("directives", False, "Modlist needs features Mosaic can't install yet",
                   f"{parts}. Installing it now would leave the setup incomplete.")]
+
+
+def check_inno_tool(modlist: ModList,
+                    which: "Callable[[str], str | None] | None" = None) -> "list[Check]":
+    """Inno Setup installers (``.exe`` archives used as containers) are
+    extracted with ``innoextract``; without it those files can't be built.
+
+    Blocking, like any other file Mosaic can't build: the install otherwise
+    runs to completion and silently leaves them out. Real case: VtMB's
+    Fashionista sources 524 files -- 109 of them patched ``.bsp`` maps -- from
+    the Unofficial Patch's Inno installer.
+    """
+    which = which or shutil.which
+    exe_hashes = {a.hash for a in modlist.archives
+                  if a.name.lower().endswith(".exe") and a.hash}
+    if not exe_hashes:
+        return []
+    used: "set[str]" = set()
+    n = 0
+    for d in modlist.directives:
+        path = getattr(d, "archive_hash_path", None) or []
+        if len(path) >= 2 and path[0] in exe_hashes:
+            used.add(path[0])
+            n += 1
+    if not used:
+        return []
+    names = sorted(a.name for a in modlist.archives if a.hash in used)
+    if which("innoextract") is not None:
+        return [Check("inno", True, "innoextract is available for this modlist's "
+                                    "installer archives")]
+    return [Check(
+        "inno", False, "innoextract is needed to install this modlist",
+        f"{_plural(n, 'file')} come from inside "
+        f"{_plural_label(len(names), 'installer')} ({', '.join(names[:3])}"
+        f"{', …' if len(names) > 3 else ''}). Install innoextract "
+        "(Debian/Ubuntu: apt install innoextract, Arch: pacman -S innoextract, "
+        "Fedora: dnf install innoextract), then try again.")]
 
 
 def _is_loverslab_url(url: str) -> bool:
@@ -273,6 +311,7 @@ def run_preflight(modlist: ModList, *, active_game_name: str,
         *check_game_files(modlist, game_root, originals),
         *check_game_version(modlist, game_root),
         *check_directives(modlist),
+        *check_inno_tool(modlist),
         *check_sources(modlist, nexus_premium=nexus_premium,
                        loverslab_logged_in=loverslab_logged_in),
         *check_disk_space(staging_root, cache_dir, modlist.total_install_size,

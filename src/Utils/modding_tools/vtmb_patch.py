@@ -159,9 +159,17 @@ def installed_version_satisfies(game_root: Path, wanted: str | None) -> bool:
     return version_tuple(installed[0])[:2] >= version_tuple(wanted)[:2]
 
 
-def read_installed_version(game_root: Path) -> tuple[str, str] | None:
-    """(version, folder it was found in) of the installed patch, or None."""
-    for folder in _VERSION_DIRS:
+def read_installed_version(game_root: Path,
+                           extra_dirs: "tuple[str, ...] | list[str]" = (),
+                           ) -> "tuple[str, str] | None":
+    """(version, folder it was found in) of the installed patch, or None.
+
+    ``extra_dirs`` are searched first. A Wabbajack modlist carries its own
+    copy of the patch inside the profile's ``-game`` folder rather than
+    installing the wizard's ``Unofficial_Patch/`` layer, so the caller passes
+    that folder to have it recognised as installed.
+    """
+    for folder in (*extra_dirs, *_VERSION_DIRS):
         node = _child_ci(game_root, folder)
         for part in _VERSION_FILE:
             node = _child_ci(node, part) if node is not None else None

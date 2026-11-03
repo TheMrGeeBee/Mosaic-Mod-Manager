@@ -262,6 +262,27 @@ def test_unofficial_patch_folder_wins_over_vampire_folder(tmp_path):
     assert v.read_installed_version(root) == ("12.0", "Unofficial_Patch")
 
 
+def test_version_found_in_a_profiles_game_folder(tmp_path):
+    """A Wabbajack modlist deploys the patch into the profile's -game folder
+    rather than installing the wizard's Unofficial_Patch/ layer (real case:
+    Fashionista -> Mosaic_Fashionista/). Without searching it, a fully
+    installed modlist reported the patch as not deployed."""
+    root = _game_root(tmp_path)
+    _write_version_file(root / "Mosaic_Fashionista", _UI, "utf-16")
+    assert v.read_installed_version(root) is None
+    assert v.read_installed_version(root, ("Mosaic_Fashionista",)) == (
+        "12.0", "Mosaic_Fashionista")
+
+
+def test_profile_game_folder_wins_over_the_wizard_layer(tmp_path):
+    """The deployed profile is what the game actually loads."""
+    root = _game_root(tmp_path)
+    _write_version_file(root / "Unofficial_Patch", _UI.replace("12.0", "11.8"), "utf-16")
+    _write_version_file(root / "Mosaic_Fashionista", _UI, "utf-16")
+    assert v.read_installed_version(root, ("Mosaic_Fashionista",)) == (
+        "12.0", "Mosaic_Fashionista")
+
+
 def test_no_version_when_the_file_is_missing_or_has_no_patch_line(tmp_path):
     root = _game_root(tmp_path)
     assert v.read_installed_version(root) is None

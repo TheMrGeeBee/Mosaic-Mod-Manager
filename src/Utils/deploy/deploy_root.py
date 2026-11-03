@@ -34,6 +34,38 @@ _ROOT_BACKUP_NAME = "Root_Backup"
 _ROOT_LOG_NAME    = "root_folder_deployed.txt"
 
 
+
+def _match_existing_filename(dst: Path, file_cache: "dict[str, dict[str, str]]") -> Path:
+    """``dst``, but spelled the way the game folder already spells that file.
+
+    ``_resolve_root_path`` case-corrects directory segments only, by design --
+    for a file in a Data/ deploy the mod's own spelling is the right one. A
+    root-folder file is different: it is meant to *replace* a file the game
+    shipped, and the two often disagree on case. Steam installs VtMB's
+    executable as ``vampire.exe`` while the Unofficial Patch ships
+    ``Vampire.exe``, so without this the patched 4 GB-aware executable lands
+    beside the stock one instead of over it, nothing is backed up, and the
+    game keeps launching the file it always did.
+
+    Only an existing regular file is matched, so a mod introducing a new file
+    keeps its own spelling.
+    """
+    parent = str(dst.parent)
+    listing = file_cache.get(parent)
+    if listing is None:
+        listing = {}
+        try:
+            with os.scandir(parent) as it:
+                for e in it:
+                    if not e.is_dir():
+                        listing.setdefault(e.name.lower(), e.name)
+        except OSError:
+            pass
+        file_cache[parent] = listing
+    actual = listing.get(dst.name.lower())
+    return dst.parent / actual if actual and actual != dst.name else dst
+
+
 def deploy_root_folder(
     root_folder_dir: Path,
     game_root: Path,
@@ -87,8 +119,13 @@ def deploy_root_folder(
     _top_preexisted: dict[str, bool] = {}
     created_dirs: set[str] = set()
     tasks: list[tuple[Path, Path, Path, str]] = []  # (src, dst, rel, rel_posix)
+    _file_cache: "dict[str, dict[str, str]]" = {}
     for src, rel in sources:
-        dst = _resolve_root_path(game_root, rel, _dir_cache)
+        dst = _match_existing_filename(
+            _resolve_root_path(game_root, rel, _dir_cache), _file_cache)
+        # Spell rel the way dst is actually spelled, so Root_Backup/ and the
+        # restore log name the file that was really written.
+        rel = Path(os.path.relpath(str(dst), str(game_root)))
         if len(rel.parts) > 1:
             # Use the resolved (possibly case-corrected) top-level name.
             top = dst.relative_to(game_root).parts[0]
@@ -216,6 +253,7 @@ def deploy_root_flagged_mods(
 
     # Build a quick dir-resolution cache for game_root lookups
     _dir_cache: dict = {}
+    _file_cache: "dict[str, dict[str, str]]" = {}
     _src_cache: dict = {}
     _top_seen: dict[str, bool] = {}
     tasks: list[tuple[Path, Path, str]] = []  # (src, dst, rel_posix)
@@ -249,8 +287,9 @@ def deploy_root_flagged_mods(
             _log(f"  WARN: source not found for root-flagged file: {mod_name}/{rel_str}")
             continue
 
-        dst = _resolve_root_path(game_root, Path(rel_str), _dir_cache)
-        rel_posix = str(Path(rel_str)).replace("\\", "/")
+        dst = _match_existing_filename(
+            _resolve_root_path(game_root, Path(rel_str), _dir_cache), _file_cache)
+        rel_posix = os.path.relpath(str(dst), str(game_root)).replace("\\", "/")
 
         # Skip if already placed by a previous call (avoid double-backup)
         if rel_posix in existing_placed_set:

@@ -231,3 +231,55 @@ def test_parse_modlist_full_shape_and_size_totals():
     assert ml.total_install_size == 10
     assert len(ml.unsupported_archives) == 1
     assert len(ml.unsupported_directives) == 1
+
+
+def test_every_mapped_game_resolves_to_its_handlers_nexus_domain():
+    """``nexus_domain_for`` must agree with the handler's ``nexus_game_domain``
+    for every mapped GameType, or Nexus downloads 404 and the manual-download
+    overlay offers a dead link.
+
+    Regression: Wabbajack calls Vampire: The Masquerade - Bloodlines ``VtMB``,
+    but Nexus renamed that section to ``vampirebloodlines``, so the bare
+    lowercase fell through and the API answered ``No Game Found: vtmb``.
+    Scans handler source rather than importing, like the test above.
+    """
+    import re
+    from pathlib import Path
+
+    from Utils.wabbajack.downloaders.nexus_source import nexus_domain_for
+    from Utils.wabbajack.wabbajack_manifest import WABBAJACK_GAME_MAP
+
+    games_dir = Path(__file__).resolve().parent.parent / "src" / "Games"
+    name_re = re.compile(r'def name\(self\)[^:]*:\s*\n\s*return\s+"([^"]+)"')
+    domain_re = re.compile(r'def nexus_game_domain\(self\)[^:]*:\s*\n\s*return\s+"([^"]+)"')
+    domain_by_game: "dict[str, str]" = {}
+    for py in games_dir.rglob("*.py"):
+        text = py.read_text(encoding="utf-8", errors="replace")
+        names, domains = name_re.findall(text), domain_re.findall(text)
+        if len(names) == 1 and len(domains) == 1:
+            domain_by_game[names[0]] = domains[0]
+    assert domain_by_game, "found no handler nexus_game_domain values -- scan pattern is stale"
+
+    # The VR handlers deliberately point Nexus *browsing* at the flat-screen
+    # section (skyrim_vr returns "skyrimspecialedition" while its
+    # loot_masterlist_repo stays "skyrimvr"), because that's where most of
+    # their mods live. Wabbajack is the other way round: an archive's GameName
+    # names the section the file is actually hosted in, and "skyrimvr" and
+    # "fallout4vr" are both real Nexus domains -- so the bare lowercase is
+    # right here and the handler's preference must not override it.
+    browses_another_games_section = {"SkyrimVR", "Fallout4VR"}
+
+    mismatched = {
+        game_type: (nexus_domain_for(game_type), domain_by_game[mosaic_name])
+        for game_type, mosaic_name in WABBAJACK_GAME_MAP.items()
+        if mosaic_name in domain_by_game
+        and game_type not in browses_another_games_section
+        and nexus_domain_for(game_type) != domain_by_game[mosaic_name]
+    }
+    assert not mismatched, f"Wabbajack GameType -> Nexus domain disagrees with handler: {mismatched}"
+    # Guard the exemption itself: if a VR handler ever starts agreeing, drop it
+    # from the set rather than leaving a stale exemption hiding a real mismatch.
+    assert all(nexus_domain_for(g) != domain_by_game[WABBAJACK_GAME_MAP[g]]
+               for g in browses_another_games_section
+               if WABBAJACK_GAME_MAP.get(g) in domain_by_game), \
+        "a VR exemption is stale -- handler now agrees, remove it from the set"

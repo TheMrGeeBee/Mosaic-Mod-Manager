@@ -392,6 +392,14 @@ def update_flags(step: InstallStep, selections: dict[str, list[str]],
 # File resolution
 # ---------------------------------------------------------------------------
 
+# Group types whose <group> a FOMOD will not let the user leave empty. Replaying
+# selections that record none for one of these means the recording is incomplete,
+# so resolve_files() substitutes the FOMOD's own default rather than installing
+# nothing. SelectAny / SelectAtMostOne are deliberately absent: "nothing" is a
+# complete, legitimate answer for those.
+_MUST_PICK_GROUP_TYPES = ("SelectExactlyOne", "SelectAtLeastOne")
+
+
 def _build_group_fallback(config: "ModuleConfig",
                           all_selections: dict) -> "dict[str, list[str]]":
     """Group-name -> selected plugins, for recovering selections whose step
@@ -482,9 +490,28 @@ def resolve_files(config: ModuleConfig,
         # Accept both new index-keyed format (str(i)) and old name-keyed format
         # for backward compatibility with previously saved selection JSON.
         step_selections = all_selections.get(str(i)) or all_selections.get(step.name, {})
+        # Lazily computed, and only when an enforced group turns out empty —
+        # get_default_selections() resolves every plugin's type descriptor, which
+        # is wasted work on the normal path where every group has an answer.
+        step_defaults: "dict[str, list[str]] | None" = None
         for group in step.groups:
             selected_names = _selected_in_group(step_selections, group.name,
                                                 _group_fallback)
+            if not selected_names and group.group_type in _MUST_PICK_GROUP_TYPES:
+                # A FOMOD will not let a user leave one of these empty — the
+                # wizard forces a pick — so an empty one here means the
+                # selections we are replaying are missing data, not that the
+                # answer was "nothing". Collection manifests do record such gaps
+                # (Vortex omits the group when the author never touched it), and
+                # without this the group contributes NO files at all, silently
+                # under-installing the mod. Fall back to what the FOMOD itself
+                # defaults to, exactly as the wizard would have shown it.
+                if step_defaults is None:
+                    step_defaults = get_default_selections(
+                        step, flag_state, inst_files, active_files, loose_files)
+                selected_names = set(step_defaults.get(group.name, []))
+                if group.group_type == "SelectExactlyOne":
+                    selected_names = set(list(selected_names)[:1])
             for plugin in group.plugins:
                 ptype = resolve_plugin_type(plugin, flag_state, inst_files,
                                             active_files, loose_files)

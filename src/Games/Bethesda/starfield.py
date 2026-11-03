@@ -370,9 +370,29 @@ class Starfield(Fallout_3):
             return
         backup_name = Path(self.exe_name).stem + ".bak"
         backup = self._game_path / backup_name
+        sfse_ini = self._game_path / "Data" / "SFSE" / "sfse.ini"
+
+        if not self._script_extender_swap:
+            # The swap is off now, but an earlier swap-enabled deploy left
+            # RuntimeName pointing at the .bak — which no longer exists, so the
+            # loader would try to launch a missing file and stop with
+            # "Couldn't retrieve EXE version information". Point it back at the
+            # real executable. Writing through the path also updates the
+            # profile's overwrite/ copy when this is a deployed symlink, so the
+            # stale value cannot come back on the next deploy.
+            try:
+                if sfse_ini.is_file() and backup_name in sfse_ini.read_text(
+                        encoding="utf-8", errors="replace"):
+                    sfse_ini.write_text(
+                        f"[Loader]\nRuntimeName={self.exe_name}\n", encoding="utf-8")
+                    _log(f"  Swap is off — reset Data/SFSE/sfse.ini "
+                         f"(RuntimeName={self.exe_name}).")
+            except OSError as exc:
+                _log(f"  Could not reset Data/SFSE/sfse.ini: {exc}")
+            return
+
         if not backup.is_file():
             return
-        sfse_ini = self._game_path / "Data" / "SFSE" / "sfse.ini"
         sfse_ini.parent.mkdir(parents=True, exist_ok=True)
         sfse_ini.write_text(f"[Loader]\nRuntimeName={backup_name}\n", encoding="utf-8")
         _log(f"  Wrote Data/SFSE/sfse.ini (RuntimeName={backup_name}).")

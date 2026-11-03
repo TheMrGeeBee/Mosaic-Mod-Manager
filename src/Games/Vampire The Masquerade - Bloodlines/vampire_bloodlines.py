@@ -268,12 +268,25 @@ class VampireBloodlines(BaseGame):
         """The Unofficial Patch, so Nexus requirements naming it count as met and
         the framework banner reports it. It is a base layer installed by the
         wizard (or prepatched, e.g. GOG), not a Mosaic mod, so detection is by
-        its version file — in Unofficial_Patch/ or, if that is where it was
-        found, the vanilla Vampire/ folder."""
+        its version file — in Unofficial_Patch/, the vanilla
+        Vampire/ folder, or the active profile's own -game folder, whichever
+        holds it.
+
+        The -game folder matters for a Wabbajack modlist: those ship the patch
+        as an ordinary mod and deploy it there instead of installing the
+        wizard's Unofficial_Patch/ layer, so without it a fully installed
+        modlist still reported the patch as present but not deployed."""
         from Utils.modding_tools.vtmb_patch import read_installed_version
         folder = _PATCH_DIR
         if self._game_path is not None:
-            found = read_installed_version(self._game_path)
+            extra: "tuple[str, ...]" = ()
+            try:
+                mod_dir = self.get_mod_dir_name()
+                if mod_dir:
+                    extra = (mod_dir,)
+            except Exception:
+                pass
+            found = read_installed_version(self._game_path, extra)
             if found:
                 folder = found[1]
         return {"Unofficial Patch": f"{folder}/resource/gameui_english.txt"}
@@ -606,7 +619,14 @@ class VampireBloodlines(BaseGame):
 
         _log(f"Restore: clearing {mod_dir.name}/ ...")
         restored = restore_data_core(
-            mod_dir, overwrite_dir=self.get_effective_overwrite_path(), log_fn=_log
+            mod_dir, overwrite_dir=self.get_effective_overwrite_path(),
+            staging_root=self.get_effective_mod_staging_path(),
+            strip_prefixes=self.mod_folder_strip_prefixes,
+            # Saves are the player's, not a mod's. Several mods ship a
+            # save/autosave.sav of their own, which without this makes the
+            # player's save look like a mod file and get dropped here.
+            runtime_dirs=set(_STATE_DIRS),
+            log_fn=_log,
         )
         if restored > 0:
             _log(f"  Restored {restored} file(s).")

@@ -592,3 +592,36 @@ def test_vtm_mods_are_flagged_as_root_installs_but_res_mods_are_not():
 
 def test_option_folder_packs_get_the_sub_package_picker():
     assert VampireBloodlines().supports_bain
+
+
+def test_restore_keeps_the_players_save_when_a_mod_ships_the_same_filename(tmp_path):
+    """Real case (Fashionista, 2026-10-31): the game writes save/autosave.sav
+    and several mods in the shared pool ship a file at that same path, so the
+    restore walk matched it against the mod index and deleted it — switching
+    profiles destroyed the savegame."""
+    from Utils.filemap import update_mod_index
+
+    g = _game(tmp_path)
+    root = g._game_path
+    staging = g.get_mod_staging_path()
+    (staging / "Some Overhaul" / "save").mkdir(parents=True)
+    (staging / "Some Overhaul" / "save" / "autosave.sav").write_bytes(b"mod copy")
+    update_mod_index(g.get_effective_filemap_path().parent / "modindex.bin",
+                     "Some Overhaul", {"save/autosave.sav": "save/autosave.sav"}, {})
+    filemap = g.get_effective_filemap_path()
+    filemap.parent.mkdir(parents=True, exist_ok=True)
+    filemap.write_text("")
+
+    g.deploy(mode=LinkMode.HARDLINK, profile="default")
+    # The game writes a save into the deployed profile folder.
+    save = root / "Mosaic_default" / "save" / "autosave.sav"
+    save.parent.mkdir(parents=True, exist_ok=True)
+    save.write_bytes(b"THE PLAYER'S SAVEGAME")
+
+    g.restore()
+
+    rescued = g.get_effective_overwrite_path() / "save" / "autosave.sav"
+    assert rescued.is_file(), "restore destroyed the player's savegame"
+    assert rescued.read_bytes() == b"THE PLAYER'S SAVEGAME"
+    # the shared pool must be untouched — it is shared by every profile
+    assert (staging / "Some Overhaul" / "save" / "autosave.sav").read_bytes() == b"mod copy"

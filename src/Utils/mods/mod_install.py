@@ -1901,6 +1901,8 @@ def install_collection_archive(
         prebuilt_meta=None,
         fomod_auto_selections: "dict | None" = None,
         fomod_auto_hashes: "list[dict] | None" = None,
+        fomod_auto_choices: "dict | None" = None,
+        fomod_no_choice_action: str = "wizard",
         bain_auto_selections: "dict | None" = None,
         overwrite_existing: "bool | None" = None,
         skip_index_update: bool = True,
@@ -1922,6 +1924,19 @@ def install_collection_archive(
     ``defer_interactive_*`` is set (the orchestrator processes those at the end,
     one-by-one, passing ``resolve_fomod`` / ``resolve_bain`` to show the wizard),
     or ``None`` on failure / user-cancel.
+
+    *fomod_auto_choices* — the raw collection-manifest ``choices`` block for this
+    mod. When given it supersedes *fomod_auto_selections*: the names are resolved
+    against the FOMOD we actually downloaded (``idx`` rescues a renamed option)
+    and every pick that still doesn't resolve is logged instead of dropped
+    silently. *fomod_auto_selections* remains the pre-extract, config-free view
+    the caller uses to decide whether the author recorded anything at all.
+
+    *fomod_no_choice_action* — what to do with an interactive FOMOD the author
+    recorded nothing for: ``"wizard"`` asks the user (single-mod parity),
+    ``"defaults"`` installs the FOMOD's own default/recommended options. A
+    collection install passes ``"defaults"`` so it runs unattended; the mods that
+    took that path are named in the end-of-install summary.
 
     resolve_fomod(config, fomod_base, mod_name, installed, active, loose,
                   saved_selections) -> dict|None
@@ -1981,6 +1996,9 @@ def install_collection_archive(
         return name
 
     is_fomod_install = False
+    # How this mod's FOMOD was answered, for the collection's end-of-install
+    # summary: author_choices | author_hashes | defaults | wizard | "".
+    fomod_outcome = ""
     fomod_pending_deps = ""   # unselected-option fileDependency plugins (FOMOD)
     fomod_active_deps = ""    # selected-option fileDependency plugins (FOMOD)
     file_list: "list[tuple[str, str, bool]] | None" = None
@@ -2063,14 +2081,43 @@ def install_collection_archive(
                 log_fn("FOMOD installer detected — applying collection author's "
                        f"recorded file manifest ({len(hash_file_list)} file(s)).")
                 final_selections = None      # nothing replayable to persist
+                fomod_outcome = "author_hashes"
             elif fomod_auto_selections is not None:
+                # With the raw manifest block in hand, resolve the author's picks
+                # against the FOMOD we actually downloaded and report anything
+                # that doesn't line up. Without it (saved sidecar, Tk callers)
+                # replay the selections as given.
+                if fomod_auto_choices is not None:
+                    from Utils.collections.collection_fomod_audit import (
+                        resolve_recorded_choices)
+                    final_selections, _findings = resolve_recorded_choices(
+                        config, fomod_auto_choices)
+                else:
+                    final_selections, _findings = fomod_auto_selections, []
+                _picks = sum(len(v) for g in final_selections.values()
+                             for v in g.values())
                 log_fn("FOMOD installer detected — applying collection author's "
-                       "choices automatically.")
-                final_selections = fomod_auto_selections
+                       f"choices automatically ({len(final_selections)} step(s), "
+                       f"{_picks} pick(s)).")
+                for _f in _findings:
+                    log_fn(f"  {'WARNING: ' if _f.is_warning else ''}{_f}")
+                fomod_outcome = "author_choices"
+            elif fomod_no_choice_action == "defaults" and has_steps:
+                # Collection install: the manifest records nothing for this mod,
+                # so there is no author intent to follow and nothing to ask the
+                # user that the FOMOD can't answer itself. Install its own
+                # defaults and name the mod in the end-of-install summary.
+                log_fn("FOMOD installer detected — the collection recorded no "
+                       "choices for this mod; using its default/recommended "
+                       "options.")
+                final_selections = None
+                fomod_outcome = "defaults"
             elif resolve_fomod is not None and has_steps:
                 log_fn("FOMOD installer detected — opening wizard...")
+                fomod_outcome = "wizard"
                 saved_sel = _read_saved_fomod_selections(
-                    game, prepared.mod_name, log_fn)
+                    game, prepared.mod_name, log_fn,
+                    profile_dir=prepared.profile_dir)
                 final_selections = resolve_fomod(
                     config, fomod_base, prepared.mod_name,
                     installed_files, active_files, loose_files, saved_sel)
@@ -2086,9 +2133,11 @@ def install_collection_archive(
                                              profile_dir=prepared.profile_dir)
             else:
                 # No auto-selections and no resolver → FOMOD defaults (parity with
-                # the non-interactive single-mod fallback).
+                # the non-interactive single-mod fallback). Also where a stepless
+                # FOMOD lands: nothing to choose, so nothing to ask or record.
                 log_fn("FOMOD installer detected — using default/recommended options.")
                 final_selections = None
+                fomod_outcome = "defaults"
 
             if not cancelled:
                 _write_profile_fomod_selection(game, prepared.mod_name,
@@ -2296,19 +2345,22 @@ def install_collection_archive(
         _add_to_modlist(profile_dir, prepared.mod_name, log_fn, preserve_position=False)
         _add_plugins(game, profile_dir, dest_root, log_fn)
     log_fn(f"Installed '{prepared.mod_name}'.")
-    _fire_on_installed(on_installed, is_fomod_install)
+    _fire_on_installed(on_installed, is_fomod_install, fomod_outcome)
     return prepared.mod_name
 
 
-def _fire_on_installed(cb, is_fomod: bool) -> None:
-    """Call *cb* as either ``cb(is_fomod)`` or ``cb()`` (parity with Tk's
-    ``_fire_on_installed``)."""
+def _fire_on_installed(cb, is_fomod: bool, fomod_outcome: str = "") -> None:
+    """Call *cb* with as many of ``(is_fomod, fomod_outcome)`` as it accepts —
+    ``cb()``, ``cb(is_fomod)`` or ``cb(is_fomod, fomod_outcome)`` (parity with
+    Tk's ``_fire_on_installed``, whose callbacks took no arguments)."""
     if cb is None:
         return
     try:
         import inspect
         params = inspect.signature(cb).parameters
-        if params:
+        if len(params) >= 2:
+            cb(is_fomod, fomod_outcome)
+        elif params:
             cb(is_fomod)
         else:
             cb()
@@ -2324,13 +2376,30 @@ def _fire_on_installed(cb, is_fomod: bool) -> None:
 def _default_fomod_file_list(config, installed_files, active_files, loose_files,
                              log_fn: LogFn) -> "list[tuple[str, str, bool]]":
     """Resolve a FOMOD's file list using its default/recommended selections
-    (threading flag state through steps), passing the collection context sets."""
+    (threading flag state through steps), passing the collection context sets.
+
+    Skips steps the accumulated flags make invisible, the same way
+    ``resolve_files`` does: a step the user would never have seen must not feed
+    its defaults' conditionFlags into the state the later steps are judged
+    against. A FOMOD that branches on "which mod manager?" has a full parallel
+    set of steps for the branch nobody took, and letting both run set
+    contradictory flags.
+    """
     from Utils.installers.fomod_installer import (
-        resolve_files, get_default_selections, update_flags)
+        resolve_files, get_default_selections, update_flags, evaluate_dependency)
     selections: dict = {}
     flag_state: dict = {}
     for i, step in enumerate(getattr(config, "steps", []) or []):
-        sels = get_default_selections(step, flag_state, installed_files)
+        if step.visible_condition is not None and not evaluate_dependency(
+                step.visible_condition, flag_state, installed_files, active_files,
+                version_pass=True, loose_files=loose_files):
+            continue
+        # All three context sets, not just installed_files: a plugin whose
+        # <dependencyType> is gated on an ACTIVE plugin otherwise resolves as if
+        # nothing in the profile were active, so Required/Recommended options
+        # silently fall back to plain Optional and the defaults come out wrong.
+        sels = get_default_selections(step, flag_state, installed_files,
+                                      active_files, loose_files)
         selections[str(i)] = sels
         flag_state = update_flags(step, sels, flag_state)
     return resolve_files(config, selections, installed_files, active_files, loose_files)

@@ -31,6 +31,7 @@ to profile_state.json only.
 from __future__ import annotations
 
 import json
+import shutil
 import threading
 from pathlib import Path
 
@@ -349,6 +350,117 @@ def read_profile_settings(profile_dir: Path, state: dict | None = None) -> dict:
 def profile_uses_specific_mods(profile_dir: Path) -> bool:
     """Return True if this profile stores its own mods folder inside itself."""
     return bool(read_profile_settings(profile_dir, None).get("profile_specific_mods", False))
+
+
+def read_shared_mods(profile_dir: Path) -> "str | None":
+    """The shared-mods group this profile belongs to, or None.
+
+    Several profiles installed from one Wabbajack modlist share a single copy
+    of its mods: each keeps ``profile_specific_mods`` and its own
+    ``overwrite/``, ``filemap.txt`` and ``modindex.bin``, but its ``mods``
+    entry is a symlink to one folder outside every profile. The group name is
+    recorded here only for the UI and for sweeping the folder once the last
+    profile using it is gone -- nothing in the path layer reads it, which is
+    the point: ``<profile>/mods`` keeps resolving the way it always did.
+    """
+    name = read_profile_settings(profile_dir, None).get("shared_mods")
+    return name if isinstance(name, str) and name else None
+
+
+def link_shared_mods(profile_dir: Path, shared_dir: Path, group: str) -> None:
+    """Point ``<profile_dir>/mods`` at *shared_dir* and record the group.
+
+    The profile's own ``mods`` folder must be absent or empty -- this is only
+    ever called on a profile just created. The link is absolute because the
+    shared folder follows the staging root, which may be on another disk.
+    Raises OSError if the link can't be made, so the caller can roll back
+    rather than install into the wrong place.
+    """
+    shared_dir = Path(shared_dir).resolve()
+    shared_dir.mkdir(parents=True, exist_ok=True)
+    mods = Path(profile_dir) / "mods"
+    if mods.is_symlink():
+        mods.unlink()
+    elif mods.is_dir():
+        mods.rmdir()          # raises if it isn't empty, which is the guard
+    mods.symlink_to(shared_dir, target_is_directory=True)
+    merge_profile_settings(Path(profile_dir), {"shared_mods": group})
+
+
+def shared_mods_users(profiles_dir: Path, shared_dir: Path) -> "list[Path]":
+    """Every profile under *profiles_dir* whose ``mods`` resolves into
+    *shared_dir*. Used to tell whether the shared folder is still in use.
+
+    A profile that *owns* the folder counts too, not just the ones linking to
+    it: duplicating a profile that holds its own mods points the copy at the
+    original's ``mods`` folder, so the caller has to see the original as a
+    user -- otherwise removing the copy would sweep away the mods the
+    original is still using.
+    """
+    target = Path(shared_dir).resolve()
+    users: "list[Path]" = []
+    try:
+        candidates = sorted(Path(profiles_dir).iterdir())
+    except OSError:
+        return users
+    for d in candidates:
+        mods = d / "mods"
+        if not (mods.is_symlink() or mods.is_dir()):
+            continue
+        try:
+            resolved = mods.resolve()
+        except OSError:
+            continue
+        if resolved == target or target in resolved.parents:
+            users.append(d)
+    return users
+
+
+def shared_mods_dependents(profiles_dir: Path, profile_dir: Path) -> "list[Path]":
+    """Profiles that borrow *profile_dir*'s own ``mods`` folder.
+
+    Only ever non-empty for a profile that owns its mods outright: if its
+    ``mods`` is itself a link into a shared pool, the other profiles on that
+    pool are siblings, not dependents, and removing this one doesn't touch
+    them. See :func:`hand_over_shared_mods`.
+    """
+    profile_dir = Path(profile_dir)
+    mods = profile_dir / "mods"
+    if mods.is_symlink() or not mods.is_dir():
+        return []
+    return [d for d in shared_mods_users(profiles_dir, mods)
+            if d.resolve() != profile_dir.resolve()]
+
+
+def hand_over_shared_mods(profiles_dir: Path, profile_dir: Path) -> "Path | None":
+    """Give *profile_dir*'s mods to a profile that borrows them, before it goes.
+
+    Deleting a profile whose ``mods`` folder other profiles link to would
+    leave them pointing at nothing. Instead the folder moves into the first
+    dependent -- which becomes the owner -- and the remaining dependents are
+    re-pointed at its new home. Returns the new owner, or None if nobody was
+    borrowing. The move is a rename within the same ``profiles/`` tree, so no
+    mod bytes are copied.
+    """
+    dependents = shared_mods_dependents(profiles_dir, profile_dir)
+    if not dependents:
+        return None
+    heir, rest = dependents[0], dependents[1:]
+    src = Path(profile_dir) / "mods"
+    dst = heir / "mods"
+    if dst.is_symlink():
+        dst.unlink()
+    shutil.move(str(src), str(dst))
+    settings = read_profile_settings(heir, None)
+    settings.pop("mods_shared_from", None)
+    write_profile_settings(heir, settings)
+    for d in rest:
+        link = d / "mods"
+        if link.is_symlink():
+            link.unlink()
+        link.symlink_to(dst.resolve(), target_is_directory=True)
+        merge_profile_settings(d, {"mods_shared_from": heir.name})
+    return heir
 
 
 def read_ignored_missing_requirements(profile_dir: Path, state: dict | None = None) -> set[str]:

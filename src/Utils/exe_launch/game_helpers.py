@@ -4,6 +4,7 @@ Used by TopBar, ModListPanel, PluginPanel, and App. No dependency on other gui m
 """
 
 import json
+import os
 import shutil
 from pathlib import Path
 
@@ -248,12 +249,81 @@ def find_profile_with_collection_slug(game_name: str, slug: str) -> str | None:
     return None
 
 
+# Files and folders that describe one profile's *deployed* state or its own
+# history, so a duplicate must start without them: carrying Root_Backup/ over
+# would make the copy's Restore put another profile's game files back.
+_NOT_DUPLICATED = frozenset({
+    "backups",                      # the source's own backup history
+    "overwrite",                    # savegames and runtime files -- the copy starts clean
+    "Root_Backup", "root_folder_deployed.txt",
+    "deployed_filemap.txt", "deploy_stats.txt",
+    "private_copies.json",          # per-deploy manifest of materialised files
+})
+
+
+def duplicate_profile(game_name: str, source_profile: str, new_name: str) -> Path:
+    """Copy *source_profile* to *new_name*, sharing its mods.
+
+    Everything that makes the profile what it is comes across -- load order,
+    which mods are enabled, separators, INIs, Wabbajack provenance -- while the
+    source's deploy state and savegames do not (see ``_NOT_DUPLICATED``).
+
+    The mods are shared, never copied: a profile-specific mods folder is a
+    symlink into a shared pool for a Wabbajack install (so the copy joins the
+    same pool), or the profile's own folder (so the copy links to it). Copying
+    would mean another 71 GB for a list like Fashionista.
+    """
+    return _create_profile(game_name, new_name, source_profile=source_profile)
+
+
+def _clone_profile_dir(src_dir: Path, profile_dir: Path) -> None:
+    """Copy one profile folder to another, sharing the mods rather than them.
+
+    ``mods`` is handled separately: ``copytree`` would follow a shared-pool
+    symlink and duplicate the whole pool, so the entry is excluded and
+    re-created as a link afterwards.
+    """
+    def _ignore(src, names):
+        skip = {n for n in names if n in _NOT_DUPLICATED}
+        if Path(src) == src_dir:
+            skip.add("mods")
+        return skip
+
+    shutil.copytree(src_dir, profile_dir, copy_function=shutil.copy2,
+                    symlinks=True, ignore=_ignore, dirs_exist_ok=False)
+
+    settings = read_profile_settings(profile_dir, None)
+    # A copy is never the original default, and must not inherit its lock.
+    for k in ("original_default", "profile_locked"):
+        settings.pop(k, None)
+
+    src_mods = src_dir / "mods"
+    if src_mods.is_symlink():
+        # Already in a shared pool -- join the same one, link and all.
+        os.symlink(os.readlink(src_mods), profile_dir / "mods")
+    elif src_mods.is_dir():
+        # The source owns its mods; point at them rather than copying.
+        os.symlink(str(src_mods.resolve()), profile_dir / "mods")
+        settings["mods_shared_from"] = src_dir.name
+    write_profile_settings(profile_dir, settings)
+
+    # Deploy-state folders the copy needs but didn't inherit.
+    for name in ("overwrite", "Root_Folder"):
+        (profile_dir / name).mkdir(exist_ok=True)
+
+
 def _create_profile(
     game_name: str,
     profile_name: str,
     profile_specific_mods: bool = False,
+    source_profile: "str | None" = None,
 ) -> Path:
-    """Create a new profile folder, copying modlist.txt from default."""
+    """Create a new profile folder, copying modlist.txt from default.
+
+    ``source_profile`` duplicates that profile instead (see
+    :func:`duplicate_profile`); ``profile_specific_mods`` is then taken from
+    the source rather than the argument.
+    """
     game = _GAMES.get(game_name)
     if game is not None:
         profiles_root = game.get_profile_root()
@@ -261,6 +331,15 @@ def _create_profile(
         profiles_root = get_profiles_dir() / game_name
     profile_dir = profiles_root / "profiles" / profile_name
     default_dir = profiles_root / "profiles" / "default"
+
+    if source_profile:
+        src_dir = profiles_root / "profiles" / source_profile
+        if not src_dir.is_dir():
+            raise FileNotFoundError(f"no profile named {source_profile!r} to duplicate")
+        if profile_dir.exists():
+            raise FileExistsError(f"a profile named {profile_name!r} already exists")
+        _clone_profile_dir(src_dir, profile_dir)
+        return profile_dir
 
     if not profile_specific_mods and default_dir.is_dir():
         # Non-specific profiles share the mods folder, so a brand-new one should

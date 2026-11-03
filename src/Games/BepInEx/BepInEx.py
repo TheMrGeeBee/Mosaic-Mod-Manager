@@ -264,7 +264,17 @@ class Subnautica(BaseGame):
 
         if core_dir.is_dir():
             _log(f"Restore: clearing {plugins_dir.name}/ and moving {core}/ back ...")
-            restored = restore_data_core(plugins_dir, core_dir=core_dir, overwrite_dir=self.get_effective_overwrite_path(), log_fn=_log)
+            # staging_root/strip_prefixes: without them a file the game wrote
+            # into plugins/ whose path also exists in the mod index (a plugin
+            # shipping a default settings file and rewriting it at runtime) is
+            # dropped rather than kept. With them it goes back to its own mod,
+            # the way an externally edited staged file does.
+            restored = restore_data_core(
+                plugins_dir, core_dir=core_dir,
+                overwrite_dir=self.get_effective_overwrite_path(),
+                staging_root=self.get_effective_mod_staging_path(),
+                strip_prefixes=self.mod_folder_strip_prefixes,
+                log_fn=_log)
             _log(f"  Restored {restored} file(s). {core}/ removed.")
 
         # Sweep runtime files generated outside plugins/ (BepInEx/config, caches,

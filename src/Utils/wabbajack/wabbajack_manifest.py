@@ -300,6 +300,7 @@ WABBAJACK_GAME_MAP: "dict[str, str]" = {
     "Oblivion": "Oblivion",
     "Morrowind": "Morrowind",
     "Cyberpunk2077": "Cyberpunk 2077",
+    "VtMB": "Vampire: The Masquerade - Bloodlines",
 }
 
 
