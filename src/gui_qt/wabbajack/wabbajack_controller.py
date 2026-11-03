@@ -120,6 +120,7 @@ class WabbajackController(QObject):
     _finished = Signal(object, object)       # report | None, error | None
     _ask_manual = Signal(object)             # {"archive", "reason", "holder", "event"}
     _ask_login = Signal(object)              # {"holder", "event"}
+    _ask_resume = Signal(object)             # {"present", "total", "holder", "event"}
 
     def __init__(self, window):
         super().__init__(window)
@@ -142,6 +143,7 @@ class WabbajackController(QObject):
         self._finished.connect(self._on_finished)
         self._ask_manual.connect(self._on_ask_manual)
         self._ask_login.connect(self._on_ask_login)
+        self._ask_resume.connect(self._on_ask_resume)
 
     def tr(self, text):
         return self._win.tr(text)
@@ -390,6 +392,19 @@ class WabbajackController(QObject):
             # must describe where this profile's files actually live.
             game.set_active_profile_dir(profile_dir)
             game.load_paths()
+
+            # Deleting a profile does not delete shared staging, so a re-import
+            # can usually reuse most of what the last run built. Offer that
+            # rather than silently rebuilding -- or silently reusing files the
+            # user may have meant to discard.
+            if not resume:
+                from Utils.wabbajack.wabbajack_install import prebuilt_mod_count
+                present, total = prebuilt_mod_count(
+                    self._modlist, Path(game.get_effective_mod_staging_path()))
+                if present:
+                    ask = self._blocking(self._ask_resume, ("present", "total"))
+                    resume = bool(ask(present, total))
+
             game_path = game.get_game_path()
             substitutions = path_substitutions(
                 game_path=to_wine_path(game_path) if game_path else None,
@@ -446,6 +461,28 @@ class WabbajackController(QObject):
 
         ManualDownloadOverlay.show_over(
             self._win, payload["archive"], payload["reason"], done)
+
+    def _on_ask_resume(self, payload) -> None:
+        """Offer to reuse mod folders a previous run already built."""
+        from PySide6.QtWidgets import QMessageBox
+        if self._control is not None and self._control.cancel.is_set():
+            self._answer(payload, False)
+            return
+        present, total = payload["present"], payload["total"]
+        box = QMessageBox(self._win)
+        box.setIcon(QMessageBox.Icon.Question)
+        box.setWindowTitle(self.tr("Reuse existing files?"))
+        box.setText(self.tr("{0} of {1} mod folders from this modlist are already "
+                            "in the staging folder.").format(present, total))
+        box.setInformativeText(self.tr(
+            "Reuse them and only build what is missing, or rebuild everything "
+            "from scratch?\n\nFiles that don't match the modlist are rebuilt "
+            "either way."))
+        reuse = box.addButton(self.tr("Reuse"), QMessageBox.ButtonRole.AcceptRole)
+        box.addButton(self.tr("Rebuild all"), QMessageBox.ButtonRole.DestructiveRole)
+        box.setDefaultButton(reuse)
+        box.exec()
+        self._answer(payload, box.clickedButton() is reuse)
 
     def _on_ask_login(self, payload) -> None:
         from gui_qt.wabbajack.loverslab_login_overlay import LoversLabLoginOverlay

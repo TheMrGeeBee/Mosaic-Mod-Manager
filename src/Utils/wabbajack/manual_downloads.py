@@ -95,3 +95,85 @@ def find_downloaded(archive, folders: "list[Path] | None" = None) -> "Path | Non
     folders, verified by size and hash; else None."""
     return DownloadFinder(archive.size, archive.hash,
                           download_folders() if folders is None else folders).find()
+
+
+class MultiDownloadFinder:
+    """Watch one set of folders for *any* of several pending archives.
+
+    :class:`DownloadFinder` is built for a single archive, which forces the
+    manual-download flow to be strictly serial: archive 5 sitting in the
+    Downloads folder is invisible until its turn comes, and one archive that
+    never arrives blocks every other. A real list makes that costly -- the
+    VtMB "Fashionista - Steam" list has 77 manual archives.
+
+    Each candidate file is hashed at most once per (size, mtime), and only
+    when its size matches something still pending, so watching 77 archives
+    costs about the same as watching one.
+    """
+
+    def __init__(self, archives, folders: "list[Path]"):
+        # hash -> archive, for everything still wanted
+        self._pending = {a.hash: a for a in archives if a.hash and (a.size or 0) > 0}
+        self._by_size: "dict[int, list]" = {}
+        for a in self._pending.values():
+            self._by_size.setdefault(int(a.size), []).append(a)
+        self.folders = list(folders)
+        self._checked: "dict[Path, tuple[int, float]]" = {}
+
+    def pending(self) -> list:
+        """Archives not yet found, in no particular order."""
+        return list(self._pending.values())
+
+    def resolve(self, archive, path: "Path | None" = None) -> None:
+        """Drop *archive* from the watch set — found elsewhere, or skipped."""
+        self._pending.pop(archive.hash, None)
+        same = self._by_size.get(int(archive.size or 0))
+        if same:
+            remaining = [a for a in same if a.hash != archive.hash]
+            if remaining:
+                self._by_size[int(archive.size or 0)] = remaining
+            else:
+                self._by_size.pop(int(archive.size or 0), None)
+
+    def find_any(self) -> "dict[str, Path]":
+        """Scan once; return ``{archive.hash: path}`` for newly found files.
+
+        Found archives are removed from the watch set, so a later call only
+        looks for what is still outstanding.
+        """
+        hits: "dict[str, Path]" = {}
+        if not self._pending:
+            return hits
+        for folder in self.folders:
+            try:
+                entries = list(folder.iterdir())
+            except OSError:
+                continue
+            for p in entries:
+                if not self._pending:
+                    return hits
+                if p.name.lower().endswith(_PARTIAL_SUFFIXES):
+                    continue
+                try:
+                    st = p.stat()
+                except OSError:
+                    continue
+                if not p.is_file():
+                    continue
+                candidates = self._by_size.get(st.st_size)
+                if not candidates:
+                    continue
+                stamp = (st.st_size, st.st_mtime)
+                if self._checked.get(p) == stamp:
+                    continue
+                self._checked[p] = stamp
+                try:
+                    digest = hash_file(p)
+                except OSError:
+                    continue
+                for archive in list(candidates):
+                    if archive.hash in self._pending and hashes_match(archive.hash, digest):
+                        hits[archive.hash] = p
+                        self.resolve(archive)
+                        break
+        return hits

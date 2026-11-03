@@ -14,6 +14,7 @@ the file against the modlist's hash.
 from __future__ import annotations
 
 import threading
+import time
 from pathlib import Path
 
 from PySide6.QtCore import Qt, QTimer, Signal
@@ -158,18 +159,39 @@ class ManualDownloadOverlay(OverlayBase):
                   lambda path: safe_emit(self._picked, path),
                   filters=[("All files", ["*"])])
 
+    # A scan still "in flight" after this long is treated as lost, not pending.
+    # Hashing even a 1.4 GB archive takes well under a second, so anything
+    # beyond this means the result never came back.
+    _SCAN_STUCK_MS = 60_000
+
     def _scan(self):
-        if self._done or self._scanning:
+        if self._done:
             return
+        if self._scanning:
+            # Without this, a single dropped _found signal latches _scanning
+            # True for good: the timer keeps firing into an early return and
+            # the file is never picked up, even once it is sitting there
+            # complete. Observed hanging an install for 40+ minutes.
+            started = getattr(self, "_scan_started", 0.0)
+            if (time.monotonic() - started) * 1000 < self._SCAN_STUCK_MS:
+                return
         self._scanning = True
+        self._scan_started = time.monotonic()
         finder = self._finder
 
         def work():
+            found = None
             try:
                 found = finder.find()
             except Exception:
                 found = None
-            safe_emit(self._found, found)
+            finally:
+                # In the worker, so the flag clears even if delivery fails.
+                self._scanning = False
+                try:
+                    safe_emit(self._found, found)
+                except Exception:
+                    pass
 
         threading.Thread(target=work, daemon=True, name="wabbajack-watch-downloads").start()
 

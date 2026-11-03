@@ -46,9 +46,12 @@ from pathlib import Path
 from typing import Callable, Sequence
 
 from Utils.downloads.download_scheduler import order_by_size, run_smallest_first
+from Utils.mods.mo2_separator_meta import scan_separator_colors
 from Utils.mods.modlist import ModEntry, read_modlist, write_modlist
 from Utils.plugins.plugins import invalidate_plugins_cache
-from Utils.profile.profile_state import write_wabbajack_modlist_info
+from Utils.profile.profile_state import (read_separator_colors,
+                                         write_separator_colors,
+                                         write_wabbajack_modlist_info)
 
 from .downloaders import resolve_downloader
 from .downloaders.game_file_source import fetch_game_file, runtime_swap_originals
@@ -420,6 +423,25 @@ def _already_built(directive: Directive, staging: Path) -> bool:
     return False
 
 
+def prebuilt_mod_count(modlist: ModList, staging: Path) -> "tuple[int, int]":
+    """``(already_present, total)`` mod folders this modlist would build.
+
+    Cheap on purpose — a directory-existence test per mod, no hashing — so the
+    UI can decide whether to offer a resume before an install starts. It
+    answers "is there anything here worth reusing", not "is it all intact";
+    :func:`drop_built_directives` still checks each file's size, and a resume
+    rebuilds whatever doesn't match.
+    """
+    names: "set[str]" = set()
+    for d in modlist.directives:
+        parts = _norm_to(d)
+        if len(parts) >= 3 and parts[0].lower() == "mods":
+            names.add(parts[1])
+    if not names or not staging.is_dir():
+        return 0, len(names)
+    return sum(1 for n in names if (staging / n).is_dir()), len(names)
+
+
 def drop_built_directives(plan: InstallPlan, staging: Path) -> "list[Directive]":
     """Remove from ``plan`` the mod files (and rebuilt archives) that already
     exist in ``staging`` and return them. The loose files that only fed a
@@ -454,8 +476,13 @@ def _download_name(archive: Archive) -> str:
 
 
 def _cached(archive: Archive, download_dir: Path) -> "Path | None":
+    # Deliberately not gated on ``archive.name``: a nameless archive is
+    # downloaded under its hash by _download_name, so requiring a name here
+    # meant those few never counted as cached and were re-fetched every run.
+    # _download_name already sanitises the path, and _verified hashes the
+    # file, so the name itself guards nothing.
     candidate = download_dir / _download_name(archive)
-    if (archive.name and candidate.is_file()
+    if (candidate.is_file()
             and (not archive.size or candidate.stat().st_size == archive.size)
             and _verified(candidate, archive)):
         return candidate
@@ -591,7 +618,8 @@ def _download_all(archives: "list[Archive]", download_dir: Path, *, nexus_downlo
 
 def _write_profile(profile_dir: Path, scratch: Path, built_mods: "set[str]",
                    report: WabbajackInstallReport, log,
-                   root_parents: "dict[str, str] | None" = None) -> None:
+                   root_parents: "dict[str, str] | None" = None,
+                   staging: "Path | None" = None) -> None:
     curated = scratch / "modlist.txt"
     entries: "list[ModEntry]" = []
     if curated.is_file():
@@ -618,6 +646,22 @@ def _write_profile(profile_dir: Path, scratch: Path, built_mods: "set[str]",
     entries += [ModEntry(name=n, enabled=not curated.is_file(), locked=False)
                 for n in sorted(built_mods - listed)]
     write_modlist(profile_dir / "modlist.txt", entries)
+
+    # MO2 keeps a separator's colour in mods/<Name>_separator/meta.ini, which
+    # reaches staging like any other mod directive (3 path parts). Mosaic keeps
+    # colour in profile_state instead, so without this the imported list is
+    # uncoloured and the curator's grouping is invisible.
+    if staging is not None:
+        try:
+            colors = scan_separator_colors(staging)
+        except Exception as exc:                       # never fail an install over cosmetics
+            log(f"Wabbajack: could not read separator colours: {exc}")
+            colors = {}
+        if colors:
+            merged = dict(read_separator_colors(profile_dir))
+            merged.update(colors)
+            write_separator_colors(profile_dir, merged)
+            log(f"Wabbajack: imported {len(colors)} separator colour(s)")
 
     for name in _LOAD_ORDER_FILES:
         src = scratch / name
@@ -864,7 +908,7 @@ def run_wabbajack_install(*, wabbajack_path: "str | Path", modlist: ModList, gam
                      else f"Writing {len(targets)} profiles…")
         for mo2_profile, dest in targets.items():
             _write_profile(dest, profile_scratch / mo2_profile, built_mods, report, log,
-                           root_parents=root_parents)
+                           root_parents=root_parents, staging=staging)
     finally:
         shutil.rmtree(work_root, ignore_errors=True)
 
