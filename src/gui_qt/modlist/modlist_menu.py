@@ -175,8 +175,43 @@ def build_context_menu(view, index):
     return menu
 
 
+def _collapse_items(view, model, rows, multi, act, divider):
+    """Collapse/expand actions for the separator menu.
+
+    Shown-not-greyed, like the rest of this menu: each item appears only when
+    it would change something, so a fully expanded list offers "Collapse all"
+    and not "Expand all". *rows* is the separator selection the "selected"
+    pair acts on (just the clicked row when it isn't a multi-selection).
+    """
+    collapsed = model.collapsed_names()
+    chosen = [model.entry(r).display_name for r in rows]
+    if multi:
+        n = len(rows)
+        if any(name not in collapsed for name in chosen):
+            act(_mtf("Collapse selected ({0})", n),
+                lambda: view.set_rows_collapsed(rows, True))
+        if any(name in collapsed for name in chosen):
+            act(_mtf("Expand selected ({0})", n),
+                lambda: view.set_rows_collapsed(rows, False))
+    elif chosen:
+        # One separator: the row click already toggles it, but the menu is
+        # where a user looks for it.
+        if chosen[0] in collapsed:
+            act(_mt("Expand"), lambda: view.set_rows_collapsed(rows, False))
+        else:
+            act(_mt("Collapse"), lambda: view.set_rows_collapsed(rows, True))
+
+    names = model.collapsible_separator_names()
+    if any(name not in collapsed for name in names):
+        act(_mt("Collapse all"), lambda: view.set_all_collapsed(True))
+    if any(name in collapsed for name in names):
+        act(_mt("Expand all"), lambda: view.set_all_collapsed(False))
+    divider()
+
+
 def _build_separator_menu(view, model, row, entry, sel_seps, multi, act, stub,
                           divider, submenu):
+    _collapse_items(view, model, sel_seps if multi else [row], multi, act, divider)
     if multi:
         # ≥2 separators selected.
         all_locked = all(model.is_sep_locked(model.entry(r).display_name)
@@ -1644,6 +1679,12 @@ _TR_MARKERS = (
     QT_TRANSLATE_NOOP("ModListMenu", "Change Version (mod.io)"),
     QT_TRANSLATE_NOOP("ModListMenu", "Check Updates"),
     QT_TRANSLATE_NOOP("ModListMenu", "Check Updates ({0})"),
+    QT_TRANSLATE_NOOP("ModListMenu", "Collapse"),
+    QT_TRANSLATE_NOOP("ModListMenu", "Collapse all"),
+    QT_TRANSLATE_NOOP("ModListMenu", "Collapse selected ({0})"),
+    QT_TRANSLATE_NOOP("ModListMenu", "Expand"),
+    QT_TRANSLATE_NOOP("ModListMenu", "Expand all"),
+    QT_TRANSLATE_NOOP("ModListMenu", "Expand selected ({0})"),
     QT_TRANSLATE_NOOP("ModListMenu", "Copy to profile"),
     QT_TRANSLATE_NOOP("ModListMenu", "Copy to profile ({0})"),
     QT_TRANSLATE_NOOP("ModListMenu", "Could not create the mod folder:\n{0}"),

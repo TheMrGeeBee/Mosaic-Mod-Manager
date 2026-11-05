@@ -12688,6 +12688,9 @@ class MainWindow(QMainWindow):
         self._modlist_view.on_modio_like = self._on_modlist_modio_like
         # Track: needs the shared Nexus API (no meta.ini flag to persist).
         self._modlist_view.on_track = self._on_modlist_track
+        # Collapsing from the context menu (or a separator click) changes what
+        # the footer's Expand all / Collapse all toggle should say next.
+        self._modlist_view.on_collapse_changed = self._refresh_footer_toggle_labels
         # A saved note may change the note flag — light flag-only refresh.
         self._modlist_view.on_notes_changed = self._refresh_modlist_flags
         # Copy/Move to profile: worker copy + collision overlay + (move) remove.

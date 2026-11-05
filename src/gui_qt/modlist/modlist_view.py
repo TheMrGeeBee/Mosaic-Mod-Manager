@@ -551,9 +551,7 @@ class ModListView(QTreeView):
 
     def _toggle_collapse_row(self, row):
         self.model().toggle_collapse(row)
-        self.apply_collapse()
-        self._save_separator_state()
-        self.viewport().update()
+        self._after_collapse_change()
 
     def _toggle_lock_row(self, row):
         self.model().toggle_sep_lock(row)
@@ -586,12 +584,35 @@ class ModListView(QTreeView):
     def set_all_collapsed(self, collapsed: bool):
         """Collapse or expand every separator (Expand all / Collapse all)."""
         self.model().set_all_collapsed(collapsed)
+        self._after_collapse_change()
+
+    def set_rows_collapsed(self, rows, collapsed: bool):
+        """Collapse or expand only the separators at *rows* (Collapse /
+        Expand selected). Non-separator rows in the selection are ignored, so
+        a mixed selection does the sensible thing instead of nothing."""
+        m = self.model()
+        names = []
+        for r in rows:
+            e = m.entry(r)
+            if e is not None and e.is_separator:
+                names.append(e.display_name)
+        if not names:
+            return
+        m.set_collapsed_names(names, collapsed)
+        self._after_collapse_change()
+
+    def _after_collapse_change(self):
         self.apply_collapse()
         self._save_separator_state()
         self.viewport().update()
         sb = self.verticalScrollBar()
         if sb is not None:
             sb.update()
+        # The footer's Expand all / Collapse all button is a toggle whose label
+        # is derived from the list state, so it goes stale unless told.
+        cb = getattr(self, "on_collapse_changed", None)
+        if cb is not None:
+            cb()
 
     def _save_separator_state(self):
         if self.profile_dir is None:

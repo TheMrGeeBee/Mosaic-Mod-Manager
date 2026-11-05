@@ -833,12 +833,31 @@ class ModListModel(QAbstractTableModel):
     def set_all_collapsed(self, collapsed: bool) -> set[str]:
         """Collapse or expand every (non-boundary) separator. Returns the new
         collapsed set so the view can persist it."""
-        names = set(self.collapsible_separator_names())
+        return self.set_collapsed_names(self.collapsible_separator_names(),
+                                        collapsed)
+
+    def set_collapsed_names(self, names, collapsed: bool) -> set[str]:
+        """Collapse or expand just *names* (display names) -- the
+        Collapse/Expand *selected* counterpart to :meth:`set_all_collapsed`.
+        Names that aren't collapsible separators (the Overwrite / Root Folder
+        boundaries, the reverse-mode divider, anything stale in the persisted
+        set) are ignored. Returns the new collapsed set to persist.
+
+        The highlight cache is keyed on collapse state -- a separator is only
+        tinted while collapsed -- so it has to go, or a block collapsed with a
+        highlight selection live keeps the stale untinted answer.
+        """
+        wanted = set(self.collapsible_separator_names()) & set(names)
         if collapsed:
-            self._collapsed |= names
+            self._collapsed |= wanted
         else:
-            self._collapsed -= names
+            self._collapsed -= wanted
+        self._sep_hl_cache.clear()
         return self._collapsed
+
+    def collapsed_names(self) -> set[str]:
+        """The collapsed display names (a copy -- callers must not mutate)."""
+        return set(self._collapsed)
 
     def all_mods_enabled(self) -> bool:
         mods = [e for e in self._entries if not e.is_separator and not e.locked]
