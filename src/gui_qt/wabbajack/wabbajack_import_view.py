@@ -52,7 +52,7 @@ def source_breakdown(modlist: ModList) -> str:
 class WabbajackImportView(QWidget):
     def __init__(self, modlist: ModList, checks, *, on_install, on_login,
                  profiles=(), repair_profiles=(), preselect=(), on_repair=None,
-                 on_manual=None, parent=None):
+                 on_manual=None, on_manual_changed=None, parent=None):
         """``on_install(profiles)`` gets the ticked profile names, or ``[]``
         when the modlist has at most one profile (``profiles``).
         ``repair_profiles`` names existing Mosaic profiles installed from this
@@ -63,6 +63,7 @@ class WabbajackImportView(QWidget):
         self._installing = False
         self._modlist = modlist
         self._on_manual = on_manual
+        self._on_manual_changed = on_manual_changed
         # Built on first use and kept alive across set_checks() rebuilds: it
         # owns a running folder watch and a hash cache worth keeping.
         self._manual_pane = None
@@ -223,8 +224,15 @@ class WabbajackImportView(QWidget):
         from gui_qt.wabbajack.manual_download_queue import ManualDownloadQueue
         self._manual_pane = ManualDownloadQueue(
             archives,
-            on_resolved=(lambda h, p: self._on_manual(h, p)) if self._on_manual else None)
+            on_resolved=(lambda h, p: self._on_manual(h, p)) if self._on_manual else None,
+            on_changed=(lambda: self._on_manual_changed()) if self._on_manual_changed
+            else None)
         return self._manual_pane
+
+    def manual_skipped(self) -> int:
+        """How many manual archives the user skipped, so preflight can stop
+        blocking once nothing is left unanswered."""
+        return self._manual_pane.skipped_count() if self._manual_pane is not None else 0
 
     def stop_manual_queue(self) -> None:
         """Stop watching download folders (the install is starting)."""

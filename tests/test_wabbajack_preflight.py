@@ -97,8 +97,10 @@ def test_sources_unknown_blocks_others_warn():
         _archive("LoversLabDownloader"),
     ])
     checks = check_sources(ml, nexus_premium=False, loverslab_logged_in=False)
-    assert [c.key for c in blocking_failures(checks)] == ["sources"]
-    assert {c.key for c in warnings(checks)} == {"manual", "nexus-premium", "loverslab"}
+    # "manual" blocks too while archives are outstanding: the queue is on the
+    # preflight screen, so it is finished there rather than mid-install.
+    assert {c.key for c in blocking_failures(checks)} == {"sources", "manual"}
+    assert {c.key for c in warnings(checks)} == {"nexus-premium", "loverslab"}
     [ll] = [c for c in checks if c.key == "loverslab"]
     assert ll.fix == FIX_LOVERSLAB_LOGIN
 
@@ -164,19 +166,43 @@ def test_modlist_without_exe_archives_is_not_flagged():
 # ---------------------------------------------------------------------------
 
 
-def _manual_check(n_manual, resolved):
+def _manual_check(n_manual, resolved, skipped=0):
     ml = _modlist(archives=[_archive("ManualDownloader") for _ in range(n_manual)])
     checks = check_sources(ml, nexus_premium=True, loverslab_logged_in=True,
-                           manual_resolved=resolved)
+                           manual_resolved=resolved, manual_skipped=skipped)
     [check] = [c for c in checks if c.key == "manual"]
     return check
 
 
-def test_manual_unresolved_warns_and_offers_the_queue():
+def test_manual_unresolved_blocks_and_offers_the_queue():
+    """Blocking on purpose: an install started with manual archives still
+    outstanding falls back to asking for them one at a time, mid-install,
+    after the queue said it was handling them."""
     check = _manual_check(77, 0)
-    assert not check.ok and not check.blocking
+    assert not check.ok and check.blocking
     assert check.fix == FIX_MANUAL_DOWNLOADS
     assert "0 of 77 archives downloaded" in check.detail
+
+
+def test_manual_skipped_stops_blocking():
+    """A skip is the user saying they can't get that one. Without this, a
+    single dead download page would block the install for good."""
+    check = _manual_check(3, 1, skipped=2)
+    assert not check.ok and not check.blocking
+    assert "2 skipped" in check.detail
+
+
+def test_manual_partly_skipped_still_blocks():
+    check = _manual_check(5, 1, skipped=2)
+    assert not check.ok and check.blocking
+
+
+def test_manual_skipped_is_clamped_against_resolved():
+    """Found and skipped can overlap on a re-render (a skip taken back by a
+    file landing); the pair must never read as 'more than everything'."""
+    check = _manual_check(2, 2, skipped=2)
+    assert check.ok
+    assert not _manual_check(4, 1, skipped=99).blocking
 
 
 def test_manual_counts_progress():

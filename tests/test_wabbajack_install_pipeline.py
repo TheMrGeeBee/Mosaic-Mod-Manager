@@ -986,8 +986,160 @@ def test_manual_archive_found_in_downloads_is_reported_as_a_successful_download(
         max_workers=1, cb=cb, cancel=threading.Event(),
         report=wi.WabbajackInstallReport(), manual_folders=[downloads])
 
-    assert have[archive.hash] == payload
+    # Moved into the download cache, so the next run is a straight cache hit
+    # instead of re-hashing every candidate in the user's Downloads folder.
+    assert have[archive.hash] == tmp_path / "cache" / "by-hand.7z"
+    assert not payload.exists()
     assert finishes == [(archive.hash, False), (archive.hash, True)], (
         "the automatic pass reports failure, the find-in-downloads stage must "
         f"then report success; got {finishes}")
     assert starts[-1] == (archive.hash, archive.name, archive.size)
+
+
+# ---------------------------------------------------------------------------
+# Manual downloads move into the game's download cache
+# ---------------------------------------------------------------------------
+
+def _manual_archive(path):
+    """An ``Archive`` whose only source is a web page, matching *path*."""
+    from Utils.wabbajack.wabbajack_manifest import Archive, ManualState
+    return Archive(hash=hash_file(path), name=path.name,
+                   size=path.stat().st_size,
+                   state=ManualState(url="https://example.invalid/page"))
+
+
+def _run_download_all(archives, cache, *, folders, pre_resolved=None, log=None):
+    return wi._download_all(
+        archives, cache, nexus_downloader=None, game_root=None,
+        max_workers=1, cb=wi.WabbajackInstallCallbacks(
+            on_log=(log.append if log is not None else (lambda _m: None))),
+        cancel=threading.Event(), report=wi.WabbajackInstallReport(),
+        manual_folders=folders, pre_resolved=pre_resolved)
+
+
+def test_a_found_manual_archive_is_moved_out_of_downloads(tmp_path):
+    """Browser downloads land in ~/Downloads, where nothing keeps them: the
+    next run re-hashes every candidate there to find them again, and emptying
+    the folder loses archives the modlist still needs."""
+    downloads, cache = tmp_path / "Downloads", tmp_path / "cache"
+    downloads.mkdir()
+    payload = downloads / "Manual One.rar"
+    payload.write_bytes(b"x" * 4096)
+    archive = _manual_archive(payload)
+
+    have = _run_download_all([archive], cache, folders=[downloads])
+
+    assert have[archive.hash] == cache / "Manual One.rar"
+    assert (cache / "Manual One.rar").read_bytes() == b"x" * 4096
+    assert not payload.exists(), "the original must not be left behind as a duplicate"
+
+
+def test_a_moved_archive_is_a_cache_hit_next_run(tmp_path):
+    """The point of moving it: the second run must not touch the download
+    folders at all."""
+    downloads, cache = tmp_path / "Downloads", tmp_path / "cache"
+    downloads.mkdir()
+    payload = downloads / "Manual One.rar"
+    payload.write_bytes(b"y" * 2048)
+    archive = _manual_archive(payload)
+
+    _run_download_all([archive], cache, folders=[downloads])
+    # No download folders at all the second time round.
+    have = _run_download_all([archive], cache, folders=[])
+
+    assert have[archive.hash] == cache / "Manual One.rar"
+
+
+def test_a_half_finished_download_is_never_moved(tmp_path):
+    """Verify before moving: a partial file must stay where the browser is
+    still writing it."""
+    downloads, cache = tmp_path / "Downloads", tmp_path / "cache"
+    downloads.mkdir()
+    full = downloads / "Manual One.rar"
+    full.write_bytes(b"z" * 4096)
+    archive = _manual_archive(full)
+    full.write_bytes(b"z" * 2048)          # same name, now truncated
+
+    have = _run_download_all([archive], cache, folders=[downloads])
+
+    assert archive.hash not in have
+    assert full.exists() and full.stat().st_size == 2048
+
+
+def test_an_archive_already_in_the_cache_is_left_alone(tmp_path):
+    cache = tmp_path / "cache"
+    cache.mkdir()
+    payload = cache / "Manual One.rar"
+    payload.write_bytes(b"w" * 512)
+    archive = _manual_archive(payload)
+
+    have = _run_download_all([archive], cache, folders=[cache])
+
+    assert have[archive.hash] == payload and payload.exists()
+
+
+def test_a_name_collision_keeps_both_files(tmp_path):
+    """Another archive already holds the name. Overwriting it would corrupt a
+    file this or another modlist still needs."""
+    downloads, cache = tmp_path / "Downloads", tmp_path / "cache"
+    downloads.mkdir()
+    cache.mkdir()
+    squatter = cache / "Manual One.rar"
+    squatter.write_bytes(b"not the same file")
+    payload = downloads / "Manual One.rar"
+    payload.write_bytes(b"q" * 1024)
+    archive = _manual_archive(payload)
+
+    have = _run_download_all([archive], cache, folders=[downloads])
+
+    assert squatter.read_bytes() == b"not the same file"
+    assert have[archive.hash].read_bytes() == b"q" * 1024
+    assert have[archive.hash].parent == cache
+
+
+def test_an_unmovable_archive_still_installs(tmp_path):
+    """Never fail an install over the move: the verified original works."""
+    downloads, cache = tmp_path / "Downloads", tmp_path / "cache"
+    downloads.mkdir()
+    payload = downloads / "Manual One.rar"
+    payload.write_bytes(b"v" * 256)
+    archive = _manual_archive(payload)
+    cache.write_bytes(b"")                 # a file where the cache dir should be
+
+    log: "list[str]" = []
+    have = _run_download_all([archive], cache, folders=[downloads], log=log)
+
+    assert have[archive.hash] == payload
+    assert any("using it where it is" in m for m in log)
+
+
+def test_the_preflight_queues_findings_skip_the_rescan(tmp_path):
+    """The queue pane already hashed these; re-hashing every candidate in the
+    download folders to find them again is the slow part the user sees."""
+    downloads, cache = tmp_path / "Downloads", tmp_path / "cache"
+    downloads.mkdir()
+    payload = downloads / "Manual One.rar"
+    payload.write_bytes(b"p" * 8192)
+    archive = _manual_archive(payload)
+
+    have = _run_download_all([archive], cache, folders=[],  # nothing to scan
+                             pre_resolved={archive.hash: payload})
+
+    assert have[archive.hash] == cache / "Manual One.rar"
+    assert not payload.exists()
+
+
+def test_a_stale_preflight_finding_falls_back_to_the_scan(tmp_path):
+    """The file may have been moved or replaced between preflight and the
+    install, so each handed-over path is re-verified."""
+    downloads, cache = tmp_path / "Downloads", tmp_path / "cache"
+    downloads.mkdir()
+    payload = downloads / "Manual One.rar"
+    payload.write_bytes(b"s" * 1000)
+    archive = _manual_archive(payload)
+    stale = tmp_path / "gone.rar"
+
+    have = _run_download_all([archive], cache, folders=[downloads],
+                             pre_resolved={archive.hash: stale})
+
+    assert have[archive.hash] == cache / "Manual One.rar"

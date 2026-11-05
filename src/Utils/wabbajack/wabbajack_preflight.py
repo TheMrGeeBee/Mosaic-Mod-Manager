@@ -137,11 +137,16 @@ def _is_loverslab_url(url: str) -> bool:
 
 def check_sources(modlist: ModList, *, nexus_premium: bool,
                   loverslab_logged_in: bool,
-                  manual_resolved: int = 0) -> "list[Check]":
+                  manual_resolved: int = 0,
+                  manual_skipped: int = 0) -> "list[Check]":
     """``manual_resolved`` is how many manual archives are already sitting in
     the user's download folders -- counted by the queue pane, which hashes
     incrementally, not here: hashing 77 archives inline would stall the
-    preflight screen every time it re-runs."""
+    preflight screen every time it re-runs.
+
+    ``manual_skipped`` is how many the user explicitly gave up on. Outstanding
+    manual archives block the install, so a skip has to count as an answer or
+    one dead download page would block it for good."""
     by_kind: Counter = Counter(type(a.state) for a in modlist.archives)
     checks: "list[Check]" = []
     if by_kind[UnknownState]:
@@ -152,19 +157,33 @@ def check_sources(modlist: ModList, *, nexus_premium: bool,
     if by_kind[ManualState]:
         total = by_kind[ManualState]
         done = max(0, min(int(manual_resolved), total))
+        skipped = max(0, min(int(manual_skipped), total - done))
         if done >= total:
             checks.append(Check(
                 "manual", True, "Every file that needs a browser is downloaded",
                 f"{_plural(total, 'archive')} had to come from a web page; all of "
                 "them are in your downloads."))
         else:
+            # Blocking on purpose. These used to be a warning, so an install
+            # could start with archives outstanding and then fall back to
+            # asking for them one at a time, mid-install -- after the queue
+            # below had said it was handling them. Being re-asked made
+            # cancelling look like the sensible answer, which threw away the
+            # whole run. The queue is right here; finish it first.
+            detail = (f"{done} of {_plural(total, 'archive')} downloaded. The rest "
+                      "can only be fetched from a web page: open each one, download "
+                      "it in your browser, and Mosaic picks it up from your "
+                      "downloads. Files already there are used straight away.")
+            if skipped:
+                detail += (f" {skipped} skipped -- the mods that need those files "
+                           "will be missing files, but the install can go ahead.")
             checks.append(Check(
                 "manual", False, "Some files must be downloaded in your browser",
-                f"{done} of {_plural(total, 'archive')} downloaded. The rest can "
-                "only be fetched from a web page: open each one, download it in "
-                "your browser, and Mosaic picks it up from your downloads. Files "
-                "already there are used straight away.",
-                blocking=False, fix=FIX_MANUAL_DOWNLOADS))
+                detail,
+                # A skip is the user saying they can't get that one, so it
+                # stops blocking once nothing is left unanswered.
+                blocking=(done + skipped) < total,
+                fix=FIX_MANUAL_DOWNLOADS))
     if by_kind[NexusState] and not nexus_premium:
         checks.append(Check(
             "nexus-premium", False, "Nexus downloads need Premium to run automatically",
@@ -316,7 +335,7 @@ def check_game_files(modlist: ModList, game_root: "str | Path | None",
 def run_preflight(modlist: ModList, *, active_game_name: str,
                   staging_root: "str | Path | None", cache_dir: "str | Path | None",
                   nexus_premium: bool, loverslab_logged_in: bool,
-                  manual_resolved: int = 0,
+                  manual_resolved: int = 0, manual_skipped: int = 0,
                   game_root: "str | Path | None" = None,
                   originals: "list[Path] | None" = None,
                   free_fn: "Callable[[Path], int] | None" = None) -> "list[Check]":
@@ -329,7 +348,8 @@ def run_preflight(modlist: ModList, *, active_game_name: str,
         *check_inno_tool(modlist),
         *check_sources(modlist, nexus_premium=nexus_premium,
                        loverslab_logged_in=loverslab_logged_in,
-                       manual_resolved=manual_resolved),
+                       manual_resolved=manual_resolved,
+                       manual_skipped=manual_skipped),
         *check_disk_space(staging_root, cache_dir, modlist.total_install_size,
                           modlist.total_archive_size, free_fn=free_fn, noun="modlist"),
     ]

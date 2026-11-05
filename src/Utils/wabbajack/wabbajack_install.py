@@ -491,6 +491,51 @@ def _cached(archive: Archive, download_dir: Path) -> "Path | None":
     return None
 
 
+def _adopt_into_cache(path: Path, archive: Archive, download_dir: Path, log) -> Path:
+    """Move an already-verified manual download into the game's download
+    cache and return its new path (or the original, if it can't be moved).
+
+    A browser download lands in the user's Downloads folder, where nothing
+    keeps it: the next run has to re-hash every candidate there to find it
+    again (slow -- a modlist can need 77 of them), and emptying Downloads
+    loses archives the modlist still needs. Moving it under the name
+    :func:`_download_name` expects means :func:`_cached` finds it directly on
+    the next run, with no hashing at all.
+
+    The caller must have verified *path* against ``archive`` first: only a
+    complete, hash-matching file is moved, so a half-finished download is
+    never taken out of the user's Downloads folder.
+    """
+    try:
+        if path.parent.resolve() == download_dir.resolve():
+            return path                      # already cached
+    except OSError:
+        return path
+    dest = download_dir / _download_name(archive)
+    try:
+        download_dir.mkdir(parents=True, exist_ok=True)
+        if dest.exists():
+            # Something already holds the name. If it is this archive the
+            # cache is fine as it stands; if not, keep both rather than
+            # overwriting a file another archive may be using.
+            if _verified(dest, archive):
+                log(f"Wabbajack: {dest.name} is already in the download cache")
+                return dest
+            dest = download_dir / f"{archive.hash.replace('/', '_')}_{dest.name}"
+        shutil.move(str(path), str(dest))
+    except OSError as exc:
+        # Never fail an install over this: the verified original still works.
+        log(f"Wabbajack: couldn't move {path.name} into the download cache ({exc}); "
+            "using it where it is")
+        return path
+    if not dest.is_file() or (archive.size and dest.stat().st_size != archive.size):
+        log(f"Wabbajack: {path.name} didn't survive the move into the download cache; "
+            "using it where it is")
+        return path if path.is_file() else dest
+    log(f"Wabbajack: moved {dest.name} into the download cache")
+    return dest
+
+
 def _download_automatic(archive: Archive, download_dir: Path, *, nexus_downloader,
                         game_root, originals=None, cb: WabbajackInstallCallbacks,
                         cancel: threading.Event) -> "tuple[Path | None, str]":
@@ -534,7 +579,8 @@ def _download_automatic(archive: Archive, download_dir: Path, *, nexus_downloade
 def _download_all(archives: "list[Archive]", download_dir: Path, *, nexus_downloader,
                   game_root, originals=None, max_workers: int, cb: WabbajackInstallCallbacks, cancel: threading.Event,
                   report: WabbajackInstallReport,
-                  manual_folders: "list[Path] | None" = None) -> "dict[str, Path]":
+                  manual_folders: "list[Path] | None" = None,
+                  pre_resolved: "dict[str, Path] | None" = None) -> "dict[str, Path]":
     have: "dict[str, Path]" = {}
     need_manual: "list[tuple[Archive, str]]" = []
     lock = threading.Lock()
@@ -577,12 +623,25 @@ def _download_all(archives: "list[Archive]", download_dir: Path, *, nexus_downlo
     if need_manual:
         from .manual_downloads import download_folders, find_downloaded
         folders = download_folders() if manual_folders is None else manual_folders
+        known = pre_resolved or {}
         still: "list[tuple[Archive, str]]" = []
         for archive, why in need_manual:
-            found = None if cancel.is_set() else find_downloaded(archive, folders)
+            if cancel.is_set():
+                still.append((archive, why))
+                continue
+            # The preflight queue already located and hashed this one, so take
+            # its answer instead of re-hashing every candidate in the download
+            # folders -- but re-verify, since the file may have been moved or
+            # replaced between preflight and here.
+            found = known.get(archive.hash)
+            if found is not None:
+                found = Path(found)
+                found = found if _verified(found, archive) else None
+            if found is None:
+                found = find_downloaded(archive, folders)
             if found is not None:
                 cb.on_log(f"Wabbajack: using {found} for {archive.name} (found in your downloads)")
-                have[archive.hash] = found
+                have[archive.hash] = _adopt_into_cache(found, archive, download_dir, cb.on_log)
                 # work() already reported this one as finished-unsuccessfully,
                 # since it has no automatic downloader. Report the real outcome
                 # so its bytes reach the progress total; the overlay counts
@@ -602,7 +661,8 @@ def _download_all(archives: "list[Archive]", download_dir: Path, *, nexus_downlo
             cb.on_log(f"Wabbajack: {archive.name} needs a manual download ({why})")
             path = cb.request_manual_download(archive, why)
         if path is not None and _verified(Path(path), archive):
-            have[archive.hash] = Path(path)
+            have[archive.hash] = _adopt_into_cache(
+                Path(path), archive, download_dir, cb.on_log)
             # As above: re-report so a hand-downloaded archive's bytes count.
             cb.on_download_start(archive.hash, archive.name, archive.size)
             cb.on_download_finish(archive.hash, True)
@@ -776,6 +836,7 @@ def run_wabbajack_install(*, wabbajack_path: "str | Path", modlist: ModList, gam
                           callbacks: "WabbajackInstallCallbacks | None" = None,
                           control: "WabbajackInstallControl | None" = None,
                           manual_folders: "list[Path] | None" = None,
+                          manual_resolved: "dict[str, Path] | None" = None,
                           resume: bool = False,
                           ) -> WabbajackInstallReport:
     """Install ``modlist`` into one or more Mosaic profiles (see the module doc).
@@ -790,6 +851,10 @@ def run_wabbajack_install(*, wabbajack_path: "str | Path", modlist: ModList, gam
     ``profile_state.link_shared_mods``).
 
     ``substitutions`` comes from ``wabbajack_directives.path_substitutions``.
+    ``manual_resolved`` is ``{archive hash: path}`` for manual archives the
+    preflight queue already found, so the install doesn't re-hash the download
+    folders looking for them again. Each one is re-verified before use.
+
     ``resume`` installs into a profile that already holds an earlier run:
     files that are already built are kept, and only what's missing is
     downloaded and built."""
@@ -873,7 +938,7 @@ def run_wabbajack_install(*, wabbajack_path: "str | Path", modlist: ModList, gam
                          game_root=game_root,
                          originals=runtime_swap_originals(getattr(game, "name", "")),
                          max_workers=max_downloads, cb=cb, cancel=cancel, report=report,
-                         manual_folders=manual_folders)
+                         manual_folders=manual_folders, pre_resolved=manual_resolved)
     if cancel.is_set():
         report.cancelled = True
         return report

@@ -242,6 +242,15 @@ class ManualDownloadQueue(QWidget):
     def resolved(self) -> "dict[str, Path]":
         return dict(self._resolved)
 
+    def skipped_count(self) -> int:
+        """How many archives the user explicitly gave up on.
+
+        Preflight blocks the install while manual archives are outstanding, so
+        a skip has to count as an answer -- otherwise one dead download page
+        would block the install for good.
+        """
+        return len(self._skipped)
+
     def pending(self) -> list:
         """Still wanted, in display order: not found and not skipped."""
         return [a for a in self._archives

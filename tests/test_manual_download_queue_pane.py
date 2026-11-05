@@ -113,7 +113,9 @@ def test_the_manual_check_offers_the_queue(tmp_path):
     manual_check = [c for c in checks if c.key == "manual"][0]
     assert manual_check.fix == FIX_MANUAL_DOWNLOADS
     assert not manual_check.ok
-    assert not manual_check.blocking        # a warning, never a hard stop
+    # Blocks while outstanding, so the queue is finished here rather than
+    # through the mid-install one-at-a-time prompt.
+    assert manual_check.blocking
 
 
 def test_the_pane_survives_a_set_checks_rebuild(app, isolated_settings,

@@ -133,9 +133,9 @@ class WabbajackController(QObject):
         self._profile_names: "list[str]" = []
         self._profile_dirs: "list[Path]" = []
         # Manual archives already sitting in the download folders, found by
-        # the preflight queue pane. Only the count is used (to re-render the
-        # check): the install re-finds the files themselves via
-        # find_downloaded(), since they never leave the download folders.
+        # the preflight queue pane. The count re-renders the check; the paths
+        # are handed to the install so it doesn't re-hash every candidate in
+        # the download folders to find what the queue already located.
         self._manual_found: "dict[str, Path]" = {}
         self._picked.connect(self._on_picked)
         self._parsed.connect(self._on_parsed)
@@ -258,7 +258,9 @@ class WabbajackController(QObject):
             nexus_premium=nexus_ok, game_root=game_root,
             originals=runtime_swap_originals(game.name),
             loverslab_logged_in=bool(loverslab_auth.load_session()),
-            manual_resolved=len(self._manual_found))
+            manual_resolved=len(self._manual_found),
+            manual_skipped=(self._view.manual_skipped()
+                            if self._view is not None else 0))
 
     def _on_parsed(self, path, modlist, error) -> None:
         if error is not None:
@@ -280,7 +282,8 @@ class WabbajackController(QObject):
             preselect=sorted(p for p in repairable if p),
             on_repair=lambda _p=None: self._start_install(repair=self._repair_targets()),
             on_install=self._start_install, on_login=self._login_from_view,
-            on_manual=self._manual_from_view)
+            on_manual=self._manual_from_view,
+            on_manual_changed=self._manual_changed_from_view)
         self._win._tabs.open_tab(
             self._view, self.tr("Wabbajack: {0}").format(modlist.name or path.stem), key=key)
 
@@ -289,6 +292,13 @@ class WabbajackController(QObject):
         hand). Re-run preflight so the Manual downloads row counts it, the same
         way the LoversLab login does."""
         self._manual_found[archive_hash] = path
+        if self._view is not None and self._modlist is not None:
+            self._view.set_checks(self._preflight(self._modlist))
+
+    def _manual_changed_from_view(self) -> None:
+        """The queue's counts moved without a file arriving -- a skip, or a
+        skip taken back. Outstanding manual archives block the install, so the
+        check has to be re-rendered for the Install button to follow."""
         if self._view is not None and self._modlist is not None:
             self._view.set_checks(self._preflight(self._modlist))
 
@@ -435,7 +445,7 @@ class WabbajackController(QObject):
                 nexus_downloader=(NexusDownloader(api, download_dir=download_dir)
                                   if api is not None else None),
                 substitutions=substitutions, callbacks=callbacks, control=control,
-                resume=resume)
+                manual_resolved=dict(self._manual_found), resume=resume)
             safe_emit(self._finished, report, None)
         except Exception as exc:
             import traceback
