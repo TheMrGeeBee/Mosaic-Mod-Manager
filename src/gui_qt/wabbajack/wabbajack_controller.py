@@ -132,6 +132,11 @@ class WabbajackController(QObject):
         self._profile_name = ""
         self._profile_names: "list[str]" = []
         self._profile_dirs: "list[Path]" = []
+        # Manual archives already sitting in the download folders, found by
+        # the preflight queue pane. Only the count is used (to re-render the
+        # check): the install re-finds the files themselves via
+        # find_downloaded(), since they never leave the download folders.
+        self._manual_found: "dict[str, Path]" = {}
         self._picked.connect(self._on_picked)
         self._parsed.connect(self._on_parsed)
         self._status.connect(lambda t: self._overlay and self._overlay.set_status(t))
@@ -252,7 +257,8 @@ class WabbajackController(QObject):
             cache_dir=get_download_cache_dir_for_game(game.name),
             nexus_premium=nexus_ok, game_root=game_root,
             originals=runtime_swap_originals(game.name),
-            loverslab_logged_in=bool(loverslab_auth.load_session()))
+            loverslab_logged_in=bool(loverslab_auth.load_session()),
+            manual_resolved=len(self._manual_found))
 
     def _on_parsed(self, path, modlist, error) -> None:
         if error is not None:
@@ -265,6 +271,7 @@ class WabbajackController(QObject):
         if self._win._tabs.has_key(key):
             self._win._tabs.close_tab(key)
         self._path, self._modlist = path, modlist
+        self._manual_found.clear()
         from Utils.wabbajack.wabbajack_install import profile_choices
         repairable = self._repair_targets()
         self._view = WabbajackImportView(
@@ -272,9 +279,18 @@ class WabbajackController(QObject):
             repair_profiles=sorted(repairable.values()),
             preselect=sorted(p for p in repairable if p),
             on_repair=lambda _p=None: self._start_install(repair=self._repair_targets()),
-            on_install=self._start_install, on_login=self._login_from_view)
+            on_install=self._start_install, on_login=self._login_from_view,
+            on_manual=self._manual_from_view)
         self._win._tabs.open_tab(
             self._view, self.tr("Wabbajack: {0}").format(modlist.name or path.stem), key=key)
+
+    def _manual_from_view(self, archive_hash, path) -> None:
+        """A manual archive turned up in the user's downloads (or was picked by
+        hand). Re-run preflight so the Manual downloads row counts it, the same
+        way the LoversLab login does."""
+        self._manual_found[archive_hash] = path
+        if self._view is not None and self._modlist is not None:
+            self._view.set_checks(self._preflight(self._modlist))
 
     def _login_from_view(self) -> None:
         from gui_qt.wabbajack.loverslab_login_overlay import LoversLabLoginOverlay
@@ -359,6 +375,9 @@ class WabbajackController(QObject):
         self._profile_name = name
         if self._view is not None:
             self._view.set_installing(True)
+            # The install does its own download-folder scan; two watchers
+            # hashing the same files helps nobody.
+            self._view.stop_manual_queue()
         self._control = WabbajackInstallControl()
         self._overlay = WabbajackInstallOverlay.show_over(
             self._win, self.tr("Installing {0}").format(modlist.name or name),

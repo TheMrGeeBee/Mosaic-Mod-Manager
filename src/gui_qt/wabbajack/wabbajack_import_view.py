@@ -29,8 +29,10 @@ from PySide6.QtWidgets import (
 from gui_qt.theme.theme_qt import _c, active_palette
 from Utils.collections.collection_manifest import fmt_size
 from Utils.collections.collection_preflight import blocking_failures
-from Utils.wabbajack.wabbajack_manifest import ModList, UnknownState, mosaic_game_for
-from Utils.wabbajack.wabbajack_preflight import FIX_LOVERSLAB_LOGIN
+from Utils.wabbajack.wabbajack_manifest import (ManualState, ModList, UnknownState,
+                                                mosaic_game_for)
+from Utils.wabbajack.wabbajack_preflight import (FIX_LOVERSLAB_LOGIN,
+                                                 FIX_MANUAL_DOWNLOADS)
 
 _SOURCE_LABELS = {
     "NexusState": "Nexus Mods", "HttpState": "Direct link", "WabbajackCDNState": "Wabbajack CDN",
@@ -50,7 +52,7 @@ def source_breakdown(modlist: ModList) -> str:
 class WabbajackImportView(QWidget):
     def __init__(self, modlist: ModList, checks, *, on_install, on_login,
                  profiles=(), repair_profiles=(), preselect=(), on_repair=None,
-                 parent=None):
+                 on_manual=None, parent=None):
         """``on_install(profiles)`` gets the ticked profile names, or ``[]``
         when the modlist has at most one profile (``profiles``).
         ``repair_profiles`` names existing Mosaic profiles installed from this
@@ -59,6 +61,11 @@ class WabbajackImportView(QWidget):
         super().__init__(parent)
         self._blocked = False
         self._installing = False
+        self._modlist = modlist
+        self._on_manual = on_manual
+        # Built on first use and kept alive across set_checks() rebuilds: it
+        # owns a running folder watch and a hash cache worth keeping.
+        self._manual_pane = None
         self._on_repair = on_repair
         self._repair_btn = None
         self._profile_list = None
@@ -182,6 +189,11 @@ class WabbajackImportView(QWidget):
         self.set_checks(checks)
 
     def set_checks(self, checks) -> None:
+        # Lift the queue pane clear of the teardown below: it is mounted inside
+        # a check row, and deleting that row would take the pane's live folder
+        # watch with it on every re-check.
+        if self._manual_pane is not None:
+            self._manual_pane.setParent(None)
         while self._checks_box.count():
             old = self._checks_box.takeAt(0).widget()
             if old is not None:
@@ -191,10 +203,33 @@ class WabbajackImportView(QWidget):
                 old.setParent(None)
                 old.deleteLater()
         for check in checks:
-            self._checks_box.addWidget(self._check_row(check))
+            body = self._manual_queue() if check.key == "manual" else None
+            self._checks_box.addWidget(self._check_row(check, body))
         self._login_btn.setVisible(any(c.fix == FIX_LOVERSLAB_LOGIN and not c.ok for c in checks))
         self._blocked = bool(blocking_failures(checks))
         self._refresh_install()
+
+    def _manual_queue(self):
+        """The manual-download queue, or None when nothing needs one.
+
+        Matches ``check_sources``' own counting (exactly ``ManualState``, so
+        LoversLab archives it handles separately are not double-counted).
+        """
+        if self._manual_pane is not None:
+            return self._manual_pane
+        archives = [a for a in self._modlist.archives if type(a.state) is ManualState]
+        if not archives:
+            return None
+        from gui_qt.wabbajack.manual_download_queue import ManualDownloadQueue
+        self._manual_pane = ManualDownloadQueue(
+            archives,
+            on_resolved=(lambda h, p: self._on_manual(h, p)) if self._on_manual else None)
+        return self._manual_pane
+
+    def stop_manual_queue(self) -> None:
+        """Stop watching download folders (the install is starting)."""
+        if self._manual_pane is not None:
+            self._manual_pane.stop()
 
     def selected_profiles(self) -> "list[str]":
         if self._profile_list is None:
@@ -235,7 +270,7 @@ class WabbajackImportView(QWidget):
             tip = ""
         self._install_btn.setToolTip(tip)
 
-    def _check_row(self, check) -> QWidget:
+    def _check_row(self, check, body=None) -> QWidget:
         p = self._p
         if check.ok:
             mark, key = "✓", "TEXT_OK_BRIGHT"
@@ -259,7 +294,20 @@ class WabbajackImportView(QWidget):
         text.setTextFormat(Qt.RichText)
         text.setStyleSheet(f"color:{_c(p,'TEXT_MAIN')}; font-size:13px;")
         h.addWidget(text, 1)
-        return row
+        if body is None:
+            return row
+        # The row plus its expanded detail, indented under the status glyph.
+        wrap = QWidget()
+        wv = QVBoxLayout(wrap)
+        wv.setContentsMargins(0, 0, 0, 0)
+        wv.setSpacing(0)
+        wv.addWidget(row)
+        indent = QHBoxLayout()
+        indent.setContentsMargins(18, 0, 0, 0)
+        indent.addWidget(body)
+        wv.addLayout(indent)
+        body.setVisible(True)
+        return wrap
 
 
 def _escape(s: str) -> str:

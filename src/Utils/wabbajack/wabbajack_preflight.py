@@ -40,6 +40,7 @@ from .wabbajack_manifest import (
 )
 
 FIX_LOVERSLAB_LOGIN = "loverslab-login"
+FIX_MANUAL_DOWNLOADS = "manual-downloads"
 
 _DIRECTIVE_LABELS = {
     TransformedTextureDirective: "converted texture",
@@ -135,7 +136,12 @@ def _is_loverslab_url(url: str) -> bool:
 
 
 def check_sources(modlist: ModList, *, nexus_premium: bool,
-                  loverslab_logged_in: bool) -> "list[Check]":
+                  loverslab_logged_in: bool,
+                  manual_resolved: int = 0) -> "list[Check]":
+    """``manual_resolved`` is how many manual archives are already sitting in
+    the user's download folders -- counted by the queue pane, which hashes
+    incrementally, not here: hashing 77 archives inline would stall the
+    preflight screen every time it re-runs."""
     by_kind: Counter = Counter(type(a.state) for a in modlist.archives)
     checks: "list[Check]" = []
     if by_kind[UnknownState]:
@@ -144,13 +150,21 @@ def check_sources(modlist: ModList, *, nexus_premium: bool,
             "sources", False, "Some downloads come from sources Mosaic doesn't recognise",
             f"{_plural(by_kind[UnknownState], 'archive')} ({', '.join(names)})."))
     if by_kind[ManualState]:
-        checks.append(Check(
-            "manual", False, "Some files must be downloaded in your browser",
-            f"{_plural(by_kind[ManualState], 'archive')} can only be downloaded from a "
-            "web page. During the install Mosaic shows each page; download the file "
-            "in your browser and Mosaic picks it up from your downloads. Files "
-            "already there are used straight away.",
-            blocking=False))
+        total = by_kind[ManualState]
+        done = max(0, min(int(manual_resolved), total))
+        if done >= total:
+            checks.append(Check(
+                "manual", True, "Every file that needs a browser is downloaded",
+                f"{_plural(total, 'archive')} had to come from a web page; all of "
+                "them are in your downloads."))
+        else:
+            checks.append(Check(
+                "manual", False, "Some files must be downloaded in your browser",
+                f"{done} of {_plural(total, 'archive')} downloaded. The rest can "
+                "only be fetched from a web page: open each one, download it in "
+                "your browser, and Mosaic picks it up from your downloads. Files "
+                "already there are used straight away.",
+                blocking=False, fix=FIX_MANUAL_DOWNLOADS))
     if by_kind[NexusState] and not nexus_premium:
         checks.append(Check(
             "nexus-premium", False, "Nexus downloads need Premium to run automatically",
@@ -302,6 +316,7 @@ def check_game_files(modlist: ModList, game_root: "str | Path | None",
 def run_preflight(modlist: ModList, *, active_game_name: str,
                   staging_root: "str | Path | None", cache_dir: "str | Path | None",
                   nexus_premium: bool, loverslab_logged_in: bool,
+                  manual_resolved: int = 0,
                   game_root: "str | Path | None" = None,
                   originals: "list[Path] | None" = None,
                   free_fn: "Callable[[Path], int] | None" = None) -> "list[Check]":
@@ -313,7 +328,8 @@ def run_preflight(modlist: ModList, *, active_game_name: str,
         *check_directives(modlist),
         *check_inno_tool(modlist),
         *check_sources(modlist, nexus_premium=nexus_premium,
-                       loverslab_logged_in=loverslab_logged_in),
+                       loverslab_logged_in=loverslab_logged_in,
+                       manual_resolved=manual_resolved),
         *check_disk_space(staging_root, cache_dir, modlist.total_install_size,
                           modlist.total_archive_size, free_fn=free_fn, noun="modlist"),
     ]

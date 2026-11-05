@@ -2372,3 +2372,53 @@ def ensure_ini_version() -> None:
                 parser.write(f)
         except Exception:
             pass
+
+
+# ---------------------------------------------------------------------------
+# Wabbajack manual downloads
+# ---------------------------------------------------------------------------
+
+_WJ_MANUAL_SECTION = "wabbajack"
+_WJ_AUTO_OPEN_KEY = "manual_auto_open_next"
+_WJ_TABS_AT_ONCE_KEY = "manual_tabs_at_once"
+# More than this many browser tabs at once is unusable, and every open tab is a
+# page the user still has to click through.
+WJ_TABS_AT_ONCE_MAX = 10
+
+
+def load_wabbajack_manual_settings() -> dict:
+    """``{"auto_open": bool, "tabs_at_once": int}`` for the manual-download
+    queue. Defaults to one-at-a-time with no auto-open, which is exactly how
+    the queue behaved before these settings existed."""
+    out = {"auto_open": False, "tabs_at_once": 1}
+    path = get_ui_config_path()
+    if not path.is_file():
+        return out
+    try:
+        parser = _new_parser()
+        parser.read(path)
+        if not parser.has_section(_WJ_MANUAL_SECTION):
+            return out
+        sec = parser[_WJ_MANUAL_SECTION]
+        out["auto_open"] = sec.get(_WJ_AUTO_OPEN_KEY, "0").strip().lower() in ("1", "true", "yes")
+        out["tabs_at_once"] = max(1, min(WJ_TABS_AT_ONCE_MAX,
+                                         int(sec.get(_WJ_TABS_AT_ONCE_KEY, "1"))))
+    except Exception:
+        return {"auto_open": False, "tabs_at_once": 1}
+    return out
+
+
+def save_wabbajack_manual_settings(auto_open: bool, tabs_at_once: int) -> None:
+    """Persist the manual-download queue's auto-open settings to mosaic.ini."""
+    path = get_ui_config_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    parser = _new_parser()
+    if path.is_file():
+        parser.read(path)
+    if _WJ_MANUAL_SECTION not in parser:
+        parser[_WJ_MANUAL_SECTION] = {}
+    parser[_WJ_MANUAL_SECTION][_WJ_AUTO_OPEN_KEY] = "1" if auto_open else "0"
+    parser[_WJ_MANUAL_SECTION][_WJ_TABS_AT_ONCE_KEY] = str(
+        max(1, min(WJ_TABS_AT_ONCE_MAX, int(tabs_at_once or 1))))
+    with path.open("w", encoding="utf-8") as f:
+        parser.write(f)

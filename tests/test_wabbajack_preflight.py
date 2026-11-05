@@ -6,6 +6,7 @@ from Utils.collections.collection_preflight import blocking_failures, warnings
 from Utils.wabbajack.wabbajack_manifest import parse_modlist
 from Utils.wabbajack.wabbajack_preflight import (
     FIX_LOVERSLAB_LOGIN,
+    FIX_MANUAL_DOWNLOADS,
     check_directives,
     check_game,
     check_inno_tool,
@@ -156,3 +157,55 @@ def test_exe_archive_not_used_as_a_container_is_not_flagged():
 def test_modlist_without_exe_archives_is_not_flagged():
     assert check_inno_tool(_modlist(archives=[_archive("HttpDownloader")]),
                            which=lambda _n: None) == []
+
+
+# ---------------------------------------------------------------------------
+# the manual-download check: it tracks what the preflight queue pane has found
+# ---------------------------------------------------------------------------
+
+
+def _manual_check(n_manual, resolved):
+    ml = _modlist(archives=[_archive("ManualDownloader") for _ in range(n_manual)])
+    checks = check_sources(ml, nexus_premium=True, loverslab_logged_in=True,
+                           manual_resolved=resolved)
+    [check] = [c for c in checks if c.key == "manual"]
+    return check
+
+
+def test_manual_unresolved_warns_and_offers_the_queue():
+    check = _manual_check(77, 0)
+    assert not check.ok and not check.blocking
+    assert check.fix == FIX_MANUAL_DOWNLOADS
+    assert "0 of 77 archives downloaded" in check.detail
+
+
+def test_manual_counts_progress():
+    assert "12 of 77 archives downloaded" in _manual_check(77, 12).detail
+
+
+def test_manual_all_downloaded_passes():
+    check = _manual_check(3, 3)
+    assert check.ok and check.fix is None
+
+
+def test_manual_defaults_to_none_resolved():
+    """An caller that doesn't know about the pane still gets the warning."""
+    ml = _modlist(archives=[_archive("ManualDownloader")])
+    [check] = [c for c in check_sources(ml, nexus_premium=True,
+                                        loverslab_logged_in=True)
+               if c.key == "manual"]
+    assert not check.ok
+
+
+def test_manual_resolved_is_clamped():
+    """A stale count from a re-run must not read as 'more than everything'."""
+    assert _manual_check(2, 99).ok
+    assert "0 of 2 archives" in _manual_check(2, -5).detail
+
+
+def test_run_preflight_threads_manual_resolved():
+    ml = _modlist(archives=[_archive("ManualDownloader")])
+    checks = run_preflight(ml, active_game_name="Skyrim Special Edition",
+                           staging_root=None, cache_dir=None, nexus_premium=True,
+                           loverslab_logged_in=True, manual_resolved=1)
+    assert [c for c in checks if c.key == "manual"][0].ok
