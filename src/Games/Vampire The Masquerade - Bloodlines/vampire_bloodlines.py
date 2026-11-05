@@ -90,9 +90,10 @@ _MUTABLE_PATCH_FILES = (
     "vdata/system/traiteffects000.txt",
 )
 _PRIVATE_MANIFEST = "private_copies.json"     # in the profile dir; rel -> sha1 at copy time
+_STATE_MANIFEST = "saved_state.json"          # in the profile dir; rels the deploy placed
 # Folders of per-profile game state (saves, per-map HL1-3 state). Restore moves
 # them to Overwrite; because the filemap is not rebuilt between that Restore and
-# the next Deploy, they are re-linked from Overwrite on every deploy.
+# the next Deploy, they are copied back from Overwrite on every deploy.
 _STATE_DIRS = ("save",)
 
 _STEAM_ID = "2600"
@@ -393,6 +394,25 @@ class VampireBloodlines(BaseGame):
             pass
 
     @staticmethod
+    def _load_state_manifest(profile_dir: "Path | None") -> "list[str]":
+        try:
+            data = json.loads((profile_dir / _STATE_MANIFEST).read_text("utf-8"))
+        except (OSError, ValueError, AttributeError, TypeError):
+            return []
+        return [str(r) for r in data] if isinstance(data, list) else []
+
+    @staticmethod
+    def _save_state_manifest(profile_dir: "Path | None", rels: "list[str]") -> None:
+        if profile_dir is None:
+            return
+        try:
+            profile_dir.mkdir(parents=True, exist_ok=True)
+            (profile_dir / _STATE_MANIFEST).write_text(
+                json.dumps(sorted(set(rels)), indent=0), "utf-8")
+        except OSError:
+            pass
+
+    @staticmethod
     def _drop_unchanged_private_copies(mod_dir: Path, profile_dir: "Path | None", log) -> int:
         """Before Restore: delete private copies still identical to what they were
         when made, so only real changes are rescued to Overwrite (an unchanged copy
@@ -467,17 +487,51 @@ class VampireBloodlines(BaseGame):
         return done
 
     @staticmethod
-    def _relink_saved_state(mod_dir: Path, overwrite_dir: "Path | None", log) -> int:
-        """Bring saves back from Overwrite after a Restore.
+    def _links_into(path: Path, folder: Path) -> bool:
+        """True if *path* is a link (or hardlink) resolving inside *folder*.
 
-        Links (never copies, never replaces) every file under overwrite/<state
-        dir> that the deploy hasn't already placed. A file the filemap placed
-        from Overwrite is already there and is skipped; a real file or the
-        patch's own placeholder is never replaced.
+        Used to tell a save the deploy linked back out of the profile's own
+        overwrite folder from one a mod supplies.
+        """
+        try:
+            if not (path.is_symlink() or
+                    (path.is_file() and path.stat().st_nlink > 1)):
+                return False
+            return folder in Path(os.path.realpath(path)).parents
+        except OSError:
+            return False
+
+    @staticmethod
+    def _place_saved_state(mod_dir: Path, overwrite_dir: "Path | None",
+                           profile_dir: "Path | None", log) -> int:
+        """Bring saves back from Overwrite after a Restore, as real files.
+
+        Copies (never replaces) every file under overwrite/<state dir> that the
+        deploy hasn't already placed. A file the filemap placed from Overwrite
+        is already there and is skipped; a real file or the patch's own
+        placeholder is never replaced.
+
+        These used to be symlinks into Overwrite, and that broke deletion both
+        ways. Source clears ``save/*.HL?`` when you start a new game: the engine
+        logged ``Unable to remove …\\save\\sp_theatre.HL3`` and, whichever end
+        the unlink actually reached, Overwrite kept its copy -- so the next
+        deploy linked the dead level-transition state straight back in. A real
+        file is deleted like any other, and :meth:`_drop_deleted_saved_state`
+        carries that deletion back to Overwrite on the next Restore.
+
+        The rels placed are recorded so that Restore can tell "the game deleted
+        this" from "the game never touched it" -- without the record, a save the
+        player never loaded would be indistinguishable from one the engine
+        cleared.
         """
         if overwrite_dir is None:
             return 0
         done = 0
+        placed: "list[str]" = []
+        try:
+            overwrite_real = Path(os.path.realpath(overwrite_dir))
+        except OSError:
+            overwrite_real = overwrite_dir
         for folder in _STATE_DIRS:
             root = overwrite_dir / folder
             if not root.is_dir():
@@ -485,18 +539,75 @@ class VampireBloodlines(BaseGame):
             for dirpath, _dirs, files in os.walk(root):
                 for fn in files:
                     src = Path(dirpath) / fn
-                    dest = mod_dir / src.relative_to(overwrite_dir)
-                    if dest.exists() or dest.is_symlink():
-                        continue
+                    rel = src.relative_to(overwrite_dir).as_posix()
+                    dest = mod_dir / rel
                     try:
+                        if dest.is_symlink() or dest.exists():
+                            # The main deploy gets here first: the filemap
+                            # lists these as [Overwrite] (save/autosave.sav ->
+                            # [Overwrite]), so they are already linked back
+                            # into the overwrite folder. Writing through such
+                            # a link works; DELETING it does not reach the
+                            # real file, which is exactly what starting a new
+                            # game has to do. Replace it with a real copy.
+                            # A link to a mod's own file (the patch ships
+                            # save/Vampire-999.sav) is left alone -- that is
+                            # not the player's state and must not be copied
+                            # into their overwrite folder on the way back.
+                            if not VampireBloodlines._links_into(dest, overwrite_real):
+                                placed.append(rel)
+                                continue
+                            source = Path(os.path.realpath(dest))
+                            if not source.is_file():
+                                placed.append(rel)
+                                continue
+                        else:
+                            source = src
                         dest.parent.mkdir(parents=True, exist_ok=True)
-                        dest.symlink_to(src)
+                        tmp = dest.with_name(dest.name + ".mm-state")
+                        shutil.copy2(source, tmp)
+                        os.chmod(tmp, 0o644)
+                        os.replace(tmp, dest)   # replaces the link, not its target
+                        placed.append(rel)
                         done += 1
                     except OSError as exc:
                         log(f"  WARN: could not restore {dest.name}: {exc}")
+        VampireBloodlines._save_state_manifest(profile_dir, placed)
         if done:
             log(f"  Restored {done} saved game file(s) from Overwrite.")
         return done
+
+    @staticmethod
+    def _drop_deleted_saved_state(mod_dir: Path, overwrite_dir: "Path | None",
+                                  profile_dir: "Path | None", log) -> int:
+        """Before Restore: forget the saves the game deleted while it ran.
+
+        A file this profile's last deploy placed into ``<-game>/save/`` and that
+        is no longer there was removed by the engine -- starting a new game
+        clears the level-transition set. Overwrite still holds the copy the
+        deploy came from, so without this it would be placed again on the next
+        deploy and the player would carry dead state from run to run.
+
+        Only paths the deploy itself placed are considered, so a save Overwrite
+        holds for any other reason is never touched.
+        """
+        if overwrite_dir is None:
+            return 0
+        dropped = 0
+        for rel in VampireBloodlines._load_state_manifest(profile_dir):
+            if (mod_dir / rel).exists():
+                continue                      # still there (or untouched)
+            saved = overwrite_dir / rel
+            try:
+                if saved.is_file():
+                    saved.unlink()
+                    dropped += 1
+            except OSError as exc:
+                log(f"  WARN: could not drop deleted save {rel}: {exc}")
+        if dropped:
+            log(f"  Dropped {dropped} saved game file(s) the game deleted.")
+        VampireBloodlines._save_state_manifest(profile_dir, [])
+        return dropped
 
     def deploy(self, log_fn=None, mode: LinkMode = LinkMode.HARDLINK,
                profile: str = "default", progress_fn=None) -> None:
@@ -592,7 +703,8 @@ class VampireBloodlines(BaseGame):
         self._materialize_mutable_files(
             mod_dir, self._game_path / _PATCH_DIR, self.get_effective_overwrite_path(),
             profile_dir, _log)
-        self._relink_saved_state(mod_dir, self.get_effective_overwrite_path(), _log)
+        self._place_saved_state(mod_dir, self.get_effective_overwrite_path(),
+                                profile_dir, _log)
 
         _log(
             f"Deploy complete. {linked_mod} mod + {linked_patch} patch "
@@ -616,6 +728,11 @@ class VampireBloodlines(BaseGame):
         restore_custom_rules(self.get_effective_filemap_path(), self._game_path,
                              rules=self.custom_routing_rules, log_fn=_log)
         self._drop_unchanged_private_copies(mod_dir, self._active_profile_dir, _log)
+        # Before the sweep below rescues what survived: a save the deploy placed
+        # and the game has since deleted must go from Overwrite too, or the next
+        # deploy puts it straight back.
+        self._drop_deleted_saved_state(mod_dir, self.get_effective_overwrite_path(),
+                                       self._active_profile_dir, _log)
 
         _log(f"Restore: clearing {mod_dir.name}/ ...")
         restored = restore_data_core(

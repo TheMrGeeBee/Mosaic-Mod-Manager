@@ -275,7 +275,7 @@ def test_saves_survive_restore_and_the_next_deploy_without_a_filemap_rebuild(tmp
     assert (save_up / "Vampire-999.sav").read_text() == ""        # patch layer untouched
 
 
-def test_relinking_never_replaces_a_file_the_deploy_already_placed(tmp_path):
+def test_placing_never_replaces_a_file_the_deploy_already_placed(tmp_path):
     g = _game(tmp_path)
     ow = g.get_effective_overwrite_path() / "save"
     ow.mkdir(parents=True)
@@ -283,8 +283,101 @@ def test_relinking_never_replaces_a_file_the_deploy_already_placed(tmp_path):
     mod_dir = g._game_path / "Mosaic_default"
     (mod_dir / "save").mkdir(parents=True)
     (mod_dir / "save" / "autosave.sav").write_text("already placed\n")
-    assert g._relink_saved_state(mod_dir, g.get_effective_overwrite_path(), lambda _m: None) == 0
+    assert g._place_saved_state(mod_dir, g.get_effective_overwrite_path(),
+                                g._active_profile_dir, lambda _m: None) == 0
     assert (mod_dir / "save" / "autosave.sav").read_text() == "already placed\n"
+
+
+# ---------------------------------------------------------------------------
+# Saves the game deletes
+# ---------------------------------------------------------------------------
+
+def test_a_deployed_save_is_a_real_file_the_game_can_delete(tmp_path):
+    """Source clears save/*.HL? when you start a new game. These used to be
+    symlinks into Overwrite, and the engine logged 'Unable to remove
+    …\\save\\sp_theatre.HL3' rather than clearing them."""
+    g = _game(tmp_path)
+    _patch_layer_with_config(g)
+    _empty_filemap(g)
+    ow = g.get_effective_overwrite_path() / "save"
+    ow.mkdir(parents=True)
+    (ow / "sp_theatre.HL1").write_text("level state\n")
+
+    g.deploy(mode=LinkMode.SYMLINK, profile="default")
+
+    placed = g._game_path / "Mosaic_default" / "save" / "sp_theatre.HL1"
+    assert placed.is_file() and not placed.is_symlink()
+    placed.unlink()                                   # what the engine does
+    assert not placed.exists()
+
+
+def test_a_save_the_game_deleted_does_not_come_back_on_the_next_deploy(tmp_path):
+    """The whole point: Overwrite kept its copy, so the next deploy put the dead
+    level-transition state straight back and it survived run after run."""
+    g = _game(tmp_path)
+    _patch_layer_with_config(g)
+    _empty_filemap(g)
+    ow = g.get_effective_overwrite_path() / "save"
+    ow.mkdir(parents=True)
+    (ow / "sp_theatre.HL1").write_text("level state\n")
+    (ow / "autosave.sav").write_text("my save\n")
+
+    g.deploy(mode=LinkMode.SYMLINK, profile="default")
+    mine = g._game_path / "Mosaic_default" / "save"
+    (mine / "sp_theatre.HL1").unlink()                # new game clears it
+
+    g.restore()
+    assert not (ow / "sp_theatre.HL1").exists()       # dropped from Overwrite too
+    assert (ow / "autosave.sav").read_text() == "my save\n"
+
+    g.deploy(mode=LinkMode.SYMLINK, profile="default")
+    assert not (mine / "sp_theatre.HL1").exists()     # stays gone
+    assert (mine / "autosave.sav").read_text() == "my save\n"
+
+
+def test_an_untouched_save_is_never_mistaken_for_a_deleted_one(tmp_path):
+    g = _game(tmp_path)
+    _patch_layer_with_config(g)
+    _empty_filemap(g)
+    ow = g.get_effective_overwrite_path() / "save"
+    ow.mkdir(parents=True)
+    (ow / "autosave.sav").write_text("never loaded\n")
+
+    for _ in range(3):                                # play, quit, play again
+        g.deploy(mode=LinkMode.SYMLINK, profile="default")
+        g.restore()
+    assert (ow / "autosave.sav").read_text() == "never loaded\n"
+
+
+def test_a_save_overwrite_holds_that_the_deploy_never_placed_is_left_alone(tmp_path):
+    """Only paths this profile's own deploy placed are candidates for dropping."""
+    g = _game(tmp_path)
+    _patch_layer_with_config(g)
+    _empty_filemap(g)
+    ow = g.get_effective_overwrite_path() / "save"
+    ow.mkdir(parents=True)
+
+    g.deploy(mode=LinkMode.SYMLINK, profile="default")   # nothing to place
+    (ow / "arrived_later.sav").write_text("from somewhere else\n")
+    g.restore()
+
+    assert (ow / "arrived_later.sav").read_text() == "from somewhere else\n"
+
+
+def test_the_record_of_placed_saves_is_cleared_after_a_restore(tmp_path):
+    """Otherwise a stale rel would drop a save the next restore, long after the
+    deploy that placed it."""
+    g = _game(tmp_path)
+    _patch_layer_with_config(g)
+    _empty_filemap(g)
+    ow = g.get_effective_overwrite_path() / "save"
+    ow.mkdir(parents=True)
+    (ow / "autosave.sav").write_text("my save\n")
+
+    g.deploy(mode=LinkMode.SYMLINK, profile="default")
+    assert g._load_state_manifest(g._active_profile_dir) == ["save/autosave.sav"]
+    g.restore()
+    assert g._load_state_manifest(g._active_profile_dir) == []
 
 
 def _ui_file(folder: Path, version="12.0"):
@@ -625,3 +718,53 @@ def test_restore_keeps_the_players_save_when_a_mod_ships_the_same_filename(tmp_p
     assert rescued.read_bytes() == b"THE PLAYER'S SAVEGAME"
     # the shared pool must be untouched — it is shared by every profile
     assert (staging / "Some Overhaul" / "save" / "autosave.sav").read_bytes() == b"mod copy"
+
+
+def test_a_save_the_filemap_already_linked_from_overwrite_becomes_a_real_file(tmp_path):
+    """The gap the first version of this fix missed, found on a real profile.
+
+    The filemap lists these as ``save/autosave.sav -> [Overwrite]``, so the main
+    deploy links them back out of the overwrite folder before the saved-state
+    pass runs. Skipping them as "already placed" left exactly the symlinks the
+    fix exists to remove, and the engine still could not delete them.
+    """
+    g = _game(tmp_path)
+    _patch_layer_with_config(g)
+    ow = g.get_effective_overwrite_path() / "save"
+    ow.mkdir(parents=True)
+    (ow / "autosave.sav").write_text("my save\n")
+    _empty_filemap(g, "save/autosave.sav\t[Overwrite]\n")   # a rebuilt filemap
+
+    g.deploy(mode=LinkMode.SYMLINK, profile="default")
+
+    mine = g._game_path / "Mosaic_default" / "save" / "autosave.sav"
+    assert mine.is_file() and not mine.is_symlink()
+    assert mine.read_text() == "my save\n"
+    mine.unlink()                                   # the engine can now delete it
+    g.restore()
+    assert not (ow / "autosave.sav").exists()       # and it stays deleted
+
+
+def test_a_mods_own_save_is_left_as_a_link_not_copied_into_overwrite(tmp_path):
+    """The Unofficial Patch ships ``save/Vampire-999.sav``. That is not the
+    player's state: materialising it would send a mod's file into their
+    overwrite folder on the way back, where it would shadow the mod for good."""
+    g = _game(tmp_path)
+    _patch_layer_with_config(g)
+    mod_save = g.get_effective_mod_staging_path() / "Unofficial Patch Plus" / "save"
+    mod_save.mkdir(parents=True)
+    (mod_save / "Vampire-999.sav").write_text("patch placeholder\n")
+    ow = g.get_effective_overwrite_path() / "save"
+    ow.mkdir(parents=True)
+    (ow / "Vampire-999.sav").write_text("patch placeholder\n")
+    _empty_filemap(g, "save/Vampire-999.sav\tUnofficial Patch Plus\n")
+    dest = g._game_path / "Mosaic_default" / "save" / "Vampire-999.sav"
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    dest.symlink_to(mod_save / "Vampire-999.sav")   # deploy linked the MOD's copy
+
+    g._place_saved_state(g._game_path / "Mosaic_default",
+                         g.get_effective_overwrite_path(),
+                         g._active_profile_dir, lambda _m: None)
+
+    assert dest.is_symlink()
+    assert os.path.realpath(dest) == str(mod_save / "Vampire-999.sav")
