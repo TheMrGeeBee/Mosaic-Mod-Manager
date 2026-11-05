@@ -4,7 +4,7 @@ reset to v1.0.0; they keep Amethyst Mod Manager's original numbering, which
 overlaps the numbers above, and the prefix is what keeps the two apart (and
 keeps release tooling from matching the wrong section).
 
-- v1.12.9
+- v1.13.0
   ### Additions
   - Wabbajack modlists for Vampire: The Masquerade - Bloodlines can now be installed. The import tab used to refuse them with "Game not supported yet"; every directive type and download source these lists use was already supported, so what was missing was the game mapping and VtMB's own mod layout.
   - A Wabbajack modlist that ships several MO2 profiles can now install as many of them as you want in one run. The profile picker is a tick list instead of a dropdown, and each ticked profile becomes its own Mosaic profile in the Profile menu. They share one copy of the mods — the profiles of a modlist are variants over one pool, so staging it per profile would mean installing the same thing many times over. "Fashionista - Steam" is 17 profiles over 405 mods and 69 GB; it now costs that once. Each profile still keeps its own modlist, load order, overwrite folder, saves and file index, and removing one deletes only its own settings — the shared mods go when the last profile using them does.
