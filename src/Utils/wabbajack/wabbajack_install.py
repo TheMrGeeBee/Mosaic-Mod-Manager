@@ -48,7 +48,8 @@ from typing import Callable, Sequence
 from Utils.downloads.download_scheduler import order_by_size, run_smallest_first
 from Utils.mods.mo2_separator_meta import (scan_separator_colors,
                                            scan_separator_nesting)
-from Utils.mods.modlist import ModEntry, read_modlist, write_modlist
+from Utils.mods.modlist import (ModEntry, mo2_to_natural_order, read_modlist,
+                                write_modlist)
 from Utils.plugins.plugins import invalidate_plugins_cache
 from Utils.profile.profile_state import (read_separator_colors,
                                          write_separator_colors,
@@ -252,6 +253,12 @@ def classify_directives(modlist: ModList,
     return plan
 
 
+def _is_separator_folder(name: str) -> bool:
+    """True for an MO2 ``mods/<Name>_separator`` folder -- a heading's
+    ``meta.ini``, not a mod."""
+    return name.lower().endswith("_separator")
+
+
 def limit_to_profile_mods(plan: InstallPlan, listed: "set[str]") -> "list[str]":
     """Keep only the mods the chosen profile's ``modlist.txt`` lists
     (enabled or disabled), dropping every other ``mods/<Name>`` directive and
@@ -261,17 +268,19 @@ def limit_to_profile_mods(plan: InstallPlan, listed: "set[str]") -> "list[str]":
     Fallout 4 Patch builds providing the same plugin); only the chosen
     profile's belong in the install. Names match case-insensitively.
     Returns the skipped mod names, sorted, not counting MO2 separator
-    folders (``*_separator``), which are never built either way."""
+    folders (``*_separator``): *listed* carries those too (see
+    ``_profile_mod_names``) because their ``meta.ini`` holds the separator's
+    colour, and an unlisted one belongs to another profile, so neither kind
+    is a mod the user asked for and left out."""
     wanted = {n.lower() for n in listed}
     kept, skipped = [], set()
     for d in plan.mod_directives:
         mod = d.to.split("/", 1)[0]
         if mod.lower() in wanted:
             kept.append(d)
-        elif not mod.lower().endswith("_separator"):
-            # Separator folders aren't mods (the profile's modlist.txt
-            # still carries the separator lines), so they're dropped
-            # without being reported as skipped.
+        elif not _is_separator_folder(mod):
+            # Another profile's separator folder: dropped like its mods, but
+            # not reported as skipped, since it isn't a mod.
             skipped.add(mod)
     plan.mod_directives = kept
     temp_ids = {d.temp_id.lower() for d in kept if isinstance(d, CreateBSADirective)}
@@ -379,10 +388,17 @@ def split_root_builder_mods(plan: InstallPlan, *, overlay_dirs: "set[str]"
 
 
 def _profile_mod_names(plan: InstallPlan, wabbajack_path) -> "set[str] | None":
-    """The union of the chosen profiles' ``modlist.txt`` mod names, read
+    """The union of the chosen profiles' ``modlist.txt`` entry names, read
     straight from the ``.wabbajack`` before anything is downloaded. ``None``
     when none of them ships an inline ``modlist.txt`` (nothing to filter by);
-    a profile that is missing one simply contributes nothing."""
+    a profile that is missing one simply contributes nothing.
+
+    Separator entries are included on purpose. MO2 keeps a separator's colour
+    and nesting in ``mods/<Name>_separator/meta.ini``, so leaving them out of
+    the filter drops those directives and the install lands with every
+    separator uncoloured -- which is exactly what the first real VtMB run
+    produced. They are inline files of a few hundred bytes, so keeping them
+    costs no download."""
     import tempfile
     entries = [d for d in plan.profile_directives
                if Path(d.to).name.lower() == "modlist.txt"
@@ -397,7 +413,7 @@ def _profile_mod_names(plan: InstallPlan, wabbajack_path) -> "set[str] | None":
             if not wabbajack_file.extract_inline_file(wabbajack_path, entry.source_data_id, dest):
                 continue
             found = True
-            names |= {e.name for e in read_modlist(dest) if not e.is_separator}
+            names |= {e.name for e in read_modlist(dest)}
     return names if found else None
 
 
@@ -685,7 +701,10 @@ def _write_profile(profile_dir: Path, scratch: Path, built_mods: "set[str]",
     curated = scratch / "modlist.txt"
     entries: "list[ModEntry]" = []
     if curated.is_file():
-        entries = [e for e in read_modlist(curated)
+        # MO2 files a separator *after* the mods it heads; Mosaic puts it
+        # before them. Copying the curated list verbatim shifts every group
+        # one heading down, so re-anchor before anything else touches it.
+        entries = [e for e in mo2_to_natural_order(read_modlist(curated))
                    if e.is_separator or e.name in built_mods]
     # A mod split by split_root_builder_mods isn't in the curated modlist, so
     # it goes straight below its parent and inherits the parent's state --
@@ -956,7 +975,8 @@ def run_wabbajack_install(*, wabbajack_path: "str | Path", modlist: ModList, gam
             + [(d, profile_scratch) for d in plan.profile_directives]
             + [(d, bsa_root) for d in plan.bsa_inputs]
             + [(d, staging) for d in archives])
-    built_mods: "set[str]" = {d.to.split("/", 1)[0] for d in prebuilt}
+    built_mods: "set[str]" = {n for n in (d.to.split("/", 1)[0] for d in prebuilt)
+                              if not _is_separator_folder(n)}
     cb.on_status("Building files…")
     try:
         for done, (directive, dest_root) in enumerate(jobs, start=1):
@@ -977,7 +997,13 @@ def run_wabbajack_install(*, wabbajack_path: "str | Path", modlist: ModList, gam
                 log(f"Wabbajack: {result.note}")
             if result.success:
                 if dest_root is staging:
-                    built_mods.add(directive.to.split("/", 1)[0])
+                    name = directive.to.split("/", 1)[0]
+                    # A separator folder holds nothing but the meta.ini that
+                    # carries its colour. It is a heading, not a mod: keeping
+                    # it out of built_mods keeps it out of installed_mods and
+                    # stops _stamp_mod_meta rewriting MO2's own file.
+                    if not _is_separator_folder(name):
+                        built_mods.add(name)
             else:
                 report.failed_directives.append((directive.to, result.error))
             cb.on_build_progress(done, len(jobs))

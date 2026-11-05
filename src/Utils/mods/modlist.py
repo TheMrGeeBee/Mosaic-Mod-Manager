@@ -121,6 +121,42 @@ def read_modlist(modlist_path: Path) -> list[ModEntry]:
     return entries
 
 
+def mo2_to_natural_order(entries: list[ModEntry]) -> list[ModEntry]:
+    """Re-anchor separators from MO2's convention to Mosaic's.
+
+    Both tools write modlist.txt highest-priority-first, and both *display* a
+    separator above the mods it heads -- but those mods have a **higher**
+    priority than their separator, so in MO2's file they come **before** it.
+    Mosaic's natural order is the other way round: a separator owns the run of
+    mods that **follows** it (``modlist_sort.split_groups``,
+    ``profile_export._separator_blocks``).
+
+    Reading an MO2 file as if it were a Mosaic one therefore hands every group
+    to the separator one heading further down the list -- on the real
+    "Fashionista - Steam" list that put all four Unofficial Patches under
+    ``##Antitribu`` and left ``##Unofficial Patch`` empty, with every other
+    group shifted the same way.
+
+    Only separators move; the mods keep their order, so no priority changes.
+    Mods after the last separator are the one case this cannot represent: MO2
+    leaves them ungrouped (lowest priority, top of the display) while Mosaic's
+    ungrouped float sits at the *other* end of the list, so they are left
+    where they are and fall into the last separator's group rather than being
+    re-prioritised.
+    """
+    out: list[ModEntry] = []
+    block: list[ModEntry] = []
+    for e in entries:
+        if e.is_separator:
+            out.append(e)
+            out.extend(block)
+            block = []
+        else:
+            block.append(e)
+    out.extend(block)
+    return out
+
+
 def write_modlist(modlist_path: Path, entries: list[ModEntry]) -> None:
     """
     Write entries back to modlist.txt.

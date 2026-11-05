@@ -1143,3 +1143,129 @@ def test_a_stale_preflight_finding_falls_back_to_the_scan(tmp_path):
                              pre_resolved={archive.hash: stale})
 
     assert have[archive.hash] == cache / "Manual One.rar"
+
+
+# ---------------------------------------------------------------------------
+# MO2 separators: where they sit in the list, and the colour they carry
+# ---------------------------------------------------------------------------
+
+def _separator_meta(color: str, *, nest: int | None = None,
+                    max_size: int | None = None) -> bytes:
+    """A separator's meta.ini as MO2 writes it, colour variant and all."""
+    from Utils.mods.mo2_separator_meta import encode_color_variant
+    out = ["[General]", "modid=0", f"color={encode_color_variant(color)}"]
+    if nest is not None or max_size is not None:
+        out.append("[Plugins]")
+        if max_size is not None:
+            out.append(f"Sub-Separator\\maxSize={max_size}")
+        if nest is not None:
+            out.append(f"Sub-Separator\\nest={nest}")
+    return ("\r\n".join(out) + "\r\n").encode("utf-8")
+
+
+def _install_with_separators(tmp_path, monkeypatch):
+    """A list shaped like the real "Fashionista - Steam" one: mods written
+    *above* the separator that heads them, each separator carrying its colour
+    in ``mods/<Name>_separator/meta.ini``."""
+    from Utils.wabbajack.wabbajack_hash import hash_bytes
+
+    # MO2 order: a group's mods come before its heading.
+    curated = (b"+Unofficial Patch Plus\r\n-##Unofficial Patch_separator\r\n"
+               b"-#Overhauls_separator\r\n"
+               b"+Art Texture Pack\r\n-Bx Textures\r\n-#Graphics Base_separator\r\n")
+    inline = {
+        "curated": curated,
+        "up": b"PATCH",
+        "art": b"ART",
+        "bx": b"BX",
+        "sep-up": _separator_meta("#FF55FF", nest=2, max_size=1),
+        "sep-ov": _separator_meta("#2255FF"),
+        "sep-gfx": _separator_meta("#55FF55", nest=1, max_size=2),
+    }
+    modlist = {
+        "Name": "Fashion", "Version": "2.4.9.3", "GameType": "VtMB",
+        "Archives": [],
+        "Directives": [
+            _inline("mods\\Unofficial Patch Plus\\up.txt", "up", size=5),
+            _inline("mods\\Art Texture Pack\\art.txt", "art", size=3),
+            _inline("mods\\Bx Textures\\bx.txt", "bx", size=2),
+            _inline("mods\\##Unofficial Patch_separator\\meta.ini", "sep-up",
+                    size=len(inline["sep-up"])),
+            _inline("mods\\#Overhauls_separator\\meta.ini", "sep-ov",
+                    size=len(inline["sep-ov"])),
+            _inline("mods\\#Graphics Base_separator\\meta.ini", "sep-gfx",
+                    size=len(inline["sep-gfx"])),
+            # Another profile's separator: dropped with that profile's mods.
+            _inline("mods\\##GOG Only_separator\\meta.ini", "sep-ov",
+                    size=len(inline["sep-ov"])),
+            _inline("profiles\\Fashionista\\modlist.txt", "curated",
+                    size=len(curated)),
+        ],
+    }
+    wj = tmp_path / "list.wabbajack"
+    with zipfile.ZipFile(wj, "w") as zf:
+        zf.writestr("modlist", json.dumps(modlist))
+        for name, data in inline.items():
+            zf.writestr(name, data)
+    monkeypatch.setattr(wi, "_rebuild_index", lambda *a: None)
+    staging = tmp_path / "staging" / "mods"
+    profile_dir = tmp_path / "staging" / "profiles" / "P"
+    profile_dir.mkdir(parents=True)
+    report = wi.run_wabbajack_install(
+        wabbajack_path=wj, modlist=parse_modlist(modlist), game=FakeGame(staging),
+        profile_dir=profile_dir, download_dir=tmp_path / "downloads")
+    assert report.ok, (report.failed_archives, report.failed_directives)
+    return report, staging, profile_dir
+
+
+def test_each_group_lands_under_its_own_separator(tmp_path, monkeypatch):
+    """MO2 writes a separator below the mods it heads and Mosaic reads it as
+    heading the mods below it, so copying the curated list verbatim shifted
+    every group one heading down on the first real VtMB install."""
+    _, _, profile_dir = _install_with_separators(tmp_path, monkeypatch)
+    assert [e.name for e in read_modlist(profile_dir / "modlist.txt")] == [
+        "##Unofficial Patch_separator", "Unofficial Patch Plus",
+        "#Overhauls_separator",
+        "#Graphics Base_separator", "Art Texture Pack", "Bx Textures"]
+
+
+def test_the_curated_enabled_state_survives_the_re_anchoring(tmp_path, monkeypatch):
+    _, _, profile_dir = _install_with_separators(tmp_path, monkeypatch)
+    entries = {e.name: e.enabled
+               for e in read_modlist(profile_dir / "modlist.txt")}
+    assert entries["Art Texture Pack"] is True
+    assert entries["Bx Textures"] is False
+
+
+def test_separator_colours_and_nesting_reach_the_profile(tmp_path, monkeypatch):
+    """The colour lives in mods/<Name>_separator/meta.ini. The profile filter
+    used to drop those directives, so the list installed uncoloured."""
+    from Utils.profile.profile_state import (read_separator_colors,
+                                             read_separator_nesting)
+    _, _, profile_dir = _install_with_separators(tmp_path, monkeypatch)
+    assert read_separator_colors(profile_dir) == {
+        "##Unofficial Patch_separator": "#FF55FF",
+        "#Overhauls_separator": "#2255FF",
+        "#Graphics Base_separator": "#55FF55"}
+    assert read_separator_nesting(profile_dir) == {
+        "##Unofficial Patch_separator": {"nest": 2, "max_size": 1},
+        "#Graphics Base_separator": {"nest": 1, "max_size": 2}}
+
+
+def test_a_separator_folder_is_not_counted_or_stamped_as_a_mod(tmp_path, monkeypatch):
+    """It holds nothing but the heading's meta.ini. Stamping it would rewrite
+    MO2's own file, and counting it would inflate the installed-mod total by
+    one per heading (81 of them on the real list)."""
+    report, staging, _ = _install_with_separators(tmp_path, monkeypatch)
+    assert report.installed_mods == [
+        "Art Texture Pack", "Bx Textures", "Unofficial Patch Plus"]
+    meta = (staging / "#Graphics Base_separator" / "meta.ini").read_text(encoding="utf-8")
+    assert "Wabbajack" not in meta and "color=" in meta
+
+
+def test_another_profiles_separator_is_left_out(tmp_path, monkeypatch):
+    """Dropped like that profile's mods -- and not reported as a skipped mod,
+    because it isn't one."""
+    report, staging, _ = _install_with_separators(tmp_path, monkeypatch)
+    assert not (staging / "##GOG Only_separator").exists()
+    assert report.skipped_mods == []
