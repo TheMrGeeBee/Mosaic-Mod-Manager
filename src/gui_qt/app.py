@@ -6603,6 +6603,35 @@ class MainWindow(QMainWindow):
             view, self.tr("Separator Settings"), self._plugins_panel_stack,
             key="sep_settings")
 
+    def _write_separator_color_to_staging(self, sep_name, color):
+        """Mirror a separator's colour into MO2's own ``meta.ini``.
+
+        MO2 keeps separator colours in ``mods/<Name>_separator/meta.ini``, and
+        that is where Mosaic reads them from on import. Without writing back,
+        a colour changed here is invisible to MO2 and is overwritten by the old
+        one the next time the staging folder is imported.
+
+        Only separators that already have a folder are touched -- those came
+        from MO2 or Wabbajack. Mosaic's own separators exist only as
+        modlist.txt entries, and creating MO2 folders for them is a different
+        decision from saving a colour.
+        """
+        game = self._gs.game
+        if game is None:
+            return
+        try:
+            from pathlib import Path as _Path
+
+            from Utils.mods.mo2_separator_meta import write_separator_color
+            getter = getattr(game, "get_effective_mod_staging_path", None) \
+                or getattr(game, "get_mod_staging_path", None)
+            staging = getter() if callable(getter) else None
+            if staging:
+                write_separator_color(_Path(staging), sep_name, color)
+        except Exception as exc:
+            # Cosmetic mirroring: profile_state already holds the real value.
+            print(f"[gui_qt] separator colour write-back failed: {exc}", flush=True)
+
     def _save_sep_settings(self, sep_name, color, deploy):
         """Persist a separator's colour + deploy override, repaint the modlist,
         and rebuild the filemap (a deploy-path change reroutes its mods)."""
@@ -6632,6 +6661,7 @@ class MainWindow(QMainWindow):
             except Exception as exc:
                 print(f"[gui_qt] separator settings save failed: {exc}",
                       flush=True)
+        self._write_separator_color_to_staging(sep_name, color)
         self._modlist_view.viewport().update()
         # Deploy paths feed the filemap → rebuild so the routing takes effect.
         self._rebuild_conflicts_async()

@@ -11,11 +11,14 @@ from pathlib import Path
 
 from Utils.mods.mo2_separator_meta import (
     SeparatorMeta,
+    apply_separator_state,
     encode_color_variant,
     is_separator_dir,
     parse_color_variant,
     read_separator_meta,
     scan_separator_colors,
+    scan_separator_nesting,
+    write_separator_color,
     write_separator_meta,
 )
 
@@ -199,3 +202,131 @@ def test_wabbajack_install_without_staging_is_unchanged(tmp_path: Path):
 
     assert read_separator_colors(profile_dir) == {}
     assert (profile_dir / "modlist.txt").is_file()
+
+
+# --------------------------------------------------------------------------
+# write-back: colours changed in Mosaic must reach MO2's meta.ini
+# --------------------------------------------------------------------------
+
+def test_write_back_updates_an_existing_separator(tmp_path: Path):
+    mods = tmp_path / "mods"
+    write_separator_meta(mods / "A_separator", SeparatorMeta(color="#FF55FF"))
+    assert write_separator_color(mods, "A_separator", "#102030") is True
+    assert read_separator_meta(mods / "A_separator").color == "#102030"
+
+
+def test_write_back_preserves_nesting_and_foreign_keys(tmp_path: Path):
+    """A colour edit must not drop MO2's own bookkeeping."""
+    mods = tmp_path / "mods"
+    sep = mods / "A_separator"
+    write_separator_meta(sep, SeparatorMeta(color="#FF55FF", nest=2, max_size=3))
+    (sep / "meta.ini").write_text(
+        (sep / "meta.ini").read_text(encoding="utf-8") + "modid=1234\n",
+        encoding="utf-8")
+
+    write_separator_color(mods, "A_separator", "#010203")
+
+    again = read_separator_meta(sep)
+    assert (again.color, again.nest, again.max_size) == ("#010203", 2, 3)
+    assert "modid=1234" in (sep / "meta.ini").read_text(encoding="utf-8")
+
+
+def test_write_back_clearing_a_colour(tmp_path: Path):
+    mods = tmp_path / "mods"
+    write_separator_meta(mods / "A_separator", SeparatorMeta(color="#FF55FF"))
+    write_separator_color(mods, "A_separator", None)
+    assert read_separator_meta(mods / "A_separator").color is None
+
+
+def test_write_back_skips_a_separator_with_no_folder(tmp_path: Path):
+    """Mosaic's own separators have nothing on disk; don't invent MO2 folders."""
+    mods = tmp_path / "mods"
+    mods.mkdir()
+    assert write_separator_color(mods, "MosaicOnly_separator", "#FF0000") is False
+    assert not (mods / "MosaicOnly_separator").exists()
+
+
+def test_write_back_can_create_when_asked(tmp_path: Path):
+    mods = tmp_path / "mods"
+    mods.mkdir()
+    assert write_separator_color(mods, "New_separator", "#FF0000", create=True) is True
+    assert read_separator_meta(mods / "New_separator").color == "#FF0000"
+
+
+def test_round_trip_through_mosaic_keeps_mo2_happy(tmp_path: Path):
+    """scan -> edit in Mosaic -> write back: what MO2 reads is what Mosaic shows."""
+    mods = tmp_path / "mods"
+    write_separator_meta(mods / "A_separator", SeparatorMeta(color="#FF55FF", nest=2))
+    write_separator_meta(mods / "B_separator", SeparatorMeta(color="#00FF00"))
+
+    colors = scan_separator_colors(mods)
+    nesting = scan_separator_nesting(mods)
+    colors["A_separator"] = "#123456"            # user recolours one in Mosaic
+
+    assert apply_separator_state(mods, colors, nesting) == 2
+    assert scan_separator_colors(mods) == {"A_separator": "#123456",
+                                           "B_separator": "#00FF00"}
+    assert scan_separator_nesting(mods) == {"A_separator": {"nest": 2}}
+
+
+# --------------------------------------------------------------------------
+# nesting: parsed, stored, and no longer silently dropped
+# --------------------------------------------------------------------------
+
+def test_scan_nesting_shape(tmp_path: Path):
+    mods = tmp_path / "mods"
+    write_separator_meta(mods / "A_separator", SeparatorMeta(color="#FF55FF", nest=2, max_size=3))
+    write_separator_meta(mods / "B_separator", SeparatorMeta(nest=1))
+    write_separator_meta(mods / "C_separator", SeparatorMeta(color="#00FF00"))  # no nesting
+    write_separator_meta(mods / "RegularMod", SeparatorMeta(nest=9))            # not a separator
+
+    assert scan_separator_nesting(mods) == {
+        "A_separator": {"nest": 2, "max_size": 3},
+        "B_separator": {"nest": 1},
+    }
+
+
+def test_scan_nesting_missing_dir_is_empty(tmp_path: Path):
+    assert scan_separator_nesting(tmp_path / "nope") == {}
+
+
+def test_wabbajack_install_keeps_separator_nesting(tmp_path: Path):
+    """Mosaic has no nesting of its own, so the import must park MO2's in
+    profile_state or exporting the profile silently flattens the list."""
+    from Utils.profile.profile_state import read_separator_nesting
+    from Utils.wabbajack.wabbajack_install import (WabbajackInstallReport,
+                                                   _write_profile)
+
+    staging = tmp_path / "staging"
+    write_separator_meta(staging / "Textures_separator",
+                         SeparatorMeta(color="#FF55FF", nest=2, max_size=3))
+    write_separator_meta(staging / "Plain_separator", SeparatorMeta())
+
+    scratch = tmp_path / "scratch"
+    scratch.mkdir()
+    (scratch / "modlist.txt").write_text(
+        "-Textures_separator\n-Plain_separator\n", encoding="utf-8")
+    profile_dir = tmp_path / "profile"
+    profile_dir.mkdir()
+
+    _write_profile(profile_dir, scratch, set(), WabbajackInstallReport(),
+                   lambda *_a, **_k: None, staging=staging)
+
+    nesting = read_separator_nesting(profile_dir)
+    assert nesting == {"Textures_separator": {"nest": 2, "max_size": 3}}
+
+
+def test_profile_state_nesting_round_trip(tmp_path: Path):
+    from Utils.profile.profile_state import (read_separator_nesting,
+                                             write_separator_nesting)
+    write_separator_nesting(tmp_path, {"A_separator": {"nest": 2, "max_size": 3}})
+    assert read_separator_nesting(tmp_path) == {"A_separator": {"nest": 2, "max_size": 3}}
+
+
+def test_profile_state_nesting_rejects_junk(tmp_path: Path):
+    from Utils.profile.profile_state import (read_separator_nesting,
+                                             write_separator_nesting)
+    write_separator_nesting(tmp_path, {"A_separator": {"nest": "two", "bogus": 1},
+                                       "B_separator": "nope",
+                                       "C_separator": {"nest": True}})
+    assert read_separator_nesting(tmp_path) == {}

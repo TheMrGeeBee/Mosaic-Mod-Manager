@@ -46,11 +46,13 @@ from pathlib import Path
 from typing import Callable, Sequence
 
 from Utils.downloads.download_scheduler import order_by_size, run_smallest_first
-from Utils.mods.mo2_separator_meta import scan_separator_colors
+from Utils.mods.mo2_separator_meta import (scan_separator_colors,
+                                           scan_separator_nesting)
 from Utils.mods.modlist import ModEntry, read_modlist, write_modlist
 from Utils.plugins.plugins import invalidate_plugins_cache
 from Utils.profile.profile_state import (read_separator_colors,
                                          write_separator_colors,
+                                         write_separator_nesting,
                                          write_wabbajack_modlist_info)
 
 from .downloaders import resolve_downloader
@@ -662,6 +664,17 @@ def _write_profile(profile_dir: Path, scratch: Path, built_mods: "set[str]",
             merged.update(colors)
             write_separator_colors(profile_dir, merged)
             log(f"Wabbajack: imported {len(colors)} separator colour(s)")
+        # Mosaic has no nesting, so this is stored and not shown: it exists so
+        # that writing the profile back out doesn't flatten the curator's
+        # grouping. Same reasoning as the colours -- never fail over it.
+        try:
+            nesting = scan_separator_nesting(staging)
+        except Exception as exc:
+            log(f"Wabbajack: could not read separator nesting: {exc}")
+            nesting = {}
+        if nesting:
+            write_separator_nesting(profile_dir, nesting)
+            log(f"Wabbajack: kept nesting for {len(nesting)} separator(s)")
 
     for name in _LOAD_ORDER_FILES:
         src = scratch / name

@@ -283,6 +283,94 @@ def write_separator_meta(mod_dir: Path, meta: SeparatorMeta) -> None:
     write_atomic_text(path, "\n".join(buf).rstrip("\n") + "\n")
 
 
+def scan_separator_nesting(mods_dir: Path) -> dict[str, dict]:
+    """Map ``<Name>_separator`` -> ``{"nest": n, "max_size": m}`` for every
+    separator folder in *mods_dir* that carries either value.
+
+    Mosaic has no nesting of its own -- a modlist is one flat ordered list --
+    so this is kept purely so an MO2 import can be written back out with its
+    grouping intact. Without it, importing a nested list and exporting it
+    again silently flattens the curator's structure, and that loss is
+    invisible until the user opens the profile in MO2.
+    """
+    out: dict[str, dict] = {}
+    if not mods_dir.is_dir():
+        return out
+    for child in sorted(mods_dir.iterdir()):
+        if not is_separator_dir(child):
+            continue
+        meta = read_separator_meta(child)
+        if meta.nest is None and meta.max_size is None:
+            continue
+        entry: dict = {}
+        if meta.nest is not None:
+            entry["nest"] = meta.nest
+        if meta.max_size is not None:
+            entry["max_size"] = meta.max_size
+        out[child.name] = entry
+    return out
+
+
+def write_separator_color(mods_dir: Path, name: str, color: "str | None", *,
+                          create: bool = False) -> bool:
+    """Push one separator's colour into ``<mods_dir>/<name>/meta.ini``.
+
+    The counterpart to :func:`scan_separator_colors`: without it a colour
+    changed in Mosaic never reaches MO2, and a re-import reads back the old
+    one. Returns True if the file was written.
+
+    ``create=False`` (the default) only touches a separator that already has a
+    folder -- i.e. one that came from MO2 or Wabbajack. Mosaic's own
+    separators are modlist.txt entries with nothing on disk, and inventing MO2
+    folders for them is a bigger decision than saving a colour.
+
+    Nesting and any MO2-only keys already in the file survive, because
+    :func:`write_separator_meta` reads the file back before writing.
+    """
+    mod_dir = mods_dir / name
+    if not create and not mod_dir.is_dir():
+        return False
+    existing = read_separator_meta(mod_dir)
+    existing.color = color
+    try:
+        write_separator_meta(mod_dir, existing)
+    except OSError as exc:
+        app_log(f"mo2_separator_meta: cannot write {mod_dir/'meta.ini'}: {exc}")
+        return False
+    return True
+
+
+def apply_separator_state(mods_dir: Path, colors: dict, nesting: "dict | None" = None) -> int:
+    """Write Mosaic's stored separator colours (and any preserved nesting)
+    back into *mods_dir*'s ``meta.ini`` files. Returns how many were written.
+
+    Existing folders only -- see :func:`write_separator_color`.
+    """
+    if not mods_dir.is_dir():
+        return 0
+    written = 0
+    nesting = nesting or {}
+    names = set(colors) | set(nesting)
+    for name in sorted(names):
+        mod_dir = mods_dir / name
+        if not is_separator_dir(mod_dir):
+            continue
+        meta = read_separator_meta(mod_dir)
+        meta.color = colors.get(name)
+        group = nesting.get(name) or {}
+        if "nest" in group:
+            meta.nest = group["nest"]
+        if "max_size" in group:
+            meta.max_size = group["max_size"]
+        try:
+            write_separator_meta(mod_dir, meta)
+        except OSError as exc:
+            app_log(f"mo2_separator_meta: cannot write {mod_dir/'meta.ini'}: {exc}")
+            continue
+        written += 1
+    return written
+
+
 def scan_separator_colors(mods_dir: Path) -> dict[str, str]:
     """Map ``<Name>_separator`` -> ``"#RRGGBB"`` for every coloured separator
     folder in *mods_dir*.

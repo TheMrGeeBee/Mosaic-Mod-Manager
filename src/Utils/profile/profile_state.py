@@ -7,6 +7,7 @@ consolidates all small per-profile JSON/text state files:
   separator_locks             dict[str, bool]
   separator_colors            dict[str, str]
   separator_deploy_paths      dict[str, dict]
+  separator_nesting           dict[str, dict]  (MO2 Sub-Separator nest/maxSize)
   root_folder_state           dict  ({"enabled": bool})
   mod_strip_prefixes          dict[str, list[str]]
   plugin_locks                dict[str, ...]
@@ -215,6 +216,24 @@ def read_separator_colors(profile_dir: Path, state: dict | None = None) -> dict[
         return {k: v for k, v in raw.items()
                 if isinstance(k, str) and isinstance(v, str)}
     return {}
+
+
+def read_separator_nesting(profile_dir: Path, state: dict | None = None) -> dict[str, dict]:
+    """MO2's Sub-Separator grouping, kept only so an imported list can be
+    written back without losing it -- Mosaic itself has no nesting."""
+    raw = _read_key(profile_dir, state, "separator_nesting")
+    if not isinstance(raw, dict):
+        return {}
+    out: dict[str, dict] = {}
+    for key, value in raw.items():
+        if not isinstance(key, str) or not isinstance(value, dict):
+            continue
+        entry = {k: int(v) for k, v in value.items()
+                 if k in ("nest", "max_size") and isinstance(v, (int, float))
+                 and not isinstance(v, bool)}
+        if entry:
+            out[key] = entry
+    return out
 
 
 def read_separator_deploy_paths(profile_dir: Path, state: dict | None = None) -> dict[str, dict]:
@@ -528,6 +547,10 @@ def write_separator_colors(profile_dir: Path, value: dict) -> None:
 
 def write_separator_deploy_paths(profile_dir: Path, value: dict) -> None:
     _update_key(profile_dir, "separator_deploy_paths", value)
+
+
+def write_separator_nesting(profile_dir: Path, value: dict) -> None:
+    _update_key(profile_dir, "separator_nesting", value)
 
 
 def write_root_folder_state(profile_dir: Path, enabled: bool) -> None:
