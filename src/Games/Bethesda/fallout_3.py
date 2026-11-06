@@ -1004,6 +1004,60 @@ class Fallout_3(BaseGame):
         paths = self._mygames_paths()
         return paths[0] if paths else None
 
+    def _drop_foreign_profile_ini_links(self, profile: str, log_fn) -> None:
+        """Turn a My Games INI that links into ANOTHER profile back into a real file.
+
+        The link lives in the Proton prefix, which outlives the profile it was
+        made for -- it survives deleting that profile, moving the staging root,
+        even reinstalling the game, since Steam keeps compatdata. Nothing in
+        Mosaic's own config remembers it, so nothing went looking: with the
+        per-profile INI feature off, both the link and unlink paths return at
+        once, and a deploy walked straight past a Skyrim.ini pointing at a
+        profile from three months and one staging root ago. The game then boots
+        on another profile's settings, and ``apply_archive_invalidation`` --
+        which runs right after this and simply edits ``My Games/<game>.ini`` --
+        writes its flag into that other profile's file.
+
+        So this runs on every deploy regardless of the feature flag. A link into
+        the ACTIVE profile is ours and is left alone; anything else is replaced
+        by a real file holding whatever it currently resolves to, so the game
+        keeps the settings it has been using and the next deploy owns them.
+        """
+        _log = log_fn
+        try:
+            mine = self._profile_ini_dir(profile).resolve()
+        except OSError:
+            mine = self._profile_ini_dir(profile)
+        for mygames in self._mygames_paths():
+            if not mygames.is_dir():
+                continue
+            for target in mygames.glob("*.ini"):
+                if not target.is_symlink():
+                    continue
+                try:
+                    real = target.resolve()
+                except OSError:
+                    real = None
+                if real is not None and (real == mine or mine in real.parents):
+                    continue                      # this profile's own link
+                where = target.readlink()
+                try:
+                    content = real.read_bytes() if (real and real.is_file()) else None
+                except OSError:
+                    content = None
+                try:
+                    target.unlink()
+                    if content is not None:
+                        target.write_bytes(content)
+                except OSError as exc:
+                    _log(f"  WARN: could not detach foreign INI link {target.name}: {exc}")
+                    continue
+                if content is not None:
+                    _log(f"  Detached {target.name} from another profile's copy "
+                         f"({where}) and kept its contents as a real file.")
+                else:
+                    _log(f"  Removed {target.name}: a dead link to {where}.")
+
     def _symlink_profile_ini_files(self, profile: str, log_fn) -> None:
         """Symlink *.ini files from the profile folder into the My Games directory.
 
@@ -1012,6 +1066,9 @@ class Fallout_3(BaseGame):
         replaced without a backup (they are already managed by us).
         """
         _log = log_fn
+        # Runs whether or not the feature is on: a link into another
+        # profile is never ours to read or write through.
+        self._drop_foreign_profile_ini_links(profile, _log)
         if not self._profile_ini_files:
             return
         mygames_dirs = self._mygames_paths()
