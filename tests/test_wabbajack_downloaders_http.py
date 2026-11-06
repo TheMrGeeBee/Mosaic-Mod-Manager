@@ -8,8 +8,17 @@ from __future__ import annotations
 
 import threading
 
+import pytest
+
 from Utils.wabbajack import wabbajack_manifest as wm
 from Utils.wabbajack.downloaders import http_source
+
+
+@pytest.fixture(autouse=True)
+def _no_retry_backoff(monkeypatch):
+    """Retries are real seconds; the tests only care that they happen.
+    ``test_cdn_waits_between_part_attempts`` checks the waiting itself."""
+    monkeypatch.setattr(http_source, "_PART_BACKOFF", 0)
 
 
 class _FakeResponse:
@@ -119,9 +128,13 @@ class _CdnResponse(_FakeResponse):
 
 
 def _cdn_server(monkeypatch, base, parts, *, gzipped=True, size=None, whole_hash=None,
-                part_hashes=None):
+                part_hashes=None, flaky=None):
     """Fake CDN: parts listed out of order on purpose; ``requests`` records
-    every URL fetched."""
+    every URL fetched.
+
+    ``flaky`` is ``{url_suffix: (times, status_or_body)}``: how many of the
+    first requests for that path fail, and how.
+    """
     whole = b"".join(parts)
     definition = {
         "Size": len(whole) if size is None else size,
@@ -135,9 +148,16 @@ def _cdn_server(monkeypatch, base, parts, *, gzipped=True, size=None, whole_hash
               base: b"<html>CDN landing page</html>"}
     routes.update({f"{base}/parts/{i}": b for i, b in enumerate(parts)})
     fetched = []
+    failures = dict(flaky or {})
 
     def fake_get(url, **kw):
         fetched.append(url)
+        left, how = failures.get(url, (0, None))
+        if left:
+            failures[url] = (left - 1, how)
+            if isinstance(how, int):
+                return _CdnResponse(status=how)
+            return _CdnResponse(body=how)        # wrong bytes: fails its hash
         if url not in routes:
             return _CdnResponse(status=404)
         return _CdnResponse(body=routes[url])
@@ -214,3 +234,114 @@ def test_cdn_missing_definition_reports_error(tmp_path, monkeypatch):
 def test_download_wabbajack_cdn_no_url_fails():
     result = http_source.download_wabbajack_cdn(wm.WabbajackCDNState(url=""), "ignored")
     assert not result.success
+
+
+# ---------------------------------------------------------------------------
+# Retrying a part. One 500 on one part used to throw the whole download away:
+# a real 1.6 GB archive (LoreRim's "[Dint999] HairPack02", 838 parts) died on
+# part 520 with over a gigabyte already fetched, and the user was sent to
+# download by hand a file whose only source is this CDN. The part served fine
+# moments later.
+# ---------------------------------------------------------------------------
+
+
+def test_cdn_retries_a_part_that_answers_500(tmp_path, monkeypatch):
+    base = "https://authored-files.wabbajack.org/Mod.wabbajack_uuid"
+    parts = [b"AAAA" * 10, b"BBBB" * 10, b"CCCC" * 10]
+    fetched = _cdn_server(monkeypatch, base, parts,
+                          flaky={f"{base}/parts/1": (2, 500)})
+    dest = tmp_path / "Mod.7z"
+
+    result = http_source.download_wabbajack_cdn(wm.WabbajackCDNState(url=base), dest)
+
+    assert result.success, result.error
+    assert dest.read_bytes() == b"".join(parts)          # nothing duplicated
+    assert fetched.count(f"{base}/parts/1") == 3
+    assert result.bytes_downloaded == len(b"".join(parts))
+
+
+def test_cdn_retries_a_part_that_comes_back_corrupt(tmp_path, monkeypatch):
+    """A part that arrives whole but fails its own hash is just as retryable
+    -- and must not leave its bad bytes in the file."""
+    base = "https://authored-files.wabbajack.org/Mod.wabbajack_uuid"
+    parts = [b"AAAA" * 10, b"BBBB" * 10]
+    _cdn_server(monkeypatch, base, parts,
+                flaky={f"{base}/parts/0": (1, b"XXXX" * 10)})
+    dest = tmp_path / "Mod.7z"
+
+    result = http_source.download_wabbajack_cdn(wm.WabbajackCDNState(url=base), dest)
+
+    assert result.success, result.error
+    assert dest.read_bytes() == b"".join(parts)
+
+
+def test_cdn_gives_up_after_the_last_attempt(tmp_path, monkeypatch):
+    base = "https://authored-files.wabbajack.org/Mod.wabbajack_uuid"
+    fetched = _cdn_server(monkeypatch, base, [b"one", b"two"],
+                          flaky={f"{base}/parts/1": (99, 500)})
+    dest = tmp_path / "Mod.7z"
+
+    result = http_source.download_wabbajack_cdn(wm.WabbajackCDNState(url=base), dest)
+
+    assert not result.success and "500" in result.error
+    assert not dest.exists()
+    assert fetched.count(f"{base}/parts/1") == http_source._PART_ATTEMPTS
+
+
+def test_cdn_retries_the_definition_too(tmp_path, monkeypatch):
+    base = "https://authored-files.wabbajack.org/Mod.wabbajack_uuid"
+    fetched = _cdn_server(monkeypatch, base, [b"payload"],
+                          flaky={f"{base}/definition.json.gz": (1, 503)})
+    result = http_source.download_wabbajack_cdn(wm.WabbajackCDNState(url=base),
+                                                tmp_path / "x")
+    assert result.success, result.error
+    assert fetched.count(f"{base}/definition.json.gz") == 2
+
+
+def test_cdn_waits_between_part_attempts(tmp_path, monkeypatch):
+    """Backing off matters: hammering a part that just 500'd is what the
+    retry is meant to avoid. The wait doubles, and a cancel cuts it short."""
+    monkeypatch.setattr(http_source, "_PART_BACKOFF", 2.0)
+    waits = []
+    monkeypatch.setattr(http_source, "_wait", lambda s, cancel: waits.append(s))
+    base = "https://authored-files.wabbajack.org/Mod.wabbajack_uuid"
+    _cdn_server(monkeypatch, base, [b"one"], flaky={f"{base}/parts/0": (2, 500)})
+
+    result = http_source.download_wabbajack_cdn(wm.WabbajackCDNState(url=base),
+                                                tmp_path / "x")
+    assert result.success, result.error
+    assert waits == [2.0, 4.0]
+
+
+def test_cdn_cancel_during_a_retry_wait_stops_at_once(tmp_path, monkeypatch):
+    base = "https://authored-files.wabbajack.org/Mod.wabbajack_uuid"
+    _cdn_server(monkeypatch, base, [b"one"], flaky={f"{base}/parts/0": (99, 500)})
+    cancel = threading.Event()
+    monkeypatch.setattr(http_source, "_PART_BACKOFF", 30.0)
+
+    def fake_wait(_seconds, _cancel):
+        cancel.set()
+        raise http_source.DownloadCancelled()
+
+    monkeypatch.setattr(http_source, "_wait", fake_wait)
+    dest = tmp_path / "x"
+    result = http_source.download_wabbajack_cdn(
+        wm.WabbajackCDNState(url=base), dest, cancel=cancel)
+
+    assert not result.success and result.error == "cancelled"
+    assert not dest.exists()
+
+
+def test_cdn_streams_a_part_too_big_to_hold_in_memory(tmp_path, monkeypatch):
+    """A part over the buffer cap keeps the old streaming path (and with it
+    the old no-retry behaviour), rather than being held to replay."""
+    monkeypatch.setattr(http_source, "_RETRYABLE_PART_BYTES", 4)
+    base = "https://authored-files.wabbajack.org/Mod.wabbajack_uuid"
+    parts = [b"tiny", b"a much longer part than the cap"]
+    _cdn_server(monkeypatch, base, parts)
+    dest = tmp_path / "Mod.7z"
+
+    result = http_source.download_wabbajack_cdn(wm.WabbajackCDNState(url=base), dest)
+
+    assert result.success, result.error
+    assert dest.read_bytes() == b"".join(parts)

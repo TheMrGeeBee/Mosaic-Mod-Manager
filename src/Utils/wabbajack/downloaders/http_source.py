@@ -25,6 +25,7 @@ from __future__ import annotations
 import gzip
 import json
 import threading
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import quote, unquote, urlsplit, urlunsplit
@@ -39,6 +40,19 @@ from ..wabbajack_manifest import HttpState, WabbajackCDNState
 
 _CHUNK_SIZE = 256 * 1024
 _REQUEST_TIMEOUT = 60
+
+# A CDN archive is hundreds of small parts, and one of them answering 500
+# used to throw the whole download away: a real 1.6 GB file (LoreRim's
+# "[Dint999] HairPack02") failed on part 520 of 838 -- over a gigabyte
+# already fetched -- and the user was asked to download by hand a file whose
+# only source is this CDN. The same part served fine moments later. Parts are
+# retried instead; each is hash-checked on its own, so a retry is safe.
+_PART_ATTEMPTS = 4
+_PART_BACKOFF = 2.0          # seconds, doubled per further attempt
+# Retrying means holding the part to replay it only once it has checked out.
+# Wabbajack's own chunk is 2 MiB, so this covers every real part; anything
+# larger streams straight to disk, as before, and simply isn't retried.
+_RETRYABLE_PART_BYTES = 64 << 20
 
 
 class DownloadCancelled(Exception):
@@ -115,6 +129,56 @@ def cdn_base_url(url: str) -> str:
     return urlunsplit((parts.scheme, parts.netloc, path, "", ""))
 
 
+def _wait(seconds: float, cancel: "threading.Event | None") -> None:
+    """Sleep, but wake at once if the install is cancelled."""
+    if cancel is not None:
+        if cancel.wait(seconds):
+            raise DownloadCancelled()
+    else:
+        time.sleep(seconds)
+
+
+def _cdn_part(base: str, index: int, size: "int | None", part_hash: str, *,
+              verify, cancel: "threading.Event | None", bump) -> bytes:
+    """One CDN part, whole and checked, retrying a transient failure.
+
+    ``bump(n)`` reports bytes towards the overall progress; a discarded
+    attempt bumps them back off again, so a retry doesn't inflate the total.
+    """
+    last: "Exception | None" = None
+    for attempt in range(_PART_ATTEMPTS):
+        if cancel is not None and cancel.is_set():
+            raise DownloadCancelled()
+        if attempt:
+            _wait(_PART_BACKOFF * (2 ** (attempt - 1)), cancel)
+        buf = bytearray()
+        try:
+            with requests.get(f"{base}/parts/{index}", stream=True,
+                              timeout=_REQUEST_TIMEOUT, verify=verify) as presp:
+                presp.raise_for_status()
+                for chunk in presp.iter_content(_CHUNK_SIZE):
+                    if cancel is not None and cancel.is_set():
+                        raise DownloadCancelled()
+                    buf += chunk
+                    bump(len(chunk))
+                    bandwidth_limit.throttle(len(chunk), cancel)
+            if size is not None and len(buf) != size:
+                raise ValueError(f"CDN part {index} is {len(buf)} bytes, "
+                                 f"expected {size}")
+            if part_hash:
+                digest = StreamingHash()
+                digest.update(bytes(buf))
+                if not hashes_match(part_hash, digest.b64()):
+                    raise ValueError(f"CDN part {index} doesn't match its hash")
+            return bytes(buf)
+        except DownloadCancelled:
+            raise
+        except (requests.RequestException, ValueError) as exc:
+            last = exc
+            bump(-len(buf))
+    raise last if last is not None else ValueError(f"CDN part {index} failed")
+
+
 def _cdn_definition(base: str, verify) -> dict:
     resp = requests.get(f"{base}/definition.json.gz", timeout=30, verify=verify)
     resp.raise_for_status()
@@ -137,10 +201,19 @@ def download_wabbajack_cdn(state: WabbajackCDNState, dest: Path, *, progress_cb=
             success=False, error="no URL in WabbajackCDNDownloader state")
     verify = resolve_ca_bundle() or True
     base = cdn_base_url(state.url)
-    try:
-        definition = _cdn_definition(base, verify)
-    except (requests.RequestException, ValueError, OSError, EOFError) as exc:
-        return WabbajackDownloadResult(success=False, error=f"CDN definition fetch failed: {exc}")
+    definition = None
+    for attempt in range(_PART_ATTEMPTS):
+        try:
+            if attempt:
+                _wait(_PART_BACKOFF * (2 ** (attempt - 1)), cancel)
+            definition = _cdn_definition(base, verify)
+            break
+        except DownloadCancelled:
+            return WabbajackDownloadResult(success=False, error="cancelled")
+        except (requests.RequestException, ValueError, OSError, EOFError) as exc:
+            if attempt == _PART_ATTEMPTS - 1:
+                return WabbajackDownloadResult(
+                    success=False, error=f"CDN definition fetch failed: {exc}")
 
     parts = sorted(definition.get("Parts") or [], key=lambda p: int(p.get("Index") or 0))
     if not parts:
@@ -150,12 +223,27 @@ def download_wabbajack_cdn(state: WabbajackCDNState, dest: Path, *, progress_cb=
     total_size = int(definition.get("Size") or sum(int(p.get("Size") or 0) for p in parts))
     whole = StreamingHash()
     downloaded = 0
+
+    def bump(n: int) -> None:
+        nonlocal downloaded
+        downloaded += n
+        if progress_cb:
+            progress_cb(downloaded, total_size)
+
     try:
         with open(dest, "wb") as out:
             for part in parts:
                 if cancel and cancel.is_set():
                     raise DownloadCancelled()
                 index = int(part.get("Index") or 0)
+                size = int(part["Size"]) if part.get("Size") is not None else None
+                if size is not None and size <= _RETRYABLE_PART_BYTES:
+                    data = _cdn_part(base, index, size, part.get("Hash") or "",
+                                     verify=verify, cancel=cancel, bump=bump)
+                    out.write(data)
+                    whole.update(data)
+                    continue
+                # No declared size, or one too big to hold: stream it.
                 part_hash, part_size = StreamingHash(), 0
                 with requests.get(f"{base}/parts/{index}", stream=True,
                                   timeout=_REQUEST_TIMEOUT, verify=verify) as presp:
@@ -167,13 +255,11 @@ def download_wabbajack_cdn(state: WabbajackCDNState, dest: Path, *, progress_cb=
                         part_hash.update(chunk)
                         whole.update(chunk)
                         part_size += len(chunk)
-                        downloaded += len(chunk)
+                        bump(len(chunk))
                         bandwidth_limit.throttle(len(chunk), cancel)
-                        if progress_cb:
-                            progress_cb(downloaded, total_size)
-                if part.get("Size") is not None and part_size != int(part["Size"]):
+                if size is not None and part_size != size:
                     raise ValueError(f"CDN part {index} is {part_size} bytes, "
-                                     f"expected {part['Size']}")
+                                     f"expected {size}")
                 if part.get("Hash") and not hashes_match(part["Hash"], part_hash.b64()):
                     raise ValueError(f"CDN part {index} doesn't match its hash")
         if definition.get("Hash") and not hashes_match(definition["Hash"], whole.b64()):
