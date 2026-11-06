@@ -16,7 +16,9 @@ from Utils.profile.profile_state import (
     merge_profile_settings,
     profile_uses_specific_mods,  # re-exported: backend now imports from Utils
     read_profile_settings,
+    read_profile_state,
     write_profile_settings,
+    write_profile_state,
 )
 
 # Game handlers — populated by _load_games() when first called
@@ -249,6 +251,12 @@ def find_profile_with_collection_slug(game_name: str, slug: str) -> str | None:
     return None
 
 
+# Top-level profile_state.json keys that say "a collection install owns this
+# profile". A duplicate is a profile of its own (see _clone_profile_dir), so
+# they stay with the source; ``collection_url`` lives in profile_settings and
+# is dropped there.
+_COLLECTION_STATE_KEYS = ("collection_revision_number", "collection_install_paused")
+
 # Files and folders that describe one profile's *deployed* state or its own
 # history, so a duplicate must start without them: carrying Root_Backup/ over
 # would make the copy's Restore put another profile's game files back.
@@ -266,7 +274,10 @@ def duplicate_profile(game_name: str, source_profile: str, new_name: str) -> Pat
 
     Everything that makes the profile what it is comes across -- load order,
     which mods are enabled, separators, INIs, Wabbajack provenance -- while the
-    source's deploy state and savegames do not (see ``_NOT_DUPLICATED``).
+    source's deploy state and savegames do not (see ``_NOT_DUPLICATED``), and
+    neither does its claim on a collection (see ``_COLLECTION_STATE_KEYS``):
+    the copy is a profile in its own right, not a second place for that
+    collection to be installed, updated or resumed into.
 
     The mods are shared, never copied: a profile-specific mods folder is a
     symlink into a shared pool for a Wabbajack install (so the copy joins the
@@ -296,6 +307,15 @@ def _clone_profile_dir(src_dir: Path, profile_dir: Path) -> None:
     # A copy is never the original default, and must not inherit its lock.
     for k in ("original_default", "profile_locked"):
         settings.pop(k, None)
+    # Nor does it inherit the source's claim on a collection. The point of
+    # duplicating a collection profile is to keep a tested baseline and build
+    # on the copy, so the copy has to be an ordinary profile -- two profiles
+    # answering to one collection URL made "Install collection" a coin toss:
+    # find_profile_with_collection_url() returns the first claimant it meets
+    # and the installer then CONTINUES into it instead of offering a new
+    # profile, so a reinstall landed in somebody's working copy and skipped
+    # every mod as already present.
+    settings.pop("collection_url", None)
 
     src_mods = src_dir / "mods"
     if src_mods.is_symlink():
@@ -306,6 +326,16 @@ def _clone_profile_dir(src_dir: Path, profile_dir: Path) -> None:
         os.symlink(str(src_mods.resolve()), profile_dir / "mods")
         settings["mods_shared_from"] = src_dir.name
     write_profile_settings(profile_dir, settings)
+
+    # The rest of the collection's hold on the profile lives at the top level
+    # of profile_state.json, outside profile_settings: the revision the copy
+    # would be "updated" from, and a mid-install pause that belongs to the
+    # source's install run, not to a copy that never ran one.
+    state = read_profile_state(profile_dir)
+    if any(k in state for k in _COLLECTION_STATE_KEYS):
+        for k in _COLLECTION_STATE_KEYS:
+            state.pop(k, None)
+        write_profile_state(profile_dir, state)
 
     # Deploy-state folders the copy needs but didn't inherit.
     for name in ("overwrite", "Root_Folder"):

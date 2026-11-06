@@ -2,6 +2,7 @@
 mods are shared rather than copied, and the source's deploy state does not."""
 from __future__ import annotations
 
+import json
 import os
 from pathlib import Path
 
@@ -166,3 +167,54 @@ def test_removing_the_source_hands_its_mods_to_the_duplicate(tmp_path, monkeypat
     assert mods.is_dir() and not mods.is_symlink(), "the copy now owns the mods"
     assert (mods / "ModA" / "big.bin").read_text() == "x" * 1000
     assert "mods_shared_from" not in read_profile_settings(new, None)
+
+
+# --------------------------------------------------------------------------
+# a copy of a collection profile is not a second home for that collection
+# --------------------------------------------------------------------------
+def _collection_source(root: Path, name: str = "Compatibility_25_MAX_Rev13"):
+    """A profile installed from a Nexus collection, mid-pause."""
+    d = _source(root, name)
+    (d / "profile_state.json").write_text(json.dumps({
+        "profile_settings": {
+            "profile_specific_mods": True,
+            "collection_url": "https://www.nexusmods.com/games/cyberpunk2077"
+                              "/collections/us59v8/revisions/13",
+        },
+        "collection_revision_number": 13,
+        "collection_install_paused": True,
+    }))
+    return d
+
+
+def test_duplicate_does_not_inherit_the_collection_claim(tmp_path, monkeypatch):
+    """Two profiles answering to one collection URL made "Install collection"
+    a coin toss: the installer continues into the first claimant it finds, so
+    a reinstall could land in the copy somebody had been working in."""
+    root = _profiles_root(tmp_path, monkeypatch)
+    src = _collection_source(root)
+
+    new = game_helpers.duplicate_profile(
+        "AGame", src.name, "Modded_Compatibility_25_MAX_Rev13")
+
+    assert "collection_url" not in read_profile_settings(new, None)
+    state = json.loads((new / "profile_state.json").read_text())
+    assert "collection_revision_number" not in state
+    assert "collection_install_paused" not in state, \
+        "the source's paused install is not the copy's to resume"
+    # the source keeps its own claim
+    assert read_profile_settings(src, None).get("collection_url")
+    assert json.loads((src / "profile_state.json").read_text())[
+        "collection_revision_number"] == 13
+
+
+def test_a_collection_install_no_longer_finds_the_duplicate(tmp_path, monkeypatch):
+    """The end of it: find_profile_with_collection_url is what the installer
+    asks, and only the profile the collection was installed into answers."""
+    root = _profiles_root(tmp_path, monkeypatch)
+    src = _collection_source(root)
+    url = read_profile_settings(src, None)["collection_url"]
+    game_helpers.duplicate_profile("AGame", src.name, "Copy")
+
+    assert game_helpers.find_profile_with_collection_url("AGame", url) == src.name
+    assert game_helpers.find_profile_with_collection_slug("AGame", "us59v8") == src.name

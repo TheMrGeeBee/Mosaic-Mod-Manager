@@ -279,11 +279,42 @@ def restore_backup(profile_dir: Path, backup_dir: Path) -> None:
     Copy all backed-up files from backup_dir into profile_dir.
     Overwrites modlist.txt, plugins.txt, and any of the JSON state files
     that exist in the backup folder.
+
+    A backup records what the profile *chose*, not what is true of the disk
+    now, so anything in it that describes where the mods live is dropped on
+    the way back in (see :func:`_drop_stale_ownership`).
     """
     for name in _BACKUP_FILES:
         src = backup_dir / name
         if src.is_file():
             shutil.copy2(src, profile_dir / name)
+    _drop_stale_ownership(profile_dir)
+
+
+def _drop_stale_ownership(profile_dir: Path) -> None:
+    """Clear ``mods_shared_from`` when the profile owns its mods outright.
+
+    The key means "this profile borrows another's mods folder", and it is
+    cleared when the owner is deleted and hands the folder over
+    (``profile_state.hand_over_shared_mods``). A backup taken while the mods
+    were still borrowed carries the key, so restoring it brought back a claim
+    on a profile that no longer exists -- harmless on disk, since the mods are
+    right here, but the profile then describes itself in terms of a profile
+    that is gone. The filesystem is the authority: a real ``mods`` directory
+    means this profile owns it, and only a symlink means it is borrowing.
+    """
+    mods = Path(profile_dir) / "mods"
+    if mods.is_symlink() or not mods.is_dir():
+        return
+    from Utils.profile.profile_state import (
+        read_profile_settings, write_profile_settings)
+    try:
+        settings = read_profile_settings(profile_dir, None)
+        if settings.pop("mods_shared_from", None) is not None:
+            write_profile_settings(profile_dir, settings)
+    except Exception as exc:                      # never fail a restore over it
+        from Utils.app_log import app_log
+        app_log(f"restore: could not clear mods_shared_from: {exc}")
 
 
 def delete_backup(backup_dir: Path) -> None:

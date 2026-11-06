@@ -220,3 +220,54 @@ def test_handing_over_does_nothing_for_a_pooled_profile(tmp_path):
 
     assert hand_over_shared_mods(tmp_path / "profiles", a) is None
     assert (shared / "ModA").is_dir() and (b / "mods").is_symlink()
+
+
+def test_restoring_a_backup_does_not_resurrect_a_finished_share(tmp_path):
+    """A backup taken while B borrowed A's mods records mods_shared_from: "A".
+    Delete A -- the mods move into B, which now owns them -- and restoring
+    that backup used to bring the claim back, leaving B describing itself in
+    terms of a profile that no longer exists (hit for real 2026-11-06, on a
+    duplicate of a Cyberpunk collection profile)."""
+    from Utils.profile.profile_backup import create_backup, restore_backup
+    from Utils.profile.profile_state import (
+        hand_over_shared_mods,
+        read_profile_settings,
+    )
+
+    a, b = _profile(tmp_path, "A"), _profile(tmp_path, "B")
+    (a / "mods" / "ModA").mkdir()
+    (b / "mods").rmdir()
+    (b / "mods").symlink_to((a / "mods").resolve(), target_is_directory=True)
+    write_profile_settings(b, {"profile_specific_mods": True,
+                               "mods_shared_from": "A"})
+    (b / "modlist.txt").write_text("+ModA\n")
+    backup = create_backup(b)
+
+    assert hand_over_shared_mods(tmp_path / "profiles", a) == b
+    shutil.rmtree(a)
+    assert "mods_shared_from" not in read_profile_settings(b, None)
+
+    restore_backup(b, backup)
+
+    assert (b / "modlist.txt").read_text() == "+ModA\n", "the backup still restores"
+    assert "mods_shared_from" not in read_profile_settings(b, None), \
+        "B owns its mods now; the backup's view of that is out of date"
+
+
+def test_restoring_a_backup_keeps_a_share_that_is_still_real(tmp_path):
+    """The mirror image: while the link is still a link, the key is true and
+    restoring must leave it alone."""
+    from Utils.profile.profile_backup import create_backup, restore_backup
+    from Utils.profile.profile_state import read_profile_settings
+
+    a, b = _profile(tmp_path, "A"), _profile(tmp_path, "B")
+    (a / "mods" / "ModA").mkdir()
+    (b / "mods").rmdir()
+    (b / "mods").symlink_to((a / "mods").resolve(), target_is_directory=True)
+    write_profile_settings(b, {"profile_specific_mods": True,
+                               "mods_shared_from": "A"})
+    backup = create_backup(b)
+
+    restore_backup(b, backup)
+
+    assert read_profile_settings(b, None).get("mods_shared_from") == "A"
