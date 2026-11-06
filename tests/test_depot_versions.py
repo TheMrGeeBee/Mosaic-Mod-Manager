@@ -3,7 +3,11 @@ real data: the user's Fallout 4 appmanifest layout and the content_log lines
 Steam wrote for a real `download_depot` on 2026-10-08."""
 from __future__ import annotations
 
+import hashlib
+import json
 import os
+import pathlib
+import shutil
 
 import pytest
 
@@ -365,3 +369,424 @@ def test_every_shipped_version_table_parses_and_is_self_consistent():
         assert labels and len(labels) == len(set(labels)), path.name
         for entry in table.versions:
             assert entry.depots, f"{path.name}: {entry.label} has no depots"
+
+
+# ---------------------------------------------------------------------------
+# The version store: switching between builds with no download
+# ---------------------------------------------------------------------------
+
+def _depot(tmp_path, name, **files):
+    d = tmp_path / "content" / name
+    for rel, data in files.items():
+        p = d / rel.replace("|", "/")
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_bytes(data)
+    return d
+
+
+def test_a_round_trip_needs_no_second_download(tmp_path):
+    """The point of the store: after switching away and back, the downgraded
+    build is still Mosaic's to hand out, even though Steam's depot folder has
+    been emptied (it only ever holds one manifest)."""
+    game, dirs, entry, state = _setup(tmp_path)
+    newer = _snapshot(game)
+    dv.apply_version(game, entry, dirs, state, from_label="1.11.240")
+    older = _snapshot(game)
+
+    assert dv.revert_version(game, state) == "1.11.240"
+    assert _snapshot(game) == newer
+    shutil.rmtree(dirs["377162"])            # Steam's folder is reused/gone
+
+    assert dv.stored_labels(state) == ["1.10.163"]
+    assert dv.swap_to(game, state, "1.10.163") == "1.10.163"
+    assert _snapshot(game) == older
+    assert dv.stored_labels(state) == ["1.11.240"]
+    assert dv.current_label(state) == "1.10.163"
+    # And back again, still with nothing to download.
+    assert dv.swap_to(game, state, "1.11.240") == "1.11.240"
+    assert _snapshot(game) == newer
+
+
+def test_switching_to_the_build_already_installed_does_nothing(tmp_path):
+    game, dirs, entry, state = _setup(tmp_path)
+    dv.apply_version(game, entry, dirs, state, from_label="1.11.240")
+    before = _snapshot(game)
+    assert dv.swap_to(game, state, "1.10.163") == "1.10.163"
+    assert _snapshot(game) == before
+
+
+def test_the_state_file_follows_the_store(tmp_path):
+    game, dirs, entry, state = _setup(tmp_path)
+    dv.apply_version(game, entry, dirs, state, from_label="1.11.240")
+    assert dv.load_state(state)["current"] == "1.10.163"
+    dv.swap_to(game, state, "1.11.240")
+    # Back on the build Steam installed: nothing is switched any more.
+    assert dv.load_state(state) is None
+    dv.swap_to(game, state, "1.10.163")
+    back = dv.load_state(state)
+    assert (back["current"], back["from"]) == ("1.10.163", "1.11.240")
+    assert dv.revert_version(game, state) == "1.11.240"
+
+
+def test_a_third_build_keeps_the_other_two_whole(tmp_path):
+    """The subtle one. A path becomes "managed" the first time any switch
+    touches it, so a build stored before that has no entry for it -- and a
+    missing entry means "that build has no such file", which would delete it.
+    Here 1.10.163 never touches the esm and must keep the one it was built on.
+    """
+    game, dirs, entry, state = _setup(tmp_path)
+    exe_only = _depot(tmp_path, "exe_only", **{"Fallout4.exe": b"exe 1.10"})
+    both = _depot(tmp_path, "both", **{"Fallout4.exe": b"exe 1.09",
+                                       "Data|Fallout4.esm": b"esm 1.09"})
+    e10 = dv.VersionEntry(label="1.10.163", depots={"1": "x"})
+    e09 = dv.VersionEntry(label="1.09.000", depots={"1": "y"})
+
+    dv.apply_version(game, e10, {"1": exe_only}, state, from_label="1.11.240")
+    assert dv.read_index(state)["managed"] == ["Fallout4.exe"]
+    dv.swap_to(game, state, "1.11.240")
+    dv.apply_version(game, e09, {"1": both}, state, from_label="1.11.240")
+    assert dv.read_index(state)["managed"] == ["Data/Fallout4.esm", "Fallout4.exe"]
+
+    assert dv.swap_to(game, state, "1.10.163") == "1.10.163"
+    assert (game / "Fallout4.exe").read_bytes() == b"exe 1.10"
+    assert (game / "Data" / "Fallout4.esm").read_bytes() == b"esm 1.11"
+    assert sorted(dv.stored_labels(state)) == ["1.09.000", "1.11.240"]
+    assert dv.swap_to(game, state, "1.09.000") == "1.09.000"
+    assert (game / "Fallout4.exe").read_bytes() == b"exe 1.09"
+    assert (game / "Data" / "Fallout4.esm").read_bytes() == b"esm 1.09"
+
+
+def test_a_file_only_one_build_has_comes_and_goes(tmp_path):
+    game, dirs, entry, state = _setup(tmp_path)
+    dv.apply_version(game, entry, dirs, state, from_label="1.11.240")
+    assert (game / "Data" / "OldOnly.ba2").is_file()
+    assert not (game / "Data" / "Only1.11.ba2").exists()
+    dv.swap_to(game, state, "1.11.240")
+    assert not (game / "Data" / "OldOnly.ba2").exists()
+    assert (game / "Data" / "Only1.11.ba2").is_file()
+
+
+def test_swap_refuses_a_damaged_slot_and_an_unknown_build(tmp_path):
+    game, dirs, entry, state = _setup(tmp_path)
+    dv.apply_version(game, entry, dirs, state, from_label="1.11.240")
+    after = _snapshot(game)
+    with pytest.raises(dv.VersionSwitchError, match="doesn't keep"):
+        dv.swap_to(game, state, "1.09.000")
+    slot = dv.read_index(state)["slots"]["1.11.240"]["dir"]
+    (pathlib.Path(slot) / "Data" / "Fallout4.esm").write_bytes(b"corrupted")
+    with pytest.raises(dv.VersionSwitchError, match="Verify integrity"):
+        dv.swap_to(game, state, "1.11.240")
+    assert _snapshot(game) == after
+
+
+def test_swap_refuses_while_deployed_or_running(tmp_path):
+    game, dirs, entry, state = _setup(tmp_path)
+    dv.apply_version(game, entry, dirs, state, from_label="1.11.240")
+    with pytest.raises(dv.VersionSwitchError, match="running"):
+        dv.swap_to(game, state, "1.11.240", game_running=True)
+    (game / "Data_Core").mkdir()
+    with pytest.raises(dv.VersionSwitchError, match="deployed"):
+        dv.swap_to(game, state, "1.11.240")
+
+
+def test_swap_puts_everything_back_when_it_fails(tmp_path, monkeypatch):
+    game, dirs, entry, state = _setup(tmp_path)
+    dv.apply_version(game, entry, dirs, state, from_label="1.11.240")
+    after = _snapshot(game)
+    real = os.replace
+
+    def boom(src, dst):
+        if str(dst).endswith("Fallout4.esm"):
+            raise OSError("disk full")
+        return real(src, dst)
+
+    monkeypatch.setattr(os, "replace", boom)
+    with pytest.raises(dv.VersionSwitchError, match="disk full"):
+        dv.swap_to(game, state, "1.11.240")
+    monkeypatch.setattr(os, "replace", real)
+    assert _snapshot(game) == after
+    assert not list(game.rglob("*.mosaic-version"))
+    # The store is intact, so the switch can simply be tried again.
+    assert dv.swap_to(game, state, "1.11.240") == "1.11.240"
+
+
+def test_a_switch_made_before_the_store_existed_still_swaps(tmp_path):
+    """An install that switched with an older Mosaic has no index, only
+    version_state.json and the throw-away version_backup folder it names.
+    That state describes one complete slot, so it migrates as it is read."""
+    game, dirs, entry, state = _setup(tmp_path)
+    newer = _snapshot(game)
+    dv.apply_version(game, entry, dirs, state, from_label="1.11.240")
+    older = _snapshot(game)
+    legacy = pathlib.Path(state) / dv.BACKUP_DIRNAME / "1.11.240"
+    shutil.move(str(dv.read_index(state)["slots"]["1.11.240"]["dir"]), str(legacy))
+    (pathlib.Path(state) / dv.INDEX_FILENAME).unlink()
+    st = dv.load_state(state)
+    st["backup_dir"] = str(legacy)
+    dv._write_state(state, st)
+
+    index = dv.read_index(state)
+    assert index["current"] == "1.10.163" and index["base"] == "1.11.240"
+    assert dv.swap_to(game, state, "1.11.240") == "1.11.240"
+    assert _snapshot(game) == newer
+    # ...and the build it came from is now a slot of its own, as it would be
+    # had the store been there all along.
+    assert dv.swap_to(game, state, "1.10.163") == "1.10.163"
+    assert _snapshot(game) == older
+
+
+def _library(tmp_path):
+    game = tmp_path / "steamapps" / "common" / "Fallout 4"
+    (game / "Data").mkdir(parents=True)
+    (game / "Fallout4.exe").write_bytes(b"exe 1.11")
+    (game / "Data" / "Fallout4.esm").write_bytes(b"esm 1.11")
+    (tmp_path / "steamapps" / "appmanifest_377160.acf").write_text(APPMANIFEST)
+    return game
+
+
+def test_switch_options_says_how_each_build_would_be_reached(tmp_path):
+    game = _library(tmp_path)
+    state = tmp_path / "state"
+    table = dv.VersionTable(app_id="377160", exe_file="Fallout4.exe", versions=[
+        dv.VersionEntry(label="cached", depots={"377162": "5847529232406005096"}),
+        dv.VersionEntry(label="far away", depots={"377162": "9" * 19})])
+    folder = tmp_path / "steamrt64" / "steamapps" / "content" / "app_377160" / "depot_377162"
+    folder.mkdir(parents=True)
+    log = CONTENT_LOG.format(root=tmp_path)
+    dv.mark_clean_start(state, folder, when="2026-10-08 00:00:00")
+
+    opts = {o.label: o for o in dv.switch_options(game, "377160", state, table, log_text=log,
+                                                  roots=[tmp_path])}
+    assert opts["Steam build 24564252"].state == dv.SwitchOption.CURRENT
+    assert opts["cached"].state == dv.SwitchOption.CACHED
+    assert opts["cached"].depot_dirs == {"377162": folder}
+    assert opts["far away"].state == dv.SwitchOption.NEEDS_DOWNLOAD
+    assert opts["far away"].download == [("377162", "9" * 19)]
+    assert [o.instant for o in (opts["cached"], opts["far away"])] == [True, False]
+
+
+def test_switch_options_reads_the_installed_build_from_mosaic_not_steam(tmp_path):
+    """Mosaic never edits Steam's appmanifest, so Steam goes on reporting the
+    build it installed while a switched one is on disk. The list has to say
+    what Mosaic put there, or it would offer to "switch" to what is running."""
+    game = _library(tmp_path)
+    state = tmp_path / "state"
+    depot = _depot(tmp_path, "d", **{"Fallout4.exe": b"exe 1.10"})
+    entry = dv.VersionEntry(label="1.10.163", depots={"377162": "1" * 19})
+    table = dv.VersionTable(app_id="377160", exe_file="Fallout4.exe", versions=[entry])
+    dv.apply_version(game, entry, {"377162": depot}, state, from_label="Steam build 24564252")
+
+    opts = {o.label: o for o in dv.switch_options(game, "377160", state, table, log_text="",
+                                                  roots=[tmp_path])}
+    assert opts["1.10.163"].state == dv.SwitchOption.CURRENT
+    assert opts["Steam build 24564252"].state == dv.SwitchOption.STORED
+    # Current first, whatever order the table is in.
+    assert dv.switch_options(game, "377160", state, table, log_text="",
+                             roots=[tmp_path])[0].label == "1.10.163"
+
+
+def test_switch_to_puts_the_installed_build_back_before_applying(tmp_path):
+    """Applying a download runs on the build Steam installed, so switching
+    from one downgrade straight to another has to pass through it -- leaving
+    the first downgrade in the store, ready to swap back to."""
+    game = _library(tmp_path)
+    state = tmp_path / "state"
+    base = _snapshot(game)
+    d10 = _depot(tmp_path, "d10", **{"Fallout4.exe": b"exe 1.10"})
+    d09 = _depot(tmp_path, "d09", **{"Fallout4.exe": b"exe 1.09"})
+    e10 = dv.VersionEntry(label="1.10.163", depots={"377162": "1" * 19})
+    e09 = dv.VersionEntry(label="1.09.000", depots={"377162": "2" * 19})
+
+    dv.apply_version(game, e10, {"377162": d10}, state, from_label="Steam build 24564252")
+    opt = dv.SwitchOption("1.09.000", dv.SwitchOption.CACHED, entry=e09,
+                          depot_dirs={"377162": d09})
+    assert dv.switch_to(game, state, opt) == "1.09.000"
+    assert (game / "Fallout4.exe").read_bytes() == b"exe 1.09"
+    assert sorted(dv.stored_labels(state)) == ["1.10.163", "Steam build 24564252"]
+
+    assert dv.swap_to(game, state, "1.10.163") == "1.10.163"
+    assert (game / "Fallout4.exe").read_bytes() == b"exe 1.10"
+    assert dv.swap_to(game, state, "Steam build 24564252") == "Steam build 24564252"
+    assert _snapshot(game) == base
+
+
+def test_switch_to_refuses_a_build_that_is_not_on_hand(tmp_path):
+    game = _library(tmp_path)
+    opt = dv.SwitchOption("1.09.000", dv.SwitchOption.NEEDS_DOWNLOAD)
+    with pytest.raises(dv.VersionSwitchError, match="isn't downloaded yet"):
+        dv.switch_to(game, tmp_path / "state", opt)
+
+
+def test_builds_are_named_by_the_exe_each_one_has(tmp_path):
+    """The appmanifest only knows a build id, which is not what anyone calls a
+    version. The exe says 1.7.104, and the exe of a build that isn't installed
+    is in its store slot, so a stored build can be named too."""
+    from tests.test_pe_version import build_pe
+    game, _dirs, _entry, state = _setup(tmp_path)
+    (game / "Fallout4.exe").write_bytes(build_pe((1, 11, 240, 0)))
+    depot = _depot(tmp_path, "old", **{"Fallout4.exe": build_pe((1, 10, 163, 0))})
+    entry = dv.VersionEntry(label="1.10.163", depots={"1": "x"})
+    dv.apply_version(game, entry, {"1": depot}, state, from_label="Steam build 24564252")
+
+    names = dv.build_names(game, state, "Fallout4.exe")
+    assert names == {"1.10.163": "1.10.163", "Steam build 24564252": "1.11.240"}
+    # Labels stay the identity; only the display changes.
+    assert dv.stored_labels(state) == ["Steam build 24564252"]
+    assert dv.swap_to(game, state, "Steam build 24564252") == "Steam build 24564252"
+
+
+def test_a_build_with_no_readable_exe_keeps_its_label(tmp_path):
+    game, dirs, entry, state = _setup(tmp_path)
+    dv.apply_version(game, entry, dirs, state, from_label="1.11.240")
+    assert dv.build_names(game, state, "Fallout4.exe") == {
+        "1.10.163": "1.10.163", "1.11.240": "1.11.240"}
+    assert dv.build_names(game, state, "") == {"1.10.163": "1.10.163", "1.11.240": "1.11.240"}
+
+
+def test_two_builds_reporting_one_version_fall_back_to_their_labels(tmp_path):
+    from tests.test_pe_version import build_pe
+    game, _dirs, _entry, state = _setup(tmp_path)
+    same = build_pe((1, 11, 240, 0))
+    (game / "Fallout4.exe").write_bytes(same)
+    depot = _depot(tmp_path, "same", **{"Fallout4.exe": same, "Data|x.ba2": b"differs"})
+    dv.apply_version(game, dv.VersionEntry(label="re-release", depots={"1": "x"}),
+                     {"1": depot}, state, from_label="Steam build 24564252")
+    names = dv.build_names(game, state, "Fallout4.exe")
+    assert names == {"re-release": "re-release", "Steam build 24564252": "Steam build 24564252"}
+
+
+def test_records_survive_being_written_from_many_threads_at_once(tmp_path):
+    """depot_status marks a clean start from whatever worker thread it runs on,
+    and the build dropdown can have two of those in flight. A shared temp file
+    let them land truncated JSON, which reads back as "no record" -- and a
+    depot with no record is treated as holding another version."""
+    import threading
+    state = tmp_path / "state"
+    folders = [tmp_path / f"depot_{i}" for i in range(12)]
+    errors = []
+
+    def hammer(folder):
+        try:
+            for _ in range(25):
+                dv.mark_clean_start(state, folder)
+                json.loads((state / dv.DOWNLOADS_FILENAME).read_text(encoding="utf-8"))
+        except Exception as exc:                 # truncated JSON lands here
+            errors.append(exc)
+
+    threads = [threading.Thread(target=hammer, args=(f,)) for f in folders]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    assert not errors
+    assert not list(state.glob("*.tmp"))
+    assert set(dv._load_records(state)) == {str(f) for f in folders}
+
+
+def test_a_runtime_swapped_exe_does_not_rename_the_build(tmp_path):
+    """Skyrim's runtime swap patches the exe back to an older version on
+    purpose, on top of the newer build's data files -- what LoreRim wants:
+    1.7.104 game files under a 1.6.1170 exe. The build is still 1.7.104, and
+    naming it after the patched exe would both misreport it and collide with
+    the genuine 1.6.1170 in the store."""
+    from tests.test_pe_version import build_pe
+    game, _dirs, _entry, state = _setup(tmp_path)
+    (game / "SkyrimSE.exe").write_bytes(build_pe((1, 7, 104, 0)))
+    depot = _depot(tmp_path, "older", **{"SkyrimSE.exe": build_pe((1, 6, 1170, 0))})
+    dv.apply_version(game, dv.VersionEntry(label="1.6.1170", depots={"1": "x"}),
+                     {"1": depot}, state, from_label="Steam build 24914197")
+    dv.swap_to(game, state, "Steam build 24914197")
+    assert dv.build_names(game, state, "SkyrimSE.exe")["Steam build 24914197"] == "1.7.104"
+
+    # Now the runtime swap patches the exe down, leaving the 1.7.104 data.
+    (game / "SkyrimSE.exe").write_bytes(build_pe((1, 6, 1170, 0)))
+    (pathlib.Path(state) / "runtime_state.json").write_text(json.dumps(
+        {"applied": True, "from": "1.7.104.0", "to": "1.6.1170.0"}), encoding="utf-8")
+    names = dv.build_names(game, state, "SkyrimSE.exe")
+    assert names["Steam build 24914197"] == "1.7.104"
+    assert names["1.6.1170"] == "1.6.1170"
+
+
+def test_a_stale_runtime_record_does_not_rename_anything(tmp_path):
+    """A record only counts while the exe still reads as what it produced."""
+    from tests.test_pe_version import build_pe
+    game, _dirs, _entry, state = _setup(tmp_path)
+    (game / "SkyrimSE.exe").write_bytes(build_pe((1, 7, 104, 0)))
+    depot = _depot(tmp_path, "older", **{"SkyrimSE.exe": build_pe((1, 6, 1170, 0))})
+    dv.apply_version(game, dv.VersionEntry(label="1.6.1170", depots={"1": "x"}),
+                     {"1": depot}, state, from_label="Steam build 24914197")
+    dv.swap_to(game, state, "Steam build 24914197")
+    (pathlib.Path(state) / "runtime_state.json").write_text(json.dumps(
+        {"applied": True, "from": "1.6.1170.0", "to": "1.5.97.0"}), encoding="utf-8")
+    assert dv.build_names(game, state, "SkyrimSE.exe")["Steam build 24914197"] == "1.7.104"
+
+
+def _runtime_record(state, game, *, frm, to, patched: "dict[str, bytes]"):
+    """A runtime_state.json as skyrim_runtime writes one, with the patched
+    hashes of the files it claims are on disk."""
+    files = {rel: {"original_sha256": "0" * 64,
+                   "patched_sha256": hashlib.sha256(data).hexdigest()}
+             for rel, data in patched.items()}
+    pathlib.Path(state).mkdir(parents=True, exist_ok=True)
+    (pathlib.Path(state) / "runtime_state.json").write_text(
+        json.dumps({"applied": True, "from": frm, "to": to, "files": files}), encoding="utf-8")
+
+
+def _skyrim_on(tmp_path, exe_version):
+    """A Skyrim folder on *exe_version* with one build stored, ready to swap."""
+    from tests.test_pe_version import build_pe
+    game, _dirs, _entry, state = _setup(tmp_path)
+    (game / "SkyrimSE.exe").write_bytes(build_pe((1, 7, 104, 0)))
+    (game / "SkyrimSELauncher.exe").write_bytes(b"launcher 1.7.104")
+    depot = _depot(tmp_path, "older", **{"SkyrimSE.exe": build_pe(exe_version),
+                                         "SkyrimSELauncher.exe": b"launcher 1.6.1170"})
+    dv.apply_version(game, dv.VersionEntry(label="1.6.1170", depots={"1": "x"}),
+                     {"1": depot}, state, from_label="Steam build 24914197")
+    dv.swap_to(game, state, "Steam build 24914197")
+    return game, state
+
+
+def test_a_build_switch_refuses_while_the_runtime_swap_is_applied(tmp_path):
+    """The runtime swap patches nine of the files the store manages. Taking
+    them to be the installed build's own would store a mixture, and the swap's
+    own revert would later write its build's files over whatever is installed.
+    """
+    from tests.test_pe_version import build_pe
+    game, state = _skyrim_on(tmp_path, (1, 6, 1170, 0))
+    patched_exe = build_pe((1, 6, 1170, 0))
+    (game / "SkyrimSE.exe").write_bytes(patched_exe)
+    (game / "SkyrimSELauncher.exe").write_bytes(b"patched launcher")
+    _runtime_record(state, game, frm="1.7.104.0", to="1.6.1170.0",
+                    patched={"SkyrimSE.exe": patched_exe,
+                             "SkyrimSELauncher.exe": b"patched launcher"})
+    before = _snapshot(game)
+    with pytest.raises(dv.VersionSwitchError, match="runtime swap is applied"):
+        dv.swap_to(game, state, "1.6.1170")
+    assert _snapshot(game) == before
+    assert dv.runtime_swap_blocker(game, state).startswith(
+        "The Skyrim runtime swap is applied: the exe and the files it patches read 1.6.1170 "
+        "while the rest of the game is 1.7.104")
+
+
+def test_a_stale_runtime_record_does_not_block_a_build_switch(tmp_path):
+    """The real case: a record from three weeks ago still says applied, and
+    its target version happens to match the exe. Its files are long gone, so
+    it must not stand in the way."""
+    from tests.test_pe_version import build_pe
+    game, state = _skyrim_on(tmp_path, (1, 6, 1170, 0))
+    _runtime_record(state, game, frm="1.7.104.0", to="1.6.1170.0",
+                    patched={"SkyrimSELauncher.exe": b"a launcher from weeks ago"})
+    # Switching puts a real 1.6.1170 exe in place, which matches the record's
+    # target version -- the thing that used to be mistaken for "still applied".
+    assert dv.swap_to(game, state, "1.6.1170") == "1.6.1170"
+    from Utils.wizard_support.pe_version import format_version, read_file_version
+    assert format_version(read_file_version(game / "SkyrimSE.exe")) == "1.6.1170.0"
+    assert dv.runtime_swap_blocker(game, state) == ""
+    assert dv.swap_to(game, state, "Steam build 24914197") == "Steam build 24914197"
+
+
+def test_other_games_are_never_blocked_by_a_runtime_swap(tmp_path):
+    game, dirs, entry, state = _setup(tmp_path)
+    assert dv.runtime_swap_blocker(game, state) == ""
+    dv.apply_version(game, entry, dirs, state, from_label="1.11.240")
+    assert dv.revert_version(game, state) == "1.11.240"

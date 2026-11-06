@@ -36,6 +36,7 @@ import json
 import os
 import re
 import shutil
+import threading
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -44,7 +45,9 @@ from .acf import get_ci, read_vdf
 
 VERSIONS_DIR = Path(__file__).with_name("versions")
 STATE_FILENAME = "version_state.json"
-BACKUP_DIRNAME = "version_backup"
+BACKUP_DIRNAME = "version_backup"      # a single throw-away backup; pre-store
+STORE_DIRNAME = "version_store"        # one slot per build Mosaic keeps
+INDEX_FILENAME = "version_store.json"
 USER_VERSIONS_FILENAME = "steam_versions.user.json"
 _STAGE_SUFFIX = ".mosaic-version"
 _CHUNK = 1 << 20
@@ -183,6 +186,34 @@ def download_history(log_text: str) -> "dict[Path, list[tuple[str, str]]]":
     return out
 
 
+def _atomic_write_json(path: Path, data) -> None:
+    """Write *data* as JSON, replacing *path* in one step.
+
+    The temp file carries the writing thread's id: depot_downloads.json is
+    written from worker threads (depot_status marks a clean start whenever it
+    finds a folder absent), and the play bar's build dropdown can have two of
+    those in flight at once -- one labelling the menu, one checking a pick. A
+    shared "<name>.tmp" lets them overwrite each other's half-written file and
+    land truncated JSON, which reads back as "no record" and makes a finished
+    download look like it holds another version.
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_name(f"{path.name}.{os.getpid()}.{threading.get_ident()}.tmp")
+    try:
+        tmp.write_text(json.dumps(data, indent=2), encoding="utf-8")
+        os.replace(tmp, path)
+    except Exception:
+        tmp.unlink(missing_ok=True)
+        raise
+
+
+# Marking a clean start is a read-modify-write of one shared file, so two
+# threads doing it at once can lose one of the two records -- and a depot with
+# no record is treated as holding another version, i.e. the user is told to
+# clear a download that is in fact fine. Within one process a lock settles it.
+_RECORDS_LOCK = threading.Lock()
+
+
 def _load_records(state_dir) -> dict:
     try:
         return json.loads((Path(state_dir) / DOWNLOADS_FILENAME).read_text(encoding="utf-8"))
@@ -191,17 +222,14 @@ def _load_records(state_dir) -> dict:
 
 
 def _save_records(state_dir, records: dict) -> None:
-    p = Path(state_dir) / DOWNLOADS_FILENAME
-    p.parent.mkdir(parents=True, exist_ok=True)
-    tmp = p.with_suffix(".tmp")
-    tmp.write_text(json.dumps(records, indent=2), encoding="utf-8")
-    os.replace(tmp, p)
+    _atomic_write_json(Path(state_dir) / DOWNLOADS_FILENAME, records)
 
 
 def mark_clean_start(state_dir, folder: Path, when: "str | None" = None) -> None:
-    records = _load_records(state_dir)
-    records[str(folder)] = {"clean_since": when or _now_stamp()}
-    _save_records(state_dir, records)
+    with _RECORDS_LOCK:
+        records = _load_records(state_dir)
+        records[str(folder)] = {"clean_since": when or _now_stamp()}
+        _save_records(state_dir, records)
 
 
 def clear_depot_folder(state_dir, folder: Path) -> None:
@@ -477,11 +505,7 @@ def load_state(state_dir) -> "dict | None":
 
 
 def _write_state(state_dir, state: dict) -> None:
-    p = state_path(state_dir)
-    p.parent.mkdir(parents=True, exist_ok=True)
-    tmp = p.with_suffix(".tmp")
-    tmp.write_text(json.dumps(state, indent=2), encoding="utf-8")
-    os.replace(tmp, p)
+    _atomic_write_json(state_path(state_dir), state)
 
 
 def _is_wine_prefix(path: str) -> bool:
@@ -518,13 +542,45 @@ def deployment_traces(game_root, *, deploy_active: bool = False) -> "list[str]":
     return traces
 
 
-def _check_can_change(game_root: Path, game_running: bool, deploy_active: bool = False) -> None:
+def runtime_swap_blocker(game_root, state_dir) -> str:
+    """Why a build can't be changed while Skyrim's runtime swap is applied.
+
+    That swap patches the exe, the masters and two BSAs back to an older
+    version on top of the newer build's files, on purpose -- so the two
+    systems own nine of the same files. Switching build now would take the
+    patched files to be this build's own and keep them as that build in the
+    store, and the swap's own revert would later write its build's files over
+    whichever build is installed by then. One of them has to be undone first,
+    and the runtime swap is the cheap one. Empty for every other game, which
+    has no such record.
+    """
+    try:
+        from Utils.modding_tools.skyrim_runtime import describe
+        info = describe(game_root, state_dir, game_running=False)
+    except Exception:
+        return ""
+    if not info.swapped:
+        return ""
+    def _v(parts, fallback):
+        return _short_version(".".join(str(p) for p in parts)) if parts else fallback
+    return (f"The Skyrim runtime swap is applied: the exe and the files it patches read "
+            f"{_v(info.recorded_to, 'another version')} while the rest of the game is "
+            f"{_v(info.recorded_from, 'a different build')}. Switching build now would keep "
+            "those patched files as if they were part of it. Revert the runtime swap first "
+            "(Wizard \u25b8 Skyrim runtime swap), then switch.")
+
+
+def _check_can_change(game_root: Path, game_running: bool, deploy_active: bool = False,
+                      state_dir=None) -> None:
     if game_running:
         raise VersionSwitchError("The game is running. Close it first.")
     traces = deployment_traces(game_root, deploy_active=deploy_active)
     if traces:
         raise VersionSwitchError("Mods are deployed (" + "; ".join(traces) + "). Restore the "
                                  "game first, so only the game's own files are in its folder.")
+    blocker = runtime_swap_blocker(game_root, state_dir) if state_dir is not None else ""
+    if blocker:
+        raise VersionSwitchError(blocker)
 
 
 def apply_version(game_root, entry: VersionEntry, depot_dirs: "dict[str, Path]", state_dir, *,
@@ -536,20 +592,25 @@ def apply_version(game_root, entry: VersionEntry, depot_dirs: "dict[str, Path]",
     swapped in with ``os.replace``. Any failure puts everything back. Returns
     the saved state."""
     game_root = Path(game_root)
-    _check_can_change(game_root, game_running, deploy_active)
+    _check_can_change(game_root, game_running, deploy_active, state_dir)
     if load_state(state_dir) is not None:
         raise VersionSwitchError("The game is already switched to another version. "
                                  "Switch back first.")
     files = _depot_files(depot_dirs)
     if not files:
         raise VersionSwitchError("The downloaded depots are empty.")
-    backup = Path(state_dir) / BACKUP_DIRNAME / re.sub(r"[^\w.\-]+", "_", from_label or "previous")
+    backup = _slot_dir(state_dir, from_label or "previous")
 
     targets = {rel: _resolve_ci(game_root, rel) for rel in files}
     removals = {rel: _resolve_ci(game_root, rel) for rel in entry.remove}
     removals = {rel: p for rel, p in removals.items() if p.is_file() and rel not in files}
-    backup_bytes = sum(p.stat().st_size for p in list(targets.values()) + list(removals.values())
-                       if p.is_file())
+    # Paths another known version differs on that this one leaves alone. They
+    # aren't part of this switch, but the slot has to hold them or switching
+    # back to it would read them as "not in that build" and delete them.
+    keep = {rel: _resolve_ci(game_root, rel) for rel in read_index(state_dir).get("managed") or []
+            if rel not in files and rel not in removals}
+    saved = list(targets.values()) + list(removals.values()) + list(keep.values())
+    backup_bytes = sum(p.stat().st_size for p in saved if p.is_file())
     stage_bytes = sum(p.stat().st_size for p in files.values())
     same_fs = os.stat(_existing(backup)).st_dev == os.stat(game_root).st_dev
     need_game = stage_bytes + (backup_bytes if same_fs else 0)
@@ -560,16 +621,20 @@ def apply_version(game_root, entry: VersionEntry, depot_dirs: "dict[str, Path]",
         raise VersionSwitchError(f"Not enough free space for the {backup_bytes / 1e9:.1f} GB backup.")
 
     record: "dict[str, dict]" = {}
+    kept: "dict[str, str]" = {}
     staged: "dict[str, Path]" = {}
     swapped: "list[str]" = []
     removed: "list[str]" = []
     try:
         shutil.rmtree(backup, ignore_errors=True)
-        log_fn(f"Backing up {sum(1 for p in targets.values() if p.is_file()) + len(removals)} "
+        log_fn(f"Backing up {sum(1 for p in saved if p.is_file())} "
                f"file(s) ({backup_bytes / 1e9:.1f} GB)…")
         for rel, target in list(targets.items()) + list(removals.items()):
             if target.is_file():
                 record.setdefault(rel, {})["original_sha256"] = _copy_hash(target, backup / rel)
+        for rel, target in keep.items():
+            if target.is_file():
+                kept[rel] = _copy_hash(target, backup / rel)
         log_fn(f"Preparing {len(files)} new file(s)…")
         for rel, src in files.items():
             stage = targets[rel].with_name(targets[rel].name + _STAGE_SUFFIX)
@@ -610,6 +675,9 @@ def apply_version(game_root, entry: VersionEntry, depot_dirs: "dict[str, Path]",
              "at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
              "backup_dir": str(backup), "files": record}
     _write_state(state_dir, state)
+    _register_slot(state_dir, from_label=from_label or "previous", to_label=entry.label,
+                   slot_dir=backup, record=record, kept=kept,
+                   touched=set(files) | set(removals))
     log_fn(f"Switched to {entry.label}: {len(swapped)} file(s) replaced or added, "
            f"{len(removed)} removed.")
     return state
@@ -623,34 +691,452 @@ def _existing(p: Path) -> Path:
 
 def revert_version(game_root, state_dir, *, game_running: bool = False,
                    deploy_active: bool = False, log_fn=lambda _m: None) -> str:
-    """Put back the files the last switch replaced or removed, and delete the
-    ones it added. Refuses (changing nothing) if the backup is damaged.
-    Returns the label switched back to."""
-    game_root = Path(game_root)
-    _check_can_change(game_root, game_running, deploy_active)
+    """Switch back to the build the last switch left, from Mosaic's store.
+    Returns the label switched back to.
+
+    The build being left is kept as a slot of its own on the way out, so
+    switching to it again later needs no download either -- that is the whole
+    point of the store, and why this no longer throws the backup away.
+    """
     state = load_state(state_dir)
     if state is None:
         raise VersionSwitchError("There's no version switch to undo.")
-    backup = Path(state["backup_dir"])
+    return swap_to(game_root, state_dir, state.get("from") or "", game_running=game_running,
+                   deploy_active=deploy_active, log_fn=log_fn)
+
+
+# ---------------------------------------------------------------------------
+# The version store: one complete file set per build that is NOT in the game
+# folder, so going back to a build is a local file swap, not another download.
+# ---------------------------------------------------------------------------
+# Measured on a real Skyrim SE pair (1.7.104 vs 1.6.1170, 2026-11-06): 29 of
+# the 46 files a switch touches genuinely differ, 14.42 GB of 14.5 -- every BSA
+# is repacked between builds. So there is nothing to dedupe or patch; the only
+# way to make a round trip free is to keep both sets of bytes. Steam's own
+# download folder can't do it: it reuses one depot_<id> folder per depot, so it
+# holds exactly one manifest at a time (see "Trusting a depot folder" above).
+#
+# The index's invariant: the game folder holds the build named ``current``, and
+# every OTHER build Mosaic has on hand is a slot holding, for each path in
+# ``managed``, either that build's file or ``null`` meaning "this build has no
+# such file". ``managed`` is every path any known switch touches, so a swap can
+# also delete a file the target build simply doesn't have.
+#
+# ``version_backup/`` was the same thing for a single build, deleted on revert.
+# Slots record their own directory, so a switch made before the store existed
+# keeps its files where they are and still works.
+
+def _safe_label(label: str) -> str:
+    return re.sub(r"[^\w.\-]+", "_", label or "previous")
+
+
+def _slot_dir(state_dir, label: str) -> Path:
+    return Path(state_dir) / STORE_DIRNAME / _safe_label(label)
+
+
+def _empty_index() -> dict:
+    return {"version": 1, "base": "", "current": "", "managed": [], "slots": {}}
+
+
+def read_index(state_dir) -> dict:
+    """The store index, migrating an install that predates it.
+
+    Such an install has no index, only a ``version_state.json`` from a switch
+    made while ``version_backup/`` was a throw-away backup. That state does
+    describe one complete slot -- the build switched away from, with a hash per
+    file it replaced and no entry for the files the new build added -- so it
+    converts exactly. The conversion isn't written back here; the next switch
+    saves it.
+    """
+    try:
+        index = json.loads((Path(state_dir) / INDEX_FILENAME).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        index = None
+    if isinstance(index, dict) and isinstance(index.get("slots"), dict):
+        return index
+    state = load_state(state_dir)
+    if state is None:
+        return _empty_index()
     files = state.get("files") or {}
-    log_fn("Checking the backup…")
-    for rel, info in files.items():
-        if "original_sha256" in info:
-            src = backup / rel
-            if not src.is_file() or _sha256(src) != info["original_sha256"]:
-                raise VersionSwitchError(
-                    f"The backup of {rel} is missing or damaged, so switching back could leave "
-                    "a broken game. Use Steam's \"Verify integrity of game files\" instead.")
-    for rel, info in files.items():
-        dst = _resolve_ci(game_root, rel)
-        if "original_sha256" in info:
-            stage = dst.with_name(dst.name + _STAGE_SUFFIX)
-            dst.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(backup / rel, stage)
-            os.replace(stage, dst)
-        elif dst.is_file():
-            dst.unlink()
-    shutil.rmtree(backup, ignore_errors=True)
-    state_path(state_dir).unlink(missing_ok=True)
-    log_fn(f"Switched back to {state.get('from') or 'the previous version'}.")
-    return state.get("from") or ""
+    return {"version": 1, "base": state.get("from") or "",
+            "current": state.get("current") or "", "managed": sorted(files),
+            "slots": {state.get("from") or "": {
+                "dir": state.get("backup_dir") or "", "at": state.get("at") or "",
+                # No original_sha256 == the build being left didn't have the file.
+                "files": {rel: info.get("original_sha256")
+                          for rel, info in files.items()}}}}
+
+
+def _write_index(state_dir, index: dict) -> None:
+    _atomic_write_json(Path(state_dir) / INDEX_FILENAME, index)
+
+
+def stored_labels(state_dir) -> "list[str]":
+    """Builds Mosaic can switch to with no download, newest slot last."""
+    slots = read_index(state_dir).get("slots") or {}
+    return sorted(slots, key=lambda lbl: (slots[lbl].get("at") or "", lbl))
+
+
+def current_label(state_dir, base_label: str = "") -> str:
+    """The build in the game folder, or *base_label* if nothing was switched."""
+    return read_index(state_dir).get("current") or base_label
+
+
+def slot_bytes(slot: dict) -> int:
+    """How much disk one stored build takes."""
+    d, total = Path(slot.get("dir") or ""), 0
+    for rel, sha in (slot.get("files") or {}).items():
+        if sha is None:
+            continue
+        try:
+            total += (d / rel).stat().st_size
+        except OSError:
+            pass
+    return total
+
+
+def store_bytes(state_dir) -> int:
+    """How much disk every build Mosaic keeps for this game takes."""
+    return sum(slot_bytes(s) for s in (read_index(state_dir).get("slots") or {}).values())
+
+
+def _backfill_slots(slots: dict, *, skip: str, new_rels: "set[str]", source: Path) -> None:
+    """Give older slots the paths that only became managed now.
+
+    A path becomes managed the first time a switch touches it, so until now no
+    switch had changed it -- which means its content in the game folder just
+    before this switch, i.e. what *source* holds, is also what every older
+    slot's build had. Without this, switching to one of those slots would read
+    the missing entry as "that build has no such file" and delete it.
+    """
+    for label, slot in slots.items():
+        if label == skip:
+            continue
+        files = slot.setdefault("files", {})
+        dst = Path(slot.get("dir") or "")
+        for rel in new_rels:
+            if rel in files:
+                continue
+            src = source / rel
+            files[rel] = _copy_hash(src, dst / rel) if src.is_file() else None
+
+
+def _register_slot(state_dir, *, from_label: str, to_label: str, slot_dir: Path,
+                   record: dict, kept: "dict[str, str]", touched: "set[str]") -> None:
+    """Keep the build an :func:`apply_version` just left as a store slot."""
+    index = read_index(state_dir)
+    slots = index.setdefault("slots", {})
+    was_managed = set(index.get("managed") or [])
+    index.setdefault("base", from_label)
+    files = {rel: info.get("original_sha256") for rel, info in record.items()}
+    files.update(kept)
+    for rel in was_managed:
+        files.setdefault(rel, None)
+    _backfill_slots(slots, skip=from_label, new_rels=touched - was_managed,
+                    source=Path(slot_dir))
+    slots[from_label] = {"dir": str(slot_dir), "files": files,
+                         "at": datetime.now(timezone.utc).isoformat(timespec="seconds")}
+    slots.pop(to_label, None)          # its files are in the game folder now
+    index["managed"] = sorted(was_managed | touched)
+    index["current"] = to_label
+    _write_index(state_dir, index)
+
+
+def _sync_state(state_dir, index: dict) -> None:
+    """Keep ``version_state.json`` saying what the index says, so the wizard's
+    check page and an older Mosaic still see the switch."""
+    base, cur = index.get("base") or "", index.get("current") or ""
+    if not cur or cur == base:
+        state_path(state_dir).unlink(missing_ok=True)
+        return
+    slot = (index.get("slots") or {}).get(base) or {}
+    _write_state(state_dir, {
+        "current": cur, "from": base,
+        "at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "backup_dir": slot.get("dir", ""),
+        "files": {rel: {"original_sha256": sha}
+                  for rel, sha in (slot.get("files") or {}).items() if sha}})
+
+
+def swap_to(game_root, state_dir, label: str, *, game_running: bool = False,
+            deploy_active: bool = False, log_fn=lambda _m: None) -> str:
+    """Switch to a build Mosaic already keeps, with no Steam download.
+
+    The game folder's copies become the slot for the build being left, and the
+    target slot's files take their place. Every file is checked against the
+    hash recorded when the slot was written, before anything is touched, so
+    there's no separate exe-version check to make: a build whose bytes all
+    match is that build.
+
+    Unlike :func:`apply_version`, files are staged and swapped one at a time,
+    because the outgoing slot is written first and is a complete rollback
+    source -- peak extra space is one file, not the whole build.
+    """
+    game_root = Path(game_root)
+    _check_can_change(game_root, game_running, deploy_active, state_dir)
+    index = read_index(state_dir)
+    slots = index.get("slots") or {}
+    cur = index.get("current") or ""
+    if label and label == cur:
+        return cur
+    slot = slots.get(label)
+    if slot is None:
+        raise VersionSwitchError(
+            f"Mosaic doesn't keep {label or 'that version'}'s files, so it can't switch to it "
+            "without downloading. Use the Game version wizard.")
+    if not cur:
+        raise VersionSwitchError("Mosaic doesn't know which build is installed, so it can't "
+                                 "keep it before switching. Use the Game version wizard.")
+    want = dict(slot.get("files") or {})
+    slot_dir = Path(slot.get("dir") or "")
+    out_dir = _slot_dir(state_dir, cur)
+    if out_dir == slot_dir:
+        raise VersionSwitchError(f"{cur} and {label} would share one folder in Mosaic's store. "
+                                 "Rename one of them in your version list.")
+
+    log_fn(f"Checking Mosaic's copy of {label}…")
+    for rel, sha in want.items():
+        if sha is None:
+            continue
+        src = slot_dir / rel
+        if not src.is_file() or _sha256(src) != sha:
+            raise VersionSwitchError(
+                f"Mosaic's copy of {rel} for {label} is missing or damaged, so switching could "
+                'leave a broken game. Use Steam\'s "Verify integrity of game files" instead.')
+
+    managed = sorted(set(index.get("managed") or []) | set(want))
+    targets = {rel: _resolve_ci(game_root, rel) for rel in managed}
+    out_bytes = sum(p.stat().st_size for p in targets.values() if p.is_file())
+    incoming = [(slot_dir / rel).stat().st_size for rel, sha in want.items() if sha is not None]
+    if _free_bytes(_existing(out_dir)) < out_bytes * 1.05:
+        raise VersionSwitchError(
+            f"Not enough free space: about {out_bytes / 1e9:.1f} GB is needed to keep {cur}'s "
+            "files so you can switch back to it.")
+    need_game = max(0, sum(incoming) - out_bytes) + max(incoming or [0])
+    if _free_bytes(game_root) < need_game * 1.05:
+        raise VersionSwitchError(f"Not enough free space: about {need_game / 1e9:.1f} GB is "
+                                 "needed next to the game to put the new files in place.")
+
+    out_files: "dict[str, str | None]" = {}
+    done: "list[str]" = []
+    try:
+        shutil.rmtree(out_dir, ignore_errors=True)
+        log_fn(f"Keeping {cur}'s {sum(1 for p in targets.values() if p.is_file())} file(s) "
+               f"({out_bytes / 1e9:.1f} GB), so you can switch back to it…")
+        for rel, target in targets.items():
+            out_files[rel] = _copy_hash(target, out_dir / rel) if target.is_file() else None
+        log_fn(f"Putting {label}'s {len(incoming)} file(s) in place…")
+        for rel in managed:
+            target, sha = targets[rel], want.get(rel)
+            if sha is not None:
+                stage = target.with_name(target.name + _STAGE_SUFFIX)
+                _copy_hash(slot_dir / rel, stage)
+                os.replace(stage, target)
+            elif target.is_file():
+                target.unlink()
+            done.append(rel)
+    except Exception as exc:
+        log_fn(f"Switch failed ({exc}); putting {cur}'s files back…")
+        for rel in done:
+            target, src = targets[rel], out_dir / rel
+            if out_files.get(rel) is not None and src.is_file():
+                shutil.copy2(src, target)
+            elif target.exists():
+                target.unlink()          # a file only the target build has
+        for target in targets.values():
+            target.with_name(target.name + _STAGE_SUFFIX).unlink(missing_ok=True)
+        shutil.rmtree(out_dir, ignore_errors=True)
+        if isinstance(exc, VersionSwitchError):
+            raise
+        raise VersionSwitchError(f"Couldn't switch to {label}: {exc}") from exc
+
+    slots[cur] = {"dir": str(out_dir), "files": out_files,
+                  "at": datetime.now(timezone.utc).isoformat(timespec="seconds")}
+    slots.pop(label, None)
+    shutil.rmtree(slot_dir, ignore_errors=True)
+    index.update(slots=slots, managed=managed, current=label)
+    index.setdefault("base", "")
+    _write_index(state_dir, index)
+    _sync_state(state_dir, index)
+    log_fn(f"Switched to {label} from Mosaic's own copy — nothing was downloaded.")
+    return label
+
+
+# ---------------------------------------------------------------------------
+# One list of builds to pick from, and one way to pick
+# ---------------------------------------------------------------------------
+
+@dataclass
+class SwitchOption:
+    """A build the user can pick, and how switching to it would happen."""
+    label: str
+    state: str                             # see below
+    title: str = ""
+    name: str = ""                         # what to call it; see build_names
+    entry: "VersionEntry | None" = None
+    depot_dirs: "dict[str, Path]" = field(default_factory=dict)
+    download: "list[tuple[str, str]]" = field(default_factory=list)
+    size_bytes: int = 0
+
+    CURRENT = "current"                    # it's in the game folder now
+    STORED = "stored"                      # Mosaic keeps it: an instant swap
+    CACHED = "cached"                      # Steam's depot folders still hold it
+    NEEDS_DOWNLOAD = "needs_download"
+
+    @property
+    def instant(self) -> bool:
+        return self.state in (self.STORED, self.CACHED)
+
+    @property
+    def display(self) -> str:
+        return self.name or self.label
+
+
+def _short_version(version: str) -> str:
+    """1.7.104.0 -> 1.7.104, the way these builds are actually named. A
+    non-zero fourth part is kept: it's telling something apart."""
+    parts = version.split(".")
+    return ".".join(parts[:3]) if len(parts) == 4 and parts[3] == "0" else version
+
+
+def _exe_version_at(root, exe_file: str) -> str:
+    if not exe_file or not root:
+        return ""
+    from Utils.wizard_support.pe_version import format_version, read_file_version
+    version = read_file_version(_resolve_ci(Path(root), exe_file))
+    return _short_version(format_version(version)) if version else ""
+
+
+def _installed_build_version(game_root, state_dir, exe_file: str) -> str:
+    """The version of the build sitting in the game folder.
+
+    Normally its exe says so. But Skyrim's runtime swap patches the exe (and a
+    few masters) back to an older version on purpose, leaving them on the newer
+    build's data files -- LoreRim wants exactly that, 1.7.104 game files under a
+    1.6.1170 exe. While that is in place the exe reports the swap, not the
+    build, so Mosaic's own record of what it patched away from is used instead.
+    A game with no such record (every game but Skyrim) just reads the exe.
+    """
+    try:
+        from Utils.modding_tools.skyrim_runtime import describe
+        info = describe(game_root, state_dir, game_running=False)
+    except Exception:
+        info = None
+    if info is not None and info.swapped and info.recorded_from is not None:
+        return _short_version(".".join(str(part) for part in info.recorded_from))
+    return _exe_version_at(game_root, exe_file)
+
+
+def build_names(game_root, state_dir, exe_file: str,
+                index: "dict | None" = None) -> "dict[str, str]":
+    """``{label: what to call it}`` for the installed build and every stored one.
+
+    A build Steam installed is identified in the appmanifest only by its build
+    id, which is not what anyone calls a version -- Skyrim SE's build 24914197
+    is "1.7.104", and only its exe says so. A build that isn't installed right
+    now has its exe in its store slot, so it can be read there.
+
+    Labels stay the identity used everywhere else; this is presentation only.
+    """
+    if index is None:
+        index = read_index(state_dir)
+    names: "dict[str, str]" = {}
+    current = index.get("current") or ""
+    if current:
+        names[current] = _installed_build_version(game_root, state_dir, exe_file) or current
+    for label, slot in (index.get("slots") or {}).items():
+        names[label] = _exe_version_at(slot.get("dir") or "", exe_file) or label
+    # Two builds shipping one exe version would read as duplicates in a menu;
+    # their labels at least tell them apart.
+    by_name: "dict[str, list[str]]" = {}
+    for label, name in names.items():
+        by_name.setdefault(name, []).append(label)
+    for labels in by_name.values():
+        if len(labels) > 1:
+            names.update({label: label for label in labels})
+    return names
+
+
+def switch_options(game_root, app_id: str, state_dir, table: VersionTable, *,
+                   exe_file: str = "", installed: "dict[str, str] | None" = None,
+                   log_text: "str | None" = None,
+                   roots: "list[Path] | None" = None) -> "list[SwitchOption]":
+    """Every build the user can pick for this game, current one first.
+
+    "What am I running" comes from Mosaic's index, never from Steam's
+    appmanifest: Mosaic doesn't edit the appmanifest, so Steam still reports
+    the build it installed while a switched build is on disk.
+    """
+    index = read_index(state_dir)
+    slots = index.get("slots") or {}
+    exe_file = exe_file or table.exe_file
+    names = build_names(game_root, state_dir, exe_file, index)
+    base = capture_current(game_root, app_id, exe_file)
+    base_label = index.get("base") or (base.label if base else "")
+    cur = index.get("current") or base_label
+    if installed is None:
+        installed = read_installed_depots(game_root, app_id)
+    if log_text is None:
+        log_text = "\n".join(p.read_text(encoding="utf-8", errors="replace")
+                             for p in content_log_paths(roots))
+
+    ordered = [(base_label, base.title if base else "", None)] if base_label else []
+    ordered += [(e.label, e.title, e) for e in table.versions]
+    ordered += [(lbl, "", None) for lbl in stored_labels(state_dir)]
+    out, seen = [], set()
+    for label, title, entry in ordered:
+        if not label or label in seen:
+            continue
+        seen.add(label)
+        name = names.get(label, label)
+        if label == cur:
+            out.append(SwitchOption(label, SwitchOption.CURRENT, title, name))
+        elif label in slots:
+            out.append(SwitchOption(label, SwitchOption.STORED, title, name,
+                                    size_bytes=slot_bytes(slots[label])))
+        elif entry is None:
+            out.append(SwitchOption(label, SwitchOption.NEEDS_DOWNLOAD, title, name))
+        else:
+            plan = plan_switch(entry, installed)
+            dirs, missing = {}, []
+            for depot, manifest in plan.download:
+                st = depot_status(app_id, depot, manifest, state_dir=state_dir,
+                                  log_text=log_text, roots=roots)
+                if st.state == "downloaded" and st.folder is not None:
+                    dirs[depot] = st.folder
+                else:
+                    missing.append((depot, manifest))
+            ready = bool(plan.download) and not missing
+            out.append(SwitchOption(
+                label, SwitchOption.CACHED if ready else SwitchOption.NEEDS_DOWNLOAD,
+                title, name, entry, dirs, missing or plan.download))
+    out.sort(key=lambda o: o.state != SwitchOption.CURRENT)
+    return out
+
+
+def switch_to(game_root, state_dir, option: SwitchOption, *, exe_file: str = "",
+              game_running: bool = False, deploy_active: bool = False,
+              log_fn=lambda _m: None) -> str:
+    """Switch to *option*'s build by whichever route it needs: a local swap
+    from the store, or applying what Steam has already downloaded. Applying
+    runs on the build Steam installed, so a switched build is put back first
+    -- which leaves it in the store, ready to swap back to."""
+    index = read_index(state_dir)
+    cur, base = index.get("current") or "", index.get("base") or ""
+    if option.state == SwitchOption.CURRENT:
+        return option.label
+    if option.state == SwitchOption.STORED:
+        return swap_to(game_root, state_dir, option.label, game_running=game_running,
+                       deploy_active=deploy_active, log_fn=log_fn)
+    if option.state != SwitchOption.CACHED or option.entry is None or not option.depot_dirs:
+        raise VersionSwitchError(
+            f"{option.label} isn't downloaded yet. Use the Game version wizard to get it "
+            "from Steam first.")
+    if cur and base and cur != base:
+        log_fn(f"Putting {base} back first, and keeping {cur}…")
+        swap_to(game_root, state_dir, base, game_running=game_running,
+                deploy_active=deploy_active, log_fn=log_fn)
+    apply_version(game_root, option.entry, option.depot_dirs, state_dir,
+                  from_label=base or cur or "previous", exe_file=exe_file,
+                  game_running=game_running, deploy_active=deploy_active, log_fn=log_fn)
+    return option.label

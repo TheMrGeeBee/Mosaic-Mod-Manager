@@ -8626,6 +8626,8 @@ class MainWindow(QMainWindow):
         launchers (installed script extenders) + custom exes, restoring this
         profile's saved selection (Tk stores the label in profile_state)."""
         game = self._gs.game
+        if hasattr(self, "_version_picker"):
+            self._version_picker.refresh(game)
         if game is None:
             self._play_exe_paths = {}
             self._play_auto_exe_names = set()
@@ -9132,6 +9134,33 @@ class MainWindow(QMainWindow):
             cancel_label=self.tr("Cancel"),
             danger=False,
         )
+
+    def _confirm_version_switch(self, title, body, on_done, confirm_label=None):
+        """ConfirmOverlay for the play bar's build dropdown."""
+        from gui_qt.overlays.confirm_overlay import ConfirmOverlay
+        ConfirmOverlay.show_over(self, title, body, on_done, danger=False,
+                                 confirm_label=confirm_label)
+
+    def _show_version_message(self, title, body):
+        from gui_qt.overlays.confirm_overlay import ConfirmOverlay
+        ConfirmOverlay.show_message(self, title, body)
+
+    def _open_game_version_wizard(self):
+        """Open the Game version (Steam) wizard the dropdown falls back to."""
+        game = self._gs.game
+        if game is None:
+            return
+        from Utils.plugins.plugin_loader import get_all_wizard_tools
+        try:
+            tool = next((t for t in get_all_wizard_tools(game)
+                         if t.id == "game_version_steam"), None)
+        except Exception as exc:
+            self._append_log(f"Game version: couldn't open the wizard: {exc}")
+            return
+        if tool is None:
+            self._notify(self.tr("This game has no Steam build wizard."), "warn")
+            return
+        self._open_wizard_tool(tool)
 
     def _confirm_game_change(self, name):
         """SelectorButton's on_select for the game button — confirms first if
@@ -14375,6 +14404,19 @@ class MainWindow(QMainWindow):
         h.addWidget(self._play_exe_selector, 1)
         self._play_exe_paths: dict[str, Path] = {}
         self._play_auto_exe_names: set[str] = set()
+
+        # Steam build dropdown — hidden unless the game has a version table or
+        # builds in Mosaic's store (so it's absent for most games). Switching
+        # replaces the game's own files, so it refuses while mods are deployed.
+        from gui_qt.game_version_picker import GameVersionPicker
+        self._version_picker = GameVersionPicker(
+            host=self, log_fn=self._append_log, notify=self._notify,
+            confirm=self._confirm_version_switch, message=self._show_version_message,
+            open_wizard=self._open_game_version_wizard,
+            run_restore=self._wizard_run_restore,
+            on_busy=lambda busy: self._set_deploy_buttons_enabled(not busy),
+            height=self._BTN_H, parent=self)
+        h.addWidget(self._version_picker.button)
 
         # ▶ Play — plain fixed-size button (label flips to "Run" for exes).
         self._play_btn = QPushButton(self.tr("▶  Play"))

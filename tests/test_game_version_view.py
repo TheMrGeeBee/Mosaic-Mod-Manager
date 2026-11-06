@@ -114,6 +114,11 @@ def test_switch_and_switch_back_through_the_wizard(qapp, tmp_path, monkeypatch):
         assert not view._apply_btn.isEnabled()
 
         # The folder didn't exist when the wizard looked: that's a clean start.
+        # Wait for that first look to land before creating it -- it runs on a
+        # worker thread, and a folder already there when Mosaic first sees it
+        # is deliberately NOT trusted (Steam reuses one folder per depot), so
+        # racing it makes the depot read as "holds another version" forever.
+        _wait_until(qapp, lambda: "377162" in view._found)
         # Steam then finishes the download (real log line format).
         depot = tmp_path / "Steam" / "steamrt64" / "steamapps" / "content" / "app_377160" / "depot_377162"
         depot.mkdir(parents=True)

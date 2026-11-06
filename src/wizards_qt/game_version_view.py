@@ -7,6 +7,11 @@ planning, log parsing, apply/revert with backup and rollback) lives in
 holds credentials: the user pastes one ``download_depot`` line at a time into
 Steam's own console (it only runs the first line of a multi-line paste), and
 a watcher ticks each depot off from Steam's log.
+
+This wizard is how a build first arrives. Switching between builds already on
+hand is the play bar's Build dropdown (``gui_qt/game_version_picker.py``),
+which needs none of these pages -- every build this wizard applies is kept in
+the store, so going back to it costs no download.
 """
 
 from __future__ import annotations
@@ -137,9 +142,16 @@ class GameVersionView(WizardViewBase):
         self._restore_btn.clicked.connect(self._on_restore_clicked)
         self._back_btn = self._orange_btn(self.tr("Switch back"))
         self._back_btn.clicked.connect(self._on_switch_back)
+        self._free_btn = self._orange_btn(self.tr("Free Steam's downloads"))
+        self._free_btn.setToolTip(self.tr(
+            "Mosaic keeps its own copy of every build it isn't running, so Steam's "
+            "download folders are only needed until a build has been applied once. "
+            "Emptying them doesn't affect switching between the builds Mosaic has."))
+        self._free_btn.clicked.connect(self._on_free_downloads)
         self._check_next = self._accent_btn(self.tr("Choose a version →"))
         self._check_next.clicked.connect(lambda: self._goto(_PG_CHOOSE))
-        self._button_row(lay, recheck, self._restore_btn, self._back_btn, self._check_next)
+        self._button_row(lay, recheck, self._restore_btn, self._free_btn,
+                         self._back_btn, self._check_next)
         return page
 
     def _refresh_check(self):
@@ -173,16 +185,54 @@ class GameVersionView(WizardViewBase):
             rows.append(_row(False, self.tr("The game is running: close it first.")))
         state = dv.load_state(self._state_dir)
         if state:
-            rows.append(_row(True, self.tr("Switched to {0} on {1} (from {2}). Switch back to "
-                                           "undo it before switching again.")
+            rows.append(_row(True, self.tr("Switched to {0} on {1} (from {2}).")
                              .format(state.get("current"), (state.get("at") or "")[:10],
                                      state.get("from"))))
+        stored = dv.stored_labels(self._state_dir)
+        if stored:
+            rows.append(_row(True, self.tr(
+                "Mosaic keeps {0} ({1}), so you can switch to them from the Build dropdown "
+                "next to Play without downloading anything.")
+                .format(", ".join(stored), self._gb(dv.store_bytes(self._state_dir)))))
+        cached = self._cached_download_bytes()
+        if cached:
+            rows.append(_row(True, self.tr(
+                "Steam's download folders hold {0} for this game, which is only needed "
+                "until a build has been applied once.").format(self._gb(cached))))
         self._check_label.setText("<br>".join(rows))
         self._restore_btn.setVisible(deployed)
+        self._free_btn.setVisible(bool(cached) and bool(stored))
+        self._free_btn.setEnabled(not running)
         self._back_btn.setVisible(bool(state))
         self._back_btn.setEnabled(not deployed and not running)
         self._check_next.setVisible(not state)
         self._check_next.setEnabled(not (blocked or deployed or running))
+
+    @staticmethod
+    def _gb(n: int) -> str:
+        return f"{n / 1e9:.1f} GB"
+
+    def _cached_download_bytes(self) -> int:
+        """What Steam's ``download_depot`` folders for this app take up."""
+        total = 0
+        for depot in self._dv.read_installed_depots(self._game_root, self._app_id):
+            for folder in self._dv.content_folder_candidates(self._app_id, depot):
+                total += sum(p.stat().st_size for p in folder.rglob("*") if p.is_file())
+        return total
+
+    def _on_free_downloads(self):
+        """Empty Steam's depot download folders for this app. Safe once a build
+        has been applied: its files are in the game folder, and the build it
+        replaced is in Mosaic's store, so both ends of the round trip survive."""
+        freed = 0
+        for depot in self._dv.read_installed_depots(self._game_root, self._app_id):
+            for folder in self._dv.content_folder_candidates(self._app_id, depot):
+                freed += sum(p.stat().st_size for p in folder.rglob("*") if p.is_file())
+                self._log(f"Game version: emptying {folder}")
+                self._dv.clear_depot_folder(self._state_dir, folder)
+        self._set_status(self._check_status,
+                         self.tr("Freed {0} of Steam downloads.").format(self._gb(freed)), GREEN)
+        self._refresh_check()
 
     def _on_restore_clicked(self):
         run_restore = getattr(self._ctx, "run_restore", None)
@@ -463,7 +513,9 @@ class GameVersionView(WizardViewBase):
                     "Switched to {0}. Launch the game from Mosaic (for Fallout 4: the "
                     "f4se_loader.exe entry), not with Play in Steam: Steam may update it back. "
                     "In Steam, set this game to \"Only update this game when I launch it\". "
-                    "Switch back any time from this wizard.").format(entry.label), GREEN)
+                    "Mosaic keeps both builds now, so the Build dropdown next to Play "
+                    "switches between them without downloading again.").format(entry.label),
+                    GREEN)
             except self._dv.VersionSwitchError as exc:
                 safe_emit(self._run_status_sig, str(exc), RED)
             safe_emit(self._done_enable_sig)

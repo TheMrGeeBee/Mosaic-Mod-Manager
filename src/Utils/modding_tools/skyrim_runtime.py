@@ -353,6 +353,52 @@ def assess(
     return Assessment(version, state, swapped, blockers, shared)
 
 
+# Verifying a record against the files it says it produced. The exe's version
+# alone cannot: a record naming 1.6.1170 as its target matches ANY 1.6.1170
+# exe, including one Steam reinstalled or Mosaic's build store swapped in. A
+# record left over from an earlier swap would then look live, and reverting it
+# writes its own build's files over whatever build is installed now -- two
+# builds mixed in one folder. One recorded hash settles it, and the smallest
+# patched file is cheap (Skyrim's smallest is a Creation Club .esl of a few KB).
+_VERIFY_MAX_BYTES = 64 << 20
+
+
+def _cheapest_patched_file(game_root: Path, state: dict) -> "tuple[Path, str] | None":
+    """The smallest recorded file present on disk, with its patched hash."""
+    best: "tuple[int, Path, str] | None" = None
+    for rel, info in (state.get("files") or {}).items():
+        want = (info or {}).get("patched_sha256")
+        if not want:
+            continue
+        try:
+            path = game_root / _safe_relpath(rel)
+            size = path.stat().st_size
+        except (OSError, RuntimeSwapError):
+            continue
+        if best is None or size < best[0]:
+            best = (size, path, want)
+    if best is None or best[0] > _VERIFY_MAX_BYTES:
+        return None
+    return best[1], best[2]
+
+
+def swap_is_in_place(game_root: "str | Path", state: dict) -> bool:
+    """Whether the files *state* says it patched are really the ones on disk.
+
+    Returns True when there is nothing cheap enough to check, so a record is
+    never dismissed just because its files can't be read -- the caller's
+    version check still applies.
+    """
+    pick = _cheapest_patched_file(Path(game_root), state)
+    if pick is None:
+        return True
+    path, want = pick
+    try:
+        return _sha256(path) == want
+    except OSError:
+        return True
+
+
 @dataclass(frozen=True)
 class RuntimeInfo:
     """What the Skyrim runtime wizard shows: no swap archive needed, just the
@@ -382,7 +428,8 @@ def describe(game_root: "str | Path", state_dir: "str | Path", *, game_running: 
         rec_to = parse_version(state["to"]) if state.get("to") else None
     except RuntimeSwapError:
         rec_from = rec_to = None
-    swapped = bool(state.get("applied")) and rec_to is not None and version == rec_to
+    swapped = (bool(state.get("applied")) and rec_to is not None and version == rec_to
+               and swap_is_in_place(game_root, state))
     blockers: list[str] = []
     if game_running:
         blockers.append("Skyrim is running — close it first.")
