@@ -329,3 +329,39 @@ def test_deployment_traces_ignores_a_proton_prefix_in_the_game_folder(tmp_path):
     os.symlink(tmp_path / "mod.dll", tmp_path / "bin" / "x64" / "linked.dll")
     [trace] = dv.deployment_traces(tmp_path)
     assert "linked.dll" in trace
+
+
+def test_shipped_skyrim_se_table_covers_the_builds_people_downgrade_to():
+    """Skyrim SE's table exists so nobody has to go to SteamDB and work out
+    depot and manifest IDs by hand -- the step that made this wizard hard to
+    use. The three content depots are the whole base game; SE has no separate
+    DLC depots."""
+    table = dv.load_table("489830")
+    assert table.exe_file == "SkyrimSE.exe"
+    assert [v.label for v in table.versions] == ["1.5.97", "1.6.640", "1.6.1170"]
+    for entry in table.versions:
+        assert set(entry.depots) == {"489831", "489832", "489833"}, entry.label
+        assert all(m.isdigit() for m in entry.depots.values()), entry.label
+        assert entry.exe_version.startswith(entry.label + "."), entry.label
+        assert entry.source, "every shipped entry says where its manifests came from"
+    # 1.6.1170 is the build skyrim_runtime.py's SRS patches also land on, so
+    # the two routes to it must not disagree about what it is called.
+    from Utils.modding_tools import skyrim_runtime
+    assert str(skyrim_runtime.STEAM_APP_ID) == table.app_id
+    assert skyrim_runtime.VERSION_TARGET == table.exe_file
+
+
+def test_every_shipped_version_table_parses_and_is_self_consistent():
+    """A table with a duplicate label would silently shadow an entry, and one
+    whose filename doesn't match its app_id would never be found."""
+    import json
+
+    for path in sorted(dv.VERSIONS_DIR.glob("*.json")):
+        data = json.loads(path.read_text(encoding="utf-8"))
+        assert data["app_id"] == path.stem, path.name
+        table = dv.load_table(path.stem)
+        assert table.exe_file, path.name
+        labels = [v.label for v in table.versions]
+        assert labels and len(labels) == len(set(labels)), path.name
+        for entry in table.versions:
+            assert entry.depots, f"{path.name}: {entry.label} has no depots"

@@ -1,0 +1,43 @@
+{
+  "app_id": "489830",
+  "game": "Skyrim Special Edition",
+  "exe_file": "SkyrimSE.exe",
+  "versions": [
+    {
+      "label": "1.5.97",
+      "title": "Special Edition, the last build before the Anniversary update (2021)",
+      "exe_version": "1.5.97.0",
+      "source": "Depot manifests from a community Steam downgrade shell script's per-game block for Skyrim Special Edition, contributed 2026-11-06. The three content depots are the ones Steam installs for the base game; Skyrim SE has no separate DLC depots, so this is the whole install. NOT yet verified against a download — confirm SkyrimSE.exe reports 1.5.97.0 after switching and move this note.",
+      "remove": [],
+      "depots": {
+        "489831": "7848722008564294070",
+        "489832": "8702665189575304780",
+        "489833": "2289561010626853674"
+      }
+    },
+    {
+      "label": "1.6.640",
+      "title": "Anniversary Edition, the build most SKSE64 setups are written for",
+      "exe_version": "1.6.640.0",
+      "source": "Depot manifests from a community Steam downgrade shell script's per-game block for Skyrim Special Edition, contributed 2026-11-06, where it is noted as the commonly used version. NOT yet verified against a download — confirm SkyrimSE.exe reports 1.6.640.0 after switching and move this note.",
+      "remove": [],
+      "depots": {
+        "489831": "3660787314279169352",
+        "489832": "2756691988703496654",
+        "489833": "5291801952219815735"
+      }
+    },
+    {
+      "label": "1.6.1170",
+      "title": "The last build SKSE64 supports, before Steam's current 1.7.x",
+      "exe_version": "1.6.1170.0",
+      "source": "Depot manifests from a community Steam downgrade shell script's per-game block for Skyrim Special Edition, contributed 2026-11-06. This is the same target Utils/modding_tools/skyrim_runtime.py patches to from 1.7.104, so a switch here and an SRS runtime swap should land on the same build. NOT yet verified against a download — confirm SkyrimSE.exe reports 1.6.1170.0 after switching and move this note.",
+      "remove": [],
+      "depots": {
+        "489831": "8442952117333549665",
+        "489832": "8042843504692938467",
+        "489833": "1914580699073641964"
+      }
+    }
+  ]
+}
