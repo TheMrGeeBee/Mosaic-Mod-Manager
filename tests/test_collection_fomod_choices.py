@@ -269,7 +269,11 @@ def test_the_raw_choices_block_is_kept_for_apply_time_resolution():
     entry["choices"] = manifest_choices([
         {"name": "Main", "groups": [m_group("G", [("A", 0)])]}])
     idx = _build_schema_index({"mods": [entry]})
-    assert idx.fomod_raw_by_file_id[1] is entry["choices"]
+    # A list even for the ordinary one-entry case — a collection may list the
+    # same file more than once, and the blocks are told apart only at apply
+    # time. The block itself is kept by identity, not copied.
+    assert idx.fomod_raw_by_file_id[1] == [entry["choices"]]
+    assert idx.fomod_raw_by_file_id[1][0] is entry["choices"]
     assert idx.fomod_by_file_id[1] == {"0": {"G": ["A"]}}
 
 
@@ -372,3 +376,58 @@ def test_an_empty_group_and_an_absent_one_compare_equal():
 
 def test_mods_without_any_fomod_recording_are_not_audited():
     assert audit_collection_manifest({"mods": [_mod(1, None)]}) == []
+
+
+# --------------------------------------------------------------------------
+# the same file listed twice with different choices
+# --------------------------------------------------------------------------
+def _two_entries_one_file_id():
+    """The shape "Compatibility 2.5 MAX" rev 13 ships for void_Mazda_MX-5_tuning_parts:
+    the same Nexus file listed twice, differing in one group, each entry carrying
+    its own recorded choices. Only the `tag` tells them apart."""
+    def entry(tag, colour):
+        return {"name": "void_Mazda_MX-5_tuning_parts",
+                "source": {"type": "nexus", "modId": 25274, "fileId": 170488,
+                           "logicalFilename": "void_Mazda_MX-5_tuning_parts",
+                           "tag": tag},
+                "choices": manifest_choices([
+                    {"name": "intro", "groups": [m_group("body colour", [(colour, 0)])]},
+                ])}
+    # black_matte ships a file; bc00_default is the "keep it stock" option and
+    # ships none, so replaying it installs nothing at all.
+    return {"mods": [entry("jd7EHpUEBimW", "bc01_black_matte"),
+                     entry("-Ak99hYIDa5K", "bc00_default")]}
+
+
+def test_two_manifest_entries_for_one_file_are_both_kept():
+    """Keyed by fileId alone, the second entry silently replaced the first, so
+    only one of the two recorded configurations ever reached the installer."""
+    idx = _build_schema_index(_two_entries_one_file_id())
+    got = idx.fomod_raw_by_file_id[170488]
+
+    assert isinstance(got, list), "both entries must be kept, not collapsed to one"
+    assert len(got) == 2
+    picked = [g["options"][0]["groups"][0]["choices"][0]["name"] for g in got]
+    assert picked == ["bc01_black_matte", "bc00_default"]
+
+
+def test_the_entry_that_installs_something_is_the_one_applied():
+    """Of the two, bc00_default resolves to zero files. Choosing it left the mod
+    with nothing staged, so the install dropped it and reported a Mosaic fault —
+    while the entry that does install a file was never tried."""
+    from Utils.collections.collection_install import choose_recorded_choices
+
+    # bc00_default is the FOMOD's "keep it stock" option: no files at all.
+    stock = Plugin(name="bc00_default", files=[],
+                   type_descriptor=TypeDescriptor(plugin_type="Optional"))
+    cfg = ModuleConfig(steps=[
+        step("intro", [group("body colour",
+                             [stock, plugin("bc01_black_matte", "body/black.archive")],
+                             gtype="SelectExactlyOne")]),
+    ])
+    idx = _build_schema_index(_two_entries_one_file_id())
+
+    chosen = choose_recorded_choices(idx.fomod_raw_by_file_id[170488], cfg)
+
+    sel, _findings = resolve_recorded_choices(cfg, chosen)
+    assert sources(resolve_files(cfg, sel)) == {"body/black.archive"}

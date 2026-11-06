@@ -1901,7 +1901,7 @@ def install_collection_archive(
         prebuilt_meta=None,
         fomod_auto_selections: "dict | None" = None,
         fomod_auto_hashes: "list[dict] | None" = None,
-        fomod_auto_choices: "dict | None" = None,
+        fomod_auto_choices: "dict | list[dict] | None" = None,
         fomod_no_choice_action: str = "wizard",
         bain_auto_selections: "dict | None" = None,
         overwrite_existing: "bool | None" = None,
@@ -1926,7 +1926,10 @@ def install_collection_archive(
     or ``None`` on failure / user-cancel.
 
     *fomod_auto_choices* — the raw collection-manifest ``choices`` block for this
-    mod. When given it supersedes *fomod_auto_selections*: the names are resolved
+    mod, or every block recorded for it when the collection lists the same file
+    more than once (see ``CollectionSchemaIndex.fomod_raw_by_file_id``); the one
+    to replay is picked here, where the FOMOD has been parsed and an entry that
+    resolves to no files can be told from one that installs something. When given it supersedes *fomod_auto_selections*: the names are resolved
     against the FOMOD we actually downloaded (``idx`` rescues a renamed option)
     and every pick that still doesn't resolve is logged instead of dropped
     silently. *fomod_auto_selections* remains the pre-extract, config-free view
@@ -2090,8 +2093,11 @@ def install_collection_archive(
                 if fomod_auto_choices is not None:
                     from Utils.collections.collection_fomod_audit import (
                         resolve_recorded_choices)
+                    from Utils.collections.collection_install import (
+                        choose_recorded_choices)
+                    _choices = choose_recorded_choices(fomod_auto_choices, config)
                     final_selections, _findings = resolve_recorded_choices(
-                        config, fomod_auto_choices)
+                        config, _choices)
                 else:
                     final_selections, _findings = fomod_auto_selections, []
                 _picks = sum(len(v) for g in final_selections.values()

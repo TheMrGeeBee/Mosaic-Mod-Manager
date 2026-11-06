@@ -135,6 +135,42 @@ def deploys_at_data_root(rel_path: str, strip_prefixes: "set[str]") -> bool:
     return len(parts) == 1
 
 
+def choose_recorded_choices(blocks, config):
+    """Pick which recorded ``choices`` block to replay when a collection lists
+    one file several times.
+
+    *blocks* is what ``CollectionSchemaIndex.fomod_raw_by_file_id`` holds -- a
+    list, since the same Nexus file can appear more than once with different
+    picks. A single dict (or None) is accepted and returned as-is, so callers
+    that have only one block need no special case.
+
+    The entries are indistinguishable until the FOMOD is downloaded and parsed,
+    so the choice is made here, against the real ``ModuleConfig.xml``: the first
+    block whose picks actually resolve to files wins. A FOMOD's "keep it stock"
+    options legitimately ship no files, so a configuration made entirely of
+    them installs nothing -- correct for that entry, useless as the one entry
+    chosen on the user's behalf. Falls back to the first block when none of
+    them resolve to files, which keeps the "the author chose nothing" result
+    intact rather than inventing a pick.
+    """
+    if not isinstance(blocks, list):
+        return blocks
+    if not blocks:
+        return None
+    if len(blocks) == 1 or config is None:
+        return blocks[0]
+    from Utils.collections.collection_fomod_audit import resolve_recorded_choices
+    from Utils.installers.fomod_installer import resolve_files
+    for block in blocks:
+        try:
+            selections, _findings = resolve_recorded_choices(config, block)
+            if resolve_files(config, selections):
+                return block
+        except Exception:          # a malformed block must not sink the install
+            continue
+    return blocks[0]
+
+
 def _fomod_choices_from_collection(choices: dict) -> "dict[str, dict[str, list[str]]]":
     """Convert a collection.json FOMOD ``choices`` block to the saved_selections
     format ``{str(step_idx): {group: [plugins]}}`` that ``resolve_files`` expects.
@@ -179,10 +215,20 @@ class CollectionSchemaIndex:
     file_id_to_suffix: "dict[int, str]"
     pos_to_name: "dict[int, str]"
     fomod_by_file_id: "dict[int, dict]"
-    # fileId -> the raw manifest ``choices`` block, kept alongside the converted
-    # selections so the installer can resolve the author's picks against the
-    # ModuleConfig.xml it actually downloaded and report any that don't match.
-    fomod_raw_by_file_id: "dict[int, dict]"
+    # fileId -> EVERY raw manifest ``choices`` block recorded for it, kept
+    # alongside the converted selections so the installer can resolve the
+    # author's picks against the ModuleConfig.xml it actually downloaded and
+    # report any that don't match.
+    #
+    # A list, not one block: a collection may list the same Nexus file more
+    # than once with different picks -- "Compatibility 2.5 MAX" rev 13 ships
+    # void_Mazda_MX-5_tuning_parts twice, differing only in body colour, and
+    # only the manifest ``tag`` tells the two apart. Keyed by fileId alone the
+    # second silently replaced the first, and when the survivor was the
+    # all-defaults configuration (which that FOMOD answers with no files at
+    # all) the mod staged nothing and was dropped as a Mosaic fault, while the
+    # entry that does install a file was never tried.
+    fomod_raw_by_file_id: "dict[int, list[dict]]"
     bain_by_file_id: "dict[int, dict]"
     # fileId -> [{"path","md5"}, …]. Vortex records a FOMOD author's install
     # EITHER as replayable ``choices`` OR as ``hashes`` — the resulting file
@@ -218,7 +264,7 @@ def _build_schema_index(collection_schema: dict) -> CollectionSchemaIndex:
     # modlist) — manual mode prompts in the order the author listed the mods.
     schema_file_id_to_arrayidx: dict[int, int] = {}
     fomod_by_file_id: dict[int, dict] = {}
-    fomod_raw_by_file_id: dict[int, dict] = {}
+    fomod_raw_by_file_id: dict[int, list[dict]] = {}
     bain_by_file_id: dict[int, dict] = {}
     file_id_to_hashes: dict[int, list[dict]] = {}
     _raw_logical: dict[int, str] = {}
@@ -286,7 +332,11 @@ def _build_schema_index(collection_schema: dict) -> CollectionSchemaIndex:
                 # The raw block too: at apply time the FOMOD is parsed, so the
                 # author's picks can be matched against the options this
                 # download actually has (and ``idx`` can rescue a renamed one).
-                fomod_raw_by_file_id[fid] = choices
+                # Append: see CollectionSchemaIndex.fomod_raw_by_file_id for
+                # why one fileId can carry several recorded configurations.
+                _seen = fomod_raw_by_file_id.setdefault(fid, [])
+                if choices not in _seen:
+                    _seen.append(choices)
             elif choices.get("type") == "fomod_selections":
                 fomod_by_file_id[fid] = choices.get("selections") or {}
             elif choices.get("type") == "bain_selections":
@@ -580,8 +630,13 @@ INSTALL_REPORT_NAME = "install_report.json"
 _STATUS_TEXT = {
     "download_failed": "download failed",
     "install_failed": "install failed",
-    "stage_empty": "its installer produced no files from the recorded choices (a Mosaic "
-                   "problem with this mod, not a download problem)",
+    # Not necessarily a fault: a FOMOD's "keep it stock" options ship no files,
+    # so a configuration made entirely of them installs nothing by design. The
+    # old wording blamed Mosaic outright and sent a real investigation down the
+    # wrong path. Say what happened and leave the cause open.
+    "stage_empty": "its installer produced no files from the recorded choices — either "
+                   "those choices select nothing to install, or Mosaic could not apply "
+                   "them (not a download problem)",
     "deferred": "waiting on a FOMOD/BAIN choice that never completed",
     "unknown": "did not finish installing",
 }
