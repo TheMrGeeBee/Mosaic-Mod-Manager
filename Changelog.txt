@@ -4,6 +4,12 @@ reset to v1.0.0; they keep Amethyst Mod Manager's original numbering, which
 overlaps the numbers above, and the prefix is what keeps the two apart (and
 keeps release tooling from matching the wrong section).
 
+- v1.13.2
+  ### Bug Fixes
+  - Fixed picking a build in the play bar's "Build" dropdown undeploying the mods and then doing nothing. A build switch replaces the game's own files, so it can't run while mods are deployed, and the dropdown offered a Restore — but the build that had been picked was dropped at that point. The Restore ran, the dropdown's face snapped back to the installed build, and the switch never happened, which reads as a switch that undeployed everything and then reverted to the build it started on. The pick is now carried across the Restore and the switch carries on by itself, re-reading the game folder first because the Restore moved Data_Core/ back and put the real launcher in place. A Restore that can't start, that fails, or that leaves mod files behind is reported instead, and is offered once rather than asked again in a loop.
+
+---
+
 - v1.13.1
   ### Additions
   - New "Build" dropdown next to Play, for games that can switch Steam build. Mosaic now keeps a complete copy of every build it is not currently running, so switching between the ones it has is a local file swap: no Steam console, no download, and no walk through the Game version wizard's four pages. This is what makes two collections wanting different builds practical — install a Wabbajack list that needs the current build, then switch back to the older build another collection pins, and back again, from one dropdown. Each entry says whether picking it would download anything, and picking one that would offers the wizard instead. Switching still replaces the game's own files, so it refuses while mods are deployed and offers Restore.

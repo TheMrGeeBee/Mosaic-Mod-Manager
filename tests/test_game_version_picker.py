@@ -67,6 +67,9 @@ class Recorder:
         self.confirms, self.messages, self.notes, self.logs = [], [], [], []
         self.wizard_opened = 0
         self.restored = 0
+        self.can_restore = True        # _wizard_run_restore's False: one already running
+        self.restore_ok = True
+        self.on_restore = None         # what a real Restore would do to the folder
 
     def confirm(self, title, body, on_done, confirm_label=None):
         self.confirms.append((body, confirm_label))
@@ -85,8 +88,13 @@ class Recorder:
         self.wizard_opened += 1
 
     def run_restore(self, on_done):
+        if not self.can_restore:
+            return False
         self.restored += 1
-        on_done(True)
+        if self.on_restore is not None and self.restore_ok:
+            self.on_restore()
+        on_done(self.restore_ok)
+        return True
 
 
 def _picker(tmp_path, monkeypatch, *, answer=True):
@@ -205,7 +213,41 @@ def test_picking_a_build_that_needs_downloading_offers_the_wizard(qapp, tmp_path
         host.close()
 
 
-def test_it_refuses_while_mods_are_deployed_and_offers_restore(qapp, tmp_path, monkeypatch):
+def test_mods_deployed_restores_first_and_then_switches(qapp, tmp_path, monkeypatch):
+    """The pick survives the Restore it needed. It used to be dropped: the
+    Restore ran, the button snapped back to the installed build and nothing
+    else happened, which reads as a switch that undeployed and then reverted."""
+    picker, rec, state, host = _picker(tmp_path, monkeypatch)
+    game_root = _library(tmp_path)
+    try:
+        _switch_away(game_root, state)
+        core = game_root / "Data_Core"
+        core.mkdir()
+        game = FakeGame(game_root, deployed=True)
+
+        def restore():
+            core.rmdir()
+            game._deployed = False
+
+        rec.on_restore = restore
+        picker.refresh(game)
+        picker._on_select("Steam build 24564252")
+        _wait_until(qapp, lambda: rec.notes and rec.notes[-1][1] == "success")
+        body, label = rec.confirms[0]
+        assert "has to be restored first" in body and "Data_Core exists" in body
+        assert "then switch to Steam build 24564252" in body
+        assert label == "Restore and switch"
+        assert rec.restored == 1
+        # And the switch it was asked for really happened, without a second pick.
+        assert (game_root / "Fallout4.exe").read_bytes() == b"exe 1.11.240"
+        assert picker.button.current() == "Steam build 24564252"
+    finally:
+        host.close()
+
+
+def test_a_restore_that_leaves_the_traces_behind_is_reported_once(qapp, tmp_path, monkeypatch):
+    """Nothing cleared the traces, so the switch still can't run -- and the
+    Restore is offered once, never again in a loop."""
     picker, rec, state, host = _picker(tmp_path, monkeypatch)
     game_root = _library(tmp_path)
     try:
@@ -213,12 +255,43 @@ def test_it_refuses_while_mods_are_deployed_and_offers_restore(qapp, tmp_path, m
         (game_root / "Data_Core").mkdir()
         picker.refresh(FakeGame(game_root, deployed=True))
         picker._on_select("Steam build 24564252")
-        _wait_until(qapp, lambda: bool(rec.confirms))
-        body, label = rec.confirms[0]
-        assert "Restore first" in body and "Data_Core exists" in body
-        assert label == "Restore now"
-        assert rec.restored == 1
-        # Refused, not attempted.
+        _wait_until(qapp, lambda: bool(rec.messages))
+        assert len(rec.confirms) == 1 and rec.restored == 1
+        assert "has to be restored first" in rec.messages[-1]
+        assert (game_root / "Fallout4.exe").read_bytes() == b"exe 1.10.163"
+        assert picker.button.current() == "1.10.163"
+    finally:
+        host.close()
+
+
+def test_a_restore_that_cannot_start_says_so(qapp, tmp_path, monkeypatch):
+    picker, rec, state, host = _picker(tmp_path, monkeypatch)
+    game_root = _library(tmp_path)
+    try:
+        _switch_away(game_root, state)
+        (game_root / "Data_Core").mkdir()
+        rec.can_restore = False
+        picker.refresh(FakeGame(game_root, deployed=True))
+        picker._on_select("Steam build 24564252")
+        _wait_until(qapp, lambda: bool(rec.messages))
+        assert "already running" in rec.messages[-1]
+        assert rec.restored == 0
+        assert (game_root / "Fallout4.exe").read_bytes() == b"exe 1.10.163"
+    finally:
+        host.close()
+
+
+def test_a_failed_restore_does_not_switch(qapp, tmp_path, monkeypatch):
+    picker, rec, state, host = _picker(tmp_path, monkeypatch)
+    game_root = _library(tmp_path)
+    try:
+        _switch_away(game_root, state)
+        (game_root / "Data_Core").mkdir()
+        rec.restore_ok = False
+        picker.refresh(FakeGame(game_root, deployed=True))
+        picker._on_select("Steam build 24564252")
+        _wait_until(qapp, lambda: bool(rec.messages))
+        assert "restore didn't finish" in rec.messages[-1]
         assert (game_root / "Fallout4.exe").read_bytes() == b"exe 1.10.163"
     finally:
         host.close()

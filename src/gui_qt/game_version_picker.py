@@ -33,7 +33,7 @@ def _gb(n: int) -> str:
 class GameVersionPicker(QObject):
     """Owns the play bar's build selector and everything it does."""
 
-    _classified = Signal(object, object)       # (SwitchOption | None, error)
+    _classified = Signal(object, object, object)   # (option | None, error, deploy-blocked)
     _finished = Signal(object, object)         # (label | None, error)
     _labelled = Signal(object, object)         # (generation, list[SwitchOption])
 
@@ -54,6 +54,9 @@ class GameVersionPicker(QObject):
         self._busy = False
         self._gen = 0
         self._label_of: "dict[str, str]" = {}   # menu text -> real build label
+        self._picked = ""                       # the build the pick in flight is about
+        self._pending = ""                      # a pick waiting on its Restore
+        self._restored_for = ""                 # a pick that already had its Restore
 
         self.button = SelectorButton(
             items=["—"], current="—", prefix=self.tr("Build: "), min_width=0,
@@ -166,19 +169,31 @@ class GameVersionPicker(QObject):
 
     # ---- picking one --------------------------------------------------------
     def _on_select(self, shown: str) -> None:
-        label = self._label_of.get(shown, shown)
+        self._restored_for = ""              # a fresh pick gets its own Restore offer
+        self._start_select(self._label_of.get(shown, shown))
+
+    def _start_select(self, label: str) -> None:
+        """Work out how switching to *label* would happen, then offer it.
+
+        Also where a pick resumes after the Restore it needed, which is why
+        everything is read again rather than remembered: that Restore moved
+        Data_Core/ back and put the real launcher in place, so the deployment
+        traces, the store and Steam's downloads all have to be re-read.
+        """
         if self._busy or not label or label == self._current:
             return
         game = self._game
         if game is None or not self._app_id:
             return
         self._set_busy(True)
+        self._picked = label
         self._log(f"Game version: checking what switching to {label} needs…")
         root, app_id, name = game.get_game_path(), self._app_id, game.name
         deployed = self._deployment_traces(game)
 
         def worker():
             option = err = None
+            blocked = False
             try:
                 from Utils.config_paths import get_game_config_dir
                 from Utils.steam import depot_versions as dv
@@ -189,9 +204,10 @@ class GameVersionPicker(QObject):
                 if option is None:
                     err = self.tr("Mosaic no longer has {0} in its version list.").format(label)
                 elif deployed:
+                    blocked = True
                     err = self.tr(
                         "Mods are deployed ({0}), and a build switch replaces the game's own "
-                        "files. Restore first, then pick the build.").format("; ".join(deployed))
+                        "files, so the game has to be restored first.").format("; ".join(deployed))
                     option = None
                 elif dv.runtime_swap_blocker(root, state_dir):
                     # Checked here, not in the confirmation: it reads a file's
@@ -200,7 +216,7 @@ class GameVersionPicker(QObject):
                     option = None
             except Exception as exc:
                 err = str(exc)
-            safe_emit(self._classified, option, err)
+            safe_emit(self._classified, option, err, blocked)
 
         threading.Thread(target=worker, daemon=True, name="version-classify").start()
 
@@ -215,14 +231,22 @@ class GameVersionPicker(QObject):
         except Exception:
             return []
 
-    def _on_classified(self, option, err) -> None:
+    def _on_classified(self, option, err, blocked=False) -> None:
         self._set_busy(False)
         self._show_current()                         # until it really changed
         if err:
             self._log(f"Game version: {err}")
-            if self._run_restore is not None and "Restore first" in err:
-                self._confirm(self.tr("Switch build"), err,
-                              self._on_restore_first, confirm_label=self.tr("Restore now"))
+            # One Restore offer per pick: if the traces are still there after
+            # it ran, offering again would just loop.
+            if (blocked and self._run_restore is not None and self._picked
+                    and self._picked != self._restored_for):
+                self._pending = self._picked
+                self._confirm(
+                    self.tr("Switch build"),
+                    self.tr("{0}\n\nRestore now and then switch to {1}?")
+                    .format(err, self._picked),
+                    self._on_restore_first,
+                    confirm_label=self.tr("Restore and switch"))
             else:
                 self._message(self.tr("Switch build"), err)
             return
@@ -250,8 +274,33 @@ class GameVersionPicker(QObject):
                       confirm_label=self.tr("Switch"))
 
     def _on_restore_first(self, ok: bool) -> None:
-        if ok and self._run_restore is not None:
-            self._run_restore(lambda _ok: None)
+        """Restore, then pick the switch back up where it left off.
+
+        Carrying the pick across the Restore is the whole point. Without it a
+        Restore ran, the button snapped back to the installed build and nothing
+        else happened -- which reads as the switch having undeployed everything
+        and then reverted, rather than as a step the user still has to repeat.
+        """
+        label, self._pending = self._pending, ""
+        if not ok or not label or self._run_restore is None:
+            return
+        self._restored_for = label
+        self._set_busy(True)
+
+        def done(restored: bool) -> None:
+            self._set_busy(False)
+            if not restored:
+                self._message(self.tr("Switch build"), self.tr(
+                    "The restore didn't finish, so the build wasn't switched. "
+                    "See the log for why."))
+                return
+            self._start_select(label)
+
+        if not self._run_restore(done):
+            self._set_busy(False)
+            self._message(self.tr("Switch build"), self.tr(
+                "Restore can't start right now -- a deploy or restore is already "
+                "running. Try again in a moment."))
 
     # ---- doing it -----------------------------------------------------------
     def _run(self, option) -> None:
