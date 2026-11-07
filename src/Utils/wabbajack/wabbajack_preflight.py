@@ -268,8 +268,10 @@ def check_game_version(modlist: ModList, game_root: "str | Path | None") -> "lis
                 f"files (DLC, Creation Club) were taken from. But its script extender is "
                 f"built for {runs_on}, and the modlist's own game copy patches the exe back "
                 f"to that version, which Mosaic doesn't build. Switch the exe to {runs_on} "
-                "with the Skyrim runtime swap before launching, and don't verify the "
-                "game's files in Steam afterwards (that restores the newer exe).",
+                "with Wizard \u25b8 Skyrim Runtime before launching -- point it at a "
+                "runtime-swap mod's archive and it patches the exe, leaving your game "
+                "files as they are. Don't verify the game's files in Steam afterwards "
+                "(that restores the newer exe).",
                 blocking=False)]
         return [Check("game-runtime", True, f"Your game is version {have}, as the modlist expects")]
     runs_on = _extender_runtime(modlist)

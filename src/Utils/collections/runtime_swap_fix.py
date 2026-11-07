@@ -108,12 +108,32 @@ def prepare_swap(
 ) -> PreparedSwap:
     """Acquire, verify, extract and parse the swap archive. Caller must
     :meth:`PreparedSwap.cleanup` when done."""
-    if extract is None:
-        from Utils.wizard_support.wizard_archives import extract_to_dir as extract
     archive = acquire_swap_archive(
         mod, domain=domain, search_dirs=search_dirs, dest_dir=dest_dir,
         downloader=downloader, nexus_url=nexus_url, log_fn=log_fn, cancel=cancel)
     verify_archive_md5(archive, getattr(mod, "md5", ""))
+    return prepare_swap_from_archive(archive, log_fn=log_fn, extract=extract)
+
+
+def prepare_swap_from_archive(
+    archive: "str | Path",
+    *,
+    log_fn: Callable[[str], None] = _noop,
+    extract: Callable[[Path, Path], None] | None = None,
+) -> PreparedSwap:
+    """Extract and parse a swap archive that is already on disk.
+
+    The route for a swap nothing told Mosaic about: a Wabbajack modlist that
+    only says which runtime its script extender needs, or a file the user
+    pointed at. There is no collection there to name the file or publish its
+    md5, so what makes an archive the right one is what is inside it -- a
+    ``RuntimeSwap/manifest.json``, whose own per-file hashes are then checked
+    against the game folder before anything is patched. Caller must
+    :meth:`PreparedSwap.cleanup` when done.
+    """
+    if extract is None:
+        from Utils.wizard_support.wizard_archives import extract_to_dir as extract
+    archive = Path(archive)
     workdir = Path(tempfile.mkdtemp(prefix="mosaic-runtime-swap-"))
     try:
         log_fn(f"Runtime swap: extracting {archive.name} …")
