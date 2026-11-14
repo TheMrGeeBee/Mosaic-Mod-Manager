@@ -52,7 +52,7 @@ from Nexus.nexus_download import (
     _get_downloads_dir, _md5_matches)
 from Nexus.nexus_meta import build_meta_from_download
 from Nexus.manual_download_watch import (
-    start_manual_install, should_fallback_to_browser, is_transient_failure)
+    start_manual_install, should_fallback_to_browser, is_transient_failure, is_mod_removed)
 from Utils.xdg import open_url as _open_browser_url
 
 
@@ -629,6 +629,7 @@ INSTALL_REPORT_NAME = "install_report.json"
 # Plain-language reasons for the outcome statuses the pipeline records.
 _STATUS_TEXT = {
     "download_failed": "download failed",
+    "mod_removed": "removed from Nexus — the collection needs updating by its author",
     "install_failed": "install failed",
     # Not necessarily a fault: a FOMOD's "keep it stock" options ship no files,
     # so a configuration made entirely of them installs nothing by design. The
@@ -1370,7 +1371,10 @@ def run_collection_install(
 
     # ---- download producer -------------------------------------------
     def _download_one(mod):
-        mod_domain = (getattr(mod, "domain_name", "") or "").strip() or game_domain
+        # Cross-domain entries (e.g. a "site" utility or another game's mod) are
+        # only identified by the manifest's per-file domainName; asking Nexus
+        # for them under the collection's own game 404s as "No Mod Found".
+        mod_domain = _manual_domain(idx, game_domain, mod)
         # Expected archive size for cache validation / partial-download detection.
         # The GraphQL mod list omits size_bytes for cross-domain entries (e.g. a
         # Skyrim SE mod referenced by an imported/Enderal collection), so fall
@@ -1457,6 +1461,17 @@ def run_collection_install(
         # (Change Version, the Nexus browser tab) — this only blocks the one
         # download-worker thread handling this mod, not the whole batch.
         if (result is not None and not result.success
+                and not _col_stop.is_set()
+                and should_fallback_to_browser(result)
+                and is_mod_removed(result, api, mod_domain, mod.mod_id)):
+            result.mod_removed = True
+            result.error = (f"removed from Nexus — mod {mod.mod_id} no longer "
+                            "exists, so the collection references a file that "
+                            "can't be downloaded")
+            log(f"Collection install: '{mod.mod_name}' (mod {mod.mod_id}) has "
+                "been removed from Nexus — skipping the browser download. The "
+                "collection needs updating by its author.")
+        elif (result is not None and not result.success
                 and not _col_stop.is_set()
                 and should_fallback_to_browser(result)):
             log(f"Collection install: '{mod.mod_name}' file appears "
@@ -1577,7 +1592,9 @@ def run_collection_install(
             log(f"Collection install: download failed for '{mod.mod_name}' "
                 f"(mod_id={mod.mod_id}, file_id={mod.file_id}): {_reason}")
             with state.install_lock:
-                _record_outcome(mod, "download_failed", _reason)
+                _record_outcome(
+                    mod, "mod_removed" if getattr(result, "mod_removed", False)
+                    else "download_failed", _reason)
                 state.install_counters["skipped"] += 1
                 state.install_counters["done"] += 1
             cb.on_extract_remove(mod.file_id)

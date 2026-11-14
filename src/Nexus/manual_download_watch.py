@@ -81,6 +81,30 @@ def should_fallback_to_browser(result) -> bool:
             and not is_transient_failure(result))
 
 
+def is_mod_removed(result, api=None, game_domain: str = "",
+                   mod_id: int = 0) -> bool:
+    """True when a failed download is because the MOD itself is gone from
+    Nexus (deleted/removed), not just an archived file — opening a browser
+    for that can only land on a "Not found" page and wait 15 minutes.
+
+    The download_link endpoint says ``No Mod Found`` for some deleted mods but
+    only ``No File found for mod`` for others, so a 404 of the second kind is
+    confirmed with a mod-level lookup; if that lookup is itself a 404 the mod
+    is gone. Any other lookup failure (network, rate limit) answers False so
+    the browser fallback still runs."""
+    if result.success or int(getattr(result, "status_code", 0) or 0) != 404:
+        return False
+    err = (getattr(result, "error", "") or "").lower()
+    if "no mod found" in err:
+        return True
+    if "no file found" in err and api is not None and mod_id:
+        try:
+            api.get_mod(game_domain, int(mod_id))
+        except Exception as exc:  # noqa: BLE001 — only a 404 proves removal
+            return int(getattr(exc, "status_code", 0) or 0) == 404
+    return False
+
+
 # Wording of the errors NexusAPI raises for a dropped connection / timeout
 # (both arrive with status_code 0, like an empty-links response, so the text
 # is what tells them apart).
@@ -210,6 +234,13 @@ def start_manual_install(
     already = find_existing_archive(
         mod_id, files, extra_dirs=[cache_dir] if cache_dir else ()) is not None
     label = log_label or (_match_name(files[0]) if files else "")
+    if not already and not scan_download_dirs():
+        # Say so BEFORE the user downloads something nobody is watching for;
+        # the watcher's own hint only fires after a quiet minute.
+        log_fn(f"Nexus: WARNING — no download folder is being watched, so "
+               f"'{label}' will NOT install automatically after you download "
+               "it in the browser. Turn on the default Downloads folder, or "
+               "add your browser's save folder, under download locations.")
     if already:
         log_fn(f"Nexus: archive already downloaded for '{label}'; "
                "installing without opening the browser.")

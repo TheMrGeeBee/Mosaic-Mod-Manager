@@ -439,6 +439,9 @@ class DownloadResult:
     # a browser retry won't help (bad key / rate limit) — see
     # manual_download_watch.should_fallback_to_browser.
     status_code: int = 0
+    # True when Nexus no longer has the MOD at all (deleted/removed), so no
+    # retry or browser fallback can help — see manual_download_watch.is_mod_removed.
+    mod_removed: bool = False
 
 
 class DownloadCancelled(Exception):
