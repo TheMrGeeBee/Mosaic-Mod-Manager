@@ -275,10 +275,17 @@ jobs:
           # small, still a transitive dep. qt6-base-mini: debloated qt6-base
           # (provides/replaces the full package pyside6 pulled in above) —
           # same variant upstream pkgforge Qt AppImages ship.
+          # mesa-mini: Mesa's GL driver without the LLVM dependency. The NIF
+          # Viewer / Character tab need a real QOpenGLWidget, so libgallium
+          # must be bundled (see make-appimage.sh), but Arch's stock libgallium
+          # links libLLVM (+100 MiB, only for the llvmpipe software renderer)
+          # and quick-sharun now refuses to build with it. Same package
+          # `get-debloated-pkgs --add-opengl` installs.
           get-debloated-pkgs \
               icu-mini \
               libxml2-mini \
-              qt6-base-mini
+              qt6-base-mini \
+              mesa-mini
 
       - name: Create makepkg build user
         run: |
