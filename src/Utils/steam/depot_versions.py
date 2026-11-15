@@ -41,6 +41,8 @@ from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 
+from Utils.atomic_write import write_atomic_text
+
 from .acf import get_ci, read_vdf
 
 VERSIONS_DIR = Path(__file__).with_name("versions")
@@ -189,22 +191,16 @@ def download_history(log_text: str) -> "dict[Path, list[tuple[str, str]]]":
 def _atomic_write_json(path: Path, data) -> None:
     """Write *data* as JSON, replacing *path* in one step.
 
-    The temp file carries the writing thread's id: depot_downloads.json is
-    written from worker threads (depot_status marks a clean start whenever it
-    finds a folder absent), and the play bar's build dropdown can have two of
-    those in flight at once -- one labelling the menu, one checking a pick. A
-    shared "<name>.tmp" lets them overwrite each other's half-written file and
-    land truncated JSON, which reads back as "no record" and makes a finished
-    download look like it holds another version.
+    The temp file must be unique per call: depot_downloads.json is written
+    from worker threads (depot_status marks a clean start whenever it finds a
+    folder absent), and the play bar's build dropdown can have two of those in
+    flight at once -- one labelling the menu, one checking a pick. A shared
+    "<name>.tmp" lets them overwrite each other's half-written file and land
+    truncated JSON, which reads back as "no record" and makes a finished
+    download look like it holds another version. write_atomic_text names its
+    temp file per call (pid + uuid), which gives the same guarantee.
     """
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_name(f"{path.name}.{os.getpid()}.{threading.get_ident()}.tmp")
-    try:
-        tmp.write_text(json.dumps(data, indent=2), encoding="utf-8")
-        os.replace(tmp, path)
-    except Exception:
-        tmp.unlink(missing_ok=True)
-        raise
+    write_atomic_text(path, json.dumps(data, indent=2))
 
 
 # Marking a clean start is a read-modify-write of one shared file, so two
@@ -366,10 +362,7 @@ def save_user_entry(user_file: Path, entry: VersionEntry, exe_file: str = "") ->
     data["versions"] = versions
     if exe_file:
         data.setdefault("exe_file", exe_file)
-    user_file.parent.mkdir(parents=True, exist_ok=True)
-    tmp = user_file.with_suffix(".tmp")
-    tmp.write_text(json.dumps(data, indent=2), encoding="utf-8")
-    tmp.replace(user_file)
+    _atomic_write_json(user_file, data)
 
 
 def parse_depot_paste(text: str) -> "dict[str, str]":

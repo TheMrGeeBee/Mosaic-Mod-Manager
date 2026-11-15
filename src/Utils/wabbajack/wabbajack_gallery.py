@@ -27,6 +27,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from urllib.parse import urlsplit
 
+from Utils.atomic_write import write_atomic_text
+
 from .wabbajack_hash import hash_file, hashes_match
 from .wabbajack_manifest import (
     WABBAJACK_GAME_MAP,
@@ -191,11 +193,8 @@ def load_gallery(cache_path: "str | Path", *, max_age: float = CACHE_MAX_AGE,
     for err in errors:
         log(f"Wabbajack gallery: skipped a repository ({err})")
     try:
-        cache_path.parent.mkdir(parents=True, exist_ok=True)
-        tmp = cache_path.with_suffix(".tmp")
-        tmp.write_text(json.dumps({"fetched_at": time.time(), "entries": raw}),
-                       encoding="utf-8")
-        tmp.replace(cache_path)
+        write_atomic_text(cache_path,
+                          json.dumps({"fetched_at": time.time(), "entries": raw}))
     except OSError as exc:
         log(f"Wabbajack gallery: couldn't save the cache ({exc})")
     return _entries_from(raw)

@@ -13,6 +13,8 @@ import re
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from Utils.atomic_write import write_atomic_text
+
 if TYPE_CHECKING:
     from Games.base_game import BaseGame
 
@@ -1038,8 +1040,5 @@ def save_config(game: "BaseGame",
     except OSError:
         base_text = DEFAULT_INI
     out = render_ini(base_text, values)
-    target.parent.mkdir(parents=True, exist_ok=True)
-    tmp = target.with_name(target.name + ".mm_tmp")
-    tmp.write_text(out, encoding="utf-8")
-    tmp.replace(target)
+    write_atomic_text(target, out, suffix=".mm_tmp")
     return target

@@ -29,7 +29,6 @@ import configparser as _cpi
 import importlib.util
 import itertools as _itertools
 import json
-import os
 import os as _os_col
 import queue as _queue
 import re
@@ -58,6 +57,7 @@ from Nexus.nexus_download import (
     delete_archive_and_sidecar,
 )
 from Nexus.nexus_meta import build_meta_from_download
+from Utils.atomic_write import write_atomic_text
 from Utils.collections.collection_reset import (
     _apply_collection_groups,
     _resolve_collection_priorities,
@@ -752,9 +752,7 @@ def write_install_report(profile_dir: "Path | None", report: dict) -> "Path | No
         if not report.get("failed") and not report.get("warnings"):
             target.unlink(missing_ok=True)
             return None
-        tmp = target.with_name(target.name + ".tmp")
-        tmp.write_text(json.dumps(report, indent=2), encoding="utf-8")
-        os.replace(tmp, target)
+        write_atomic_text(target, json.dumps(report, indent=2))
         return target
     except OSError:
         return None

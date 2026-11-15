@@ -22,6 +22,8 @@ import threading
 import time
 from pathlib import Path
 
+from Utils.atomic_write import write_atomic_text
+
 _BATCH = 20
 _MAX_AGE = 7 * 24 * 3600
 _MAX_SENTENCES = 12
@@ -126,11 +128,8 @@ def read_cache(game_domain: str) -> dict[str, dict]:
 
 
 def _write_cache(game_domain: str, data: dict) -> None:
-    path = _cache_path(game_domain)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_suffix(".tmp")
-    tmp.write_text(json.dumps(data, ensure_ascii=False, indent=0), encoding="utf-8")
-    tmp.replace(path)
+    write_atomic_text(_cache_path(game_domain),
+                      json.dumps(data, ensure_ascii=False, indent=0))
 
 
 def stale_ids(game_domain: str, mod_ids: list[int], force: bool = False,

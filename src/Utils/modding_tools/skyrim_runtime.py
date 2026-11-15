@@ -33,6 +33,7 @@ from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
 from typing import Callable
 
+from Utils.atomic_write import write_atomic_text
 from Utils.wizard_support.pe_version import Version, format_version, read_file_version
 
 STEAM_APP_ID = 489830
@@ -557,10 +558,7 @@ def _fmt(version: Version | None) -> str:
 
 
 def _write_state(state_dir: Path, state: dict) -> None:
-    state_dir.mkdir(parents=True, exist_ok=True)
-    tmp = state_dir / (STATE_FILENAME + ".tmp")
-    tmp.write_text(json.dumps(state, indent=2), encoding="utf-8")
-    os.replace(tmp, state_dir / STATE_FILENAME)
+    write_atomic_text(state_dir / STATE_FILENAME, json.dumps(state, indent=2))
 
 
 def _temp_for(game_root: Path, rel: str, tag: str) -> Path:

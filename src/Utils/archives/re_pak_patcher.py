@@ -36,6 +36,7 @@ import struct
 from pathlib import Path
 
 from Utils.app_log import safe_log as _safe_log
+from Utils.atomic_write import write_atomic_text
 
 # ---------------------------------------------------------------------------
 # Murmur3-32 (matches Ekey/REE.PAK.Tool Murmur3.HashCore32, seed 0xFFFFFFFF)
@@ -379,13 +380,10 @@ def update_root_manifest(game_root: Path, pak_path: Path, backup_path: Path,
         "v": data.get("v", 1),
         "paks": data["paks"],
     }
-    tmp = manifest.with_suffix(manifest.suffix + ".tmp")
     try:
-        tmp.write_text(json.dumps(out, indent=2), encoding="utf-8")
-        tmp.replace(manifest)
+        write_atomic_text(manifest, json.dumps(out, indent=2))
     except OSError as exc:
         _log(f"  [WARN] Could not write root PAK manifest: {exc}")
-        tmp.unlink(missing_ok=True)
 
 
 def remove_root_manifest(game_root: Path) -> None:

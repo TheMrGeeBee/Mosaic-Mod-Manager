@@ -19,6 +19,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
 
+from Utils.atomic_write import write_atomic
+
 try:
     import bsdiff4  # type: ignore
     _BSDIFF_AVAILABLE = True
@@ -138,7 +140,6 @@ def apply_collection_patches(
                 result.missing_target += 1
                 continue
 
-            tmp = target_file.with_suffix(target_file.suffix + ".patched")
             try:
                 src = target_file.read_bytes()
                 actual_crc = _crc32_hex(src)
@@ -149,8 +150,7 @@ def apply_collection_patches(
                     continue
 
                 patched = bsdiff4.patch(src, diff_file.read_bytes())
-                tmp.write_bytes(patched)
-                tmp.replace(target_file)
+                write_atomic(target_file, patched)
                 result.applied += 1
                 patched_mods.add(installed_folder)
                 log(f"Collection patches: applied {rel_path} → {installed_folder}")
@@ -158,14 +158,6 @@ def apply_collection_patches(
                 log(f"Collection patches: failed to patch {rel_path} in "
                     f"'{installed_folder}': {exc}")
                 result.failed += 1
-            finally:
-                # Clean up partial/stray .patched if the atomic replace didn't
-                # consume it (write error, bsdiff failure, etc.).
-                try:
-                    if tmp.exists():
-                        tmp.unlink()
-                except OSError:
-                    pass
 
     # Tag every mod that received at least one patch so update runs can
     # identify and refresh them from the new collection archive.
