@@ -6,10 +6,10 @@ never collides with the Tk app's index-based ``[columns]`` section.
 from __future__ import annotations
 
 import configparser
-
-from Utils.ui_config import get_ui_config_path
-from Utils.atomic_write import write_atomic_text
 import io
+
+from Utils.atomic_write import write_atomic_text
+from Utils.ui_config import get_ui_config_path
 
 _SECTION = "qt_columns"
 

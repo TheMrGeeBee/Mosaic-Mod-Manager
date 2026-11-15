@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from PySide6.QtCore import QAbstractItemModel, QModelIndex, Qt
 from PySide6.QtGui import QColor, QFont
-from PySide6.QtWidgets import QStyledItemDelegate, QStyle
+from PySide6.QtWidgets import QStyle, QStyledItemDelegate
 
 from Utils.nif.asset_catalog import BASE, AssetCatalog, AssetEntry
 

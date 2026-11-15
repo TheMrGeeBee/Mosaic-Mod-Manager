@@ -16,11 +16,16 @@ from typing import TYPE_CHECKING
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QProgressBar,
+    QHBoxLayout,
+    QLabel,
+    QProgressBar,
+    QPushButton,
+    QVBoxLayout,
+    QWidget,
 )
 
-from gui_qt.theme.theme_qt import active_palette, _c, button_qss, ok_text, err_text
 from gui_qt.safe_emit import safe_emit
+from gui_qt.theme.theme_qt import _c, active_palette, button_qss, err_text, ok_text
 
 if TYPE_CHECKING:
     from Games.base_game import BaseGame

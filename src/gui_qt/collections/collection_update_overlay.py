@@ -16,12 +16,17 @@ from __future__ import annotations
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QFrame,
+    QFrame,
+    QHBoxLayout,
+    QLabel,
+    QPushButton,
     QScrollArea,
+    QVBoxLayout,
+    QWidget,
 )
 
 from gui_qt.overlay_base import OverlayBase
-from gui_qt.theme.theme_qt import active_palette, _c
+from gui_qt.theme.theme_qt import _c, active_palette
 
 
 class UpdateOverlay(OverlayBase):

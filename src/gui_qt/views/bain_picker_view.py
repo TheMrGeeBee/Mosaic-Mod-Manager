@@ -29,11 +29,18 @@ import os
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QCheckBox,
-    QScrollArea, QFrame, QTextEdit,
+    QCheckBox,
+    QFrame,
+    QHBoxLayout,
+    QLabel,
+    QPushButton,
+    QScrollArea,
+    QTextEdit,
+    QVBoxLayout,
+    QWidget,
 )
 
-from gui_qt.theme.theme_qt import active_palette, _c
+from gui_qt.theme.theme_qt import _c, active_palette
 from Utils.installers.bain_installer import BainSubPackage
 
 

@@ -38,6 +38,7 @@ from pathlib import Path
 import bsdiff4
 
 from . import wabbajack_file
+from .wabbajack_bsa import ArchiveBuildError, build_archive
 from .wabbajack_hash import hash_file, hashes_match
 from .wabbajack_manifest import (
     CreateBSADirective,
@@ -49,7 +50,6 @@ from .wabbajack_manifest import (
     TransformedTextureDirective,
     UnknownDirective,
 )
-from .wabbajack_bsa import ArchiveBuildError, build_archive
 from .wabbajack_octodiff import apply_octodiff, is_octodiff
 from .wabbajack_vfs import ArchiveIndex, VfsResolutionError
 

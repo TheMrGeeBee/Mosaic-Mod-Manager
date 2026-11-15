@@ -11,10 +11,9 @@ the rest of the app, the exclude state swaps to a red box with a white minus.
 
 from __future__ import annotations
 
-from PySide6.QtCore import Qt, Signal, QRectF
-from PySide6.QtGui import QColor, QPainter, QPen, QPainterPath
+from PySide6.QtCore import QRectF, Qt, Signal
+from PySide6.QtGui import QColor, QPainter, QPainterPath, QPen
 from PySide6.QtWidgets import QAbstractButton, QSizePolicy
-
 
 STATE_OFF = 0
 STATE_INCLUDE = 1
@@ -46,7 +45,7 @@ class TriStateCheckBox(QAbstractButton):
         # Resolve neutral colours from the active palette so the label + empty
         # box read in both light and dark modes (the module defaults are dark).
         try:
-            from gui_qt.theme.theme_qt import active_palette, _c, contrast_text
+            from gui_qt.theme.theme_qt import _c, active_palette, contrast_text
             pal = active_palette()
             self._include = include_color or _c(pal, "CHECK_FILL")
             self._box_bg = _c(pal, "BG_ROW")

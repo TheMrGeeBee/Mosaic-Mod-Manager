@@ -107,8 +107,8 @@ def _update_target_index(game, target_staging: Path, target_profile_dir: Path,
     Best-effort: any failure just leaves the index stale and is silently
     swallowed (the next full Refresh rescans it)."""
     try:
-        from Utils.filemap import rescan_mods_in_index
         from Utils.deploy.deploy import load_per_mod_strip_prefixes
+        from Utils.filemap import rescan_mods_in_index
         index_dir = Path(target_staging).parent
         # A root-flagged mod must NOT have strip_prefixes applied. The flag
         # lives in the mod's own meta.ini (copied verbatim into dest_root); read
@@ -151,7 +151,7 @@ def register_mods_in_modlist(target_modlist: Path,
     a single block (dedup by name), preserving their relative order. Mirrors the
     Tk single-block prepend; do NOT call this per-mod in a loop, which reverses
     the group."""
-    from Utils.mods.modlist import read_modlist, write_modlist, ModEntry
+    from Utils.mods.modlist import ModEntry, read_modlist, write_modlist
     try:
         entries = read_modlist(target_modlist) if target_modlist.exists() else []
     except Exception:

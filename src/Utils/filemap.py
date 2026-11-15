@@ -34,13 +34,13 @@ import fnmatch
 import os
 import re
 import sys
+import threading
 import time
 from bisect import bisect_left
 from collections import Counter
 from concurrent.futures import ThreadPoolExecutor
-import threading
-from pathlib import Path
 from functools import lru_cache
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 import msgpack
@@ -48,9 +48,9 @@ import msgpack
 if TYPE_CHECKING:
     from typing import Callable
 
+from Utils import perftrace
 from Utils.atomic_write import atomic_writer, write_atomic_text
 from Utils.mods.modlist import read_modlist
-from Utils import perftrace
 
 # Conflict status constants (returned per-mod in build_filemap result)
 CONFLICT_NONE    = 0   # no conflicts at all

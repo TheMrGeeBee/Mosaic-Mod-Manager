@@ -13,13 +13,16 @@ import threading
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from PySide6.QtCore import Qt, QCoreApplication, Signal
+from PySide6.QtCore import QCoreApplication, Qt, Signal
 from PySide6.QtWidgets import (
-    QHBoxLayout, QPlainTextEdit, QPushButton, QWidget,
+    QHBoxLayout,
+    QPlainTextEdit,
+    QPushButton,
+    QWidget,
 )
 
 from gui_qt.safe_emit import safe_emit
-from gui_qt.theme.theme_qt import active_palette, _c
+from gui_qt.theme.theme_qt import _c, active_palette
 from wizards_qt._view_base import GREEN, RED, WizardViewBase
 
 if TYPE_CHECKING:

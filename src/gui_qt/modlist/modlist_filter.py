@@ -20,10 +20,14 @@ from os.path import splitext
 from pathlib import Path
 
 from Utils.filemap import (
-    OVERWRITE_NAME, ROOT_FOLDER_NAME,
-    CONFLICT_NONE, CONFLICT_WINS, CONFLICT_LOSES, CONFLICT_PARTIAL, CONFLICT_FULL,
+    CONFLICT_FULL,
+    CONFLICT_LOSES,
+    CONFLICT_NONE,
+    CONFLICT_PARTIAL,
+    CONFLICT_WINS,
+    OVERWRITE_NAME,
+    ROOT_FOLDER_NAME,
 )
-
 
 # Status checkbox keys (match the Tk _FILTER_CHECKBOXES var_keys 1:1 so the
 # spec, the state dict, and the engine all agree). Value = which engine step
@@ -274,8 +278,14 @@ def plugin_filter_hidden_rows(rows, state: dict, disabled_mf=None) -> set[int]:
     convention as compute_hidden_rows. No active keys → hide nothing.
     """
     from gui_qt.plugin.plugin_state import (
-        PF_ESL, PF_MISSING, PF_DIRTY, PF_TAGS, PF_USERLIST,
-        PF_ESL_SAFE, PF_ESL_UNSAFE)
+        PF_DIRTY,
+        PF_ESL,
+        PF_ESL_SAFE,
+        PF_ESL_UNSAFE,
+        PF_MISSING,
+        PF_TAGS,
+        PF_USERLIST,
+    )
 
     disabled_mf = disabled_mf or set()
 

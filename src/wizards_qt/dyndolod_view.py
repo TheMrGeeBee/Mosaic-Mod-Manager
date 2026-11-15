@@ -23,20 +23,25 @@ thread and is marshalled via Signal.
 
 from __future__ import annotations
 
+import tempfile
 import threading
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QProgressBar, QPushButton,
+    QHBoxLayout,
+    QLabel,
+    QProgressBar,
+    QPushButton,
     QStackedWidget,
+    QVBoxLayout,
+    QWidget,
 )
 
-from gui_qt.theme.theme_qt import active_palette, _c, button_qss, ok_text, err_text
 from gui_qt.safe_emit import safe_emit
+from gui_qt.theme.theme_qt import _c, active_palette, button_qss, err_text, ok_text
 from Utils.modding_tools.xedit_tools import tool_exe_path
-import tempfile
 
 if TYPE_CHECKING:
     from Games.base_game import BaseGame
@@ -228,10 +233,14 @@ class DynDOLODView(QWidget):
 
         def worker():
             from Utils.ca_bundle import download_file
-            from Utils.wizard_support.wizard_archives import (
-                extract_archive, fetch_latest_github_asset,
+            from Utils.modding_tools.xedit_tools import (
+                applications_dir,
+                flatten_subdirs,
             )
-            from Utils.modding_tools.xedit_tools import applications_dir, flatten_subdirs
+            from Utils.wizard_support.wizard_archives import (
+                extract_archive,
+                fetch_latest_github_asset,
+            )
             try:
                 safe_emit(self._dl_status_sig,
                     self.tr("Fetching latest release from GitHub…"), "")
@@ -352,8 +361,11 @@ class DynDOLODView(QWidget):
         exe_name, app_dir, name = self._exe_name, self._app_dir, self._name
 
         def worker():
+            from Utils.modding_tools.xedit_tools import (
+                applications_dir,
+                flatten_subdirs,
+            )
             from Utils.wizard_support.wizard_archives import extract_archive
-            from Utils.modding_tools.xedit_tools import applications_dir, flatten_subdirs
             try:
                 if archive is None or not archive.is_file():
                     raise RuntimeError(self.tr("Archive not found."))
@@ -508,10 +520,12 @@ class DynDOLODView(QWidget):
 
         def worker():
             from Utils.exe_launch.exe_launch import (
-                resolve_tool_prefix, run_tool_logged, shutdown_prefix_wineserver,
+                resolve_tool_prefix,
+                run_tool_logged,
+                shutdown_prefix_wineserver,
             )
-            from Utils.wine_proton.wine_paths import to_wine_path
             from Utils.modding_tools.xedit_tools import prepare_xedit_prefix
+            from Utils.wine_proton.wine_paths import to_wine_path
             _wlog = lambda m: self._log(f"{name} Wizard: {m}")
             try:
                 result = resolve_tool_prefix(

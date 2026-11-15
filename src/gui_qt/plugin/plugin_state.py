@@ -19,12 +19,17 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from Utils.app_log import app_log
+
 # Crash-proof diagnostic prints (Flatpak stdout can raise BrokenPipeError and
 # kill worker threads). See Utils.app_log.safe_print.
 from Utils.app_log import safe_print as print  # noqa: A004
 from Utils.perftrace import span
 from Utils.plugins.plugins import (
-    read_plugins, read_loadorder, write_plugins, write_loadorder, PluginEntry,
+    PluginEntry,
+    read_loadorder,
+    read_plugins,
+    write_loadorder,
+    write_plugins,
 )
 
 # Verbose plugin-panel diagnostics. Set AMM_PLUGIN_DIAG=1 to log every stage of
@@ -820,8 +825,10 @@ def _apply_master_checks(rows: list[PluginRow], resolved: dict[str, Path],
         return
     try:
         from Utils.plugins.plugin_parser import (
-            check_missing_masters, check_late_masters,
-            check_version_mismatched_masters)
+            check_late_masters,
+            check_missing_masters,
+            check_version_mismatched_masters,
+        )
         missing = check_missing_masters(names, paths)
         late = check_late_masters(names, paths)
         # vmm needs the vanilla Data dir for master sizes; skip if unavailable.
@@ -910,8 +917,8 @@ class RequirementResolver:
         if (self._staging_root is not None and self._staging_root.is_dir()
                 and modlist_path.is_file()):
             try:
-                from Utils.mods.modlist import read_modlist
                 from Nexus.nexus_meta import read_meta
+                from Utils.mods.modlist import read_modlist
                 for e in read_modlist(modlist_path):
                     if not e.enabled:
                         continue
@@ -1194,7 +1201,7 @@ def scan_bos_sp_patches(staging_root: Path | None) -> dict[str, str]:
             cached = _BOS_SP_CACHE.get(idx_key)
             if cached is not None:
                 return cached
-            from Utils.filemap import read_mod_index, OVERWRITE_NAME
+            from Utils.filemap import OVERWRITE_NAME, read_mod_index
             index = read_mod_index(index_path)
             if index:
                 result = _scan_bos_sp_from_index(

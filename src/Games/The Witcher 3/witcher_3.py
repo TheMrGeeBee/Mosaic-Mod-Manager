@@ -36,11 +36,22 @@ import shutil
 from pathlib import Path
 
 from Games.base_game import BaseGame
-from Utils.deploy.deploy import LinkMode, load_per_mod_strip_prefixes, load_separator_deploy_paths, expand_separator_deploy_paths, expand_separator_raw_deploy, _resolve_nocase, _resolve_root_path, _write_deploy_snapshot, _move_runtime_files, _FILEMAP_SNAPSHOT_NAME
+from Utils.config_paths import get_profiles_dir
+from Utils.deploy.deploy import (
+    _FILEMAP_SNAPSHOT_NAME,
+    LinkMode,
+    _move_runtime_files,
+    _resolve_nocase,
+    _resolve_root_path,
+    _write_deploy_snapshot,
+    expand_separator_deploy_paths,
+    expand_separator_raw_deploy,
+    load_per_mod_strip_prefixes,
+    load_separator_deploy_paths,
+)
+from Utils.modding_tools.tw3_filelist import update_menu_filelists
 from Utils.mods.modlist import read_modlist
 from Utils.mods.tw3_mods_settings import write_mods_settings
-from Utils.config_paths import get_profiles_dir
-from Utils.modding_tools.tw3_filelist import update_menu_filelists
 
 _PROFILES_DIR = get_profiles_dir()
 
@@ -86,7 +97,6 @@ def _merge_tree_into(src: Path, dest: Path) -> int:
 # exact same routing to know which staged files would collide at the same
 # in-game path, prospectively, before any deploy has happened.
 from Utils.mods.tw3_routing import route_path as _route_path
-
 
 # ---------------------------------------------------------------------------
 # Game handler

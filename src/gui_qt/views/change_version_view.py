@@ -12,17 +12,33 @@ from __future__ import annotations
 
 import threading
 
-from PySide6.QtCore import Qt, Signal, QT_TRANSLATE_NOOP
+from PySide6.QtCore import QT_TRANSLATE_NOOP, Qt, Signal
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QLabel, QPushButton,
-    QCheckBox, QTableWidget, QTableWidgetItem, QHeaderView, QAbstractItemView,
+    QAbstractItemView,
+    QCheckBox,
+    QGridLayout,
+    QHBoxLayout,
+    QHeaderView,
+    QLabel,
+    QPushButton,
+    QTableWidget,
+    QTableWidgetItem,
+    QVBoxLayout,
+    QWidget,
 )
 
-from gui_qt.theme.theme_qt import active_palette, _c, danger_close_button, button_qss, qc
 from gui_qt.safe_emit import safe_emit
+from gui_qt.theme.theme_qt import (
+    _c,
+    active_palette,
+    button_qss,
+    danger_close_button,
+    qc,
+)
 from Utils.config_paths import get_download_cache_dir_for_game
-from Utils.mods.mod_files_versions import resolve_latest_name_match, fmt_size, sort_key
+from Utils.mods.mod_files_versions import fmt_size, resolve_latest_name_match, sort_key
+
 
 # File-row highlight colours, resolved from the active theme so a monotone /
 # high-contrast theme actually takes effect (were hardcoded Tk hex before).
@@ -440,8 +456,8 @@ class ChangeVersionView(QWidget):
             archive = meta = None
             try:
                 from Nexus.nexus_download import NexusDownloader
-                from Utils.config_paths import get_download_cache_dir_for_game
                 from Nexus.nexus_meta import build_meta_from_download
+                from Utils.config_paths import get_download_cache_dir_for_game
                 dest = get_download_cache_dir_for_game(
                     getattr(self._game, "name", "") or "")
                 size = (f.size_in_bytes or 0) or (f.size_kb * 1024)

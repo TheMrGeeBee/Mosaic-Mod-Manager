@@ -17,14 +17,22 @@ import threading
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton,
-    QComboBox, QFrame, QScrollArea,
+    QComboBox,
+    QFrame,
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QPushButton,
+    QScrollArea,
+    QVBoxLayout,
+    QWidget,
 )
 
-from gui_qt.theme.theme_qt import active_palette, _c, danger_close_button, contrast_text
+from gui_qt.theme.theme_qt import _c, active_palette, contrast_text, danger_close_button
 from gui_qt.wheel_guard import no_wheel
 from Utils.wine_proton.wine_dll_config import (
-    load_wine_dll_overrides, save_wine_dll_overrides,
+    load_wine_dll_overrides,
+    save_wine_dll_overrides,
 )
 
 # Wine DLL load orders (base_game.py wine_dll_overrides docstring). Most common
@@ -267,7 +275,9 @@ class DllOverridesView(QWidget):
             ok = True
             try:
                 from Utils.deploy.deploy import (
-                    apply_wine_dll_overrides, remove_wine_dll_overrides)
+                    apply_wine_dll_overrides,
+                    remove_wine_dll_overrides,
+                )
                 if removed_copy:
                     self._log(f"Wine DLL Overrides: removing "
                               f"{len(removed_copy)} override(s) from prefix ...")

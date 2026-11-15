@@ -33,15 +33,15 @@ from __future__ import annotations
 
 import json
 import threading
+import time
 import uuid
-from Utils.xdg import open_url
 from typing import Callable, Optional
 
 import websocket  # websocket-client
 
-from version import __version__
 from Utils.app_log import app_log
-import time
+from Utils.xdg import open_url
+from version import __version__
 
 SSO_WEBSOCKET_URL = "wss://sso.nexusmods.com"
 SSO_AUTH_URL = "https://www.nexusmods.com/sso"

@@ -15,7 +15,11 @@ from pathlib import Path
 # kill worker threads). See Utils.app_log.safe_print.
 from Utils.app_log import safe_print as print  # noqa: A004
 from Utils.exe_launch.game_helpers import (
-    _load_games, _profiles_for_game, _load_last_game, _save_last_game, _GAMES,
+    _GAMES,
+    _load_games,
+    _load_last_game,
+    _profiles_for_game,
+    _save_last_game,
 )
 from Utils.ui_config import load_last_session, save_last_session
 
@@ -159,8 +163,8 @@ class GameState:
         g = self.game
         if g is None or not self.profile:
             return ConflictData()
-        from Utils.deploy.deploy_pipeline import _build_filemap_for_game
         from gui_qt.modlist.modlist_data import display_codes_from_conflict_map
+        from Utils.deploy.deploy_pipeline import _build_filemap_for_game
         from Utils.perftrace import span
         log = log_fn or (lambda _m: None)
         with span("_build_filemap_for_game"):
@@ -357,7 +361,10 @@ class GameState:
         if staging is None or ml is None or not ml.is_file():
             return empty
         try:
-            from Utils.archives.bsa_filemap import build_bsa_conflicts, rebuild_bsa_index
+            from Utils.archives.bsa_filemap import (
+                build_bsa_conflicts,
+                rebuild_bsa_index,
+            )
             from Utils.plugins.plugins import read_loadorder
         except Exception:
             return empty
@@ -388,7 +395,10 @@ class GameState:
         # build_bsa_conflicts returns CONFLICT_* codes; normalise to our scheme
         # (1 win / -1 lose / 2 mixed) matching conflicts_from_filemap.
         from Utils.filemap import (
-            CONFLICT_WINS, CONFLICT_LOSES, CONFLICT_PARTIAL, CONFLICT_FULL,
+            CONFLICT_FULL,
+            CONFLICT_LOSES,
+            CONFLICT_PARTIAL,
+            CONFLICT_WINS,
         )
         codes: dict[str, int] = {}
         for name, c in bsa_map.items():

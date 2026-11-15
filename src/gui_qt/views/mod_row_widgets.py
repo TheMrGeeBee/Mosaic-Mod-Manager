@@ -17,15 +17,24 @@ currently exposes.
 
 from __future__ import annotations
 
-from PySide6.QtCore import Qt, QEvent, QT_TRANSLATE_NOOP, QCoreApplication
+from PySide6.QtCore import QT_TRANSLATE_NOOP, QCoreApplication, QEvent, Qt
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton,
-    QCheckBox, QFrame, QRadioButton, QButtonGroup, QListWidget,
-    QListWidgetItem, QAbstractItemView,
+    QAbstractItemView,
+    QButtonGroup,
+    QCheckBox,
+    QFrame,
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QListWidget,
+    QListWidgetItem,
+    QPushButton,
+    QRadioButton,
+    QVBoxLayout,
+    QWidget,
 )
 
-from gui_qt.theme.theme_qt import active_palette, _c, contrast_text
-
+from gui_qt.theme.theme_qt import _c, active_palette, contrast_text
 
 SOURCE_LABELS = {
     "nexus":  QT_TRANSLATE_NOOP("ModRowWidgets", "Nexus"),

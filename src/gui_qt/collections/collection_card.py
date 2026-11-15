@@ -14,10 +14,15 @@ from __future__ import annotations
 
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QPixmap
-from PySide6.QtWidgets import QWidget, QVBoxLayout, QLabel, QPushButton
+from PySide6.QtWidgets import QLabel, QPushButton, QVBoxLayout, QWidget
 
-from gui_qt.theme.theme_qt import active_palette, _c
-from gui_qt.nexus.nexus_mod_card import _TwoLineLabel, _fmt_count, cap_summary, wrap_tooltip
+from gui_qt.nexus.nexus_mod_card import (
+    _fmt_count,
+    _TwoLineLabel,
+    cap_summary,
+    wrap_tooltip,
+)
+from gui_qt.theme.theme_qt import _c, active_palette
 
 CARD_W = 240          # portrait card (Tk collection tile was ~220 wide)
 IMG_W = 238           # cover width = CARD_W minus the 1px border each side

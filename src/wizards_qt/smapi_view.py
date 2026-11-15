@@ -95,7 +95,8 @@ class SmapiView(WizardViewBase):
 
     def _do_fetch_and_download(self):
         from Utils.modding_tools.smapi_installer import (
-            download_smapi, fetch_latest_smapi_asset,
+            download_smapi,
+            fetch_latest_smapi_asset,
         )
         from Utils.wizard_support.wizard_archives import get_downloads_dir
         try:

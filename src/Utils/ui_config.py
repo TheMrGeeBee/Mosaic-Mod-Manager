@@ -6,13 +6,13 @@ Set scale=auto to use automatic scaling based on screen size.
 """
 
 import configparser
+import json
 import os
 import re as _re
 import subprocess
 from pathlib import Path
 
 from Utils.config_paths import get_config_dir
-import json
 
 _INI_SECTION = "ui"
 

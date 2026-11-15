@@ -22,8 +22,10 @@ from the hash-checked backup.
 from __future__ import annotations
 
 import hashlib
+import io
 import json
 import os
+import platform
 import shutil
 import subprocess
 from dataclasses import dataclass
@@ -32,8 +34,6 @@ from pathlib import Path, PurePosixPath
 from typing import Callable
 
 from Utils.wizard_support.pe_version import Version, format_version, read_file_version
-import platform
-import io
 
 STEAM_APP_ID = 489830
 VERSION_TARGET = "SkyrimSE.exe"          # its file version identifies the runtime
@@ -214,6 +214,7 @@ def find_hpatchz() -> str | None:
 
 def _download_bytes(url: str) -> bytes:
     import urllib.request
+
     from Utils.ca_bundle import get_ssl_context
     req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
     with urllib.request.urlopen(req, timeout=60, context=get_ssl_context()) as resp:

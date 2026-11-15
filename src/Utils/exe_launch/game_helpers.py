@@ -9,7 +9,12 @@ import shutil
 from pathlib import Path
 
 from Games.base_game import BaseGame
-from Utils.config_paths import get_config_dir, get_profiles_dir, get_last_game_path, get_loot_game_dir
+from Utils.config_paths import (
+    get_config_dir,
+    get_last_game_path,
+    get_loot_game_dir,
+    get_profiles_dir,
+)
 from Utils.exe_launch.game_loader import discover_games
 from Utils.plugins.plugin_loader import discover_plugins
 from Utils.profile.profile_state import (

@@ -11,20 +11,26 @@ MGE XE bundles MWSE. Two install paths, auto-detected from the archive name:
 
 from __future__ import annotations
 
+import subprocess
 import threading
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
-    QButtonGroup, QFrame, QHBoxLayout, QLabel, QLineEdit, QRadioButton,
-    QVBoxLayout, QWidget,
+    QButtonGroup,
+    QFrame,
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QRadioButton,
+    QVBoxLayout,
+    QWidget,
 )
 
 from gui_qt.safe_emit import safe_emit
-from gui_qt.theme.theme_qt import active_palette, _c
+from gui_qt.theme.theme_qt import _c, active_palette
 from wizards_qt._view_base import GREEN, RED, WizardViewBase
-import subprocess
 
 if TYPE_CHECKING:
     from Games.base_game import BaseGame

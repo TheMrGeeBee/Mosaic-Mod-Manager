@@ -14,8 +14,12 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Callable
 
 from Utils.modding_tools.ttw_tools import (
-    extract_mpi_from_archive, find_extracted_mpi as _find_extracted_mpi,
-    find_mpi_archive, packages_dir,
+    extract_mpi_from_archive,
+    find_mpi_archive,
+    packages_dir,
+)
+from Utils.modding_tools.ttw_tools import (
+    find_extracted_mpi as _find_extracted_mpi,
 )
 
 if TYPE_CHECKING:

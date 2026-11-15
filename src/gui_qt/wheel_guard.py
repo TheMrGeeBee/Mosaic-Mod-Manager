@@ -6,7 +6,7 @@ installs an event filter that swallows wheel events on such widgets unless they
 currently hold keyboard focus (i.e. the user deliberately clicked into them).
 """
 
-from PySide6.QtCore import QObject, QEvent
+from PySide6.QtCore import QEvent, QObject
 from PySide6.QtWidgets import QWidget
 
 

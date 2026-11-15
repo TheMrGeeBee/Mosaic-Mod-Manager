@@ -20,30 +20,53 @@ from __future__ import annotations
 
 from PySide6.QtCore import QModelIndex, Qt, QTimer, Signal
 from PySide6.QtWidgets import (
-    QCheckBox, QComboBox, QMenu, QHBoxLayout, QLabel, QLineEdit, QPushButton, QSizePolicy,
-    QSplitter, QStackedWidget, QTreeView, QVBoxLayout, QWidget,
+    QCheckBox,
+    QComboBox,
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QMenu,
+    QPushButton,
+    QSizePolicy,
+    QSplitter,
+    QStackedWidget,
+    QTreeView,
+    QVBoxLayout,
+    QWidget,
 )
 
+from gui_qt.image_preview import _ImageCanvas, load_qimage_bytes
+from gui_qt.nif_viewer.asset_loader import AssetLoader
+from gui_qt.nif_viewer.asset_tree import (
+    AssetTreeDelegate,
+    AssetTreeModel,
+    EntryRole,
+)
+from gui_qt.nif_viewer.gl_viewport import SOLID, TEXTURED, WIRE, MeshViewport
+from gui_qt.nif_viewer.record_info_card import RecordInfoCard
+from gui_qt.safe_emit import safe_emit
+from gui_qt.theme.theme_qt import _c, active_palette
+from gui_qt.worker import run_in_worker
 from Utils.archives.bsa_file_reader import BsaReadError
 from Utils.dds_info import parse_dds_info
 from Utils.nif.asset_catalog import BASE, AssetCatalog, AssetEntry
 from Utils.nif.catalog_loader import build_catalog
 from Utils.nif.character import (
-    auto_gender, body_paths, compose, detect_gender, detect_weight, guess_gender, profile_for_game,
+    auto_gender,
+    body_paths,
+    compose,
+    detect_gender,
+    detect_weight,
+    guess_gender,
+    profile_for_game,
 )
 from Utils.nif.nif_reader import (
-    NifError, NifUnsupported, format_label, read_nif, version_string,
+    NifError,
+    NifUnsupported,
+    format_label,
+    read_nif,
+    version_string,
 )
-from gui_qt.image_preview import _ImageCanvas, load_qimage_bytes
-from gui_qt.nif_viewer.asset_loader import AssetLoader
-from gui_qt.nif_viewer.asset_tree import (
-    AssetTreeDelegate, AssetTreeModel, EntryRole,
-)
-from gui_qt.nif_viewer.gl_viewport import SOLID, TEXTURED, WIRE, MeshViewport
-from gui_qt.nif_viewer.record_info_card import RecordInfoCard
-from gui_qt.theme.theme_qt import _c, active_palette
-from gui_qt.safe_emit import safe_emit
-from gui_qt.worker import run_in_worker
 
 _PAGE_MESH, _PAGE_IMAGE, _PAGE_MESSAGE = 0, 1, 2
 _SRC_MESH, _SRC_TEXTURE, _SRC_BOTH = "mesh", "texture", "both"

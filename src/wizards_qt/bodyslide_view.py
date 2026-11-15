@@ -13,6 +13,7 @@ Bethesda registry key seeded.
 from __future__ import annotations
 
 import os
+import subprocess
 import threading
 from typing import TYPE_CHECKING
 
@@ -20,10 +21,9 @@ from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QLineEdit, QPushButton, QWidget
 
 from gui_qt.safe_emit import safe_emit
-from wizards_qt._view_base import GREEN, RED, WizardViewBase
 from Utils.modding_tools.bodyslide_tools import sanitize_output_name
 from Utils.wizard_support.wizard_gates import find_staged_exe
-import subprocess
+from wizards_qt._view_base import GREEN, RED, WizardViewBase
 
 if TYPE_CHECKING:
     from Games.base_game import BaseGame
@@ -171,10 +171,12 @@ class BodySlideView(WizardViewBase):
         output_mod_name, profile = self._output_mod_name, self._profile()
 
         def worker():
-            from Utils.modding_tools.bodyslide_tools import apply_output_redirect
             from Utils.exe_launch.exe_launch import (
-                resolve_tool_prefix, run_tool_logged, shutdown_prefix_wineserver,
+                resolve_tool_prefix,
+                run_tool_logged,
+                shutdown_prefix_wineserver,
             )
+            from Utils.modding_tools.bodyslide_tools import apply_output_redirect
             from Utils.wine_proton.steam_finder import proton_run_command
             _wlog = lambda m: self._log(f"{name} Wizard: {m}")
             gl_log = None
@@ -208,7 +210,9 @@ class BodySlideView(WizardViewBase):
                 # The x64 builds autofill the Data folder from the Bethesda
                 # Softworks registry key — seed it (idempotent).
                 try:
-                    from Utils.wine_proton.bethesda_registry import maybe_register_for_game
+                    from Utils.wine_proton.bethesda_registry import (
+                        maybe_register_for_game,
+                    )
                     maybe_register_for_game(
                         prefix_dir=compat_data, proton_script=proton_script,
                         env=env, game=game, log_fn=_wlog)

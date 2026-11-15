@@ -11,24 +11,33 @@ as the 'FNV BSA Decompressor' mod.
 from __future__ import annotations
 
 import re
+import subprocess
 import threading
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtWidgets import (
-    QHBoxLayout, QLabel, QPlainTextEdit, QPushButton, QVBoxLayout, QWidget,
+    QHBoxLayout,
+    QLabel,
+    QPlainTextEdit,
+    QPushButton,
+    QVBoxLayout,
+    QWidget,
 )
 
 from gui_qt.safe_emit import safe_emit
-from gui_qt.theme.theme_qt import active_palette, _c
-from wizards_qt._view_base import GREEN, RED, WizardViewBase
+from gui_qt.theme.theme_qt import _c, active_palette
 from Utils.archives.bsa_decompressor_tools import (
-    NEXUS_URL, OUTPUT_NAME, decompressor_mod_dir, find_decompressor_archive,
-    find_extracted_mpi, packages_dir,
+    NEXUS_URL,
+    OUTPUT_NAME,
+    decompressor_mod_dir,
+    find_decompressor_archive,
+    find_extracted_mpi,
+    packages_dir,
 )
 from Utils.modding_tools.ttw_tools import find_ttw_installer
-import subprocess
+from wizards_qt._view_base import GREEN, RED, WizardViewBase
 
 if TYPE_CHECKING:
     from Games.base_game import BaseGame
@@ -353,7 +362,9 @@ class BSADecompressorView(WizardViewBase):
             return
         self._auto_fetch_started = True
         from Utils.archives.bsa_decompressor_tools import (
-            NEXUS_FILE_ID, NEXUS_GAME_DOMAIN, NEXUS_MOD_ID,
+            NEXUS_FILE_ID,
+            NEXUS_GAME_DOMAIN,
+            NEXUS_MOD_ID,
         )
         from Utils.downloads.mpi_auto_fetch import start_auto_fetch
         _wlog = lambda m: self._log(f"BSA Decompressor Wizard: {m}")
@@ -490,7 +501,9 @@ class BSADecompressorView(WizardViewBase):
     def _do_run(self):
         from Utils.archives.bsa_decompressor_tools import register_output
         from Utils.modding_tools.ttw_tools import (
-            fnv_required_esms, missing_vanilla_esms, restore_to_vanilla,
+            fnv_required_esms,
+            missing_vanilla_esms,
+            restore_to_vanilla,
         )
         game = self._game
         exe = self._exe

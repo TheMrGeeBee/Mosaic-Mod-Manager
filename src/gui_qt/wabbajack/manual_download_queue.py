@@ -88,10 +88,11 @@ class ManualDownloadQueue(QWidget):
 
     def __init__(self, archives, *, on_resolved=None, on_changed=None, parent=None):
         super().__init__(parent)
-        from Utils.ui_config import (WJ_TABS_AT_ONCE_MAX,
-                                     load_wabbajack_manual_settings)
-        from Utils.wabbajack.manual_downloads import (MultiDownloadFinder,
-                                                      download_folders)
+        from Utils.ui_config import WJ_TABS_AT_ONCE_MAX, load_wabbajack_manual_settings
+        from Utils.wabbajack.manual_downloads import (
+            MultiDownloadFinder,
+            download_folders,
+        )
 
         self._p = active_palette()
         self._on_resolved = on_resolved
@@ -400,7 +401,9 @@ class ManualDownloadQueue(QWidget):
 
     def _add_folder(self, folder: Path) -> None:
         from Utils.downloads.download_locations import (
-            load_extra_download_locations, save_extra_download_locations)
+            load_extra_download_locations,
+            save_extra_download_locations,
+        )
         if folder in self._folders:
             return
         try:

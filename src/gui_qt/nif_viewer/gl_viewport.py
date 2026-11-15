@@ -16,18 +16,29 @@ import math
 from array import array
 from typing import Callable
 
-from PySide6.QtCore import Qt, QPoint
-from shiboken6 import VoidPtr
+from PySide6.QtCore import QPoint, Qt
 from PySide6.QtGui import (
-    QColor, QImage, QMatrix4x4, QOffscreenSurface, QOpenGLContext, QSurfaceFormat,
-    QVector3D, QVector4D,
+    QColor,
+    QImage,
+    QMatrix4x4,
+    QOffscreenSurface,
+    QOpenGLContext,
+    QSurfaceFormat,
+    QVector3D,
+    QVector4D,
 )
 from PySide6.QtOpenGL import (
-    QOpenGLBuffer, QOpenGLFramebufferObject, QOpenGLFramebufferObjectFormat,
-    QOpenGLFunctions_3_3_Core, QOpenGLShader, QOpenGLShaderProgram, QOpenGLTexture,
+    QOpenGLBuffer,
+    QOpenGLFramebufferObject,
+    QOpenGLFramebufferObjectFormat,
+    QOpenGLFunctions_3_3_Core,
+    QOpenGLShader,
+    QOpenGLShaderProgram,
+    QOpenGLTexture,
     QOpenGLVertexArrayObject,
 )
 from PySide6.QtOpenGLWidgets import QOpenGLWidget
+from shiboken6 import VoidPtr
 
 from Utils.nif.nif_reader import NifNode, NifScene, NifShape
 from Utils.nif.skeleton import bone_segments, is_bone

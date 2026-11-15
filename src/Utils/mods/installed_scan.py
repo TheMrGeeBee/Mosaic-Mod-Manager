@@ -32,11 +32,15 @@ import os
 import re
 from pathlib import Path
 
-from Utils.wine_proton.steam_finder import find_steam_libraries, _parse_acf_installdir
 from Utils.wine_proton.heroic_finder import (
-    _find_heroic_config_roots, _load_epic_installed, _load_gog_installed,
-    _load_sideload_installed, _sideload_game_root, _stored_exe_matches,
+    _find_heroic_config_roots,
+    _load_epic_installed,
+    _load_gog_installed,
+    _load_sideload_installed,
+    _sideload_game_root,
+    _stored_exe_matches,
 )
+from Utils.wine_proton.steam_finder import _parse_acf_installdir, find_steam_libraries
 
 _ACF_ID_RE = re.compile(r"appmanifest_(\d+)\.acf$")
 

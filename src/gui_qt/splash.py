@@ -15,12 +15,11 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PySide6.QtCore import Qt, QRectF
+from PySide6.QtCore import QRectF, Qt
 from PySide6.QtGui import QColor, QCursor, QGuiApplication, QPainter, QPixmap
 from PySide6.QtWidgets import QWidget
 
-from gui_qt.theme.theme_qt import active_palette, _c
-
+from gui_qt.theme.theme_qt import _c, active_palette
 
 _LOGO = Path(__file__).resolve().parent.parent / "icons" / "Splash.png"
 

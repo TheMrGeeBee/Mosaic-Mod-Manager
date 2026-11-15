@@ -10,8 +10,12 @@ from __future__ import annotations
 
 import concurrent.futures
 import errno
+import fnmatch as _fnmatch
 import os
 import shutil
+import stat as _stat
+import stat as _stat_m
+import sys
 import time as _time
 from contextlib import contextmanager as _contextmanager
 from dataclasses import dataclass, field
@@ -21,10 +25,6 @@ from pathlib import Path
 from Utils.app_log import safe_log as _safe_log
 from Utils.atomic_write import atomic_writer
 from Utils.path_utils import has_path_traversal as _has_traversal
-import stat as _stat
-import fnmatch as _fnmatch
-import sys
-import stat as _stat_m
 
 
 def _mkdir_leaves(dirs: "set[str]") -> None:

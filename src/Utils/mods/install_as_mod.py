@@ -141,8 +141,8 @@ def index_installed_mod(
     logged, and a later Refresh (full ``rebuild_mod_index``) still recovers.
     """
     try:
-        from Utils.filemap import rescan_mods_in_index
         from Utils.deploy.deploy import load_per_mod_strip_prefixes
+        from Utils.filemap import rescan_mods_in_index
 
         staging = game.get_effective_mod_staging_path()
         if staging is None:

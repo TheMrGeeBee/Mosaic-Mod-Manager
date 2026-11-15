@@ -22,13 +22,16 @@ must be called from a worker thread; they only report through log_fn.
 
 from __future__ import annotations
 
+import glob
 import json
 import os
-import time as _time
+import re
 import shlex
 import shutil
 import subprocess
-import re
+import tempfile
+import threading
+import time as _time
 from pathlib import Path
 
 from Utils.config_paths import (
@@ -38,6 +41,7 @@ from Utils.config_paths import (
     get_profile_exe_args_path,
 )
 from Utils.wine_proton.protontricks import strip_appimage_env
+
 # Moved to run_host_shim.py so steam_finder can use them without a circular
 # import; re-exported because other modules import them from here.
 from Utils.wine_proton.run_host_shim import (  # noqa: F401
@@ -46,9 +50,6 @@ from Utils.wine_proton.run_host_shim import (  # noqa: F401
     _run_host_shim_prefix,
 )
 from Utils.xdg import spawn_watched
-import tempfile
-import threading
-import glob
 
 _LAUNCH_MODE_FILE = "exe_launch_mode.json"
 _CUSTOM_EXES_FILE = "custom_exes.json"
@@ -1483,7 +1484,8 @@ def get_game_prefix_env(game, log_fn=_noop_log, *,
     Returns None on failure (after logging why).
     """
     from Utils.wine_proton.steam_finder import (
-        find_proton_for_game, find_steam_root_for_proton_script,
+        find_proton_for_game,
+        find_steam_root_for_proton_script,
     )
     pfx = game.get_prefix_path() if hasattr(game, "get_prefix_path") else None
     if pfx is None or not Path(pfx).is_dir():
@@ -1510,7 +1512,9 @@ def get_game_prefix_env(game, log_fn=_noop_log, *,
             # Fresh Lutris umu prefixes record the runner in the game yml
             # rather than config_info.
             try:
-                from Utils.wine_proton.lutris_finder import find_lutris_proton_name_for_prefix
+                from Utils.wine_proton.lutris_finder import (
+                    find_lutris_proton_name_for_prefix,
+                )
                 preferred_runner = find_lutris_proton_name_for_prefix(Path(pfx)) or ""
             except Exception:
                 preferred_runner = ""
@@ -2147,8 +2151,11 @@ def launch_exe_via_proton(exe_path: Path, game, log_fn=_noop_log) -> None:
         lutris_is_prefix = False
         try:
             from Utils.wine_proton.lutris_finder import (
-                is_lutris_prefix, find_lutris_wine_for_prefix,
-                find_lutris_proton_name_for_prefix, lutris_wine_env)
+                find_lutris_proton_name_for_prefix,
+                find_lutris_wine_for_prefix,
+                is_lutris_prefix,
+                lutris_wine_env,
+            )
             lutris_is_prefix = is_lutris_prefix(prefix_path)
             if lutris_is_prefix:
                 # Classic lutris-wine prefix: launch with the Lutris runner's
@@ -2178,7 +2185,9 @@ def launch_exe_via_proton(exe_path: Path, game, log_fn=_noop_log) -> None:
             # Heroic records the game's runner in its GamesConfig — using it
             # keeps tool launches on the same Proton Heroic itself uses.
             try:
-                from Utils.wine_proton.heroic_finder import find_heroic_proton_for_prefix
+                from Utils.wine_proton.heroic_finder import (
+                    find_heroic_proton_for_prefix,
+                )
                 proton_script = find_heroic_proton_for_prefix(prefix_path)
             except Exception:
                 proton_script = None
@@ -2378,7 +2387,8 @@ def resolve_jar_prefix_env(jar_path: Path, game, log_fn=_noop_log):
     from a worker thread.
     """
     from Utils.wine_proton.steam_finder import (
-        find_any_installed_proton, list_installed_proton,
+        find_any_installed_proton,
+        list_installed_proton,
     )
     override = load_proton_override(game, jar_path.name)
     if not override:
@@ -2442,7 +2452,7 @@ def launch_jar(jar_path: Path, game, log_fn=_noop_log) -> None:
         # path (C:\java8\bin\java.exe) rather than a Z: path — a Z: path into
         # the prefix's own drive (and one with spaces, e.g. "Proton -
         # Experimental") is what made the launch fail.
-        from Utils.wine_proton.jre_prefix import java_exe_in_prefix, JAVA_EXE_WIN
+        from Utils.wine_proton.jre_prefix import JAVA_EXE_WIN, java_exe_in_prefix
         java_native = java_exe_in_prefix(compat_data)
         if not java_native.is_file():
             log_fn("Run JAR: no Java in this prefix — click 'Install Java into "

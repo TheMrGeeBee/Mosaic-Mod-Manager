@@ -48,16 +48,31 @@ Restore:
 from __future__ import annotations
 
 import fnmatch
+import os
 import shutil
 from dataclasses import dataclass, field
 from pathlib import Path
 
 from Games.base_game import BaseGame
-from Utils.deploy.deploy import LinkMode, load_per_mod_strip_prefixes, load_separator_deploy_paths, expand_separator_deploy_paths, expand_separator_raw_deploy, expand_separator_link_modes, _resolve_nocase, _write_deploy_snapshot, _move_runtime_files, _FILEMAP_SNAPSHOT_NAME
-from Utils.deploy.deploy_custom_rules import deploy_custom_rules, restore_custom_rules, compute_prefix_handled
-from Utils.mods.modlist import read_modlist
 from Utils.config_paths import get_profiles_dir
-import os
+from Utils.deploy.deploy import (
+    _FILEMAP_SNAPSHOT_NAME,
+    LinkMode,
+    _move_runtime_files,
+    _resolve_nocase,
+    _write_deploy_snapshot,
+    expand_separator_deploy_paths,
+    expand_separator_link_modes,
+    expand_separator_raw_deploy,
+    load_per_mod_strip_prefixes,
+    load_separator_deploy_paths,
+)
+from Utils.deploy.deploy_custom_rules import (
+    compute_prefix_handled,
+    deploy_custom_rules,
+    restore_custom_rules,
+)
+from Utils.mods.modlist import read_modlist
 
 _PROFILES_DIR = get_profiles_dir()
 

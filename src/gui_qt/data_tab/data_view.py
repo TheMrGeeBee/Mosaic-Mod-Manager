@@ -12,14 +12,19 @@ from __future__ import annotations
 import threading
 from pathlib import Path
 
-from PySide6.QtCore import Qt, QTimer, QModelIndex, Signal
+from PySide6.QtCore import QModelIndex, Qt, QTimer, Signal
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QTreeView, QLabel, QAbstractItemView,
+    QAbstractItemView,
+    QHBoxLayout,
+    QLabel,
+    QTreeView,
+    QVBoxLayout,
+    QWidget,
 )
 
 import Utils.data_tab as dtlogic
 import Utils.mods.mod_files as mflogic
-from gui_qt.data_tab.data_model import DataModel, _DataNode, COL_NAME, COL_MOD
+from gui_qt.data_tab.data_model import COL_MOD, COL_NAME, DataModel, _DataNode
 from gui_qt.safe_emit import safe_emit
 
 

@@ -12,7 +12,7 @@ each item's own margins and a configurable spacing.
 
 from __future__ import annotations
 
-from PySide6.QtCore import Qt, QMargins, QPoint, QRect, QSize
+from PySide6.QtCore import QMargins, QPoint, QRect, QSize, Qt
 from PySide6.QtWidgets import QLayout, QLayoutItem, QWidget
 
 

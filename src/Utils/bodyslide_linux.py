@@ -23,11 +23,11 @@ launcher script + env for the Run step.
 from __future__ import annotations
 
 import json
-from pathlib import Path
-from typing import TYPE_CHECKING, Callable
+import os
 import shutil
 import tempfile
-import os
+from pathlib import Path
+from typing import TYPE_CHECKING, Callable
 
 if TYPE_CHECKING:
     from Games.base_game import BaseGame
@@ -103,7 +103,8 @@ def install_or_update(log_fn: Callable[[str], None] = _noop) -> bool:
     up to date"), False on failure."""
     from Utils.ca_bundle import download_file
     from Utils.wizard_support.wizard_archives import (
-        extract_archive, fetch_latest_github_asset,
+        extract_archive,
+        fetch_latest_github_asset,
     )
 
     try:

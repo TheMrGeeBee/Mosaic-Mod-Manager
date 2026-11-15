@@ -23,23 +23,32 @@ touching the rest of the app.
 
 from __future__ import annotations
 
-from PySide6.QtCore import Qt, QT_TRANSLATE_NOOP
+from PySide6.QtCore import QT_TRANSLATE_NOOP, Qt
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QScrollArea, QFrame,
-    QLabel, QComboBox, QPushButton, QCheckBox, QGroupBox, QSplitter,
+    QCheckBox,
+    QComboBox,
+    QFrame,
+    QGridLayout,
+    QGroupBox,
+    QHBoxLayout,
+    QLabel,
+    QPushButton,
+    QScrollArea,
+    QSplitter,
+    QVBoxLayout,
+    QWidget,
 )
 
-from gui_qt.theme.theme_qt import active_palette, _c
-from gui_qt.theme.theme_preview import ThemePreviewPanel
 from gui_qt.overlays.color_picker_overlay import ColorPickerOverlay
 from gui_qt.overlays.confirm_overlay import ConfirmOverlay
-from gui_qt.wheel_guard import no_wheel
 from gui_qt.theme import theme_editor_groups as teg
-from Utils.themes import load_palettes, load_display_names, get_ctk_appearance
+from gui_qt.theme.theme_preview import ThemePreviewPanel
+from gui_qt.theme.theme_qt import _c, active_palette
+from gui_qt.wheel_guard import no_wheel
 from Utils import custom_themes as ct
 from Utils import ui_config as uc
-
+from Utils.themes import get_ctk_appearance, load_display_names, load_palettes
 
 # lupdate extraction anchors: the theme-editor section titles, swatch labels
 # and section descriptions all live as plain strings in theme_editor_groups

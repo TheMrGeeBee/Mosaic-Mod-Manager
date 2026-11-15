@@ -32,13 +32,13 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import tempfile
 from pathlib import Path
 
 from Nexus.nexus_meta import normalise_game_domain
 from Utils.config_paths import get_download_cache_dir
 from Utils.profile.profile_export import resolve_installer_choices
-import re
 
 PHASE_META = "meta"
 PHASE_HASH = "hash"
@@ -288,7 +288,10 @@ def build_load_order(profile_dir, game_domain: str, game, mods: list) -> "list |
         return None
     try:
         from Utils.mods.bg3_pak_index import (
-            build_index, resolve_pak_order, INDEX_FILENAME)
+            INDEX_FILENAME,
+            build_index,
+            resolve_pak_order,
+        )
         from Utils.mods.modlist import read_modlist
         entries = read_modlist(modlist_path)
         enabled = [e for e in entries if e.enabled and not e.is_separator]

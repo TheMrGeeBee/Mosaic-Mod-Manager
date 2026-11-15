@@ -20,7 +20,6 @@ from pathlib import Path
 from typing import Callable
 
 from Utils.app_log import safe_log as _safe_log
-
 from Utils.appimage_env import in_appimage, strip_appimage_vars
 
 
@@ -211,8 +210,8 @@ def _get_proton_bin() -> str | None:
     libraries and break when run bare (winetricks runs wine directly).
     """
     from Utils.wine_proton.steam_finder import (
-        list_installed_proton,
         _proton_script_in_steam_flatpak,
+        list_installed_proton,
     )
     for script in list_installed_proton():
         if _proton_script_in_steam_flatpak(script):
@@ -235,7 +234,10 @@ def wine_bin_dir_for_prefix(prefix_path, env: dict | None = None) -> str | None:
     """
     try:
         from Utils.wine_proton.lutris_finder import (
-            is_lutris_prefix, find_lutris_wine_for_prefix, lutris_wine_env)
+            find_lutris_wine_for_prefix,
+            is_lutris_prefix,
+            lutris_wine_env,
+        )
         if not is_lutris_prefix(prefix_path):
             return None
         wine_bin = find_lutris_wine_for_prefix(prefix_path)
@@ -582,8 +584,12 @@ def build_proton_env_for_game(game) -> "tuple[Path, dict] | tuple[None, None]":
     steam_id = game_steam_id(game)
     proton_script = find_proton_for_game(steam_id) if steam_id else None
 
-    from Utils.wine_proton.proton_prefix import read_prefix_runner as _read_prefix_runner, \
-        resolve_compat_data as _resolve_compat_data
+    from Utils.wine_proton.proton_prefix import (
+        read_prefix_runner as _read_prefix_runner,
+    )
+    from Utils.wine_proton.proton_prefix import (
+        resolve_compat_data as _resolve_compat_data,
+    )
     compat_data = _resolve_compat_data(prefix_path)
 
     if proton_script is None:
@@ -595,7 +601,9 @@ def build_proton_env_for_game(game) -> "tuple[Path, dict] | tuple[None, None]":
 
     if proton_script is None:
         try:
-            from Utils.wine_proton.lutris_finder import find_lutris_proton_name_for_prefix
+            from Utils.wine_proton.lutris_finder import (
+                find_lutris_proton_name_for_prefix,
+            )
             lutris_runner = find_lutris_proton_name_for_prefix(prefix_path)
         except Exception:
             lutris_runner = None
@@ -738,8 +746,8 @@ def install_vcredist(
         else:
             _log("Using cached VC++ Redistributable installer.")
         _log("Installing VC++ Redistributable in game prefix (silent) — please wait …")
-        from Utils.wine_proton.steam_finder import proton_run_command
         from Utils.exe_launch.exe_launch import _apply_run_host_shim
+        from Utils.wine_proton.steam_finder import proton_run_command
         cmd = _apply_run_host_shim(
             proton_run_command(proton_script, "runinprefix",
              str(cache_path), "/install", "/quiet", "/norestart",

@@ -18,26 +18,52 @@ import time
 
 from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtWidgets import (
-    QSlider, QCheckBox, QComboBox, QDialog, QDialogButtonBox, QGridLayout, QHBoxLayout, QLabel,
-    QLineEdit, QListWidget, QListWidgetItem, QPushButton, QSizePolicy, QStackedWidget,
-    QVBoxLayout, QWidget,
+    QCheckBox,
+    QComboBox,
+    QDialog,
+    QDialogButtonBox,
+    QGridLayout,
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QListWidget,
+    QListWidgetItem,
+    QPushButton,
+    QSizePolicy,
+    QSlider,
+    QStackedWidget,
+    QVBoxLayout,
+    QWidget,
 )
 
-from Utils.archives.bsa_file_reader import BsaReadError
-from Utils.nif.asset_catalog import BASE, AssetCatalog, AssetEntry
-from Utils.nif.catalog_loader import build_catalog
-from Utils.nif.character import (
-    SKYRIM_PROFILE, GameProfile, assemble, blend_scene, body_paths, bone_transforms, covered_slots,
-    detect_gender, fits_slot, gender_fits, guess_gender, is_race_variant, is_wearable_path,
-    profile_for_game, slot_group, weight_variant,
-)
-from Utils.nif.nif_reader import NifError, NifUnsupported, format_label, read_nif
 from gui_qt.nif_viewer.asset_loader import AssetLoader
 from gui_qt.nif_viewer.gl_viewport import TEXTURED, MeshViewport
 from gui_qt.nif_viewer.record_info_card import ClickableLabel, RecordInfoCard
 from gui_qt.safe_emit import safe_emit
 from gui_qt.theme.theme_qt import _c, active_palette
 from gui_qt.worker import run_in_worker
+from Utils.archives.bsa_file_reader import BsaReadError
+from Utils.nif.asset_catalog import BASE, AssetCatalog, AssetEntry
+from Utils.nif.catalog_loader import build_catalog
+from Utils.nif.character import (
+    SKYRIM_PROFILE,
+    GameProfile,
+    assemble,
+    blend_scene,
+    body_paths,
+    bone_transforms,
+    covered_slots,
+    detect_gender,
+    fits_slot,
+    gender_fits,
+    guess_gender,
+    is_race_variant,
+    is_wearable_path,
+    profile_for_game,
+    slot_group,
+    weight_variant,
+)
+from Utils.nif.nif_reader import NifError, NifUnsupported, format_label, read_nif
 
 _MAX_LISTED = 400
 

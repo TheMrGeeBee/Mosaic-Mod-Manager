@@ -25,7 +25,9 @@ import threading
 from typing import Callable, Optional
 
 from Utils.config_paths import (
-    get_custom_games_dir, get_plugins_dir, get_languages_dir,
+    get_custom_games_dir,
+    get_languages_dir,
+    get_plugins_dir,
 )
 from Utils.gh_cache import fetch, fetch_text
 from Utils.ui_config import load_dev_mode

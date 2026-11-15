@@ -19,10 +19,12 @@ from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import QHBoxLayout, QPushButton, QWidget
 
 from gui_qt.safe_emit import safe_emit
-from wizards_qt._view_base import GREEN, RED, WizardViewBase
 from Utils.modding_tools.creationkit_tools import (
-    EXE_NAME, ckpe_mod_installed, creationkit_exe_path,
+    EXE_NAME,
+    ckpe_mod_installed,
+    creationkit_exe_path,
 )
+from wizards_qt._view_base import GREEN, RED, WizardViewBase
 
 if TYPE_CHECKING:
     from Games.base_game import BaseGame
@@ -202,15 +204,21 @@ class CreationKitView(WizardViewBase):
         proton_name, prefix_mode = self._proton_name, self._prefix_mode
 
         def worker():
-            from Utils.wine_proton.bethesda_registry import maybe_register_for_game
             from Utils.deploy.deploy import apply_wine_dll_overrides
             from Utils.exe_launch.exe_launch import (
-                link_mygames, link_plugins_txt, resolve_tool_prefix,
-                run_tool_logged, shutdown_prefix_wineserver,
+                link_mygames,
+                link_plugins_txt,
+                resolve_tool_prefix,
+                run_tool_logged,
+                shutdown_prefix_wineserver,
             )
+            from Utils.wine_proton.bethesda_registry import maybe_register_for_game
             from Utils.wine_proton.protontricks import (
-                D3D_DEP_KEY, VCREDIST_DEP_KEY, install_d3dcompiler_47,
-                install_vcredist, is_dep_installed,
+                D3D_DEP_KEY,
+                VCREDIST_DEP_KEY,
+                install_d3dcompiler_47,
+                install_vcredist,
+                is_dep_installed,
             )
             _wlog = lambda m: self._log(f"Creation Kit Wizard: {m}")
             try:

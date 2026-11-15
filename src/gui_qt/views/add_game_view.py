@@ -17,17 +17,25 @@ The view embeds as a detachable tab. It calls back:
 
 from __future__ import annotations
 
+import threading
 from pathlib import Path
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QLabel, QLineEdit,
-    QScrollArea, QPushButton, QFrame, QCheckBox,
+    QCheckBox,
+    QFrame,
+    QGridLayout,
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QPushButton,
+    QScrollArea,
+    QVBoxLayout,
+    QWidget,
 )
 
-from gui_qt.theme.theme_qt import active_palette, _c
-import threading
+from gui_qt.theme.theme_qt import _c, active_palette
 
 _ICONS_DIR = Path(__file__).resolve().parent.parent.parent / "icons" / "games"
 

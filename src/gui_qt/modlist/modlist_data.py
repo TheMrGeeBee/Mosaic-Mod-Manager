@@ -11,7 +11,6 @@ from pathlib import Path
 
 from Utils.mods.modlist import ModEntry
 
-
 # Flag bits for the Flags column — mirrors the full Tk set (FOMOD/BAIN are
 # install methods, NOT flag icons).
 FLAG_UPDATE = 1 << 0       # has_update & not ignored
@@ -351,7 +350,10 @@ def display_codes_from_conflict_map(conflict_map: dict):
     This preserves FULL (fully-overridden / redundant) which the old
     override-set re-derivation lost."""
     from Utils.filemap import (
-        CONFLICT_WINS, CONFLICT_LOSES, CONFLICT_PARTIAL, CONFLICT_FULL,
+        CONFLICT_FULL,
+        CONFLICT_LOSES,
+        CONFLICT_PARTIAL,
+        CONFLICT_WINS,
     )
     out: dict[str, int] = {}
     for name, code in (conflict_map or {}).items():

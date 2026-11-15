@@ -63,7 +63,6 @@ import lz4.frame
 from Utils.archives.archive_rules import is_packable  # noqa: F401  # re-export: callers import Utils.archives.bsa_writer.is_packable
 from Utils.atomic_write import atomic_writer
 
-
 # ---------------------------------------------------------------------------
 # Public errors
 # ---------------------------------------------------------------------------

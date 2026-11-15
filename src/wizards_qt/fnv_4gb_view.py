@@ -16,8 +16,8 @@ from PySide6.QtWidgets import QHBoxLayout, QPushButton, QWidget
 
 from gui_qt.safe_emit import safe_emit
 from gui_qt.theme.theme_qt import button_qss
-from wizards_qt._view_base import GREEN, RED, WizardViewBase
 from Utils.modding_tools.fnv4gb_tools import BACKUP_NAME, EXE_NAME
+from wizards_qt._view_base import GREEN, RED, WizardViewBase
 
 if TYPE_CHECKING:
     from Games.base_game import BaseGame

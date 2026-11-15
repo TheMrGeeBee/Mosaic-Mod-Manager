@@ -11,12 +11,12 @@ identical across both front-ends.
 from __future__ import annotations
 
 import os
+import shutil
 import subprocess
 from pathlib import Path
 from typing import Callable
 
 from Utils.wine_proton.steam_finder import proton_run_command
-import shutil
 
 LogFn = Callable[[str], None]
 
@@ -148,7 +148,10 @@ def _resolve_lutris_wine_env(prefix_path, log_fn: LogFn = _noop):
     """
     try:
         from Utils.wine_proton.lutris_finder import (
-            is_lutris_prefix, find_lutris_wine_for_prefix, lutris_wine_env)
+            find_lutris_wine_for_prefix,
+            is_lutris_prefix,
+            lutris_wine_env,
+        )
         if not is_lutris_prefix(prefix_path):
             return None, None
         wine_bin = find_lutris_wine_for_prefix(prefix_path)
@@ -175,8 +178,8 @@ def resolve_proton_env(game, log_fn: LogFn = _noop):
     from Utils.wine_proton.steam_finder import (
         find_any_installed_proton,
         find_proton_for_game,
-        game_steam_id,
         find_steam_root_for_proton_script,
+        game_steam_id,
     )
 
     prefix_path = game.get_prefix_path()
@@ -191,7 +194,7 @@ def resolve_proton_env(game, log_fn: LogFn = _noop):
     steam_id = game_steam_id(game)
     proton_script = find_proton_for_game(steam_id) if steam_id else None
 
-    from Utils.wine_proton.proton_prefix import resolve_compat_data, read_prefix_runner
+    from Utils.wine_proton.proton_prefix import read_prefix_runner, resolve_compat_data
     compat_data = resolve_compat_data(prefix_path)
 
     if proton_script is None:
@@ -210,7 +213,9 @@ def resolve_proton_env(game, log_fn: LogFn = _noop):
         # Lutris umu/Proton games record the runner in the prefix's
         # config_info after the first run, or in the game's yml before that.
         try:
-            from Utils.wine_proton.lutris_finder import find_lutris_proton_name_for_prefix
+            from Utils.wine_proton.lutris_finder import (
+                find_lutris_proton_name_for_prefix,
+            )
             lutris_runner = find_lutris_proton_name_for_prefix(prefix_path)
         except Exception:
             lutris_runner = None
@@ -355,7 +360,10 @@ def launch_winetricks(game, log_fn: LogFn = _noop) -> None:
         log_fn("Proton Tools: cabextract not found — downloading a portable copy …")
         if not install_cabextract(log_fn=lambda m: log_fn(f"Proton Tools: {m}")):
             return
-    from Utils.wine_proton.protontricks import strip_appimage_env, wine_bin_dir_for_prefix
+    from Utils.wine_proton.protontricks import (
+        strip_appimage_env,
+        wine_bin_dir_for_prefix,
+    )
     wt = _bundled_winetricks()
     env = strip_appimage_env(os.environ.copy())
     env["WINEPREFIX"] = str(prefix_path)

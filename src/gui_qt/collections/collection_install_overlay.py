@@ -25,14 +25,22 @@ the callbacks the app passed in (``on_pause`` / ``on_cancel``).
 
 from __future__ import annotations
 
-from PySide6.QtCore import Qt, QEvent
+from html import escape
+
+from PySide6.QtCore import QEvent, Qt
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QFrame,
-    QProgressBar, QSizePolicy, QSpinBox,
+    QFrame,
+    QHBoxLayout,
+    QLabel,
+    QProgressBar,
+    QPushButton,
+    QSizePolicy,
+    QSpinBox,
+    QVBoxLayout,
+    QWidget,
 )
 
-from gui_qt.theme.theme_qt import active_palette, _c
-from html import escape
+from gui_qt.theme.theme_qt import _c, active_palette
 
 # Status tones (match the Tk overlay: queued = amber, active = normal text).
 _QUEUED_TONE = "#e5a640"

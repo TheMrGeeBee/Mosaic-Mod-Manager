@@ -19,18 +19,31 @@ the archive and hands it off).
 from __future__ import annotations
 
 import threading
+from datetime import datetime, timezone
 
-from PySide6.QtCore import Qt, Signal, QT_TRANSLATE_NOOP
+from PySide6.QtCore import QT_TRANSLATE_NOOP, Qt, Signal
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
-    QCheckBox, QTableWidget, QTableWidgetItem, QHeaderView, QAbstractItemView,
+    QAbstractItemView,
+    QCheckBox,
+    QHBoxLayout,
+    QHeaderView,
+    QLabel,
+    QPushButton,
+    QTableWidget,
+    QTableWidgetItem,
+    QVBoxLayout,
+    QWidget,
 )
 
-from gui_qt.theme.theme_qt import active_palette, _c, danger_close_button, button_qss, qc
 from gui_qt.safe_emit import safe_emit
+from gui_qt.theme.theme_qt import (
+    _c,
+    active_palette,
+    button_qss,
+    danger_close_button,
+    qc,
+)
 from Utils.mods.mod_files_versions import fmt_size
-from datetime import datetime
-from datetime import timezone
 
 # Translated at display time (setHorizontalHeaderLabels); register for lupdate.
 _COLS = [

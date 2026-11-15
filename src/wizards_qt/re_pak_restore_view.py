@@ -20,11 +20,16 @@ from typing import TYPE_CHECKING
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QPlainTextEdit,
+    QHBoxLayout,
+    QLabel,
+    QPlainTextEdit,
+    QPushButton,
+    QVBoxLayout,
+    QWidget,
 )
 
-from gui_qt.theme.theme_qt import active_palette, _c, button_qss, err_text
 from gui_qt.safe_emit import safe_emit
+from gui_qt.theme.theme_qt import _c, active_palette, button_qss, err_text
 from Utils.archives.re_pak_patcher import (
     ROOT_MANIFEST_NAME,
     restore_from_root_manifest,

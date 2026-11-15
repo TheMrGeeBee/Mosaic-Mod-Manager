@@ -22,14 +22,20 @@ come back in the state dict as "<id>" (include frozenset) and "<id>_exclude".
 
 from __future__ import annotations
 
-from PySide6.QtCore import Qt, Signal, QT_TRANSLATE_NOOP
+from PySide6.QtCore import QT_TRANSLATE_NOOP, Qt, Signal
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QScrollArea, QFrame,
-    QPushButton, QSizePolicy,
+    QFrame,
+    QHBoxLayout,
+    QLabel,
+    QPushButton,
+    QScrollArea,
+    QSizePolicy,
+    QVBoxLayout,
+    QWidget,
 )
 
-from gui_qt.tri_state_checkbox import TriStateCheckBox, STATE_OFF
-from gui_qt.theme.theme_qt import active_palette, _c
+from gui_qt.theme.theme_qt import _c, active_palette
+from gui_qt.tri_state_checkbox import STATE_OFF, TriStateCheckBox
 
 PANEL_WIDTH = 320
 

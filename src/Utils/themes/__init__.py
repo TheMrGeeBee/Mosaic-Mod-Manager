@@ -78,7 +78,7 @@ def get_ctk_appearance(theme_id: str) -> str:
     theme is missing, the attribute is absent, or the value is invalid.
     """
     try:
-        from Utils.custom_themes import is_custom_theme, get_custom_ctk_appearance
+        from Utils.custom_themes import get_custom_ctk_appearance, is_custom_theme
         if is_custom_theme(theme_id):
             return get_custom_ctk_appearance(theme_id) or "dark"
     except Exception:

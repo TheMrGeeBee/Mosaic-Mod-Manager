@@ -50,16 +50,15 @@ from __future__ import annotations
 
 import base64
 import json
-import zlib
-import zipfile
+import json as _json
 import shutil
+import tempfile
+import zipfile
+import zlib
+from datetime import datetime
 from pathlib import Path
 
-from Utils.config_paths import get_fomod_selections_path, get_bain_selections_path
-import json as _json
-import tempfile
-from datetime import datetime
-
+from Utils.config_paths import get_bain_selections_path, get_fomod_selections_path
 
 # ---------------------------------------------------------------------------
 # Row building (port of workshop_dialog._load_mods)
@@ -721,7 +720,10 @@ def _separator_blocks(entries, kept_names: set, profile_dir) -> list[dict]:
     locks = {}
     if profile_dir:
         try:
-            from Utils.profile.profile_state import read_separator_colors, read_separator_locks
+            from Utils.profile.profile_state import (
+                read_separator_colors,
+                read_separator_locks,
+            )
             colors = read_separator_colors(Path(profile_dir))
             locks = read_separator_locks(Path(profile_dir))
         except Exception:

@@ -11,14 +11,19 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PySide6.QtCore import Qt, QPointF, QTimer, Signal
-from PySide6.QtGui import QImage, QPixmap, QPainter, QColor, QBrush
+from PySide6.QtCore import QPointF, Qt, QTimer, Signal
+from PySide6.QtGui import QBrush, QColor, QImage, QPainter, QPixmap
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QSizePolicy, QComboBox,
+    QComboBox,
+    QHBoxLayout,
+    QLabel,
     QPushButton,
+    QSizePolicy,
+    QVBoxLayout,
+    QWidget,
 )
 
-from gui_qt.theme.theme_qt import active_palette, _c
+from gui_qt.theme.theme_qt import _c, active_palette
 
 PREVIEW_EXTS = {
     ".png", ".jpg", ".jpeg", ".bmp", ".gif", ".webp",
@@ -51,6 +56,7 @@ def load_qimage_bytes(data: bytes) -> QImage | None:
         return img
     try:
         import io
+
         from PIL import Image as PilImage
         with PilImage.open(io.BytesIO(data)) as im:
             im = im.convert("RGBA")

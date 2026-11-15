@@ -20,10 +20,15 @@ Usage:
 
 from __future__ import annotations
 
-from PySide6.QtCore import Qt, QPoint, Signal, QCoreApplication
+from PySide6.QtCore import QCoreApplication, QPoint, Qt, Signal
 from PySide6.QtWidgets import (
-    QTabWidget, QTabBar, QWidget, QMainWindow, QStackedWidget,
-    QLabel, QMenu,
+    QLabel,
+    QMainWindow,
+    QMenu,
+    QStackedWidget,
+    QTabBar,
+    QTabWidget,
+    QWidget,
 )
 
 # The three ways a view can be presented (see DetachableTabWidget docstring).
@@ -45,6 +50,7 @@ def _make_x11_button_probe():
     try:
         import ctypes
         import ctypes.util
+
         from PySide6.QtWidgets import QApplication
         if QApplication.instance() is None or \
                 QApplication.platformName() not in ("xcb", "x11"):
@@ -729,7 +735,7 @@ class DetachableTabWidget(QTabWidget):
                 ind.setText(QCoreApplication.translate(
                     "DetachableTabWidget", "Drop to redock"))
                 ind.setAlignment(Qt.AlignCenter)
-                from gui_qt.theme.theme_qt import active_palette, _c
+                from gui_qt.theme.theme_qt import _c, active_palette
                 acc = _c(active_palette(), "ACCENT")
                 ind.setStyleSheet(
                     f"background: rgba(61,174,233,60); color: #fff;"

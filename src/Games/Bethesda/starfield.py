@@ -3,12 +3,12 @@ starfield.py
 Starfield game handler.
 """
 
+import json
 from pathlib import Path
 
 from Games.base_game import WizardTool
-from Games.Bethesda.fallout_3 import Fallout_3
 from Games.Bethesda.bethesda_ini import _read_ini_key, _set_ini_key
-import json
+from Games.Bethesda.fallout_3 import Fallout_3
 
 
 class Starfield(Fallout_3):

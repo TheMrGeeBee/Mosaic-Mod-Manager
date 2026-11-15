@@ -9,16 +9,16 @@ key (``Nexus/nexus_api.py``): system keyring under the shared
 
 from __future__ import annotations
 
+import base64
+import hashlib
+import json as _json
+import os as _os
 from pathlib import Path
 
 import keyring  # type: ignore
 
 from Utils.app_log import app_log
 from Utils.config_paths import get_config_dir
-import base64
-import hashlib
-import json as _json
-import os as _os
 
 # Reuse the same keyring service as the Nexus key so all secrets live under
 # one logical app entry; only the user/account differs.
@@ -74,8 +74,9 @@ def _load_key_file() -> str:
     try:
         if not p.is_file():
             return ""
-        from cryptography.fernet import Fernet
         import json as _json
+
+        from cryptography.fernet import Fernet
         cipher = Fernet(_derive_key())
         data = _json.loads(cipher.decrypt(p.read_bytes()))
         return data.get("api_key", "").strip()

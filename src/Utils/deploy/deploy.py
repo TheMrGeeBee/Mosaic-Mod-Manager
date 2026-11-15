@@ -21,9 +21,9 @@ Mode modules:
   Utils.deploy.deploy_wine_dll      — Wine/Proton DLL overrides, remove_deployed_files
 """
 
+from Utils.deploy.deploy_custom_rules import *  # noqa: F401,F403
+from Utils.deploy.deploy_game_root import *  # noqa: F401,F403
+from Utils.deploy.deploy_root import *  # noqa: F401,F403
 from Utils.deploy.deploy_shared import *  # noqa: F401,F403
 from Utils.deploy.deploy_standard import *  # noqa: F401,F403
-from Utils.deploy.deploy_root import *  # noqa: F401,F403
-from Utils.deploy.deploy_game_root import *  # noqa: F401,F403
-from Utils.deploy.deploy_custom_rules import *  # noqa: F401,F403
 from Utils.deploy.deploy_wine_dll import *  # noqa: F401,F403

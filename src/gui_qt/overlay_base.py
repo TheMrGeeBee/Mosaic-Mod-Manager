@@ -21,10 +21,10 @@ differ override ``_reposition()`` / ``_finish()``.
 
 from __future__ import annotations
 
-from PySide6.QtCore import Qt, QEvent
-from PySide6.QtWidgets import QWidget, QFrame, QVBoxLayout
+from PySide6.QtCore import QEvent, Qt
+from PySide6.QtWidgets import QFrame, QVBoxLayout, QWidget
 
-from gui_qt.theme.theme_qt import active_palette, _c
+from gui_qt.theme.theme_qt import _c, active_palette
 
 
 class OverlayBase(QWidget):

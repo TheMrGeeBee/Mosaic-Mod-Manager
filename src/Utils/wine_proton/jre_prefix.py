@@ -12,9 +12,9 @@ worker thread; progress and errors are reported through log_fn only.
 
 from __future__ import annotations
 
+import tempfile
 import zipfile
 from pathlib import Path
-import tempfile
 
 # Liberica Full 8 (Windows x64) — bundles JavaFX. Pinned to a known-good build;
 # BellSoft keeps old builds available indefinitely.

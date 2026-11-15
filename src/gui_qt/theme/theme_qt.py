@@ -8,12 +8,12 @@ mechanism the Tk app uses.
 
 from __future__ import annotations
 
+import tempfile
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 from Utils.themes import load_palettes
 from Utils.ui_config import get_appearance_mode
-import tempfile
 
 if TYPE_CHECKING:
     from PySide6.QtGui import QColor, QPalette
@@ -48,8 +48,8 @@ def _tinted_icon_url(name: str, color: str) -> str:
     safe_color = color.lstrip("#").lower() or "none"
     out = cache_dir / f"{Path(name).stem}_{safe_color}.png"
     if not out.is_file():
-        from PySide6.QtGui import QPixmap, QPainter, QColor
         from PySide6.QtCore import Qt
+        from PySide6.QtGui import QColor, QPainter, QPixmap
         pm = QPixmap(str(src))
         if pm.isNull():
             return _icon_url(name)
@@ -570,7 +570,7 @@ def build_qpalette(p: dict) -> "QPalette":
     tooltips, disabled states) read the theme colours even where QSS doesn't
     reach. Applied app-wide at startup; also set on the theme editor's preview
     subtree so its stock-widget bits track the working palette."""
-    from PySide6.QtGui import QPalette, QColor
+    from PySide6.QtGui import QColor, QPalette
 
     c = lambda k: QColor(_c(p, k))
     pal = QPalette()

@@ -19,9 +19,9 @@ set by app._reload_plugins). The rest are gated greyed stubs.
 
 from __future__ import annotations
 
-from PySide6.QtWidgets import QMenu
+from PySide6.QtCore import QT_TRANSLATE_NOOP, QCoreApplication
 from PySide6.QtGui import QAction
-from PySide6.QtCore import QCoreApplication, QT_TRANSLATE_NOOP
+from PySide6.QtWidgets import QMenu
 
 
 def _mt(label: str) -> str:
@@ -198,7 +198,7 @@ def _build_esl_items(view, model, esl_rows, multi, act, stub):
     game_type_attr = getattr(game, "loot_game_type", "") or ""
     paths = _plugin_paths(view)
 
-    from Utils.plugins.plugin_parser import is_esl_flagged, check_esl_eligible
+    from Utils.plugins.plugin_parser import check_esl_eligible, is_esl_flagged
 
     def esl_state(i):
         p = paths.get(model.row(i).name.lower())
@@ -254,7 +254,7 @@ def _set_enabled(view, indices, enabled: bool):
 def _toggle_esl(view, indices, enable: bool):
     """Port of Tk _toggle_esl_flag: skip .esl / unknown-path / ineligible rows,
     write the header flag, then refresh so the flag column repaints."""
-    from Utils.plugins.plugin_parser import set_esl_flag, check_esl_eligible
+    from Utils.plugins.plugin_parser import check_esl_eligible, set_esl_flag
     model = view.model()
     game = getattr(view, "game", None)
     game_type_attr = getattr(game, "loot_game_type", "") or ""

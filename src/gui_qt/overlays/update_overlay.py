@@ -14,12 +14,17 @@ a beta).
 
 from __future__ import annotations
 
-from PySide6.QtCore import Qt, QEvent
+from PySide6.QtCore import QEvent, Qt
 from PySide6.QtWidgets import (
-    QFrame, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QCheckBox,
+    QCheckBox,
+    QFrame,
+    QHBoxLayout,
+    QLabel,
+    QPushButton,
+    QVBoxLayout,
 )
 
-from gui_qt.theme.theme_qt import active_palette, _c
+from gui_qt.theme.theme_qt import _c, active_palette
 from Utils.version_check import _APP_UPDATE_RELEASES_URL, _AUR_PACKAGE_URL
 
 

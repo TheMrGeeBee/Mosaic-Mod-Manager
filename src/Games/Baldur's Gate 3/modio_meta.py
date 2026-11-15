@@ -28,8 +28,10 @@ from __future__ import annotations
 
 import configparser
 import hashlib
+import html
 import importlib.util
 import re
+import sys
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -37,8 +39,6 @@ from typing import Callable, Optional
 
 from Utils.app_log import app_log
 from Utils.archives.pak_reader import extract_meta_lsx
-import sys
-import html
 
 _SECTION = "General"
 

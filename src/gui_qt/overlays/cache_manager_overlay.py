@@ -17,13 +17,20 @@ import threading
 
 from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtWidgets import (
-    QWidget, QFrame, QVBoxLayout, QHBoxLayout, QLabel, QCheckBox, QPushButton,
-    QScrollArea, QSizePolicy,
+    QCheckBox,
+    QFrame,
+    QHBoxLayout,
+    QLabel,
+    QPushButton,
+    QScrollArea,
+    QSizePolicy,
+    QVBoxLayout,
+    QWidget,
 )
 
 from gui_qt.overlay_base import OverlayBase
-from gui_qt.theme.theme_qt import active_palette, _c
 from gui_qt.overlays.confirm_overlay import ConfirmOverlay
+from gui_qt.theme.theme_qt import _c, active_palette
 from Utils.config_paths import get_download_cache_dir
 
 # Sentinel key (in the checkbox / size-label dicts) for the orphaned-temp row —
@@ -341,8 +348,7 @@ class CacheManagerOverlay(OverlayBase):
             cleared = 0
             errors: list = []
             try:
-                from Utils.cache_tools import (
-                    clear_game_caches, clear_orphaned_tmp_dirs)
+                from Utils.cache_tools import clear_game_caches, clear_orphaned_tmp_dirs
                 c, e = clear_game_caches(games)
                 cleared += c
                 errors += e

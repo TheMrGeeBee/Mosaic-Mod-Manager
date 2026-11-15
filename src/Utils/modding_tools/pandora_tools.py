@@ -81,9 +81,9 @@ def run_pandora(exe: Path, game: "BaseGame", proton_script: Path,
     Pandora's .NET/renderer tweaks re-applied; prefix prep (registry seed,
     Settings.json) still happens the same way.
     """
-    from Utils.wine_proton.bethesda_registry import maybe_register_for_game
     from Utils.exe_launch.exe_args_builder import _bootstrap_pandora_settings
     from Utils.exe_launch.exe_launch import shutdown_prefix_wineserver
+    from Utils.wine_proton.bethesda_registry import maybe_register_for_game
     from Utils.wine_proton.wine_paths import to_wine_path
 
     game_path = game.get_game_path()

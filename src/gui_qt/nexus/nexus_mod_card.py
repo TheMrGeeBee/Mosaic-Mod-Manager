@@ -17,15 +17,21 @@ from __future__ import annotations
 import threading
 from collections import OrderedDict
 from datetime import datetime, timezone
+from html import escape
 
-from PySide6.QtCore import Qt, QObject, Signal, QCoreApplication
-from PySide6.QtGui import QPixmap, QImage, QFontMetrics, QTextLayout
+from PySide6.QtCore import QCoreApplication, QObject, Qt, Signal
+from PySide6.QtGui import QFontMetrics, QImage, QPixmap, QTextLayout
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QFrame, QCheckBox,
+    QCheckBox,
+    QFrame,
+    QHBoxLayout,
+    QLabel,
+    QPushButton,
+    QVBoxLayout,
+    QWidget,
 )
 
-from gui_qt.theme.theme_qt import active_palette, _c, contrast_text
-from html import escape
+from gui_qt.theme.theme_qt import _c, active_palette, contrast_text
 
 CARD_W = 300
 CARD_H = 392
@@ -187,6 +193,7 @@ class ThumbnailLoader(QObject):
         img = QImage()
         try:
             import requests
+
             from Utils.ca_bundle import resolve_ca_bundle
             resp = requests.get(url, timeout=10, verify=resolve_ca_bundle() or True)
             if resp.ok:

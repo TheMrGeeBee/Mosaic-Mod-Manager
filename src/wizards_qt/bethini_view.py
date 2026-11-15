@@ -13,8 +13,8 @@ import threading
 from typing import TYPE_CHECKING
 
 from gui_qt.safe_emit import safe_emit
-from wizards_qt._view_base import GREEN, RED, WizardViewBase
 from Utils.modding_tools.xedit_tools import tool_exe_path
+from wizards_qt._view_base import GREEN, RED, WizardViewBase
 
 if TYPE_CHECKING:
     from Games.base_game import BaseGame
@@ -99,8 +99,12 @@ class BethiniView(WizardViewBase):
 
         def worker():
             from Utils.exe_launch.exe_launch import (
-                PREFIX_MODE_GAME, link_mygames, link_plugins_txt,
-                resolve_tool_prefix, run_tool_logged, shutdown_prefix_wineserver,
+                PREFIX_MODE_GAME,
+                link_mygames,
+                link_plugins_txt,
+                resolve_tool_prefix,
+                run_tool_logged,
+                shutdown_prefix_wineserver,
             )
             _wlog = lambda m: self._log(f"BethINI Wizard: {m}")
             try:
@@ -120,7 +124,9 @@ class BethiniView(WizardViewBase):
                 # bare tool launch can't resolve (idempotent, so a
                 # correctly-registered prefix just skips the write).
                 try:
-                    from Utils.wine_proton.bethesda_registry import maybe_register_for_game
+                    from Utils.wine_proton.bethesda_registry import (
+                        maybe_register_for_game,
+                    )
                     maybe_register_for_game(
                         prefix_dir=compat_data,
                         proton_script=proton_script,

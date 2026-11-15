@@ -16,12 +16,11 @@ To add support for a new tool, add a single entry to EXE_PROFILES below.
 from __future__ import annotations
 
 import json
-from pathlib import Path
 import xml.etree.ElementTree as ET
+from pathlib import Path
 from typing import Callable, NamedTuple
 
 from Utils.wine_proton.wine_paths import to_wine_path as _to_wine_path
-
 
 # ---------------------------------------------------------------------------
 # Profile definition
@@ -497,6 +496,7 @@ def _bootstrap_pandora_settings(
 
 
 from Utils.config_paths import get_exe_args_path  # noqa: E402
+
 _EXE_ARGS_FILE = get_exe_args_path()
 
 def update_witcher3_script_merger_config(game_root: Path, exe_path: Path) -> bool:

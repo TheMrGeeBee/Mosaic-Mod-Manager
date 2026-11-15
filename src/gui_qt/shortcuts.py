@@ -28,18 +28,23 @@ Ctrl+F) and while an overlay / modal is open — mirroring the Tk guard.
 
 from __future__ import annotations
 
+import sys
+
+from PySide6.QtCore import QEvent, QItemSelection, QItemSelectionModel, QObject, Qt
+from PySide6.QtGui import QKeySequence, QShortcut
+from PySide6.QtWidgets import (
+    QAbstractSpinBox,
+    QApplication,
+    QComboBox,
+    QLineEdit,
+    QPlainTextEdit,
+    QTextEdit,
+    QWidget,
+)
+
 # Crash-proof diagnostic prints (Flatpak stdout can raise BrokenPipeError and
 # kill worker threads). See Utils.app_log.safe_print.
 from Utils.app_log import safe_print as print  # noqa: A004
-
-from PySide6.QtCore import Qt, QObject, QEvent, QItemSelection, QItemSelectionModel
-from PySide6.QtGui import QShortcut, QKeySequence
-from PySide6.QtWidgets import (
-    QApplication, QLineEdit, QPlainTextEdit, QTextEdit,
-    QAbstractSpinBox, QComboBox, QWidget,
-)
-import sys
-
 
 # ---------------------------------------------------------------------------
 # Guards

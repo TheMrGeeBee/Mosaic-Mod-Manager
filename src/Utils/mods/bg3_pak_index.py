@@ -757,7 +757,7 @@ def _same_modules(index, priority, order) -> list[Finding]:
     for mods, keys in groups.items():
         same_file = any(k.startswith("file:") for k in keys)
         winner = mods[0] if same_file else None   # top of the list wins the file
-        note = (f"These are the same module, so only one is used"
+        note = ("These are the same module, so only one is used"
                 + (f": {winner}'s copy is the one deployed, because it's "
                    "higher in your list." if winner else ".")
                 + " If one replaces the other (e.g. KAVT replaces Unique Tav), "

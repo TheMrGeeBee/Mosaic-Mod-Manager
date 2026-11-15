@@ -21,17 +21,33 @@ from pathlib import Path
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QLabel, QPushButton,
-    QListWidget, QListWidgetItem, QAbstractItemView,
+    QAbstractItemView,
+    QGridLayout,
+    QHBoxLayout,
+    QLabel,
+    QListWidget,
+    QListWidgetItem,
+    QPushButton,
+    QVBoxLayout,
+    QWidget,
 )
 
-from gui_qt.theme.theme_qt import active_palette, _c, danger_close_button, button_qss
-from gui_qt.overlays.text_input_overlay import TextInputOverlay
 from gui_qt.overlays.confirm_overlay import ConfirmOverlay
+from gui_qt.overlays.text_input_overlay import TextInputOverlay
+from gui_qt.theme.theme_qt import _c, active_palette, button_qss, danger_close_button
 from Utils.profile.profile_backup import (
-    create_backup, list_backups, restore_backup, backup_stats, delete_backup,
-    is_backup_kept, set_backup_kept, get_backup_label, set_backup_label,
-    is_backup_manual, is_backup_user_made, purge_old_backups,
+    backup_stats,
+    create_backup,
+    delete_backup,
+    get_backup_label,
+    is_backup_kept,
+    is_backup_manual,
+    is_backup_user_made,
+    list_backups,
+    purge_old_backups,
+    restore_backup,
+    set_backup_kept,
+    set_backup_label,
 )
 
 # Human-friendly weekday + date + time, e.g. "Fri 04 Jul 2026 · 14:30".

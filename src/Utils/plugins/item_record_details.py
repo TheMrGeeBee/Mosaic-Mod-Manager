@@ -60,7 +60,11 @@ from Utils.plugins import armor_record_details, armor_records
 from Utils.plugins.esp_records import Record, read_records
 from Utils.plugins.formid_resolve import build_display_order, display_formid, resolve
 from Utils.plugins.plugin_parser import is_esl_flagged, read_masters
-from Utils.plugins.record_info import RecordInfo, classify_by_keyword_prefix, read_edid_full
+from Utils.plugins.record_info import (
+    RecordInfo,
+    classify_by_keyword_prefix,
+    read_edid_full,
+)
 from Utils.plugins.string_table import is_localized, load_strings_table
 
 _DELETED_FLAG = 0x00000020

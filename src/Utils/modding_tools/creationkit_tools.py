@@ -8,11 +8,11 @@ wizard view can share it.
 from __future__ import annotations
 
 import json
+import shutil
+import tempfile
 import urllib.request
 from pathlib import Path
 from typing import TYPE_CHECKING, Callable
-import shutil
-import tempfile
 
 if TYPE_CHECKING:
     from Games.base_game import BaseGame
@@ -80,8 +80,8 @@ def install_ckpe_mod(game: "BaseGame", *,
     """
 
     from Utils.ca_bundle import download_file, get_ssl_context
-    from Utils.wizard_support.wizard_archives import extract_archive
     from Utils.mods.install_as_mod import index_installed_mod, register_as_mod_neutral
+    from Utils.wizard_support.wizard_archives import extract_archive
 
     req = urllib.request.Request(
         CKPE_GITHUB_API,

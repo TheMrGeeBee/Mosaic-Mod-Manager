@@ -648,7 +648,10 @@ def apply_version(game_root, entry: VersionEntry, depot_dirs: "dict[str, Path]",
             removed.append(rel)
             record[rel]["removed"] = True
         if exe_file and entry.exe_version:
-            from Utils.wizard_support.pe_version import format_version, read_file_version
+            from Utils.wizard_support.pe_version import (
+                format_version,
+                read_file_version,
+            )
             got = read_file_version(game_root / exe_file)
             if got is None or format_version(got) != entry.exe_version:
                 raise VersionSwitchError(

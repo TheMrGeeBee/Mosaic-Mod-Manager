@@ -13,12 +13,21 @@ from pathlib import Path
 
 from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QTreeView, QLabel, QAbstractItemView,
+    QAbstractItemView,
+    QHBoxLayout,
+    QLabel,
+    QTreeView,
+    QVBoxLayout,
+    QWidget,
 )
 
 import Utils.mods.mod_files as mflogic
 from gui_qt.mod_files.mod_files_model import (
-    ModFilesModel, _Node, COL_NAME, COL_TOPLEVEL, COL_DISABLE,
+    COL_DISABLE,
+    COL_NAME,
+    COL_TOPLEVEL,
+    ModFilesModel,
+    _Node,
 )
 
 

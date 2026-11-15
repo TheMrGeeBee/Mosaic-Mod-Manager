@@ -28,6 +28,7 @@ exes just report and continue — a failure never blocks finishing the wizard).
 
 from __future__ import annotations
 
+import dataclasses
 import threading
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -37,7 +38,6 @@ from PySide6.QtWidgets import QCheckBox, QHBoxLayout, QPushButton, QWidget
 
 from gui_qt.safe_emit import safe_emit
 from wizards_qt._view_base import GREEN, RED, WizardViewBase
-import dataclasses
 
 if TYPE_CHECKING:
     from Games.base_game import BaseGame
@@ -350,7 +350,10 @@ class CuratedProfileView(WizardViewBase):
 
         def worker():
             from Utils.modding_tools.fnv4gb_tools import (
-                BACKUP_NAME, EXE_NAME, inspect_exe, restore_backup,
+                BACKUP_NAME,
+                EXE_NAME,
+                inspect_exe,
+                restore_backup,
             )
             try:
                 if game_root is not None and game_root.is_dir():
@@ -468,7 +471,10 @@ class CuratedProfileView(WizardViewBase):
         # unpatched FalloutNV.exe. Failure never blocks finishing the wizard.
         def worker():
             from Utils.modding_tools.fnv4gb_tools import (
-                BACKUP_NAME, EXE_NAME, apply_4gb_patch, inspect_exe,
+                BACKUP_NAME,
+                EXE_NAME,
+                apply_4gb_patch,
+                inspect_exe,
             )
             try:
                 if game_root is None or not game_root.is_dir():

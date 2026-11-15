@@ -14,14 +14,29 @@ import threading
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QCheckBox,
-    QScrollArea, QFrame,
+    QCheckBox,
+    QFrame,
+    QHBoxLayout,
+    QLabel,
+    QPushButton,
+    QScrollArea,
+    QVBoxLayout,
+    QWidget,
 )
 
-from gui_qt.theme.theme_qt import active_palette, _c, danger_close_button, button_qss, err_text
 from gui_qt.safe_emit import safe_emit
+from gui_qt.theme.theme_qt import (
+    _c,
+    active_palette,
+    button_qss,
+    danger_close_button,
+    err_text,
+)
 from Utils.wine_proton.prefix_manager import (
-    PrefixEntry, enumerate_prefixes, fmt_size, get_dir_size,
+    PrefixEntry,
+    enumerate_prefixes,
+    fmt_size,
+    get_dir_size,
     is_deletable_prefix,
 )
 

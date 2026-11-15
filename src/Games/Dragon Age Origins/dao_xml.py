@@ -28,10 +28,10 @@ the content behind an online/DLC-key check.
 
 from __future__ import annotations
 
+import os
 import shutil
 from pathlib import Path
 from xml.etree import ElementTree as ET
-import os
 
 # (subdir, manifest item tag, list root tag, output filename, gold baseline)
 # The gold files (DAO_Addins.xml / DAO_Offers.xml) are vendored from the MO2 DAO

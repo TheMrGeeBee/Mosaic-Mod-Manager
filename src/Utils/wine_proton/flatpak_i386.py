@@ -23,10 +23,10 @@ from __future__ import annotations
 import os
 import shutil
 import subprocess
+from pathlib import Path
 from typing import Callable
 
 from Utils.app_log import safe_log as _safe_log
-from pathlib import Path
 
 # Extension refs the sandbox needs for 32-bit support. Branches MUST match the
 # manifest's add-extensions block in flatpak/io.github.TheMrGeeBee.MosaicModManager.yml.
@@ -88,7 +88,8 @@ def preflight_i386_error(proton_script) -> "str | None":
     if not i386_support_missing():
         return None
     from Utils.wine_proton.steam_finder import (
-        _proton_script_in_steam_flatpak, _own_process_in_steam_flatpak,
+        _own_process_in_steam_flatpak,
+        _proton_script_in_steam_flatpak,
     )
     script = Path(proton_script)
     if script.name in ("wine", "wine64"):

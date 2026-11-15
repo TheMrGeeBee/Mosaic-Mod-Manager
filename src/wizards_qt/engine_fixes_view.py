@@ -13,13 +13,21 @@ from typing import TYPE_CHECKING
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
-    QButtonGroup, QFrame, QHBoxLayout, QLabel, QLineEdit, QPushButton,
-    QRadioButton, QScrollArea, QVBoxLayout, QWidget,
+    QButtonGroup,
+    QFrame,
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QPushButton,
+    QRadioButton,
+    QScrollArea,
+    QVBoxLayout,
+    QWidget,
 )
 
-from gui_qt.theme.theme_qt import active_palette, _c
-from wizards_qt._view_base import GREEN, RED, WizardViewBase
 import Utils.modding_tools.engine_fixes_config as cfg
+from gui_qt.theme.theme_qt import _c, active_palette
+from wizards_qt._view_base import GREEN, RED, WizardViewBase
 
 if TYPE_CHECKING:
     from Games.base_game import BaseGame

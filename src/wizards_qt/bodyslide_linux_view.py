@@ -13,6 +13,7 @@ entry, same shape as the Proton wizard) -> run.
 
 from __future__ import annotations
 
+import subprocess
 import threading
 from typing import TYPE_CHECKING
 
@@ -20,9 +21,8 @@ from PySide6.QtCore import Signal
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QLineEdit, QWidget
 
 from gui_qt.safe_emit import safe_emit
-from wizards_qt._view_base import GREEN, RED, WizardViewBase
 from Utils.modding_tools.bodyslide_tools import sanitize_output_name
-import subprocess
+from wizards_qt._view_base import GREEN, RED, WizardViewBase
 
 if TYPE_CHECKING:
     from Games.base_game import BaseGame
@@ -119,8 +119,8 @@ class BodySlideLinuxView(WizardViewBase):
 
         self._deploy_status = self._make_status(lay)
         lay.addStretch(1)
-        from PySide6.QtWidgets import QPushButton
         from PySide6.QtCore import Qt
+        from PySide6.QtWidgets import QPushButton
         brow = QWidget()
         bh = QHBoxLayout(brow); bh.setContentsMargins(0, 8, 0, 0); bh.setSpacing(8)
         bh.addStretch(1)

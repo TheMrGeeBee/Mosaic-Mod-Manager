@@ -12,7 +12,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-
 CET_ASI = "cyber_engine_tweaks.asi"
 
 

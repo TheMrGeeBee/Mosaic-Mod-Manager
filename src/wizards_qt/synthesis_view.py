@@ -13,12 +13,17 @@ from typing import TYPE_CHECKING
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
-    QButtonGroup, QPlainTextEdit, QProgressBar, QRadioButton, QScrollArea,
-    QVBoxLayout, QWidget,
+    QButtonGroup,
+    QPlainTextEdit,
+    QProgressBar,
+    QRadioButton,
+    QScrollArea,
+    QVBoxLayout,
+    QWidget,
 )
 
 from gui_qt.safe_emit import safe_emit
-from gui_qt.theme.theme_qt import active_palette, _c
+from gui_qt.theme.theme_qt import _c, active_palette
 from wizards_qt._view_base import GREEN, RED, WizardViewBase
 
 if TYPE_CHECKING:
@@ -202,7 +207,9 @@ class SynthesisView(WizardViewBase):
 
     def _do_setup(self):
         from Utils.modding_tools.synthesis_setup import (
-            setup_synthesis_prefix, synthesis_dir, synthesis_prefix_parent,
+            setup_synthesis_prefix,
+            synthesis_dir,
+            synthesis_prefix_parent,
         )
         game_path = self._game.get_game_path()
         if game_path is None:
@@ -261,7 +268,10 @@ class SynthesisView(WizardViewBase):
 
     def _do_launch(self):
         from Utils.modding_tools.synthesis_setup import (
-            launch_synthesis, remove_symlinks, symlink_mygames, symlink_plugins,
+            launch_synthesis,
+            remove_symlinks,
+            symlink_mygames,
+            symlink_plugins,
         )
         profile = self._current_profile()
         self._plugins_links = symlink_plugins(

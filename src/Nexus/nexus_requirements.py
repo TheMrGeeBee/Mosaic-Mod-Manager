@@ -29,7 +29,10 @@ import requests
 
 from Nexus.nexus_api import NexusAPI, NexusModRequirement, NexusModUpdateInfo
 from Nexus.nexus_meta import (
-    NexusModMeta, format_external_reqs, scan_installed_mods, write_meta,
+    NexusModMeta,
+    format_external_reqs,
+    scan_installed_mods,
+    write_meta,
 )
 from Utils.ca_bundle import resolve_ca_bundle
 from Utils.config_paths import get_requirement_external_tool_mod_ids_path

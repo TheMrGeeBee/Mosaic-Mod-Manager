@@ -11,8 +11,10 @@ from pathlib import Path
 from typing import Optional
 
 from Utils.downloads.download_locations import (
-    is_default_downloads_disabled, is_cache_default_disabled,
-    get_default_downloads_dir, load_extra_download_locations,
+    get_default_downloads_dir,
+    is_cache_default_disabled,
+    is_default_downloads_disabled,
+    load_extra_download_locations,
 )
 
 _ARCHIVE_EXTS = {".zip", ".7z", ".rar", ".tar", ".tar.gz", ".tar.bz2", ".tar.xz",

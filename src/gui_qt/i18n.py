@@ -35,7 +35,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PySide6.QtCore import QLocale, QTranslator, QLibraryInfo
+from PySide6.QtCore import QLibraryInfo, QLocale, QTranslator
 
 # Built-in translations/ sits next to the icons/ dir at the src/ root.
 TRANSLATIONS_DIR = Path(__file__).resolve().parent.parent / "translations"

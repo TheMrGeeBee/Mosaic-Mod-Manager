@@ -13,11 +13,11 @@ curator built the patch against).
 
 from __future__ import annotations
 
+import configparser
 import zlib
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
-import configparser
 
 try:
     import bsdiff4  # type: ignore

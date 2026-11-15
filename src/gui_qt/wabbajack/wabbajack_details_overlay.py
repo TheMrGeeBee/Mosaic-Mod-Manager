@@ -17,7 +17,12 @@ import threading
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
-    QHBoxLayout, QLabel, QProgressBar, QPushButton, QScrollArea, QWidget,
+    QHBoxLayout,
+    QLabel,
+    QProgressBar,
+    QPushButton,
+    QScrollArea,
+    QWidget,
 )
 
 from gui_qt.overlay_base import OverlayBase

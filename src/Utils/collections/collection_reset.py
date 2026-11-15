@@ -16,8 +16,7 @@ import re
 from pathlib import Path
 
 from Utils.atomic_write import write_atomic_text
-from Utils.mods.modlist import write_modlist, ModEntry
-
+from Utils.mods.modlist import ModEntry, write_modlist
 
 # ---------------------------------------------------------------------------
 # Priority resolution (moved verbatim from collections_dialog.py)
@@ -509,7 +508,9 @@ def reset_collection_load_order(profile_dir: Path, manifest: dict,
         # (unsorted) manifest order — see project_qt_collection_loot_sort.
         try:
             from Utils.collections.collection_install import (
-                _write_collection_plugins, _loot_available)
+                _loot_available,
+                _write_collection_plugins,
+            )
             if getattr(game, "loot_sort_enabled", False) and _loot_available():
                 try:
                     from Utils.deploy.deploy_pipeline import _build_filemap_for_game

@@ -13,11 +13,15 @@ from html import escape
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
-    QWidget, QHBoxLayout, QLabel, QPushButton, QTextEdit,
+    QHBoxLayout,
+    QLabel,
+    QPushButton,
+    QTextEdit,
+    QWidget,
 )
 
 from gui_qt.overlay_base import OverlayBase
-from gui_qt.theme.theme_qt import active_palette, _c
+from gui_qt.theme.theme_qt import _c, active_palette
 
 
 def parse_overwrite_log(text: str) -> "list[tuple[str, list[str]]]":

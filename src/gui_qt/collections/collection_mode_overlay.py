@@ -22,12 +22,17 @@ from __future__ import annotations
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
-    QHBoxLayout, QLabel, QPushButton, QRadioButton, QCheckBox, QComboBox,
     QButtonGroup,
+    QCheckBox,
+    QComboBox,
+    QHBoxLayout,
+    QLabel,
+    QPushButton,
+    QRadioButton,
 )
 
 from gui_qt.overlay_base import OverlayBase
-from gui_qt.theme.theme_qt import active_palette, _c
+from gui_qt.theme.theme_qt import _c, active_palette
 
 
 class _BaseModeOverlay(OverlayBase):

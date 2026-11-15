@@ -10,22 +10,42 @@ Colours come from the active palette so themes carry over.
 
 from __future__ import annotations
 
-from PySide6.QtCore import Qt, QRect, QSize, QEvent, QT_TRANSLATE_NOOP
-from PySide6.QtGui import QColor, QFont, QPen, QBrush
-from PySide6.QtWidgets import QStyledItemDelegate, QStyle, QToolTip
+from PySide6.QtCore import QT_TRANSLATE_NOOP, QEvent, QRect, QSize, Qt
+from PySide6.QtGui import QBrush, QColor, QFont, QPen
+from PySide6.QtWidgets import QStyle, QStyledItemDelegate, QToolTip
 
-from gui_qt.theme.theme_qt import active_palette, _c, qc, qc_contrast
 from gui_qt.icons import icon
-from gui_qt.modlist.modlist_model import (
-    EntryRole, ConflictRole, BsaConflictRole, FlagsRole, HighlightRole,
-    COL_NAME, COL_FLAGS, COL_CONFLICTS, COL_PRIORITY, COL_LOCKED,
-)
 from gui_qt.modlist.modlist_data import (
-    FLAG_UPDATE, FLAG_ENDORSED, FLAG_ROOT, FLAG_MODIFIED_MF, FLAG_MISSING_REQS,
-    FLAG_COLLECTION_BUNDLED, FLAG_COLLECTION_PATCHED, FLAG_NOTE, FLAG_XEDIT,
-    FLAG_BUNDLE, FLAG_MODIO_UPDATE, FLAG_PRERTX, FLAG_ROOT_RULE,
-    FLAG_RERUN_FOMOD, FLAG_MODIO_LIKED, FLAG_COLLECTION_ORDER_LOCKED,
+    FLAG_BUNDLE,
+    FLAG_COLLECTION_BUNDLED,
+    FLAG_COLLECTION_ORDER_LOCKED,
+    FLAG_COLLECTION_PATCHED,
+    FLAG_ENDORSED,
+    FLAG_MISSING_REQS,
+    FLAG_MODIFIED_MF,
+    FLAG_MODIO_LIKED,
+    FLAG_MODIO_UPDATE,
+    FLAG_NOTE,
+    FLAG_PRERTX,
+    FLAG_RERUN_FOMOD,
+    FLAG_ROOT,
+    FLAG_ROOT_RULE,
+    FLAG_UPDATE,
+    FLAG_XEDIT,
 )
+from gui_qt.modlist.modlist_model import (
+    COL_CONFLICTS,
+    COL_FLAGS,
+    COL_LOCKED,
+    COL_NAME,
+    COL_PRIORITY,
+    BsaConflictRole,
+    ConflictRole,
+    EntryRole,
+    FlagsRole,
+    HighlightRole,
+)
+from gui_qt.theme.theme_qt import _c, active_palette, qc, qc_contrast
 
 # Flag bit → icon filename, painted left-to-right in the Flags column, in the
 # SAME order as the Tk modlist (gui/modlist_panel.py ~2878): note, bundle,
@@ -353,8 +373,11 @@ class ModRowDelegate(QStyledItemDelegate):
         text_color = text_color or self.c_sep_text
         # Boundary separators (Overwrite / Root Folder) are pinned + not
         # collapsible/lockable: just a centred name + strikethrough, no controls.
-        from gui_qt.modlist.modlist_model import (_BOUNDARY_NAMES, ROOT_FOLDER_NAME,
-                                          OVERWRITE_NAME)
+        from gui_qt.modlist.modlist_model import (
+            _BOUNDARY_NAMES,
+            OVERWRITE_NAME,
+            ROOT_FOLDER_NAME,
+        )
         if e.name in _BOUNDARY_NAMES:
             p.setFont(self.f_bold)
             cy = r.center().y()

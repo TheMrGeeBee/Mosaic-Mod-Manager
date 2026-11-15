@@ -22,7 +22,6 @@ from pathlib import Path
 from Utils.mods.modlist import ModEntry, read_modlist, write_modlist
 from Utils.mods.modsettings import scan_mod_paks
 
-
 # ---------------------------------------------------------------------------
 # Parsing the BG3MM JSON
 # ---------------------------------------------------------------------------

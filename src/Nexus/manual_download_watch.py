@@ -24,9 +24,11 @@ import time
 from pathlib import Path
 from typing import Callable
 
-from Utils.downloads.download_locations import (
-    is_default_downloads_disabled, load_extra_download_locations)
 from Nexus.nexus_download import _find_cached_archive, _get_downloads_dir
+from Utils.downloads.download_locations import (
+    is_default_downloads_disabled,
+    load_extra_download_locations,
+)
 
 # In-flight browser download names (exact final name + suffix): Firefox
 # .part, Chromium .crdownload, Safari .download. Only used to surface

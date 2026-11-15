@@ -27,7 +27,6 @@ from Utils.deploy.deploy_shared import (
     _restore_backup_dir,
 )
 
-
 # Name of the sibling directory used to back up pre-existing root files.
 _ROOT_BACKUP_NAME = "Root_Backup"
 # Name of the log file written next to Root_Folder/ recording what was placed.

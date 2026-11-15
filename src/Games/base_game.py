@@ -64,7 +64,10 @@ def _ensure_lutris_prefix_compat(prefix_path: "Path | None") -> None:
     if prefix_path is None:
         return
     try:
-        from Utils.wine_proton.lutris_finder import is_lutris_prefix, ensure_steamuser_compat
+        from Utils.wine_proton.lutris_finder import (
+            ensure_steamuser_compat,
+            is_lutris_prefix,
+        )
         if is_lutris_prefix(prefix_path):
             ensure_steamuser_compat(prefix_path)
     except Exception:
@@ -1496,7 +1499,7 @@ class BaseGame(ABC):
         if getattr(self, "_defer_runtime_snapshot", False):
             self._deferred_snapshot_requested = True
             return
-        from Utils.deploy.deploy import _write_deploy_snapshot, _FILEMAP_SNAPSHOT_NAME
+        from Utils.deploy.deploy import _FILEMAP_SNAPSHOT_NAME, _write_deploy_snapshot
         gp = self.get_game_path()
         if not gp:
             return
@@ -1511,7 +1514,7 @@ class BaseGame(ABC):
 
         No-op if no snapshot exists.  Deletes the snapshot after sweeping.
         """
-        from Utils.deploy.deploy import _move_runtime_files, _FILEMAP_SNAPSHOT_NAME
+        from Utils.deploy.deploy import _FILEMAP_SNAPSHOT_NAME, _move_runtime_files
         gp = self.get_game_path()
         snap = self.get_effective_filemap_path().parent / _FILEMAP_SNAPSHOT_NAME
         if not (gp and snap.is_file()):
@@ -1919,7 +1922,10 @@ class BaseGame(ABC):
         # Non-default profile. Build the current effective value for each field
         # (global overlaid with the existing override) and pin only the fields
         # that the incoming value actually changes.
-        from Utils.profile.profile_state import merge_profile_settings, read_profile_settings
+        from Utils.profile.profile_state import (
+            merge_profile_settings,
+            read_profile_settings,
+        )
         glb = self._read_global_paths()
         existing = read_profile_settings(self._active_profile_dir)
         extras = self._save_paths_extra()

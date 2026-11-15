@@ -39,9 +39,12 @@ import msgpack
 if TYPE_CHECKING:
     from typing import Callable
 
-from Utils.atomic_write import atomic_writer
 from Utils.archives.bsa_reader import read_bsa_file_list
-from Utils.archives.ue_pak_reader import UE_ARCHIVE_EXTENSIONS, read_ue_archive_file_list
+from Utils.archives.ue_pak_reader import (
+    UE_ARCHIVE_EXTENSIONS,
+    read_ue_archive_file_list,
+)
+from Utils.atomic_write import atomic_writer
 from Utils.filemap import (
     CONFLICT_NONE,
     _compute_conflict_status,

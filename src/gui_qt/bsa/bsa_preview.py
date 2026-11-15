@@ -19,18 +19,23 @@ arrive when ready.
 
 from __future__ import annotations
 
+import threading
 from pathlib import Path
 
-from PySide6.QtCore import Qt, QModelIndex, QAbstractItemModel, QRect, Signal
+from PySide6.QtCore import QAbstractItemModel, QModelIndex, QRect, Qt, Signal
 from PySide6.QtGui import QColor, QFont
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QLabel, QTreeView, QAbstractItemView, QSizePolicy,
+    QAbstractItemView,
+    QLabel,
+    QSizePolicy,
     QStyledItemDelegate,
+    QTreeView,
+    QVBoxLayout,
+    QWidget,
 )
 
-from gui_qt.theme.theme_qt import active_palette, _c
 from gui_qt.icons import icon
-import threading
+from gui_qt.theme.theme_qt import _c, active_palette
 
 # Archive extensions that get a content-preview tab instead of an image preview.
 ARCHIVE_EXTS = {".bsa", ".ba2", ".pak", ".utoc"}
@@ -239,7 +244,7 @@ class BsaPreview(QWidget):
 
         tb = QWidget()
         tb.setObjectName("HeaderBar")
-        from PySide6.QtWidgets import QHBoxLayout, QPushButton, QCheckBox
+        from PySide6.QtWidgets import QCheckBox, QHBoxLayout, QPushButton
         tbl = QHBoxLayout(tb)
         tbl.setContentsMargins(8, 4, 8, 4)
         self._header = QLabel(display_name or path.name)
@@ -303,7 +308,8 @@ class BsaPreview(QWidget):
         self._only_conflicts.blockSignals(False)
         try:
             from Utils.archives.ue_pak_reader import (
-                UE_ARCHIVE_EXTENSIONS, read_ue_archive_file_list,
+                UE_ARCHIVE_EXTENSIONS,
+                read_ue_archive_file_list,
             )
             if Path(path).suffix.lower() in UE_ARCHIVE_EXTENSIONS:
                 paths = read_ue_archive_file_list(path)

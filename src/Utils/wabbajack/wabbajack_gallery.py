@@ -123,6 +123,7 @@ def parse_entry(d: dict, repository: str = "") -> GalleryModlist:
 
 def _get_json(url: str):
     import requests
+
     from Utils.ca_bundle import resolve_ca_bundle
     resp = requests.get(url, timeout=_TIMEOUT, verify=resolve_ca_bundle() or True)
     resp.raise_for_status()

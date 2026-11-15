@@ -24,15 +24,15 @@ import threading
 from typing import TYPE_CHECKING
 
 from PySide6.QtCore import Signal
-from PySide6.QtWidgets import QWidget, QHBoxLayout, QPlainTextEdit
+from PySide6.QtWidgets import QHBoxLayout, QPlainTextEdit, QWidget
 
 from gui_qt.safe_emit import safe_emit
-from gui_qt.theme.theme_qt import active_palette, _c, ok_text, err_text
-from wizards_qt._view_base import WizardViewBase
+from gui_qt.theme.theme_qt import _c, active_palette, err_text, ok_text
 from Utils.modding_tools.dtkit_patch_helper import (
     find_deployed_dtkit_exe,
     run_dtkit_patch_proton,
 )
+from wizards_qt._view_base import WizardViewBase
 
 if TYPE_CHECKING:
     from Games.base_game import BaseGame

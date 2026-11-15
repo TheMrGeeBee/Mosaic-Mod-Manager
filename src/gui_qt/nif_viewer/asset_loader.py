@@ -7,12 +7,12 @@ from __future__ import annotations
 import threading
 from dataclasses import replace
 
+from gui_qt.image_preview import load_qimage_bytes
 from Utils.archives.bsa_file_reader import BsaFile, BsaReadError  # noqa: F401  (BsaReadError re-exported for callers)
 from Utils.nif.asset_catalog import AssetCatalog, AssetEntry
 from Utils.nif.character import SKELETONS as _DEFAULT_SKELETONS
 from Utils.nif.material_reader import MaterialTextures, read_material
 from Utils.nif.nif_reader import NifError, NifScene, read_nif
-from gui_qt.image_preview import load_qimage_bytes
 
 _IMG_CACHE_MAX = 300
 _NIF_CACHE_MAX = 96

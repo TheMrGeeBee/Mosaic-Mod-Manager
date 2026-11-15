@@ -21,11 +21,21 @@ from pathlib import Path
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QFrame,
-    QComboBox, QLineEdit, QPlainTextEdit, QMenu, QScrollArea, QCheckBox,
+    QCheckBox,
+    QComboBox,
+    QFrame,
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QMenu,
+    QPlainTextEdit,
+    QPushButton,
+    QScrollArea,
+    QVBoxLayout,
+    QWidget,
 )
 
-from gui_qt.theme.theme_qt import active_palette, _c, danger_close_button, button_qss
+from gui_qt.theme.theme_qt import _c, active_palette, button_qss, danger_close_button
 from gui_qt.wheel_guard import no_wheel
 from gui_qt.worker import run_in_worker
 from Utils.exe_launch import exe_launch

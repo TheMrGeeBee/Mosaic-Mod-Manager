@@ -59,6 +59,7 @@ def _read_manifest_from_cache(cache_path: Path, log_fn=None) -> dict:
         return {}
     try:
         import tempfile
+
         import py7zr
         with tempfile.TemporaryDirectory() as td:
             with py7zr.SevenZipFile(str(cache_path), mode="r") as arc:

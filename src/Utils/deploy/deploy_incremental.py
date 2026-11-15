@@ -41,8 +41,8 @@ from pathlib import Path
 from Utils.app_log import safe_log as _safe_log
 from Utils.atomic_write import atomic_writer
 from Utils.deploy.deploy_shared import (
-    LinkMode,
     _OVERWRITE_NAME,
+    LinkMode,
     _append_overwrite_log,
     _default_core,
     _deploy_workers,
@@ -189,7 +189,10 @@ def plan_incremental(game, profile: str, mode: LinkMode,
             return _skip("no deploy directory")
 
         from Utils.deploy.deploy_standard import (
-            _DEPLOY_MARKER_NAME, _DEPLOY_STATS_NAME, _load_deploy_stats)
+            _DEPLOY_MARKER_NAME,
+            _DEPLOY_STATS_NAME,
+            _load_deploy_stats,
+        )
 
         if not (deploy_dir / _DEPLOY_MARKER_NAME).is_file():
             return _skip("deploy marker missing")
@@ -264,8 +267,13 @@ def apply_incremental(
     """
     _log = _safe_log(log_fn)
     from Utils.deploy.deploy_standard import (
-        _DEPLOY_STATS_NAME, _MTIME_TOLERANCE_NS, _VANILLA_DEPLOYED_NAME,
-        _load_vanilla_deployed, _write_deploy_stats, _write_vanilla_deployed)
+        _DEPLOY_STATS_NAME,
+        _MTIME_TOLERANCE_NS,
+        _VANILLA_DEPLOYED_NAME,
+        _load_vanilla_deployed,
+        _write_deploy_stats,
+        _write_vanilla_deployed,
+    )
 
     if any(t[3] for t in tasks):
         raise IncrementalFallback("custom-location tasks present")

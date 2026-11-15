@@ -28,7 +28,6 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable
 
-
 # Per-game whitelist of valid target INI filenames. Mirrors the same table
 # Vortex uses (extensions/collections/src/initweaks.ts gameSettingsFiles).
 # Lower-cased for matching; original casing preserved when written.

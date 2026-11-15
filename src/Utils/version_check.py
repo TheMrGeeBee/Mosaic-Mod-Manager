@@ -3,14 +3,14 @@ App update check: fetch latest version from repo and compare.
 Used by the app shell. No dependency on any gui modules.
 """
 
+import json
 import os
 import re
 import shlex
+import shutil
 import subprocess
 
 from Utils.gh_cache import fetch_text as _gh_fetch_text
-import json
-import shutil
 
 _APP_UPDATE_RELEASES_API_URL = "https://api.github.com/repos/TheMrGeeBee/Mosaic-Mod-Manager/releases/latest"
 _APP_UPDATE_RELEASES_LIST_API_URL = "https://api.github.com/repos/TheMrGeeBee/Mosaic-Mod-Manager/releases?per_page=20"

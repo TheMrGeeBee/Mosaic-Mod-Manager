@@ -23,29 +23,47 @@ collection_export module.
 
 from __future__ import annotations
 
+import importlib.util
 import json
+import sys
+import tempfile
 import threading
+import time
 from pathlib import Path
 
-from PySide6.QtCore import Qt, Signal, QTimer
+from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QFormLayout, QLabel, QLineEdit,
-    QPushButton, QCheckBox, QComboBox, QTextEdit, QTableWidget,
-    QTableWidgetItem, QHeaderView, QAbstractItemView, QListWidget,
+    QAbstractItemView,
+    QCheckBox,
+    QComboBox,
+    QFormLayout,
+    QHBoxLayout,
+    QHeaderView,
+    QLabel,
+    QLineEdit,
+    QListWidget,
     QListWidgetItem,
+    QPushButton,
+    QTableWidget,
+    QTableWidgetItem,
+    QTextEdit,
+    QVBoxLayout,
+    QWidget,
 )
 
-from gui_qt.theme.theme_qt import active_palette, _c
+from gui_qt.theme.theme_qt import _c, active_palette
 from gui_qt.views.mod_row_widgets import (
-    SOURCE_LABELS, source_button_qss, CardOverlay, card_title,
-    card_button_bar, SourceOverlay, VersionOverlay, center_checkbox,
+    SOURCE_LABELS,
+    CardOverlay,
+    SourceOverlay,
+    VersionOverlay,
+    card_button_bar,
+    card_title,
+    center_checkbox,
+    source_button_qss,
 )
 from Utils.collections import collection_export
 from Utils.profile import profile_export
-import importlib.util
-import sys
-import tempfile
-import time
 
 
 def _load_bg3_modio(stem: str):
@@ -137,7 +155,10 @@ class _VariantPickerOverlay(CardOverlay):
         self._body.addWidget(sub)
 
         from gui_qt.nexus.nexus_file_chooser import (
-            installable_files, _fmt_size_bytes, _CATEGORY_HEADER, _CATEGORY_LABEL,
+            _CATEGORY_HEADER,
+            _CATEGORY_LABEL,
+            _fmt_size_bytes,
+            installable_files,
         )
         self._list = QListWidget()
         current_cat = None

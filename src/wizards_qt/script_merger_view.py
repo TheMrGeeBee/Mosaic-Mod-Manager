@@ -16,8 +16,8 @@ from typing import TYPE_CHECKING
 from PySide6.QtCore import Signal
 
 from gui_qt.safe_emit import safe_emit
-from wizards_qt._view_base import GREEN, RED, WizardViewBase
 from Utils.modding_tools.xedit_tools import applications_dir, tool_exe_path
+from wizards_qt._view_base import GREEN, RED, WizardViewBase
 
 if TYPE_CHECKING:
     from Games.base_game import BaseGame
@@ -267,7 +267,8 @@ class ScriptMergerView(WizardViewBase):
         missing: list[tuple[str, list[str]]] = []
         try:
             from Utils.modding_tools.script_merger_inventory import (
-                missing_merge_sources, restore_inventory,
+                missing_merge_sources,
+                restore_inventory,
             )
             restore_inventory(self._game, log_fn=_wlog)
             missing = missing_merge_sources(self._game)
@@ -343,7 +344,9 @@ class ScriptMergerView(WizardViewBase):
 
         def worker():
             from Utils.exe_launch.exe_launch import (
-                link_game_documents, resolve_tool_prefix, run_tool_logged,
+                link_game_documents,
+                resolve_tool_prefix,
+                run_tool_logged,
                 shutdown_prefix_wineserver,
             )
             _wlog = lambda m: self._log(f"Script Merger Wizard: {m}")
@@ -432,7 +435,9 @@ class ScriptMergerView(WizardViewBase):
                 # Pair the rescued merged files with the merger's inventory —
                 # without it the merger forgets these merges exist.
                 try:
-                    from Utils.modding_tools.script_merger_inventory import snapshot_inventory
+                    from Utils.modding_tools.script_merger_inventory import (
+                        snapshot_inventory,
+                    )
                     snapshot_inventory(
                         game, keep_keys=keep_keys,
                         log_fn=lambda m: log(f"Script Merger Wizard: {m}"))

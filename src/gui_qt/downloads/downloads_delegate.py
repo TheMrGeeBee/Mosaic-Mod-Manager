@@ -5,14 +5,19 @@ headers, right-aligned size, and an Install/Reinstall button per archive row
 
 from __future__ import annotations
 
-from PySide6.QtCore import Qt, QRect, QEvent, QSize
-from PySide6.QtGui import QPen, QBrush, QFont
+from PySide6.QtCore import QEvent, QRect, QSize, Qt
+from PySide6.QtGui import QBrush, QFont, QPen
 from PySide6.QtWidgets import QStyledItemDelegate
 
-from gui_qt.theme.theme_qt import active_palette, qc, qc_contrast
 from gui_qt.downloads.downloads_model import (
-    COL_CHECK, COL_NAME, COL_SIZE, COL_INSTALL, EntryRole, InstalledRole,
+    COL_CHECK,
+    COL_INSTALL,
+    COL_NAME,
+    COL_SIZE,
+    EntryRole,
+    InstalledRole,
 )
+from gui_qt.theme.theme_qt import active_palette, qc, qc_contrast
 
 CHECK_BOX = 18
 FONT_PX = 14          # bigger row text

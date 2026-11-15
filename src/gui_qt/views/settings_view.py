@@ -19,16 +19,28 @@ User Interface (incl. Theme + UI Scale), Downloads & Collections, General, Paths
 
 from __future__ import annotations
 
+from pathlib import Path as _P
+
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QScrollArea, QFrame,
-    QLabel, QCheckBox, QComboBox, QSlider, QLineEdit, QPushButton, QGroupBox,
+    QCheckBox,
+    QComboBox,
+    QFrame,
+    QGridLayout,
+    QGroupBox,
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QPushButton,
+    QScrollArea,
+    QSlider,
+    QVBoxLayout,
+    QWidget,
 )
 
-from gui_qt.theme.theme_qt import active_palette, _c
+from gui_qt.theme.theme_qt import _c, active_palette
 from gui_qt.wheel_guard import no_wheel
 from Utils import ui_config as uc
-from pathlib import Path as _P
 
 
 # ---------------------------------------------------------------------------
@@ -763,7 +775,9 @@ class SettingsView(QWidget):
         is hidden. No-op outside the flatpak or when already remote-tracked.
         """
         from Utils.version_check import (
-            is_flatpak, flatpak_installed_from_remote, flatpak_remote_available,
+            flatpak_installed_from_remote,
+            flatpak_remote_available,
+            is_flatpak,
         )
         if not flatpak_remote_available():
             return  # no hosted remote published yet — nothing to offer
@@ -783,8 +797,8 @@ class SettingsView(QWidget):
     def _on_enroll_flatpak_remote(self):
         """Confirm, then add the remote + reinstall-from-remote (relaunches)."""
         from gui_qt.overlays.confirm_overlay import ConfirmOverlay
-        from Utils.version_check import enroll_flatpak_remote
         from Utils.ui_config import load_allow_prerelease
+        from Utils.version_check import enroll_flatpak_remote
 
         def _go(ok: bool):
             if not ok:

@@ -10,15 +10,29 @@ All other Bethesda-family games subclass Fallout_3.
 """
 
 import filecmp
+import os
 import shutil
 from pathlib import Path
 
-from Games.base_game import BaseGame, WizardTool, MODERN_DIRECTX_DEPS
+from Games.base_game import MODERN_DIRECTX_DEPS, BaseGame, WizardTool
 from Games.Bethesda.bethesda_ini import _read_ini_key, _set_ini_key
-from Utils.deploy.deploy import LinkMode, deploy_core, deploy_custom_rules, deploy_filemap, load_per_mod_strip_prefixes, load_separator_deploy_paths, expand_separator_deploy_paths, expand_separator_link_modes, expand_separator_raw_deploy, cleanup_custom_deploy_dirs, restore_custom_rules, move_to_core, restore_data_core
-from Utils.mods.modlist import read_modlist
 from Utils.config_paths import get_profiles_dir
-import os
+from Utils.deploy.deploy import (
+    LinkMode,
+    cleanup_custom_deploy_dirs,
+    deploy_core,
+    deploy_custom_rules,
+    deploy_filemap,
+    expand_separator_deploy_paths,
+    expand_separator_link_modes,
+    expand_separator_raw_deploy,
+    load_per_mod_strip_prefixes,
+    load_separator_deploy_paths,
+    move_to_core,
+    restore_custom_rules,
+    restore_data_core,
+)
+from Utils.mods.modlist import read_modlist
 
 _PROFILES_DIR = get_profiles_dir()
 
@@ -1480,7 +1494,8 @@ class Fallout_3(BaseGame):
         if bsa_name is None:
             return ""
         from Utils.archives.bsa_invalidation import (
-            ensure_in_archive_list, append_to_archive_list,
+            append_to_archive_list,
+            ensure_in_archive_list,
             remove_many_from_archive_list,
         )
         key = self._invalidation_archive_list_key
@@ -1517,7 +1532,8 @@ class Fallout_3(BaseGame):
         if bsa_name is None:
             return
         from Utils.archives.bsa_invalidation import (
-            remove_from_archive_list, remove_many_from_archive_list,
+            remove_from_archive_list,
+            remove_many_from_archive_list,
         )
         key = self._invalidation_archive_list_key
         current = _read_ini_key(ini_path, "Archive", key)

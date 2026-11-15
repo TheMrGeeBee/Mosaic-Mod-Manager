@@ -9,10 +9,9 @@ list of ``(label, value)`` pairs and rebuilds the pills.
 from __future__ import annotations
 
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QWidget, QHBoxLayout, QLabel
+from PySide6.QtWidgets import QHBoxLayout, QLabel, QWidget
 
-from gui_qt.theme.theme_qt import active_palette, _c
-
+from gui_qt.theme.theme_qt import _c, active_palette
 
 # Left inset of the pill text — matches the footer buttons' left padding so a
 # left-aligned pill's first letter sits at the button's text left edge.

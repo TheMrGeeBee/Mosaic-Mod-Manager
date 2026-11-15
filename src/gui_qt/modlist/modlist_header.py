@@ -6,10 +6,9 @@ and allows overflow.
 
 from __future__ import annotations
 
-from PySide6.QtWidgets import QHeaderView
-from PySide6.QtCore import Qt, QPointF
+from PySide6.QtCore import QPointF, Qt
 from PySide6.QtGui import QColor, QPolygonF
-
+from PySide6.QtWidgets import QHeaderView
 
 _GRAB_PX = 8   # pixels either side of a boundary that count as "on the line"
 
@@ -87,7 +86,7 @@ class TkStyleHeader(QHeaderView):
             return
         active, ascending = spec
         if self._tri_active is None:
-            from gui_qt.theme.theme_qt import active_palette, _c
+            from gui_qt.theme.theme_qt import _c, active_palette
             p = active_palette()
             self._tri_active = QColor(_c(p, "ACCENT"))
             self._tri_idle = QColor(_c(p, "TEXT_DIM"))

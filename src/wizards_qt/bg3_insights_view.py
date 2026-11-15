@@ -17,12 +17,19 @@ from typing import TYPE_CHECKING
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
-    QCheckBox, QComboBox, QHBoxLayout, QLabel, QPlainTextEdit, QSplitter,
-    QTreeWidget, QTreeWidgetItem, QWidget,
+    QCheckBox,
+    QComboBox,
+    QHBoxLayout,
+    QLabel,
+    QPlainTextEdit,
+    QSplitter,
+    QTreeWidget,
+    QTreeWidgetItem,
+    QWidget,
 )
 
 from gui_qt.safe_emit import safe_emit
-from gui_qt.theme.theme_qt import active_palette, _c
+from gui_qt.theme.theme_qt import _c, active_palette
 from wizards_qt._view_base import GREEN, RED, WizardViewBase
 
 if TYPE_CHECKING:
@@ -466,6 +473,7 @@ class BG3InsightsView(WizardViewBase):
 
     def _copy_rule(self):
         from PySide6.QtWidgets import QApplication
+
         from Utils.mods.bg3_pak_index import known_rule_suggestion
         f, _ignored = self._selected()
         if f is None or f.kind != "author_note":

@@ -11,14 +11,20 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PySide6.QtCore import Qt, Signal, QRect, QSize, QTimer
-from PySide6.QtGui import QTextCursor, QTextCharFormat, QColor, QFont, QPainter
+from PySide6.QtCore import QRect, QSize, Qt, QTimer, Signal
+from PySide6.QtGui import QColor, QFont, QPainter, QTextCharFormat, QTextCursor
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPlainTextEdit, QLineEdit,
-    QPushButton, QTextEdit,
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QPlainTextEdit,
+    QPushButton,
+    QTextEdit,
+    QVBoxLayout,
+    QWidget,
 )
 
-from gui_qt.theme.theme_qt import active_palette, _c, qc
+from gui_qt.theme.theme_qt import _c, active_palette, qc
 
 
 class _LineNumberArea(QWidget):

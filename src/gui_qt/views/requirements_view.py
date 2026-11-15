@@ -14,12 +14,19 @@ from __future__ import annotations
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QColor, QFontMetrics
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QListWidget, QListWidgetItem,
-    QFrame, QSizePolicy, QPushButton,
+    QFrame,
+    QHBoxLayout,
+    QLabel,
+    QListWidget,
+    QListWidgetItem,
+    QPushButton,
+    QSizePolicy,
+    QVBoxLayout,
+    QWidget,
 )
 
-from gui_qt.theme.theme_qt import active_palette, _c, danger_close_button, button_qss
 from gui_qt.modlist.modlist_delegate import _contrasting_text_color
+from gui_qt.theme.theme_qt import _c, active_palette, button_qss, danger_close_button
 
 
 class _ElidedLabel(QLabel):
@@ -220,7 +227,7 @@ class RequirementsView(QWidget):
             self._set_hint(self.tr("Select one or more mods."))
             return
 
-        from Nexus.nexus_meta import read_meta, scan_installed_mods, parse_req_pairs
+        from Nexus.nexus_meta import parse_req_pairs, read_meta, scan_installed_mods
         selected_set = set(names)
         metas = [read_meta(staging / n / "meta.ini") for n in names]
         # Only Nexus mods carry requirement data — filter out the rest but keep

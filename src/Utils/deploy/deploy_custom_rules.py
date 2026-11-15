@@ -12,6 +12,7 @@ import fnmatch
 import os
 import re
 import shutil
+import stat as _stat
 from pathlib import Path
 
 from Utils.app_log import safe_log as _safe_log
@@ -26,8 +27,6 @@ from Utils.deploy.deploy_shared import (
     _resolve_source,
     _restore_backup_dir,
 )
-import stat as _stat
-
 
 _CUSTOM_RULES_LOG_NAME = "custom_rules_deployed.txt"
 _CUSTOM_RULES_BACKUP_DIR = "custom_rules_backup"
@@ -341,8 +340,10 @@ def deploy_custom_rules(
     if _per_mode is None:
         try:
             from Utils.deploy.deploy_shared import (
-                load_separator_deploy_paths as _lsdp,
                 expand_separator_link_modes as _eslm,
+            )
+            from Utils.deploy.deploy_shared import (
+                load_separator_deploy_paths as _lsdp,
             )
             from Utils.mods.modlist import read_modlist as _rml
             _per_mode = _eslm(_lsdp(filemap_path.parent),
@@ -359,8 +360,10 @@ def deploy_custom_rules(
     if _raw_mods is None:
         try:
             from Utils.deploy.deploy_shared import (
-                load_separator_deploy_paths as _lsdp_raw,
                 expand_separator_raw_deploy as _esrd,
+            )
+            from Utils.deploy.deploy_shared import (
+                load_separator_deploy_paths as _lsdp_raw,
             )
             from Utils.mods.modlist import read_modlist as _rml_raw
             _raw_mods = _esrd(_lsdp_raw(filemap_path.parent),

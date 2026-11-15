@@ -17,8 +17,8 @@ from typing import TYPE_CHECKING
 from PySide6.QtCore import Signal
 
 from gui_qt.safe_emit import safe_emit
-from wizards_qt._view_base import GREEN, RED, WizardViewBase
 from Utils.modding_tools.xedit_tools import tool_exe_path
+from wizards_qt._view_base import GREEN, RED, WizardViewBase
 
 if TYPE_CHECKING:
     from Games.base_game import BaseGame
@@ -108,7 +108,9 @@ class WryeBashView(WizardViewBase):
 
         def worker():
             from Utils.exe_launch.exe_launch import (
-                resolve_tool_prefix, run_tool_logged, shutdown_prefix_wineserver,
+                resolve_tool_prefix,
+                run_tool_logged,
+                shutdown_prefix_wineserver,
             )
             from Utils.modding_tools.xedit_tools import prepare_xedit_prefix
             _wlog = lambda m: self._log(f"Wrye Bash Wizard: {m}")

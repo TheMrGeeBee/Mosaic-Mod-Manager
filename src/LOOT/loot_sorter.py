@@ -29,10 +29,10 @@ import json
 import os
 import shutil
 import time
-import urllib.request
 import urllib.error
-from pathlib import Path
+import urllib.request
 from dataclasses import dataclass, field
+from pathlib import Path
 
 from Utils.atomic_write import write_atomic_text
 

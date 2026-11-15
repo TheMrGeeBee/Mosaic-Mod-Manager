@@ -13,22 +13,37 @@ which finish_install() feeds to resolve_files(). on_cancel() aborts the install.
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QScrollArea,
-    QFrame, QRadioButton, QCheckBox, QButtonGroup, QSplitter, QSizePolicy,
+    QButtonGroup,
+    QCheckBox,
+    QFrame,
+    QHBoxLayout,
+    QLabel,
+    QPushButton,
+    QRadioButton,
+    QScrollArea,
+    QSizePolicy,
+    QSplitter,
+    QVBoxLayout,
+    QWidget,
 )
 
-from gui_qt.theme.theme_qt import active_palette, _c
+from gui_qt.theme.theme_qt import _c, active_palette
 from Utils.installers.fomod_installer import (
-    get_visible_steps, get_default_selections, update_flags,
-    validate_selections, resolve_plugin_type, plugin_dep_unmet, plugin_dep_met,
+    get_default_selections,
+    get_visible_steps,
+    plugin_dep_met,
+    plugin_dep_unmet,
+    resolve_plugin_type,
+    update_flags,
+    validate_selections,
 )
 from Utils.installers.fomod_parser import resolve_path_ci
-import os
 
 
 class FomodWizardView(QWidget):

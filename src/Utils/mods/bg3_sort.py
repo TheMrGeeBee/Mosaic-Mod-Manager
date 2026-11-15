@@ -14,6 +14,7 @@ unit-tested headlessly. Modeled directly on ``Utils.mods.bg3_import``.
 
 from __future__ import annotations
 
+import heapq
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -26,8 +27,6 @@ from Utils.mods.modsettings import (
     scan_game_data_uuids,
     scan_mod_paks,
 )
-import heapq
-
 
 # ---------------------------------------------------------------------------
 # Plan
@@ -248,8 +247,14 @@ def compute_layered_plan(game, modlist_path: Path, log_fn=None,
     """
     from Utils.mods import bg3_layers as L
     from Utils.mods.bg3_pak_index import (
-        INDEX_FILENAME, _looks_like_patch, build_index, collection_mods,
-        compute_load_rank, dependents_map, read_manifest, read_rules,
+        INDEX_FILENAME,
+        _looks_like_patch,
+        build_index,
+        collection_mods,
+        compute_load_rank,
+        dependents_map,
+        read_manifest,
+        read_rules,
     )
 
     entries = read_modlist(modlist_path)

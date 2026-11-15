@@ -180,8 +180,8 @@ class WabbajackController(QObject):
         if self._win._tabs.has_key(self.BROWSER_KEY):
             self._win._tabs.focus_key(self.BROWSER_KEY)
             return
-        from Utils.config_paths import get_config_dir
         from gui_qt.wabbajack.wabbajack_browser_view import WabbajackBrowserView
+        from Utils.config_paths import get_config_dir
         root = get_config_dir() / "wabbajack"
         view = WabbajackBrowserView(
             game, cache_path=root / "gallery.json", files_dir=root / "modlists",
@@ -340,13 +340,13 @@ class WabbajackController(QObject):
         of a shared pool they enable, so staging the pool once is the whole
         point -- Fashionista - Steam is 405 mods and 69 GB for all 17.
         """
+        from gui_qt.wabbajack.wabbajack_install_overlay import WabbajackInstallOverlay
         from Utils.exe_launch.game_helpers import _create_profile, _profiles_for_game
         from Utils.profile.profile_state import link_shared_mods
         from Utils.wabbajack.wabbajack_install import (
             WabbajackInstallCallbacks,
             WabbajackInstallControl,
         )
-        from gui_qt.wabbajack.wabbajack_install_overlay import WabbajackInstallOverlay
         if self._running:
             return
         game = self._win._gs.game
@@ -548,7 +548,10 @@ class WabbajackController(QObject):
         marked kept so pruning never reaches it.
         """
         from Utils.profile.profile_backup import (
-            create_backup, set_backup_kept, set_backup_label)
+            create_backup,
+            set_backup_kept,
+            set_backup_label,
+        )
         label = self.tr("As installed — {0}").format(
             getattr(self._modlist, "name", "") or self.tr("Wabbajack modlist"))
         for d in self._profile_dirs:

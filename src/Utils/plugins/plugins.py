@@ -27,6 +27,7 @@ from pathlib import Path
 
 from Utils.atomic_write import write_atomic_text
 
+
 @dataclass
 class PluginEntry:
     name: str

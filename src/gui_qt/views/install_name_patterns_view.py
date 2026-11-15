@@ -23,13 +23,20 @@ import re
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QScrollArea, QFrame,
-    QLabel, QCheckBox, QLineEdit, QPushButton, QGroupBox,
+    QCheckBox,
+    QFrame,
+    QGroupBox,
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QPushButton,
+    QScrollArea,
+    QVBoxLayout,
+    QWidget,
 )
 
-from gui_qt.theme.theme_qt import active_palette, _c
+from gui_qt.theme.theme_qt import _c, active_palette
 from Utils import ui_config as uc
-
 
 # Generic placeholder for the Test box — a made-up mod name in the current Nexus
 # "<name> <id> <version> <timestamp> <slug>" format, so it exercises the default
@@ -384,7 +391,9 @@ class InstallNamePatternsView(QWidget):
             return
         try:
             from Utils.mods.mod_name_utils import (
-                _suggest_mod_names, sanitize_mod_folder_name)
+                _suggest_mod_names,
+                sanitize_mod_folder_name,
+            )
             suggestions = _suggest_mod_names(stem)
             result = (suggestions[0] if suggestions else stem) or stem
             result = sanitize_mod_folder_name(result) or result

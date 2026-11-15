@@ -20,7 +20,9 @@ import shutil
 from pathlib import Path
 
 from Utils.config_paths import (
-    get_config_dir, get_download_cache_dir, get_profiles_dir,
+    get_config_dir,
+    get_download_cache_dir,
+    get_profiles_dir,
 )
 
 # Names at the cache root that are NOT per-game caches and must survive a

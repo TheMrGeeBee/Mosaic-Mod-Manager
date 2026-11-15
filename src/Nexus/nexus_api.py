@@ -26,7 +26,12 @@ Usage
 
 from __future__ import annotations
 
+import base64
+import hashlib
 import json
+import json as _json
+import os as _os
+import tempfile
 import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -36,15 +41,10 @@ from typing import Any, Optional
 import keyring
 import requests
 
-from Utils.config_paths import get_config_dir
 from Utils.app_log import app_log
 from Utils.ca_bundle import resolve_ca_bundle
+from Utils.config_paths import get_config_dir
 from version import __version__
-import base64
-import hashlib
-import json as _json
-import os as _os
-import tempfile
 
 API_BASE = "https://api.nexusmods.com/v1"
 GRAPHQL_BASE = "https://api.nexusmods.com/v2/graphql"
@@ -424,8 +424,9 @@ def _load_key_file() -> str:
     try:
         if not p.is_file():
             return ""
-        from cryptography.fernet import Fernet
         import json as _json
+
+        from cryptography.fernet import Fernet
         cipher = Fernet(_derive_key())
         data = _json.loads(cipher.decrypt(p.read_bytes()))
         return data.get("api_key", "").strip()

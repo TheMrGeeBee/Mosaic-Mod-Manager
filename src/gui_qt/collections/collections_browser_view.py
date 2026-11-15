@@ -19,20 +19,29 @@ search_collections). Fetches run on a worker thread → _results_ready signal.
 
 from __future__ import annotations
 
+import dataclasses
 import threading
 
-from PySide6.QtCore import Qt, QTimer, Signal, QEvent
+from PySide6.QtCore import QEvent, Qt, QTimer, Signal
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QLabel, QLineEdit,
-    QScrollArea, QFrame, QToolButton, QMenu, QCheckBox,
+    QCheckBox,
+    QFrame,
+    QGridLayout,
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QMenu,
+    QScrollArea,
+    QToolButton,
+    QVBoxLayout,
+    QWidget,
 )
 
-from gui_qt.theme.theme_qt import active_palette, _c
-from gui_qt.safe_emit import safe_emit
+from gui_qt.collections.collection_card import CARD_W, IMG_H, IMG_W, CollectionCard
 from gui_qt.nexus.nexus_mod_card import ThumbnailLoader
-from gui_qt.collections.collection_card import CollectionCard, CARD_W, IMG_W, IMG_H
+from gui_qt.safe_emit import safe_emit
 from gui_qt.selector_button import SelectorButton
-import dataclasses
+from gui_qt.theme.theme_qt import _c, active_palette
 
 PAGE_SIZE = 20            # Tk parity (collections_dialog PAGE_SIZE)
 
@@ -403,7 +412,9 @@ class CollectionsBrowserView(QWidget):
             except Exception:
                 pdir = None
         if pdir:
-            from Utils.collections.installed_collections import list_appended_collections
+            from Utils.collections.installed_collections import (
+                list_appended_collections,
+            )
             records = list_appended_collections(pdir, log_fn=self._log)
         if not records:
             self._appended_host.hide()

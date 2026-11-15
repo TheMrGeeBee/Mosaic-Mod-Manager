@@ -43,7 +43,6 @@ References:
 
 from __future__ import annotations
 
-
 # A single allow rule: (lowercase_extension_with_dot, allowed_first_dirs).
 # The ``"root"`` sentinel (singular, lowercase) means "file at the mod
 # folder root".  Use ``frozenset`` for O(1) membership.

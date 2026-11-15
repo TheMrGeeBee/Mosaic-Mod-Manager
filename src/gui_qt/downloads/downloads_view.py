@@ -11,12 +11,19 @@ from pathlib import Path
 
 from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QTreeView, QAbstractItemView,
+    QAbstractItemView,
+    QTreeView,
+    QVBoxLayout,
+    QWidget,
 )
 
 import Utils.downloads.downloads_core as dc
 from gui_qt.downloads.downloads_model import (
-    DownloadsModel, COL_CHECK, COL_NAME, COL_SIZE, COL_INSTALL,
+    COL_CHECK,
+    COL_INSTALL,
+    COL_NAME,
+    COL_SIZE,
+    DownloadsModel,
 )
 
 

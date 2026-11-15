@@ -173,7 +173,11 @@ def _remove_plugins_for_mods(game, profile_dir: Path, staging_root: Path,
     if not to_remove:
         return
     from Utils.plugins.plugins import (
-        read_plugins, write_plugins, read_loadorder, write_loadorder, PluginEntry,
+        PluginEntry,
+        read_loadorder,
+        read_plugins,
+        write_loadorder,
+        write_plugins,
     )
     star = bool(getattr(game, "plugins_use_star_prefix", True))
     existing = read_plugins(plugins_path, star_prefix=star)

@@ -3,12 +3,12 @@ fallout_nv.py
 Fallout New Vegas game handler.
 """
 
+import shutil
 from pathlib import Path
 
 from Games.base_game import WizardTool
-from Games.Bethesda.fallout_3 import Fallout_3
 from Games.Bethesda.bethesda_ini import _set_ini_key
-import shutil
+from Games.Bethesda.fallout_3 import Fallout_3
 
 
 class Fallout_NV(Fallout_3):

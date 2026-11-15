@@ -19,12 +19,12 @@ import os
 import shutil
 import subprocess
 import tarfile
+import tempfile
 import urllib.error
 import urllib.request
 import zipfile
 from pathlib import Path
 from typing import TYPE_CHECKING, Callable
-import tempfile
 
 try:
     import py7zr
@@ -232,7 +232,9 @@ def install_archive_payload(
     the modlist on the GUI thread afterwards when mode == "mod".
     """
     from Utils.mods.install_as_mod import (
-        derive_mod_name, index_installed_mod, register_as_mod_neutral,
+        derive_mod_name,
+        index_installed_mod,
+        register_as_mod_neutral,
     )
 
     if archive is None or not archive.is_file():

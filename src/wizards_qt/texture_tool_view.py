@@ -13,18 +13,24 @@ from __future__ import annotations
 import threading
 from typing import TYPE_CHECKING
 
-from PySide6.QtCore import Qt, QT_TRANSLATE_NOOP, Signal
+from PySide6.QtCore import QT_TRANSLATE_NOOP, Qt, Signal
 from PySide6.QtWidgets import (
-    QButtonGroup, QHBoxLayout, QLabel, QRadioButton, QVBoxLayout,
+    QButtonGroup,
+    QHBoxLayout,
+    QLabel,
+    QRadioButton,
+    QVBoxLayout,
     QWidget,
 )
 
 from gui_qt.safe_emit import safe_emit
-from gui_qt.theme.theme_qt import active_palette, _c
-from wizards_qt._view_base import GREEN, RED, WizardViewBase
+from gui_qt.theme.theme_qt import _c, active_palette
 from Utils.modding_tools.texture_tools import (
-    VRAMR_PRESETS, texture_tool_installed, vramr_installed,
+    VRAMR_PRESETS,
+    texture_tool_installed,
+    vramr_installed,
 )
+from wizards_qt._view_base import GREEN, RED, WizardViewBase
 
 if TYPE_CHECKING:
     from Games.base_game import BaseGame

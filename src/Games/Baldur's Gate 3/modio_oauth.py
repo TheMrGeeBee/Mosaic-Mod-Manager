@@ -33,6 +33,10 @@ start expiring in practice.
 
 from __future__ import annotations
 
+import base64
+import hashlib
+import json as _json
+import os as _os
 from typing import Optional
 
 import keyring  # type: ignore
@@ -41,10 +45,6 @@ import requests
 from Utils.app_log import app_log
 from Utils.ca_bundle import resolve_ca_bundle
 from Utils.config_paths import get_config_dir
-import base64
-import hashlib
-import json as _json
-import os as _os
 
 # Same per-game subdomain as modio_api.py's _API_ROOT — mirrored here rather
 # than imported since this module is loaded standalone by file path (see
@@ -103,8 +103,9 @@ def _load_file_tokens() -> dict:
     try:
         if not p.is_file():
             return {}
-        from cryptography.fernet import Fernet
         import json as _json
+
+        from cryptography.fernet import Fernet
         cipher = Fernet(_derive_key())
         return _json.loads(cipher.decrypt(p.read_bytes()))
     except Exception:

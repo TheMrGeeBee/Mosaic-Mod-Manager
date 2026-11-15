@@ -16,19 +16,24 @@ from __future__ import annotations
 import io
 import threading
 
-from PySide6.QtCore import Qt, Signal, QObject, QT_TRANSLATE_NOOP
+from PySide6.QtCore import QT_TRANSLATE_NOOP, QObject, Qt, Signal
 from PySide6.QtGui import QFont
-
-from gui_qt.wheel_guard import no_wheel
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton,
-    QScrollArea, QFrame, QRadioButton, QCheckBox, QButtonGroup, QComboBox,
+    QButtonGroup,
+    QCheckBox,
+    QComboBox,
+    QFrame,
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
     QPlainTextEdit,
+    QPushButton,
+    QRadioButton,
+    QScrollArea,
+    QVBoxLayout,
+    QWidget,
 )
 
-from gui_qt.theme.theme_qt import active_palette, _c
-from gui_qt.icons import icon, icon_rotated
-from gui_qt.safe_emit import safe_emit
 from Games.Custom.custom_game import (
     _make_game_id,
     delete_custom_game_definition,
@@ -38,6 +43,10 @@ from Games.Custom.custom_game import (
     make_custom_game,
     save_custom_game_definition,
 )
+from gui_qt.icons import icon, icon_rotated
+from gui_qt.safe_emit import safe_emit
+from gui_qt.theme.theme_qt import _c, active_palette
+from gui_qt.wheel_guard import no_wheel
 from Utils.config_paths import get_custom_game_images_dir
 
 

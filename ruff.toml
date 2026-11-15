@@ -1,2 +1,25 @@
 [lint]
-ignore = ["E702", "E731"]
+# E702/E731: semicolon one-liners and lambda assignment are used deliberately.
+# F841: unused locals are mostly parse-and-discard reads (nif_reader); vulture covers dead code.
+# E741: single-letter names (l, O, I) are common in small math/parsing helpers.
+select = ["E4", "E7", "E9", "F", "I"]
+ignore = ["E702", "E731", "E741", "F841"]
+
+[lint.isort]
+known-first-party = ["Utils", "gui_qt", "Games", "Nexus", "wizards_qt", "LOOT", "wrappers"]
+
+[lint.per-file-ignores]
+# Imports follow a long explanatory comment about routing; kept next to it.
+"src/Games/The Witcher 3/witcher_3.py" = ["E402"]
+# Import order is deliberate here (sys.path / environment set-up first).
+"src/app_bootstrap.py" = ["I001"]
+"src/run_qt.py" = ["E402", "I001"]
+"src/wrappers/*.py" = ["I001", "E402"]
+"src/Games/Mewgenics/gpak/__main__.py" = ["I001"]
+"src/Utils/archives/_*_selftest.py" = ["I001", "E402"]
+# Re-export facades (star imports / names re-exported for callers).
+"src/Utils/plugins/plugin_scan_common.py" = ["F401"]
+"src/Utils/deploy/deploy.py" = ["F403", "F405", "F401"]
+"src/LOOT/__init__.py" = ["F403", "F405", "F401"]
+# Tests: unused fixtures/imports and local ordering are not worth enforcing.
+"tests/**" = ["F401", "F811", "I001", "E402"]

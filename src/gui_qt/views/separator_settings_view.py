@@ -21,11 +21,19 @@ from __future__ import annotations
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QLineEdit,
-    QCheckBox, QRadioButton, QButtonGroup, QFrame,
+    QButtonGroup,
+    QCheckBox,
+    QFrame,
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QPushButton,
+    QRadioButton,
+    QVBoxLayout,
+    QWidget,
 )
 
-from gui_qt.theme.theme_qt import active_palette, _c, danger_close_button
+from gui_qt.theme.theme_qt import _c, active_palette, danger_close_button
 
 
 def _hline(color: str) -> QFrame:

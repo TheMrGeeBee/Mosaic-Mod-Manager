@@ -6,26 +6,41 @@ TkStyleHeader owns column resizing; column state persists via column_state.
 
 from __future__ import annotations
 
+import textwrap
+
+from PySide6.QtCore import QCoreApplication, QEvent, QPoint, QRect, Qt, QTimer
+from PySide6.QtGui import QAction, QColor, QPainter, QPen
+from PySide6.QtWidgets import (
+    QAbstractItemView,
+    QMenu,
+    QStyleOptionViewItem,
+    QToolButton,
+    QToolTip,
+    QTreeView,
+)
+
+from gui_qt import column_state
+from gui_qt.modlist.modlist_delegate import SEP_H, ModRowDelegate
+from gui_qt.modlist.modlist_header import TkStyleHeader
+from gui_qt.modlist.modlist_model import (
+    COL_AUTHOR,
+    COL_CATEGORY,
+    COL_CONFLICTS,
+    COL_FLAGS,
+    COL_INSTALLED,
+    COL_LOCKED,
+    COL_NAME,
+    COL_PRIORITY,
+    COL_SIZE,
+    COL_VERSION,
+    COLUMNS,
+    HighlightRole,
+    ModListModel,
+)
+
 # Crash-proof diagnostic prints (Flatpak stdout can raise BrokenPipeError and
 # kill worker threads). See Utils.app_log.safe_print.
 from Utils.app_log import safe_print as print  # noqa: A004
-
-from PySide6.QtCore import Qt, QTimer, QRect, QPoint, QCoreApplication, QEvent
-from PySide6.QtGui import QPainter, QColor, QPen, QAction
-from PySide6.QtWidgets import (
-    QTreeView, QAbstractItemView, QToolButton, QMenu,
-    QStyleOptionViewItem, QToolTip,
-)
-
-from gui_qt.modlist.modlist_model import (
-    ModListModel, COLUMNS, COL_NAME, COL_CATEGORY, COL_PRIORITY, COL_FLAGS,
-    COL_CONFLICTS, COL_INSTALLED, COL_VERSION, COL_AUTHOR, COL_SIZE,
-    COL_LOCKED, HighlightRole,
-)
-from gui_qt.modlist.modlist_delegate import ModRowDelegate, SEP_H
-from gui_qt import column_state
-from gui_qt.modlist.modlist_header import TkStyleHeader
-import textwrap
 
 
 class _StayOpenMenu(QMenu):
@@ -272,9 +287,10 @@ class ModListView(QTreeView):
         """A small eye button pinned to the LEFT of the Mod Name column header,
         centred over the row checkbox column below; opens a checkable menu to
         show/hide each toggleable column (Name always stays)."""
-        from gui_qt.theme.theme_qt import active_palette, _c
-        from gui_qt.icons import icon
         from PySide6.QtCore import QSize
+
+        from gui_qt.icons import icon
+        from gui_qt.theme.theme_qt import _c, active_palette
         btn = QToolButton(header)
         # Tint the eye glyph to the theme foreground so it reads in both light
         # and dark modes (the white PNG is invisible on the light header).
@@ -411,8 +427,11 @@ class ModListView(QTreeView):
         if self.profile_dir is not None:
             try:
                 from Utils.profile.profile_state import (
-                    read_collapsed_seps, read_separator_locks,
-                    read_separator_colors, read_separator_deploy_paths)
+                    read_collapsed_seps,
+                    read_separator_colors,
+                    read_separator_deploy_paths,
+                    read_separator_locks,
+                )
                 collapsed = read_collapsed_seps(self.profile_dir)
                 locks = read_separator_locks(self.profile_dir)
                 colors = read_separator_colors(self.profile_dir)
@@ -620,7 +639,9 @@ class ModListView(QTreeView):
             return
         try:
             from Utils.profile.profile_state import (
-                write_collapsed_seps, write_separator_locks)
+                write_collapsed_seps,
+                write_separator_locks,
+            )
             m = self.model()
             write_collapsed_seps(self.profile_dir, m._collapsed)
             write_separator_locks(self.profile_dir, m._sep_locks)
@@ -929,7 +950,10 @@ class ModListView(QTreeView):
                 e = self.model().entry(idx.row())
                 if not e.is_separator:
                     from gui_qt.modlist.modlist_menu import (
-                        _modio_url, _open_on_modio, _open_on_nexus)
+                        _modio_url,
+                        _open_on_modio,
+                        _open_on_nexus,
+                    )
                     if _modio_url(self, e.name):
                         _open_on_modio(self, e.name)
                     else:
@@ -1276,7 +1300,7 @@ class ModListView(QTreeView):
             if prev is None:
                 return
             y = self.visualRect(m.index(prev, 0)).bottom()
-        from gui_qt.theme.theme_qt import active_palette, _c
+        from gui_qt.theme.theme_qt import _c, active_palette
         p = QPainter(self.viewport())
         pen = QPen(QColor(_c(active_palette(), "HIGHLIGHT_DRAG")))
         pen.setWidth(2)

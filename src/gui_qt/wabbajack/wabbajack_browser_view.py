@@ -26,8 +26,19 @@ import threading
 
 from PySide6.QtCore import QEvent, Qt, Signal
 from PySide6.QtWidgets import (
-    QAbstractItemView, QCheckBox, QFrame, QGridLayout, QHBoxLayout, QLabel,
-    QLineEdit, QListWidget, QMenu, QScrollArea, QToolButton, QVBoxLayout, QWidget,
+    QAbstractItemView,
+    QCheckBox,
+    QFrame,
+    QGridLayout,
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QListWidget,
+    QMenu,
+    QScrollArea,
+    QToolButton,
+    QVBoxLayout,
+    QWidget,
 )
 
 from gui_qt.nexus.nexus_mod_card import ThumbnailLoader
@@ -110,7 +121,8 @@ class WabbajackBrowserView(QWidget):
 
         self._thumbs = ThumbnailLoader(self, crop_w=IMG_W, crop_h=IMG_H)
         self._thumbs.loaded.connect(self._on_thumb)
-        from gui_qt.wabbajack.wabbajack_details_overlay import IMG_H as D_H, IMG_W as D_W
+        from gui_qt.wabbajack.wabbajack_details_overlay import IMG_H as D_H
+        from gui_qt.wabbajack.wabbajack_details_overlay import IMG_W as D_W
         self._covers = ThumbnailLoader(self, crop_w=D_W, crop_h=D_H)
         self._covers.loaded.connect(self._on_cover)
         self._gallery_ready.connect(self._on_gallery)

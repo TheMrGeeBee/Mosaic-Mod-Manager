@@ -23,9 +23,9 @@ full-width overlays in Tk).
 
 from __future__ import annotations
 
+import importlib
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Callable
-import importlib
 
 if TYPE_CHECKING:
     from PySide6.QtWidgets import QWidget

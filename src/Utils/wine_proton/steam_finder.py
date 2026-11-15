@@ -6,17 +6,17 @@ No UI, no game-specific knowledge.
 
 from __future__ import annotations
 
+import concurrent.futures
+import glob as _glob
 import os
 import re
+import re as _re
 import shutil
 import threading
 from pathlib import Path
 
 from Utils.app_log import app_log
 from Utils.wine_proton.run_host_shim import _apply_run_host_shim
-import re as _re
-import glob as _glob
-import concurrent.futures
 
 # ---------------------------------------------------------------------------
 # Known Steam base directories for different install methods

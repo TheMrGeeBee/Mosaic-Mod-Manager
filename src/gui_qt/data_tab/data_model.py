@@ -14,7 +14,10 @@ columns. Display-only — all data-building lives in Utils.data_tab.
 from __future__ import annotations
 
 from PySide6.QtCore import (
-    Qt, QAbstractItemModel, QModelIndex, QT_TRANSLATE_NOOP,
+    QT_TRANSLATE_NOOP,
+    QAbstractItemModel,
+    QModelIndex,
+    Qt,
 )
 
 COL_NAME = 0
@@ -141,6 +144,7 @@ class DataModel(QAbstractItemModel):
         if role == Qt.BackgroundRole and self._highlight_mod:
             if not node.is_dir and node.mod == self._highlight_mod:
                 from PySide6.QtGui import QColor
-                from gui_qt.theme.theme_qt import active_palette, _c
+
+                from gui_qt.theme.theme_qt import _c, active_palette
                 return QColor(_c(active_palette(), "CONFLICT_HL_ANCHOR"))  # matches modlist anchor tint
         return None

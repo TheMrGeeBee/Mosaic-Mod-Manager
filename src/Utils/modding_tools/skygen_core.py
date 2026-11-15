@@ -16,10 +16,10 @@ from __future__ import annotations
 import mmap
 import re
 import shutil
+from collections import defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Callable, Dict, List, Optional, Set, Tuple
-from collections import defaultdict
 
 if TYPE_CHECKING:
     from Games.base_game import BaseGame

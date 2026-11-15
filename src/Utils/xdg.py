@@ -23,8 +23,6 @@ from pathlib import Path
 from typing import Callable
 
 from Utils.app_log import app_log
-
-
 from Utils.appimage_env import strip_appimage_vars
 
 

@@ -49,7 +49,10 @@ from Utils.plugins import armor_records
 from Utils.plugins.esp_records import Record
 from Utils.plugins.formid_resolve import display_formid, resolve
 from Utils.plugins.record_info import (
-    RecordInfo, classify_by_keyword_prefix, format_slots, read_edid_full,
+    RecordInfo,
+    classify_by_keyword_prefix,
+    format_slots,
+    read_edid_full,
 )
 
 _DATA = struct.Struct("<If")          # value: u32, weight: f32

@@ -25,8 +25,8 @@ from __future__ import annotations
 from pathlib import Path
 
 from Games.ue5_game import UE5Game, UE5Rule
-from Utils.deploy.deploy import CustomRule, LinkMode
 from Utils.config_paths import get_profiles_dir
+from Utils.deploy.deploy import CustomRule, LinkMode
 
 # Plugins.txt lives here inside the game root (OblivionRemastered/)
 _PLUGINS_TXT_GAME_REL = Path("Content/Dev/ObvData/Data/Plugins.txt")

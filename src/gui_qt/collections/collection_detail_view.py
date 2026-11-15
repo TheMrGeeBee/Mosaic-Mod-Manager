@@ -3,15 +3,26 @@ from __future__ import annotations
 
 import threading
 
-from PySide6.QtCore import Qt, Signal, QT_TRANSLATE_NOOP
+from PySide6.QtCore import QT_TRANSLATE_NOOP, Qt, Signal
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QFrame,
-    QSplitter, QScrollArea, QCheckBox, QComboBox, QTableWidget, QTableWidgetItem,
-    QHeaderView, QAbstractItemView,
+    QAbstractItemView,
+    QCheckBox,
+    QComboBox,
+    QFrame,
+    QHBoxLayout,
+    QHeaderView,
+    QLabel,
+    QPushButton,
+    QScrollArea,
+    QSplitter,
+    QTableWidget,
+    QTableWidgetItem,
+    QVBoxLayout,
+    QWidget,
 )
 
-from gui_qt.theme.theme_qt import active_palette, _c
 from gui_qt.safe_emit import safe_emit
+from gui_qt.theme.theme_qt import _c, active_palette
 from gui_qt.worker import run_in_worker
 from Utils.collections.collection_manifest import fmt_size
 
@@ -565,6 +576,7 @@ class CollectionDetailView(QWidget):
             return None
         try:
             from pathlib import Path
+
             from Utils.exe_launch.game_helpers import find_profile_with_collection_slug
             from Utils.profile.profile_state import read_collection_revision
             pname = find_profile_with_collection_slug(self._game.name, slug)
@@ -851,7 +863,8 @@ class CollectionDetailView(QWidget):
             manifest = {}
             try:
                 from Utils.collections.collection_manifest import (
-                    load_collection_manifest)
+                    load_collection_manifest,
+                )
                 manifest = load_collection_manifest(
                     self._api, game_name, slug, rev, dl_path, log_fn=self._log)
                 offsite, offsite_auto = _split_offsite_with_modio(

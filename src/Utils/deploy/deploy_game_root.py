@@ -14,9 +14,9 @@ from pathlib import Path
 
 from Utils.app_log import safe_log as _safe_log
 from Utils.deploy.deploy_shared import (
-    LinkMode,
     _FILEMAP_SNAPSHOT_NAME,
     _OVERWRITE_NAME,
+    LinkMode,
     _deploy_workers,
     _do_link,
     _log_case_collisions,
@@ -29,7 +29,6 @@ from Utils.deploy.deploy_shared import (
     _restore_from_log,
     _write_deploy_snapshot,
 )
-
 
 # Log file written next to filemap.txt recording what was placed.
 _FILEMAP_LOG_NAME   = "filemap_deployed.txt"

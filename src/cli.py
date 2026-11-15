@@ -18,10 +18,10 @@ full display name (e.g. 'Skyrim Special Edition').  Matching is case-insensitive
 from __future__ import annotations
 
 import argparse
-import sys
-import shutil
 import json
+import shutil
 import subprocess
+import sys
 import tempfile
 from pathlib import Path
 
@@ -167,7 +167,9 @@ def cmd_audit_collection_fomod(target: str, cache_dir: "str | None") -> int:
     """
 
     from Utils.collections.collection_fomod_audit import (
-        audit_collection_manifest, format_audit)
+        audit_collection_manifest,
+        format_audit,
+    )
     from Utils.installers.fomod_parser import parse_module_config
 
     tpath = Path(target).expanduser()

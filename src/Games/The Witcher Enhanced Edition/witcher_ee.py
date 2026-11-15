@@ -32,19 +32,25 @@ strips that down to bare content before it ever reaches the filemap.
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 from Games.base_game import BaseGame
+from Utils.config_paths import get_profiles_dir
 from Utils.deploy.deploy import (
-    CustomRule, LinkMode, deploy_filemap, deploy_custom_rules,
-    restore_custom_rules, load_per_mod_strip_prefixes,
-    load_separator_deploy_paths, expand_separator_deploy_paths,
-    expand_separator_link_modes, expand_separator_raw_deploy,
+    CustomRule,
+    LinkMode,
     cleanup_custom_deploy_dirs,
+    deploy_custom_rules,
+    deploy_filemap,
+    expand_separator_deploy_paths,
+    expand_separator_link_modes,
+    expand_separator_raw_deploy,
+    load_per_mod_strip_prefixes,
+    load_separator_deploy_paths,
+    restore_custom_rules,
 )
 from Utils.mods.modlist import read_modlist
-from Utils.config_paths import get_profiles_dir
-import os
 
 _PROFILES_DIR = get_profiles_dir()
 

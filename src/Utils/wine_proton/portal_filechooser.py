@@ -13,12 +13,12 @@ import shutil
 import subprocess
 import threading
 import traceback
+import urllib.parse
 import uuid
 from pathlib import Path
 from typing import Callable
 
 from Utils.app_log import app_log
-import urllib.parse
 
 _DEBUG = os.environ.get("PORTAL_DEBUG", "1") not in ("", "0", "false", "False")
 

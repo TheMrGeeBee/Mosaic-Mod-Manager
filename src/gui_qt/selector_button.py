@@ -10,9 +10,10 @@ never become the selection.
 from __future__ import annotations
 
 from typing import Callable
-from PySide6.QtWidgets import QToolButton, QMenu
+
+from PySide6.QtCore import QEvent, QObject, QSize, Qt
 from PySide6.QtGui import QActionGroup
-from PySide6.QtCore import Qt, QSize, QEvent, QObject
+from PySide6.QtWidgets import QMenu, QToolButton
 
 
 class SplitPressHighlighter(QObject):
@@ -297,8 +298,8 @@ class SelectorButton(QToolButton):
         face = self._item_icons.get(self._current)
         if face is None:
             return
-        from PySide6.QtGui import QPainter
         from PySide6.QtCore import QRect
+        from PySide6.QtGui import QPainter
         px = self._item_icon_px
         x = 8   # left-edge inset
         y = (self.height() - px) // 2

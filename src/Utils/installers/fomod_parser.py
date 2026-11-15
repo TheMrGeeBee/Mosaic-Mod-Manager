@@ -8,11 +8,11 @@ Uses only stdlib (xml.etree.ElementTree).
 from __future__ import annotations
 
 import os
-import xml.etree.ElementTree as ET
-from pathlib import Path
-from dataclasses import dataclass, field
-from typing import Optional
 import re as _re
+import xml.etree.ElementTree as ET
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Optional
 
 
 def resolve_path_ci(base: str, rel: str) -> Optional[str]:

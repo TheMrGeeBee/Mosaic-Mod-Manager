@@ -8,12 +8,12 @@ restore-to-vanilla step, output registration and requirement seeding.
 
 from __future__ import annotations
 
-from pathlib import Path
-from typing import TYPE_CHECKING, Callable
 import json
 import os
 import shutil
 import tempfile
+from pathlib import Path
+from typing import TYPE_CHECKING, Callable
 
 if TYPE_CHECKING:
     from Games.base_game import BaseGame
@@ -68,6 +68,7 @@ def download_installer(game: "BaseGame",
     Applications/TTW and return the executable path. Raises on failure.
     Shared by the TTW and BSA-Decompressor wizards (same binary)."""
     import urllib.request
+
     from Utils.ca_bundle import download_file, get_ssl_context
     from Utils.wizard_support.wizard_archives import extract_archive
 
@@ -117,7 +118,10 @@ def download_installer(game: "BaseGame",
 def find_fo3_install() -> Path | None:
     """Locate the Fallout 3 install folder via Steam libraries, or None."""
     try:
-        from Utils.wine_proton.steam_finder import find_game_by_steam_id, find_steam_libraries
+        from Utils.wine_proton.steam_finder import (
+            find_game_by_steam_id,
+            find_steam_libraries,
+        )
         libs = find_steam_libraries()
         for sid in _FO3_STEAM_IDS:
             hit = find_game_by_steam_id(libs, sid, _FO3_EXE_NAME)

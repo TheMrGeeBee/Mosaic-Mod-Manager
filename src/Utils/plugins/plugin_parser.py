@@ -37,7 +37,6 @@ import os
 import struct
 from pathlib import Path
 
-
 _MASTERS_CACHE: dict[str, tuple[int, int, list[str]]] = {}
 _MASTERS_CACHE_MAX = 8192
 

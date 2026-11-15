@@ -10,11 +10,14 @@ widget only maps each state to the matching theme colors.
 from __future__ import annotations
 
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QWidget, QVBoxLayout, QLabel
+from PySide6.QtWidgets import QLabel, QVBoxLayout, QWidget
 
-from gui_qt.theme.theme_qt import active_palette, _c
+from gui_qt.theme.theme_qt import _c, active_palette
 from Utils.wine_proton.framework_detect import (
-    STATE_INSTALLED, STATE_NOT_DEPLOYED, STATE_NOT_ENABLED, STATE_MISSING,
+    STATE_INSTALLED,
+    STATE_MISSING,
+    STATE_NOT_DEPLOYED,
+    STATE_NOT_ENABLED,
 )
 
 ROW_H = 22

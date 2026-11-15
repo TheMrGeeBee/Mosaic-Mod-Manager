@@ -5,13 +5,13 @@ opens it in the scoped editor.
 
 from __future__ import annotations
 
-from PySide6.QtCore import Qt, QRect, QSize
+from PySide6.QtCore import QRect, QSize, Qt
 from PySide6.QtGui import QFont
 from PySide6.QtWidgets import QStyledItemDelegate
 
-from gui_qt.theme.theme_qt import active_palette, _c, qc
 from gui_qt.icons import icon
 from gui_qt.text_files.text_files_model import COL_NAME, COL_SOURCE
+from gui_qt.theme.theme_qt import _c, active_palette, qc
 
 ARROW_SZ = 20
 INDENT = 18

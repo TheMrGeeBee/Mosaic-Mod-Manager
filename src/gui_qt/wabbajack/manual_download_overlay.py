@@ -36,7 +36,6 @@ from Utils.wabbajack.wabbajack_manifest import (
     NexusState,
 )
 
-
 CANCEL_INSTALL = "cancel-install"   # on_done() value: stop the whole install
 
 

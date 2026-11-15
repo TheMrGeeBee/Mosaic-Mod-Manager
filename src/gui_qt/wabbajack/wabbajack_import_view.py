@@ -29,8 +29,12 @@ from PySide6.QtWidgets import (
 from gui_qt.theme.theme_qt import _c, active_palette
 from Utils.collections.collection_manifest import fmt_size
 from Utils.collections.collection_preflight import blocking_failures
-from Utils.wabbajack.wabbajack_manifest import (ManualState, ModList, UnknownState,
-                                                mosaic_game_for)
+from Utils.wabbajack.wabbajack_manifest import (
+    ManualState,
+    ModList,
+    UnknownState,
+    mosaic_game_for,
+)
 from Utils.wabbajack.wabbajack_preflight import FIX_LOVERSLAB_LOGIN
 
 _SOURCE_LABELS = {

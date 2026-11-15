@@ -23,14 +23,25 @@ from typing import Callable, Optional
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QLineEdit,
-    QListWidget, QComboBox, QFrame, QScrollArea,
+    QComboBox,
+    QFrame,
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QListWidget,
+    QPushButton,
+    QScrollArea,
+    QVBoxLayout,
+    QWidget,
 )
 
-from gui_qt.theme.theme_qt import active_palette, _c, danger_close_button, button_qss
+from gui_qt.theme.theme_qt import _c, active_palette, button_qss, danger_close_button
 from gui_qt.wheel_guard import no_wheel
 from Utils.userlist import (
-    DEFAULT_GROUP, parse_userlist, write_userlist, remove_group,
+    DEFAULT_GROUP,
+    parse_userlist,
+    remove_group,
+    write_userlist,
 )
 
 

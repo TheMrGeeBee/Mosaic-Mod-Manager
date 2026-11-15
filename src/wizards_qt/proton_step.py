@@ -14,27 +14,43 @@ the choices are saved.
 
 from __future__ import annotations
 
+import shutil
 import threading
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
-    QCheckBox, QComboBox, QLineEdit,
+    QCheckBox,
+    QComboBox,
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QPushButton,
+    QVBoxLayout,
+    QWidget,
 )
 
-from gui_qt.theme.theme_qt import active_palette, _c, button_qss, ok_text, err_text
 from gui_qt.safe_emit import safe_emit
+from gui_qt.theme.theme_qt import _c, active_palette, button_qss, err_text, ok_text
 from Utils.exe_launch.exe_launch import (
-    PREFIX_MODE_GAME, PREFIX_MODE_ISOLATED, PREFIX_MODE_SHARED,
-    load_prefix_mode, load_proton_override, load_tool_launch_args,
-    load_skip_proton_step, load_tool_launch_env, load_winetricks_style,
-    save_prefix_mode, save_proton_override, save_skip_proton_step,
-    save_tool_launch_args, save_tool_launch_env, save_winetricks_style,
+    PREFIX_MODE_GAME,
+    PREFIX_MODE_ISOLATED,
+    PREFIX_MODE_SHARED,
+    load_prefix_mode,
+    load_proton_override,
+    load_skip_proton_step,
+    load_tool_launch_args,
+    load_tool_launch_env,
+    load_winetricks_style,
+    save_prefix_mode,
+    save_proton_override,
+    save_skip_proton_step,
+    save_tool_launch_args,
+    save_tool_launch_env,
+    save_winetricks_style,
     shared_prefix_dir,
 )
-import shutil
 
 if TYPE_CHECKING:
     from Games.base_game import BaseGame

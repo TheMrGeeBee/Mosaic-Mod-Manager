@@ -32,22 +32,22 @@ import shutil
 from pathlib import Path
 
 from Games.base_game import BaseGame, WizardTool
+from Utils.config_paths import get_profiles_dir
 from Utils.deploy.deploy import (
     CustomRule,
     LinkMode,
+    cleanup_custom_deploy_dirs,
     deploy_core,
     deploy_custom_rules,
     deploy_filemap,
-    restore_custom_rules,
+    expand_separator_deploy_paths,
     load_per_mod_strip_prefixes,
     load_separator_deploy_paths,
-    expand_separator_deploy_paths,
-    cleanup_custom_deploy_dirs,
     move_to_core,
+    restore_custom_rules,
     restore_data_core,
 )
 from Utils.mods.modlist import read_modlist
-from Utils.config_paths import get_profiles_dir
 
 _PROFILES_DIR = get_profiles_dir()
 
@@ -298,7 +298,9 @@ class VampireBloodlines(BaseGame):
         installed — the patch is a base layer, not a mod, and collections often pin
         an older one."""
         from Utils.modding_tools.vtmb_patch import (
-            installed_version_satisfies, version_from_installer_name)
+            installed_version_satisfies,
+            version_from_installer_name,
+        )
         wanted = version_from_installer_name(name)
         return (wanted is not None and self._game_path is not None
                 and installed_version_satisfies(self._game_path, wanted))

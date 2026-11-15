@@ -16,18 +16,28 @@ import threading
 from pathlib import Path
 
 from PySide6.QtCore import Qt, QTimer, Signal
-from PySide6.QtGui import QPainter, QPen, QColor
+from PySide6.QtGui import QColor, QPainter, QPen
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton,
-    QFrame, QScrollArea,
+    QFrame,
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QPushButton,
+    QScrollArea,
+    QVBoxLayout,
+    QWidget,
 )
 
-from gui_qt.theme.theme_qt import active_palette, _c, danger_close_button, contrast_text
 from gui_qt.icons import icon
 from gui_qt.safe_emit import safe_emit
+from gui_qt.theme.theme_qt import _c, active_palette, contrast_text, danger_close_button
 from Utils.profile.profile_state import (
-    read_profile_settings, merge_profile_settings, profile_uses_specific_mods,
-    shared_mods_dependents, hand_over_shared_mods, read_shared_mods,
+    hand_over_shared_mods,
+    merge_profile_settings,
+    profile_uses_specific_mods,
+    read_profile_settings,
+    read_shared_mods,
+    shared_mods_dependents,
 )
 from Utils.xdg import xdg_open
 

@@ -39,6 +39,7 @@ from __future__ import annotations
 import configparser
 import re
 import shutil
+import tempfile
 import threading
 from collections import Counter
 from dataclasses import dataclass, field, replace
@@ -46,21 +47,26 @@ from pathlib import Path
 from typing import Callable, Sequence
 
 from Utils.downloads.download_scheduler import order_by_size, run_smallest_first
-from Utils.mods.mo2_separator_meta import (scan_separator_colors,
-                                           scan_separator_nesting)
-from Utils.mods.modlist import (ModEntry, mo2_to_natural_order, read_modlist,
-                                write_modlist)
+from Utils.mods.mo2_separator_meta import scan_separator_colors, scan_separator_nesting
+from Utils.mods.modlist import (
+    ModEntry,
+    mo2_to_natural_order,
+    read_modlist,
+    write_modlist,
+)
 from Utils.plugins.plugins import invalidate_plugins_cache
-from Utils.profile.profile_state import (read_separator_colors,
-                                         write_separator_colors,
-                                         write_separator_nesting,
-                                         write_wabbajack_modlist_info)
+from Utils.profile.profile_state import (
+    read_separator_colors,
+    write_separator_colors,
+    write_separator_nesting,
+    write_wabbajack_modlist_info,
+)
 
+from . import wabbajack_file
 from .downloaders import resolve_downloader
 from .downloaders.game_file_source import fetch_game_file, runtime_swap_originals
 from .downloaders.nexus_source import download_nexus
 from .wabbajack_directives import apply_directive
-from . import wabbajack_file
 from .wabbajack_hash import hash_file, hashes_match
 from .wabbajack_manifest import (
     Archive,
@@ -76,7 +82,6 @@ from .wabbajack_manifest import (
     mosaic_game_for,
 )
 from .wabbajack_vfs import ArchiveIndex
-import tempfile
 
 PROFILE_FILES_DIR = "wabbajack_profile_files"
 # Wabbajack builds the loose files that go into a rebuilt BSA/BA2 under

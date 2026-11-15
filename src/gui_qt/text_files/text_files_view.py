@@ -7,19 +7,25 @@ My-Games scans are expensive). Clicking a file opens the scoped text editor.
 from __future__ import annotations
 
 import threading
+from collections import Counter
 from pathlib import Path
 
 from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QTreeView, QAbstractItemView,
+    QAbstractItemView,
+    QTreeView,
+    QVBoxLayout,
+    QWidget,
 )
 
 import Utils.text_files as tf
 from gui_qt.safe_emit import safe_emit
 from gui_qt.text_files.text_files_model import (
-    TextFilesModel, _TextNode, COL_NAME, COL_SOURCE,
+    COL_NAME,
+    COL_SOURCE,
+    TextFilesModel,
+    _TextNode,
 )
-from collections import Counter
 
 
 class TextFilesView(QWidget):

@@ -38,15 +38,6 @@ import tempfile
 from pathlib import Path
 
 from Games.base_game import BaseGame
-from Utils.deploy.deploy import (
-    LinkMode,
-    cleanup_custom_deploy_dirs,
-    deploy_filemap_to_root,
-    load_per_mod_strip_prefixes,
-    restore_filemap_from_root,
-)
-from Utils.mods.modlist import read_modlist
-from Utils.config_paths import get_profiles_dir
 from Utils.archives.re_pak_patcher import (
     find_pak_files,
     hash_filepath,
@@ -55,7 +46,16 @@ from Utils.archives.re_pak_patcher import (
     restore_pak_file,
     update_root_manifest,
 )
+from Utils.config_paths import get_profiles_dir
+from Utils.deploy.deploy import (
+    LinkMode,
+    cleanup_custom_deploy_dirs,
+    deploy_filemap_to_root,
+    load_per_mod_strip_prefixes,
+    restore_filemap_from_root,
+)
 from Utils.modding_tools.tex_convert import convert_tex_v10_to_v34, tex_needs_conversion
+from Utils.mods.modlist import read_modlist
 
 _PROFILES_DIR = get_profiles_dir()
 

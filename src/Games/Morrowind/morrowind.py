@@ -13,6 +13,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from Games.base_game import BaseGame, WizardTool
+from Utils.config_paths import get_profiles_dir
 from Utils.deploy.deploy import (
     LinkMode,
     cleanup_custom_deploy_dirs,
@@ -29,7 +30,6 @@ from Utils.deploy.deploy import (
     restore_data_core,
 )
 from Utils.mods.modlist import read_modlist
-from Utils.config_paths import get_profiles_dir
 
 _PROFILES_DIR = get_profiles_dir()
 

@@ -9,21 +9,21 @@ Mod structure:
 
 from pathlib import Path
 
-from Games.base_game import BaseGame, MODERN_DIRECTX_DEPS
+from Games.base_game import MODERN_DIRECTX_DEPS, BaseGame
+from Utils.config_paths import get_profiles_dir
 from Utils.deploy.deploy import (
     CustomRule,
     LinkMode,
     deploy_custom_rules,
     deploy_filemap_to_root,
-    load_per_mod_strip_prefixes,
-    load_separator_deploy_paths,
     expand_separator_link_modes,
     expand_separator_raw_deploy,
+    load_per_mod_strip_prefixes,
+    load_separator_deploy_paths,
     restore_custom_rules,
     restore_filemap_from_root,
 )
 from Utils.mods.modlist import read_modlist
-from Utils.config_paths import get_profiles_dir
 
 _PROFILES_DIR = get_profiles_dir()
 

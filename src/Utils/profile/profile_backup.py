@@ -307,7 +307,9 @@ def _drop_stale_ownership(profile_dir: Path) -> None:
     if mods.is_symlink() or not mods.is_dir():
         return
     from Utils.profile.profile_state import (
-        read_profile_settings, write_profile_settings)
+        read_profile_settings,
+        write_profile_settings,
+    )
     try:
         settings = read_profile_settings(profile_dir, None)
         if settings.pop("mods_shared_from", None) is not None:

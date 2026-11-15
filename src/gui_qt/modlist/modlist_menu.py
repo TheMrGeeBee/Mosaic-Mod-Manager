@@ -9,20 +9,21 @@ Qt backend, and even those appear only when their Tk show-condition passes.
 
 from __future__ import annotations
 
+import os
+from datetime import datetime
+from pathlib import Path
+
+from PySide6.QtCore import QT_TRANSLATE_NOOP, QCoreApplication
+from PySide6.QtGui import QAction
+from PySide6.QtWidgets import QMenu
+
+from gui_qt.modlist.modlist_model import COL_NAME
+from gui_qt.overlays.confirm_overlay import ConfirmOverlay
+from gui_qt.overlays.text_input_overlay import TextInputOverlay
+
 # Crash-proof diagnostic prints (Flatpak stdout can raise BrokenPipeError and
 # kill worker threads). See Utils.app_log.safe_print.
 from Utils.app_log import safe_print as print  # noqa: A004
-
-from PySide6.QtWidgets import QMenu
-from PySide6.QtGui import QAction
-from PySide6.QtCore import QCoreApplication, QT_TRANSLATE_NOOP
-
-from gui_qt.overlays.confirm_overlay import ConfirmOverlay
-from gui_qt.modlist.modlist_model import COL_NAME
-from gui_qt.overlays.text_input_overlay import TextInputOverlay
-import os
-from pathlib import Path
-from datetime import datetime
 
 # Display-only shortcut hints shown right-aligned in the context menu. These MUST
 # match the real window-level QShortcut bindings in gui_qt/shortcuts.py — they are
@@ -693,7 +694,11 @@ def _view_requirements(view, name):
 
 def _has_conflict(model, row) -> bool:
     """True if the row has a loose OR BSA conflict (so Show Conflicts is useful)."""
-    from gui_qt.modlist.modlist_model import COL_CONFLICTS, ConflictRole, BsaConflictRole
+    from gui_qt.modlist.modlist_model import (
+        COL_CONFLICTS,
+        BsaConflictRole,
+        ConflictRole,
+    )
     idx = model.index(row, COL_CONFLICTS)
     loose = model.data(idx, ConflictRole) or 0
     bsa = model.data(idx, BsaConflictRole) or 0
@@ -1003,7 +1008,9 @@ def _installation_archive(view, name: str):
     try:
         from Utils.config_paths import list_all_cache_dirs
         from Utils.downloads.download_locations import (
-            is_default_downloads_disabled, load_extra_download_locations)
+            is_default_downloads_disabled,
+            load_extra_download_locations,
+        )
         if not is_default_downloads_disabled():
             xdg = os.environ.get("XDG_DOWNLOAD_DIR")
             search_dirs.append(Path(xdg) if xdg else Path.home() / "Downloads")
@@ -1052,7 +1059,7 @@ def _toggle_root_folder(view, names, enable: bool):
     staging = getattr(view, "staging_dir", None)
     if staging is None:
         return
-    from Nexus.nexus_meta import read_meta, write_meta, NexusModMeta
+    from Nexus.nexus_meta import NexusModMeta, read_meta, write_meta
     changed = []
     for nm in names:
         meta_path = staging / nm / "meta.ini"
@@ -1393,7 +1400,10 @@ def _show_overwrite_log(view, boundary_name=None):
     title = (view.tr("Files swept into Root Folder (newest restore first)")
              if is_root
              else view.tr("Files swept into Overwrite (newest restore first)"))
-    from gui_qt.overlays.overwrite_log_overlay import OverwriteLogOverlay, parse_overwrite_log
+    from gui_qt.overlays.overwrite_log_overlay import (
+        OverwriteLogOverlay,
+        parse_overwrite_log,
+    )
     OverwriteLogOverlay.show_over(view, parse_overwrite_log(text), title=title)
 
 

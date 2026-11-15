@@ -24,47 +24,64 @@ are ported but not yet wired (see ``overwrite_existing`` / ``update_context``).
 
 from __future__ import annotations
 
+import configparser as _cp
+import configparser as _cpi
+import importlib.util
 import itertools as _itertools
 import json
+import os
+import os as _os_col
 import queue as _queue
 import re
+import re as _re
+import shutil
+import shutil as _shutil
+import shutil as _shutil_skip
+import sys
+import tempfile as _tf
 import threading
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable
 
+from Nexus.manual_download_watch import (
+    is_mod_removed,
+    is_transient_failure,
+    should_fallback_to_browser,
+    start_manual_install,
+)
+from Nexus.nexus_download import (
+    DownloadResult,
+    _find_cached_archive,
+    _get_downloads_dir,
+    _md5_matches,
+    delete_archive_and_sidecar,
+)
+from Nexus.nexus_meta import build_meta_from_download
 from Utils.collections.collection_reset import (
-    _resolve_collection_priorities, _apply_collection_groups)
+    _apply_collection_groups,
+    _resolve_collection_priorities,
+)
 from Utils.config_paths import get_download_cache_dir_for_game, list_all_cache_dirs
 from Utils.downloads.download_locations import (
-    is_default_downloads_disabled, load_extra_download_locations)
+    is_default_downloads_disabled,
+    load_extra_download_locations,
+)
 from Utils.downloads.download_scheduler import order_by_size, run_smallest_first
 from Utils.extract_budget import ExtractionMemoryBudget, get_uncompressed_size
 from Utils.mods.mod_install import (
-    install_collection_archive, FOMOD_DEFERRED, BAIN_DEFERRED)
-from Utils.mods.modlist import read_modlist, write_modlist, ModEntry
-from Utils.plugins.plugins import write_plugins, write_loadorder, PluginEntry
+    BAIN_DEFERRED,
+    FOMOD_DEFERRED,
+    install_collection_archive,
+)
+from Utils.mods.modlist import ModEntry, read_modlist, write_modlist
+from Utils.plugins.plugins import PluginEntry, write_loadorder, write_plugins
 from Utils.ui_config import (
-    load_collection_settings, load_clear_archive_after_install,
-    load_keep_fomod_archives)
-from Nexus.nexus_download import (
-    DownloadResult, _find_cached_archive, delete_archive_and_sidecar,
-    _get_downloads_dir, _md5_matches)
-from Nexus.nexus_meta import build_meta_from_download
-from Nexus.manual_download_watch import (
-    start_manual_install, should_fallback_to_browser, is_transient_failure, is_mod_removed)
+    load_clear_archive_after_install,
+    load_collection_settings,
+    load_keep_fomod_archives,
+)
 from Utils.xdg import open_url as _open_browser_url
-import os
-import shutil
-import importlib.util
-import sys
-import configparser as _cp
-import shutil as _shutil_skip
-import os as _os_col
-import tempfile as _tf
-import shutil as _shutil
-import configparser as _cpi
-import re as _re
 
 
 # ---------------------------------------------------------------------------
@@ -2143,9 +2160,9 @@ def run_collection_install(
     if state.install_counters["installed"] > 0:
         try:
             log("Updating mod index…")
-            from Utils.filemap import rebuild_mod_index
-            from Utils.deploy.deploy import load_per_mod_strip_prefixes
             from Nexus.nexus_meta import collect_root_flagged_mods
+            from Utils.deploy.deploy import load_per_mod_strip_prefixes
+            from Utils.filemap import rebuild_mod_index
             _staging = game.get_effective_mod_staging_path()
             try:
                 _index_dir = game.get_effective_filemap_path().parent
@@ -2617,7 +2634,10 @@ def _write_new_profile_modlist(profile_dir, modlist_path, install_order, log):
             final_entries.extend(_preserved)
         write_modlist(modlist_path, final_entries)
         if _bundle_map or _preserved:
-            from Utils.profile.profile_state import read_separator_locks, write_separator_locks
+            from Utils.profile.profile_state import (
+                read_separator_locks,
+                write_separator_locks,
+            )
             _locks = read_separator_locks(profile_dir)
             for bname in _bundle_map:
                 _locks[f"{bname}_separator"] = True
@@ -2764,8 +2784,11 @@ def _apply_manifest_separators(profile_dir, modlist_path, collection_schema, log
     write_modlist(modlist_path, entries)
     try:
         from Utils.profile.profile_state import (
-            read_separator_colors, write_separator_colors,
-            read_separator_locks, write_separator_locks)
+            read_separator_colors,
+            read_separator_locks,
+            write_separator_colors,
+            write_separator_locks,
+        )
         if colors:
             merged_c = read_separator_colors(profile_dir)
             merged_c.update(colors)
@@ -3263,7 +3286,10 @@ def _apply_collection_binary_patches(archive_root, collection_schema, staging_pa
 
 
 def _apply_collection_ini_tweaks(archive_root, profile_dir, game, log):
-    from Utils.collections.collection_ini_tweaks import GAME_INI_TARGETS, apply_collection_ini_tweaks
+    from Utils.collections.collection_ini_tweaks import (
+        GAME_INI_TARGETS,
+        apply_collection_ini_tweaks,
+    )
     if not (archive_root / "INI Tweaks").is_dir():
         return
     try:

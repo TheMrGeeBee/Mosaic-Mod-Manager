@@ -14,17 +14,23 @@ Mod structure:
   (mod_staging_requires_subdir + mod_staging_wrap_signals).
 """
 
+import importlib.util
 from pathlib import Path
 
 from Games.base_game import BaseGame
+from Utils.config_paths import get_profiles_dir
 from Utils.deploy.deploy import (
-    LinkMode, deploy_filemap, deploy_core, load_per_mod_strip_prefixes,
-    load_separator_deploy_paths, expand_separator_deploy_paths,
-    cleanup_custom_deploy_dirs, move_to_core, restore_data_core,
+    LinkMode,
+    cleanup_custom_deploy_dirs,
+    deploy_core,
+    deploy_filemap,
+    expand_separator_deploy_paths,
+    load_per_mod_strip_prefixes,
+    load_separator_deploy_paths,
+    move_to_core,
+    restore_data_core,
 )
 from Utils.mods.modlist import read_modlist
-from Utils.config_paths import get_profiles_dir
-import importlib.util
 
 _PROFILES_DIR = get_profiles_dir()
 

@@ -90,7 +90,10 @@ class PreflightOverlay(OverlayBase):
     def set_checks(self, checks) -> None:
         """Re-render after (re)running the checks and pick the primary action."""
         from Utils.collections.collection_preflight import (
-            blocking_failures, fixable, warnings)
+            blocking_failures,
+            fixable,
+            warnings,
+        )
         checks = list(checks)
         blockers, fixes, warns = blocking_failures(checks), fixable(checks), warnings(checks)
         self._body.setText("".join(self._row(c) for c in checks))

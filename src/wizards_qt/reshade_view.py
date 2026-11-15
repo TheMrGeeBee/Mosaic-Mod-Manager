@@ -22,17 +22,34 @@ from typing import TYPE_CHECKING
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QStackedWidget,
-    QComboBox, QRadioButton, QButtonGroup, QCheckBox, QScrollArea, QFrame,
-    QLineEdit, QProgressBar, QGridLayout,
+    QButtonGroup,
+    QCheckBox,
+    QComboBox,
+    QFrame,
+    QGridLayout,
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QProgressBar,
+    QPushButton,
+    QRadioButton,
+    QScrollArea,
+    QStackedWidget,
+    QVBoxLayout,
+    QWidget,
 )
 
-from gui_qt.theme.theme_qt import active_palette, _c, button_qss, ok_text, err_text
 from gui_qt.safe_emit import safe_emit
+from gui_qt.theme.theme_qt import _c, active_palette, button_qss, err_text, ok_text
 from Utils.modding_tools.reshade_tools import (
-    API_CHOICES, OPTIONAL_SHADER_PACKS, OBSOLETE_PRESET_EFFECTS,
-    download_and_extract_reshade_dll, download_and_extract_shaders,
-    parse_preset_effect_files, prune_shaders_to_preset, install_reshade_files,
+    API_CHOICES,
+    OBSOLETE_PRESET_EFFECTS,
+    OPTIONAL_SHADER_PACKS,
+    download_and_extract_reshade_dll,
+    download_and_extract_shaders,
+    install_reshade_files,
+    parse_preset_effect_files,
+    prune_shaders_to_preset,
 )
 
 if TYPE_CHECKING:

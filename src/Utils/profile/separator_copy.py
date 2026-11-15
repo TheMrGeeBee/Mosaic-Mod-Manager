@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from Utils.mods.modlist import ModEntry, _SEPARATOR_SUFFIX, read_modlist, write_modlist
+from Utils.mods.modlist import _SEPARATOR_SUFFIX, ModEntry, read_modlist, write_modlist
 
 
 def separator_exists_in_profile(target_modlist_path: Path, name: str) -> bool:
@@ -52,8 +52,11 @@ def register_separators_in_modlist(target_modlist_path: Path,
 def _write_separator_extras(target_profile_dir: Path, separators: "list[dict]",
                             added_names: "list[str]") -> None:
     from Utils.profile.profile_state import (
-        read_separator_colors, write_separator_colors,
-        read_separator_locks, write_separator_locks)
+        read_separator_colors,
+        read_separator_locks,
+        write_separator_colors,
+        write_separator_locks,
+    )
     by_name = {s["name"]: s for s in separators}
     colors = read_separator_colors(target_profile_dir)
     locks = read_separator_locks(target_profile_dir)

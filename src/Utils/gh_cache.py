@@ -40,7 +40,6 @@ from Utils.atomic_write import write_atomic_text
 from Utils.ca_bundle import resolve_ca_bundle
 from Utils.config_paths import get_config_dir
 
-
 _USER_AGENT = "Mosaic-Mod-Manager"
 
 

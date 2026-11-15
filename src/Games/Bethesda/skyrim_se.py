@@ -9,9 +9,23 @@ Mod structure:
 
 from pathlib import Path
 
+from Games.base_game import MODERN_DIRECTX_DEPS, WizardTool
 from Games.Bethesda.fallout_3 import Fallout_3
-from Games.base_game import WizardTool, MODERN_DIRECTX_DEPS
-from Utils.deploy.deploy import LinkMode, deploy_core, deploy_custom_rules, deploy_filemap, load_per_mod_strip_prefixes, load_separator_deploy_paths, expand_separator_deploy_paths, expand_separator_link_modes, expand_separator_raw_deploy, cleanup_custom_deploy_dirs, restore_custom_rules, restore_data_core, move_to_core
+from Utils.deploy.deploy import (
+    LinkMode,
+    cleanup_custom_deploy_dirs,
+    deploy_core,
+    deploy_custom_rules,
+    deploy_filemap,
+    expand_separator_deploy_paths,
+    expand_separator_link_modes,
+    expand_separator_raw_deploy,
+    load_per_mod_strip_prefixes,
+    load_separator_deploy_paths,
+    move_to_core,
+    restore_custom_rules,
+    restore_data_core,
+)
 from Utils.mods.modlist import read_modlist
 
 
@@ -224,7 +238,11 @@ class SkyrimSE(Fallout_3):
         from Utils.modding_tools.pandora_tools import find_pandora_exe
         from Utils.wizard_support.wizard_gates import (
             engine_fixes_installed as ef_installed,
+        )
+        from Utils.wizard_support.wizard_gates import (
             find_mod_exe,
+        )
+        from Utils.wizard_support.wizard_gates import (
             sse_display_tweaks_installed as sdt_installed,
         )
         pandora_tools = []

@@ -43,9 +43,9 @@ import shutil
 from pathlib import Path
 
 from Games.base_game import BaseGame
+from Utils.config_paths import get_profiles_dir
 from Utils.deploy.deploy import LinkMode
 from Utils.mods.modlist import read_modlist
-from Utils.config_paths import get_profiles_dir
 from Utils.profile.profile_state import read_excluded_mod_files
 
 _PROFILES_DIR = get_profiles_dir()

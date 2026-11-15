@@ -75,9 +75,11 @@ def load_data_entries(game, filemap_path: Path,
     modlist_path = profile_dir / "modlist.txt"
     if modlist_path.is_file():
         try:
-            from Utils.mods.modlist import read_modlist
             from Utils.deploy.deploy import (
-                load_separator_deploy_paths, expand_separator_deploy_paths)
+                expand_separator_deploy_paths,
+                load_separator_deploy_paths,
+            )
+            from Utils.mods.modlist import read_modlist
             sep_paths = load_separator_deploy_paths(profile_dir)
             if sep_paths:
                 ml = read_modlist(modlist_path)

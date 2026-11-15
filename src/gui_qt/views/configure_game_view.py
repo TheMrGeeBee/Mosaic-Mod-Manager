@@ -14,25 +14,36 @@ Handles both cases in one view: "Add" framing when the game is unconfigured,
 from __future__ import annotations
 
 import shutil
+import subprocess
 import threading
 from pathlib import Path
 
-from PySide6.QtCore import Qt, Signal, QObject
+from PySide6.QtCore import QObject, Qt, Signal
 from PySide6.QtGui import QFont
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QLabel, QLineEdit,
-    QPushButton, QScrollArea, QFrame, QRadioButton, QCheckBox, QButtonGroup,
+    QButtonGroup,
+    QCheckBox,
+    QFrame,
+    QGridLayout,
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QPushButton,
+    QRadioButton,
+    QScrollArea,
+    QVBoxLayout,
+    QWidget,
 )
 
-from gui_qt.theme.theme_qt import active_palette, _c
-from gui_qt.views.add_game_view import _game_logo
 from gui_qt.safe_emit import safe_emit
-from gui_qt.worker import run_in_worker, NO_EMIT
+from gui_qt.theme.theme_qt import _c, active_palette
+from gui_qt.views.add_game_view import _game_logo
+from gui_qt.worker import NO_EMIT, run_in_worker
+
 # Crash-proof diagnostic prints (Flatpak stdout can raise BrokenPipeError and
 # kill worker threads). See Utils.app_log.safe_print.
 from Utils.app_log import safe_print as print  # noqa: A004
 from Utils.deploy.deploy import LinkMode
-import subprocess
 
 # Left column width — the image panel and the options panel share it.
 _LEFT_COL_W = 240
@@ -44,6 +55,7 @@ def _heroic_app_names(game) -> list[str]:
     if not names and getattr(game, "name", None):
         try:
             import json
+
             from Utils.config_paths import get_game_config_path
             p = get_game_config_path(game.name)
             if p.is_file():
@@ -829,8 +841,8 @@ class ConfigureGameView(QWidget):
         text — so the seeded default actually takes effect on save.
         """
         try:
-            from Utils.ui_config import load_default_staging_path
             from Utils.config_paths import get_default_game_staging_root
+            from Utils.ui_config import load_default_staging_path
             user_root = (load_default_staging_path() or "").strip()
             root = Path(user_root) / g.name if user_root \
                 else get_default_game_staging_root(g.name)
@@ -874,10 +886,15 @@ class ConfigureGameView(QWidget):
         game_name = getattr(g, "name", repr(g))
         app_log(f"[Configure Game] Auto-detecting: {game_name}")
         try:
-            from Utils.wine_proton.steam_finder import (
-                find_steam_libraries, find_game_by_steam_id, find_game_in_libraries)
             from Utils.wine_proton.heroic_finder import (
-                find_heroic_game, find_heroic_game_info_by_exe)
+                find_heroic_game,
+                find_heroic_game_info_by_exe,
+            )
+            from Utils.wine_proton.steam_finder import (
+                find_game_by_steam_id,
+                find_game_in_libraries,
+                find_steam_libraries,
+            )
             exe_names = [getattr(g, "exe_name", None)] + list(
                 getattr(g, "exe_name_alts", []) or [])
             exe_names = [e for e in exe_names if e]
@@ -1016,8 +1033,8 @@ class ConfigureGameView(QWidget):
         g = self._game
         found = None
         try:
-            from Utils.wine_proton.steam_finder import find_prefix
             from Utils.wine_proton.heroic_finder import find_heroic_prefix
+            from Utils.wine_proton.steam_finder import find_prefix
             sid = getattr(g, "steam_id", None)
             ids = [sid] + [str(s) for s in getattr(g, "alt_steam_ids", []) or [] if s]
             for s in [x for x in ids if x]:
@@ -1219,8 +1236,8 @@ class ConfigureGameView(QWidget):
         if not files:
             self._finalize_save()
             return
-        from Utils.wine_proton.prefix_manager import fmt_size
         from gui_qt.overlays.confirm_overlay import ConfirmOverlay
+        from Utils.wine_proton.prefix_manager import fmt_size
         body = (f"The staging location for {self._game.name} has changed.\n\n"
                 f"Move {fmt_size(size)} of mods, profiles and overwrite "
                 f"files from\n{old_root}\nto\n{new_root}?\n\n"
@@ -1421,7 +1438,9 @@ class ConfigureGameView(QWidget):
         def worker():
             try:
                 from Utils.deploy.deploy import (
-                    remove_deployed_files, restore_filemap_from_root)
+                    remove_deployed_files,
+                    restore_filemap_from_root,
+                )
                 tgt = Path(target)
                 removed = 0
                 if hasattr(g, "get_effective_filemap_path"):

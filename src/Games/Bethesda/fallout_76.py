@@ -6,8 +6,8 @@ Fallout 76 game handler.
 from pathlib import Path
 
 from Games.base_game import WizardTool
-from Games.Bethesda.fallout_3 import Fallout_3
 from Games.Bethesda.bethesda_ini import _read_ini_key, _set_ini_key
+from Games.Bethesda.fallout_3 import Fallout_3
 
 
 class Fallout_76(Fallout_3):
@@ -228,7 +228,8 @@ class Fallout_76(Fallout_3):
             return
 
         from Utils.archives.bsa_invalidation import (
-            append_to_archive_list, remove_many_from_archive_list,
+            append_to_archive_list,
+            remove_many_from_archive_list,
         )
         key = self._invalidation_archive_list_key
         prev = self._tracked_mod_bsas()

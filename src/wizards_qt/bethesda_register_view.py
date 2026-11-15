@@ -19,7 +19,7 @@ from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import QLabel, QPlainTextEdit
 
 from gui_qt.safe_emit import safe_emit
-from gui_qt.theme.theme_qt import active_palette, _c
+from gui_qt.theme.theme_qt import _c, active_palette
 from wizards_qt._view_base import WizardViewBase
 
 if TYPE_CHECKING:
@@ -127,7 +127,10 @@ class RegisterGamePathView(WizardViewBase):
         self._log_line(self.tr("Proton: {0}").format(proton_script.parent.name))
 
         # Drop the idempotency marker so a manual run always re-writes the keys.
-        from Utils.wine_proton.bethesda_registry import _marker_path, register_bethesda_game_path
+        from Utils.wine_proton.bethesda_registry import (
+            _marker_path,
+            register_bethesda_game_path,
+        )
         try:
             _marker_path(compat_data, registry_name).unlink(missing_ok=True)
         except OSError:

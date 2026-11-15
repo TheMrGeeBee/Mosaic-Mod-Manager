@@ -11,7 +11,13 @@ from __future__ import annotations
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
-    QDialog, QDialogButtonBox, QHeaderView, QLineEdit, QTableWidget, QTableWidgetItem, QVBoxLayout,
+    QDialog,
+    QDialogButtonBox,
+    QHeaderView,
+    QLineEdit,
+    QTableWidget,
+    QTableWidgetItem,
+    QVBoxLayout,
 )
 
 _COLUMNS = ("Name", "Editor ID", "Base Form ID")

@@ -18,9 +18,9 @@ the system trust store. Pass the result as ``verify=`` to ``requests``.
 from __future__ import annotations
 
 import os
+from pathlib import Path
 
 from Utils.app_log import app_log
-from pathlib import Path
 
 # Common system trust stores across distros (Arch/SteamOS, Debian, Fedora, …)
 _SYSTEM_CA_PATHS = (

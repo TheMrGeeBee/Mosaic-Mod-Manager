@@ -6,7 +6,6 @@ Used by install_mod, dialogs (NameModDialog), and modlist_panel. No dependency o
 import re
 import unicodedata
 
-
 # Characters Windows/Wine forbid in a path component.  Mods are deployed and
 # read through Wine tools (xEdit, PGPatcher, BodySlide, …) and into Wine
 # prefixes, so a folder name Wine can't address breaks those tools — and a

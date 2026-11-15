@@ -10,10 +10,10 @@ asset catalog, so a body or skeleton replacer mod is picked up automatically.
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass, field as dc_field, replace
-from typing import Iterable
-
 from array import array
+from dataclasses import dataclass, replace
+from dataclasses import field as dc_field
+from typing import Iterable
 
 from Utils.nif.nif_reader import NifNode, NifScene, NifShape, compose_transform
 

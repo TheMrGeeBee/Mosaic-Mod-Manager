@@ -7,9 +7,10 @@ the same files into QIcon. Icons are cached by (name, size).
 from __future__ import annotations
 
 from pathlib import Path
-from PySide6.QtGui import QIcon, QPixmap, QTransform, QPainter, QColor
-from PySide6.QtCore import QSize, Qt
 from pathlib import Path as _Path
+
+from PySide6.QtCore import QSize, Qt
+from PySide6.QtGui import QColor, QIcon, QPainter, QPixmap, QTransform
 
 # src/icons/ — same dir the Tk app uses (gui/ is a sibling of icons/).
 _ICONS_DIR = Path(__file__).resolve().parent.parent / "icons"
@@ -71,8 +72,9 @@ def exe_icon(path, size: int = 18) -> "QIcon | None":
         return _exe_icon_cache[key]
     ic: "QIcon | None" = None
     try:
-        from Utils.exe_launch.exe_icon import extract_exe_icon
         from PySide6.QtGui import QImage
+
+        from Utils.exe_launch.exe_icon import extract_exe_icon
         blob = extract_exe_icon(p)
         if blob:
             img = QImage.fromData(blob, "ICO")

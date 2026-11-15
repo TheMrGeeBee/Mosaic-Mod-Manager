@@ -20,12 +20,19 @@ from typing import TYPE_CHECKING
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
-    QCheckBox, QComboBox, QHBoxLayout, QLabel, QPlainTextEdit, QSplitter,
-    QTreeWidget, QTreeWidgetItem, QWidget,
+    QCheckBox,
+    QComboBox,
+    QHBoxLayout,
+    QLabel,
+    QPlainTextEdit,
+    QSplitter,
+    QTreeWidget,
+    QTreeWidgetItem,
+    QWidget,
 )
 
 from gui_qt.safe_emit import safe_emit
-from gui_qt.theme.theme_qt import active_palette, _c
+from gui_qt.theme.theme_qt import _c, active_palette
 from wizards_qt._view_base import GREEN, RED, WizardViewBase
 
 if TYPE_CHECKING:

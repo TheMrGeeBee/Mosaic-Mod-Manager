@@ -17,8 +17,8 @@ reachable and the divider never pops in/out.
 
 from __future__ import annotations
 
-from Utils.mods.modlist import ModEntry
 from Utils.filemap import OVERWRITE_NAME, ROOT_FOLDER_NAME
+from Utils.mods.modlist import ModEntry
 
 # The reverse-mode divider between the last user group and the ungrouped
 # float. UI-only: lives in the display list, never in the natural list, and is
@@ -97,9 +97,16 @@ def sort_key_fn(key: str, ctx: dict):
 
     if key == "flags":
         from gui_qt.modlist.modlist_data import (
-            FLAG_MISSING_REQS, FLAG_UPDATE, FLAG_MODIO_UPDATE, FLAG_ROOT,
-            FLAG_ROOT_RULE, FLAG_MODIFIED_MF, FLAG_PRERTX,
-            FLAG_COLLECTION_BUNDLED, FLAG_COLLECTION_PATCHED, FLAG_ENDORSED,
+            FLAG_COLLECTION_BUNDLED,
+            FLAG_COLLECTION_PATCHED,
+            FLAG_ENDORSED,
+            FLAG_MISSING_REQS,
+            FLAG_MODIFIED_MF,
+            FLAG_MODIO_UPDATE,
+            FLAG_PRERTX,
+            FLAG_ROOT,
+            FLAG_ROOT_RULE,
+            FLAG_UPDATE,
         )
         flags = ctx.get("flags") or {}
 

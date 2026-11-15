@@ -19,19 +19,29 @@ from typing import Callable, Optional
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QLineEdit,
-    QStackedWidget, QFrame, QComboBox,
+    QComboBox,
+    QFrame,
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QPushButton,
+    QStackedWidget,
+    QVBoxLayout,
+    QWidget,
 )
 
-from gui_qt.theme.theme_qt import active_palette, _c, button_qss
 from gui_qt.safe_emit import safe_emit
+from gui_qt.theme.theme_qt import _c, active_palette, button_qss
 from gui_qt.wheel_guard import no_wheel
-from Utils.config_paths import get_default_staging_root, get_config_dir
 from Utils import ui_config as uc
+from Utils.config_paths import get_config_dir, get_default_staging_root
 from Utils.ui_config import (
-    load_default_staging_path, save_default_staging_path,
-    load_download_cache_path, save_download_cache_path,
+    load_default_staging_path,
+    load_download_cache_path,
+    save_default_staging_path,
+    save_download_cache_path,
 )
+
 _ICONS_DIR = Path(__file__).resolve().parent.parent.parent / "icons"
 _TOTAL_PAGES = 3
 

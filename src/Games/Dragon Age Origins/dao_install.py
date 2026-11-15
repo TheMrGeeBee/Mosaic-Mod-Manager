@@ -35,6 +35,7 @@ import zipfile
 from pathlib import Path
 from xml.etree import ElementTree as ET
 
+
 class InstallCancelled(Exception):
     """Raised when the user cancels an install-time wizard (e.g. the
     OverrideConfig options dialog), signalling the installer to abort the
@@ -404,8 +405,8 @@ def _warn_duplicate_overrides(mod_name: str,
         log_fn(f"    -- {dst.name} --")
         for s in srcs:
             log_fn(f"      -> {s}")
-    log_fn(f"  [DAO] Only one copy of each is deployed. If this mod has options, "
-           f"read the mod page and remove the variants you don't want.")
+    log_fn("  [DAO] Only one copy of each is deployed. If this mod has options, "
+           "read the mod page and remove the variants you don't want.")
 
     if not interactive:
         return
@@ -459,7 +460,7 @@ def normalize_dao_mod(dest_root: Path, mod_name: str, log_fn=None,
     contents_dir = dest_root / "Contents"
     if contents_dir.is_dir():
         _merge_tree(contents_dir, dest_root)
-        _log(f"  [DAO] merged pre-extracted Contents/ tree.")
+        _log("  [DAO] merged pre-extracted Contents/ tree.")
     # File a root-level Manifest.xml if present — covers the pre-extracted
     # .dazip case and any mod that ships Manifest.xml at the staging root.
     _file_manifest(dest_root, dest_root, _log)

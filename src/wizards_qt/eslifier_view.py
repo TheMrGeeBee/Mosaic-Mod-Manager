@@ -14,10 +14,14 @@ from typing import TYPE_CHECKING
 from PySide6.QtCore import Qt, Signal
 
 from gui_qt.safe_emit import safe_emit
-from wizards_qt._view_base import GREEN, RED, WizardViewBase
 from Utils.modding_tools.eslifier_tools import (
-    APP_DIR, EXE_NAME, GITHUB_API_URL, OUTPUT_NAME, find_eslifier_exe,
+    APP_DIR,
+    EXE_NAME,
+    GITHUB_API_URL,
+    OUTPUT_NAME,
+    find_eslifier_exe,
 )
+from wizards_qt._view_base import GREEN, RED, WizardViewBase
 
 if TYPE_CHECKING:
     from Games.base_game import BaseGame
@@ -114,9 +118,14 @@ class ESLifierView(WizardViewBase):
         profile = getattr(self._ctx, "profile_name", None) or "default"
 
         def worker():
-            from Utils.modding_tools.eslifier_tools import cleanup_scan_mirror, write_settings
             from Utils.exe_launch.exe_launch import (
-                resolve_tool_prefix, run_tool_logged, shutdown_prefix_wineserver,
+                resolve_tool_prefix,
+                run_tool_logged,
+                shutdown_prefix_wineserver,
+            )
+            from Utils.modding_tools.eslifier_tools import (
+                cleanup_scan_mirror,
+                write_settings,
             )
             _wlog = lambda m: self._log(f"ESLifier Wizard: {m}")
             scan_mirror = None

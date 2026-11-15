@@ -24,6 +24,7 @@ import html
 import json
 import os
 import re
+from urllib.parse import urljoin
 
 import keyring
 import requests
@@ -31,7 +32,6 @@ import requests
 from Nexus.nexus_api import _KEYRING_SERVICE, _derive_key, _keyring_ok
 from Utils.ca_bundle import resolve_ca_bundle
 from Utils.config_paths import get_config_dir
-from urllib.parse import urljoin
 
 LOGIN_URL = "https://www.loverslab.com/login/"
 _KEYRING_USER = "loverslab_session"

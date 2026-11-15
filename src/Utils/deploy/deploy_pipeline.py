@@ -10,14 +10,17 @@ call site.
 
 from __future__ import annotations
 
+import os
+import platform
+import time as _time
 import traceback
 from pathlib import Path
 from typing import Callable, Optional
 
 from Utils.deploy.deploy import (
     LinkMode,
-    deploy_root_folder,
     deploy_root_flagged_mods,
+    deploy_root_folder,
     load_per_mod_strip_prefixes,
     restore_root_folder,
 )
@@ -28,10 +31,6 @@ from Utils.profile.profile_state import read_excluded_mod_files
 from Utils.ui_config import load_normalize_folder_case
 from Utils.wine_proton.protontricks import ensure_prefix_deps
 from Utils.wine_proton.wine_dll_config import deploy_game_wine_dll_overrides
-import os
-import platform
-import time as _time
-
 
 LogFn = Callable[[str], None]
 ProgressFn = Callable[[int, int, Optional[str]], None]
@@ -212,7 +211,8 @@ def _warn_missing_requirements(game, profile_dir: Path, *, log_fn: LogFn) -> Non
     game_domain = _safe(lambda: game.nexus_game_domain, "") or ""
     try:
         from Nexus.nexus_requirements import (
-            _alternative_satisfied_for_game, _is_external_for_game,
+            _alternative_satisfied_for_game,
+            _is_external_for_game,
             load_requirement_filter_offline,
         )
         external_set, alternatives = load_requirement_filter_offline()
@@ -462,9 +462,8 @@ def _build_filemap_for_game(game, profile, *, log_fn: LogFn,
         return None
 
     try:
-        from Nexus.nexus_meta import collect_root_flagged_mods
         from Games.ue5_game import UE5Game
-
+        from Nexus.nexus_meta import collect_root_flagged_mods
         from Utils.perftrace import span
 
         exc_raw = read_excluded_mod_files(modlist_path.parent, None)

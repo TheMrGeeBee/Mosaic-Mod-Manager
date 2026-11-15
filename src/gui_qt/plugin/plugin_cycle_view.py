@@ -18,11 +18,17 @@ from typing import Callable, Optional
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QListWidget,
-    QFrame, QScrollArea,
+    QFrame,
+    QHBoxLayout,
+    QLabel,
+    QListWidget,
+    QPushButton,
+    QScrollArea,
+    QVBoxLayout,
+    QWidget,
 )
 
-from gui_qt.theme.theme_qt import active_palette, _c, danger_close_button
+from gui_qt.theme.theme_qt import _c, active_palette, danger_close_button
 
 _PAL = active_palette()
 STATUS_BROKEN_BG = _c(_PAL, "PLUGIN_CYCLE_ERR_BG")

@@ -11,10 +11,10 @@ in-app replacement for ``QMessageBox.warning``/``critical``/``information``.
 from __future__ import annotations
 
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QWidget, QHBoxLayout, QLabel, QPushButton
+from PySide6.QtWidgets import QHBoxLayout, QLabel, QPushButton, QWidget
 
 from gui_qt.overlay_base import OverlayBase
-from gui_qt.theme.theme_qt import active_palette, _c, contrast_text
+from gui_qt.theme.theme_qt import _c, active_palette, contrast_text
 
 
 class ConfirmOverlay(OverlayBase):

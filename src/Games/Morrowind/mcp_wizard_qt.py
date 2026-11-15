@@ -7,6 +7,7 @@ If the exe is already present the extract step is skipped.
 
 from __future__ import annotations
 
+import subprocess
 import threading
 from typing import TYPE_CHECKING
 
@@ -14,7 +15,6 @@ from PySide6.QtCore import Qt, Signal
 
 from gui_qt.safe_emit import safe_emit
 from wizards_qt._view_base import GREEN, RED, WizardViewBase
-import subprocess
 
 if TYPE_CHECKING:
     from Games.base_game import BaseGame

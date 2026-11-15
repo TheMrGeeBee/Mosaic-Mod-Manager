@@ -11,23 +11,32 @@ already built it offers a fast setup-only re-apply.
 from __future__ import annotations
 
 import re
+import subprocess
 import threading
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
-    QHBoxLayout, QLabel, QPlainTextEdit, QPushButton, QVBoxLayout, QWidget,
+    QHBoxLayout,
+    QLabel,
+    QPlainTextEdit,
+    QPushButton,
+    QVBoxLayout,
+    QWidget,
 )
 
 from gui_qt.safe_emit import safe_emit
-from gui_qt.theme.theme_qt import active_palette, _c
-from wizards_qt._view_base import GREEN, RED, WizardViewBase
+from gui_qt.theme.theme_qt import _c, active_palette
 from Utils.modding_tools.ttw_tools import (
-    GITHUB_REPO_URL, MODPUB_URL, OUTPUT_NAME,
-    find_fo3_install, find_ttw_installer, ttw_mod_dir,
+    GITHUB_REPO_URL,
+    MODPUB_URL,
+    OUTPUT_NAME,
+    find_fo3_install,
+    find_ttw_installer,
+    ttw_mod_dir,
 )
-import subprocess
+from wizards_qt._view_base import GREEN, RED, WizardViewBase
 
 if TYPE_CHECKING:
     from Games.base_game import BaseGame
@@ -290,8 +299,14 @@ class TTWView(WizardViewBase):
 
     def _do_run(self):
         from Utils.modding_tools.ttw_tools import (
-            FO3_REQUIRED_ESMS, OUTPUT_NAME as _ON, fnv_required_esms,
-            missing_vanilla_esms, register_output, restore_to_vanilla,
+            FO3_REQUIRED_ESMS,
+            fnv_required_esms,
+            missing_vanilla_esms,
+            register_output,
+            restore_to_vanilla,
+        )
+        from Utils.modding_tools.ttw_tools import (
+            OUTPUT_NAME as _ON,
         )
         game = self._game
         exe = self._exe
@@ -415,7 +430,11 @@ class TTWView(WizardViewBase):
 
     def _post_install_setup(self, *, rebuilt: bool):
         from Utils.modding_tools.ttw_tools import (
-            OUTPUT_NAME as _ON, seed_required_mods, sync_active_profile,
+            OUTPUT_NAME as _ON,
+        )
+        from Utils.modding_tools.ttw_tools import (
+            seed_required_mods,
+            sync_active_profile,
         )
         game = self._game
         sync_active_profile(game, self._profile)

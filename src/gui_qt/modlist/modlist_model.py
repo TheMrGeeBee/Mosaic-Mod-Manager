@@ -10,18 +10,28 @@ number (highest-priority row = largest value).
 from __future__ import annotations
 
 from PySide6.QtCore import (
-    Qt, QAbstractTableModel, QModelIndex, QMimeData, QByteArray, Signal,
     QT_TRANSLATE_NOOP,
+    QAbstractTableModel,
+    QByteArray,
+    QMimeData,
+    QModelIndex,
+    Qt,
+    Signal,
+)
+
+from gui_qt.modlist.modlist_sort import (
+    DIVIDER_NAME,
+    build_display,
+    is_reverse,
+    make_divider,
+    uninvert_display,
 )
 
 # Crash-proof diagnostic prints (Flatpak stdout can raise BrokenPipeError and
 # kill worker threads). See Utils.app_log.safe_print.
 from Utils.app_log import safe_print as print  # noqa: A004
-from Utils.mods.modlist import ModEntry, read_modlist
 from Utils.filemap import OVERWRITE_NAME, ROOT_FOLDER_NAME
-from gui_qt.modlist.modlist_sort import (
-    DIVIDER_NAME, build_display, uninvert_display, make_divider, is_reverse,
-)
+from Utils.mods.modlist import ModEntry, read_modlist
 
 # UI-only boundary separators: pinned + locked, never written to modlist.txt.
 # Overwrite floats at the top, Root Folder at the bottom (Tk parity).
@@ -562,7 +572,11 @@ class ModListModel(QAbstractTableModel):
     def _effective_flags(self, name: str) -> int:
         """Meta flag bits + the Mod-Files / filemap-derived overlays."""
         from gui_qt.modlist.modlist_data import (
-            FLAG_MODIFIED_MF, FLAG_PRERTX, FLAG_ROOT_RULE, FLAG_RERUN_FOMOD)
+            FLAG_MODIFIED_MF,
+            FLAG_PRERTX,
+            FLAG_RERUN_FOMOD,
+            FLAG_ROOT_RULE,
+        )
         bits = self._flags.get(name, 0)
         if name in self._modified_mf:
             bits |= FLAG_MODIFIED_MF
@@ -968,7 +982,7 @@ class ModListModel(QAbstractTableModel):
         # Every structural edit (drag, remove, add-separator, set_priority…)
         # funnels through here — row→block mapping may have changed.
         self._sep_hl_cache.clear()
-        from Utils.mods.modlist import write_modlist, _lock_for
+        from Utils.mods.modlist import _lock_for, write_modlist
         from Utils.perftrace import span
         # ALWAYS write the natural order — the display list may be a sorted /
         # inverted permutation (and contains the divider in reverse mode).
@@ -1041,8 +1055,8 @@ class ModListModel(QAbstractTableModel):
         self.save()
 
     def add_separator(self, row: int, name: str, above: bool) -> None:
-        from Utils.mods.modlist import _SEPARATOR_SUFFIX
         from gui_qt.modlist.modlist_sort import insert_separator_display
+        from Utils.mods.modlist import _SEPARATOR_SUFFIX
         sep = ModEntry(name + _SEPARATOR_SUFFIX, True, False, True)
         ref = self._entries[row]
         if self.reverse_mode_active:

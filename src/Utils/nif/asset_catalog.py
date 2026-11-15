@@ -25,7 +25,12 @@ from typing import Callable, Iterable, Mapping
 
 from Utils.archives.bsa_file_reader import BsaFile, BsaReadError
 from Utils.mods.file_providers import resolve_on_disk
-from Utils.nif.nif_reader import NifError, format_label, read_body_slots, sniff_nif_format
+from Utils.nif.nif_reader import (
+    NifError,
+    format_label,
+    read_body_slots,
+    sniff_nif_format,
+)
 
 BASE = ""          # AssetEntry.mod for the base game layer
 

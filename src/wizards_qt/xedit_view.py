@@ -34,12 +34,17 @@ from typing import TYPE_CHECKING
 
 from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QScrollArea,
+    QHBoxLayout,
+    QLabel,
+    QPushButton,
+    QScrollArea,
     QStackedWidget,
+    QVBoxLayout,
+    QWidget,
 )
 
-from gui_qt.theme.theme_qt import active_palette, _c, button_qss, ok_text, err_text
 from gui_qt.safe_emit import safe_emit
+from gui_qt.theme.theme_qt import _c, active_palette, button_qss, err_text, ok_text
 from Utils.modding_tools.xedit_tools import tool_exe_path
 
 if TYPE_CHECKING:
@@ -383,8 +388,11 @@ class XEditView(QWidget):
         exe_name, app_dir = self._exe_name, self._app_dir
 
         def worker():
+            from Utils.modding_tools.xedit_tools import (
+                applications_dir,
+                flatten_subdirs,
+            )
             from Utils.wizard_support.wizard_archives import extract_archive
-            from Utils.modding_tools.xedit_tools import applications_dir, flatten_subdirs
             try:
                 if archive is None or not archive.is_file():
                     raise RuntimeError(self.tr("Archive not found."))
@@ -570,13 +578,18 @@ class XEditView(QWidget):
 
         def worker():
             from Utils.exe_launch.exe_launch import (
-                load_tool_launch_args, parse_launch_args, resolve_tool_prefix,
-                run_tool_logged, shutdown_prefix_wineserver,
+                load_tool_launch_args,
+                parse_launch_args,
+                resolve_tool_prefix,
+                run_tool_logged,
+                shutdown_prefix_wineserver,
+            )
+            from Utils.modding_tools.xedit_tools import (
+                finalize_xedit_saves,
+                prepare_xedit_prefix,
+                restore_after_xedit,
             )
             from Utils.wine_proton.wine_paths import to_wine_path
-            from Utils.modding_tools.xedit_tools import (
-                finalize_xedit_saves, prepare_xedit_prefix, restore_after_xedit,
-            )
             _wlog = lambda m: self._log(f"{name} Wizard: {m}")
             try:
                 result = resolve_tool_prefix(

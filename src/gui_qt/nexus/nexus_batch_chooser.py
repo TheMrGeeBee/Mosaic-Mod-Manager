@@ -23,18 +23,32 @@ mod with at least one ticked file, or None on cancel.
 
 from __future__ import annotations
 
-from PySide6.QtCore import Qt, QEvent
+from PySide6.QtCore import QEvent, Qt
 from PySide6.QtGui import QBrush, QColor, QFont
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QFrame, QTextEdit,
-    QTreeWidget, QTreeWidgetItem, QHeaderView,
+    QFrame,
+    QHBoxLayout,
+    QHeaderView,
+    QLabel,
+    QPushButton,
+    QTextEdit,
+    QTreeWidget,
+    QTreeWidgetItem,
+    QVBoxLayout,
+    QWidget,
 )
 
-from gui_qt.theme.theme_qt import (
-    active_palette, _c, _tinted_icon_url, contrast_text,
-)
 from gui_qt.nexus.nexus_file_chooser import (
-    installable_files, _fmt_size_bytes, _plain_text, _CATEGORY_LABEL,
+    _CATEGORY_LABEL,
+    _fmt_size_bytes,
+    _plain_text,
+    installable_files,
+)
+from gui_qt.theme.theme_qt import (
+    _c,
+    _tinted_icon_url,
+    active_palette,
+    contrast_text,
 )
 
 

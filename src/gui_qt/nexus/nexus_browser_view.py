@@ -20,21 +20,30 @@ back via signals. The active GAME determines the domain (game.nexus_game_domain)
 from __future__ import annotations
 
 import threading
-from Utils.config_paths import get_download_cache_dir_for_game
+from concurrent.futures import ThreadPoolExecutor
 
-from PySide6.QtCore import Qt, QTimer, Signal, QEvent, QDate
+from PySide6.QtCore import QDate, QEvent, Qt, QTimer, Signal
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QLabel, QLineEdit,
-    QScrollArea, QFrame, QCheckBox, QToolButton, QMenu,
+    QCheckBox,
+    QFrame,
+    QGridLayout,
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QMenu,
+    QScrollArea,
     QSplitter,
+    QToolButton,
+    QVBoxLayout,
+    QWidget,
 )
 
-from gui_qt.theme.theme_qt import active_palette, _c, contrast_text
+from gui_qt.nexus.nexus_mod_card import CARD_W, NexusModCard, ThumbnailLoader
 from gui_qt.safe_emit import safe_emit
-from gui_qt.worker import run_in_worker
 from gui_qt.selector_button import SelectorButton
-from gui_qt.nexus.nexus_mod_card import NexusModCard, ThumbnailLoader, CARD_W
-from concurrent.futures import ThreadPoolExecutor
+from gui_qt.theme.theme_qt import _c, active_palette, contrast_text
+from gui_qt.worker import run_in_worker
+from Utils.config_paths import get_download_cache_dir_for_game
 
 # label → API value (verbatim from Tk browse_mods_panel.SORT_KEYS / TIME_RANGES)
 SORT_KEYS = [
@@ -959,6 +968,7 @@ class NexusBrowserView(QWidget):
             return set()
         try:
             from pathlib import Path
+
             from Nexus.nexus_meta import scan_installed_mods
             staging = game.get_effective_mod_staging_path()
             if not staging or not Path(staging).is_dir():

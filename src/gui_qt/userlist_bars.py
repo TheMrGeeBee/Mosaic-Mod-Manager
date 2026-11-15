@@ -20,14 +20,24 @@ from typing import Callable, Optional
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QLabel, QPushButton,
-    QLineEdit, QComboBox, QFrame,
+    QComboBox,
+    QFrame,
+    QGridLayout,
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QPushButton,
+    QVBoxLayout,
+    QWidget,
 )
 
-from gui_qt.theme.theme_qt import active_palette, _c
+from gui_qt.theme.theme_qt import _c, active_palette
 from Utils.userlist import (
-    DEFAULT_GROUP, parse_userlist, write_userlist,
-    set_plugin_rules, set_plugin_group,
+    DEFAULT_GROUP,
+    parse_userlist,
+    set_plugin_group,
+    set_plugin_rules,
+    write_userlist,
 )
 
 

@@ -20,16 +20,25 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Callable, Optional
 
-from PySide6.QtCore import Qt, QMimeData, Signal
-from PySide6.QtGui import QDrag, QPixmap, QPainter, QColor, QFont
+from PySide6.QtCore import QMimeData, Qt, Signal
+from PySide6.QtGui import QColor, QDrag, QFont, QPainter, QPixmap
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QLineEdit,
-    QListWidget, QFrame, QScrollArea,
+    QFrame,
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QListWidget,
+    QPushButton,
+    QScrollArea,
+    QVBoxLayout,
+    QWidget,
 )
 
-from gui_qt.theme.theme_qt import active_palette, _c, danger_close_button
+from gui_qt.theme.theme_qt import _c, active_palette, danger_close_button
 from Utils.userlist import (
-    parse_userlist, write_userlist, save_plugin_rules_merged,
+    parse_userlist,
+    save_plugin_rules_merged,
+    write_userlist,
 )
 
 _MIME = "application/x-mosaic-plugin-name"

@@ -11,26 +11,52 @@ from __future__ import annotations
 import textwrap
 
 from PySide6.QtCore import (
-    Qt, QRect, QSize, QEvent, QTimer, QCoreApplication, QT_TRANSLATE_NOOP)
-from PySide6.QtGui import QColor, QFont, QPen, QBrush, QPainter, QAction
+    QT_TRANSLATE_NOOP,
+    QCoreApplication,
+    QEvent,
+    QRect,
+    QSize,
+    Qt,
+    QTimer,
+)
+from PySide6.QtGui import QAction, QBrush, QColor, QFont, QPainter, QPen
 from PySide6.QtWidgets import (
-    QTreeView, QStyledItemDelegate, QStyle, QAbstractItemView,
-    QToolTip, QToolButton,
+    QAbstractItemView,
+    QStyle,
+    QStyledItemDelegate,
+    QToolButton,
+    QToolTip,
+    QTreeView,
 )
 
 from gui_qt import column_state
-
-from gui_qt.theme.theme_qt import active_palette, _c, qc, qc_contrast
 from gui_qt.icons import icon
 from gui_qt.modlist.modlist_header import TkStyleHeader
 from gui_qt.plugin.plugin_model import (
-    PluginModel, RowRole, PFlagsRole, PHighlightRole,
-    COL_NAME, COL_FLAGS, COL_LOCK, COL_PRIORITY, COL_GAME_INDEX, COLUMNS,
+    COL_FLAGS,
+    COL_GAME_INDEX,
+    COL_LOCK,
+    COL_NAME,
+    COL_PRIORITY,
+    COLUMNS,
+    PFlagsRole,
+    PHighlightRole,
+    PluginModel,
+    RowRole,
 )
 from gui_qt.plugin.plugin_state import (
-    PF_MISSING, PF_LATE, PF_VMM, PF_ESL, PF_LOOT, PF_DIRTY, PF_TAGS,
-    PF_USERLIST, PF_UL_CYCLE, format_loot_tooltip,
+    PF_DIRTY,
+    PF_ESL,
+    PF_LATE,
+    PF_LOOT,
+    PF_MISSING,
+    PF_TAGS,
+    PF_UL_CYCLE,
+    PF_USERLIST,
+    PF_VMM,
+    format_loot_tooltip,
 )
+from gui_qt.theme.theme_qt import _c, active_palette, qc, qc_contrast
 
 _FLAG_SZ = 18
 _FLAG_GAP = 4
@@ -429,7 +455,7 @@ class PluginView(QTreeView):
         self._build_column_menu_button(h)
         self._restore_column_state()
 
-        from gui_qt.marker_strip import install_marker_strip, MarkerScrollBar
+        from gui_qt.marker_strip import MarkerScrollBar, install_marker_strip
         install_marker_strip(self, PHighlightRole, code_map={
             -1: MarkerScrollBar._C_LOWER,    # loses conflict (red)
             1: MarkerScrollBar._C_HIGHER,    # wins conflict (green)
@@ -733,7 +759,7 @@ class PluginView(QTreeView):
         if not mods or bsa_index_path is None:
             return set()
         try:
-            from Utils.archives.bsa_filemap import read_bsa_index, _bsa_owning_plugin
+            from Utils.archives.bsa_filemap import _bsa_owning_plugin, read_bsa_index
         except Exception:
             return set()
         idx = read_bsa_index(bsa_index_path) or {}

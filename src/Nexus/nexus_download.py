@@ -26,6 +26,7 @@ Usage
 
 from __future__ import annotations
 
+import hashlib
 import os
 import re
 import threading
@@ -36,12 +37,12 @@ from typing import Callable
 
 import requests
 
-from .nexus_api import NexusAPI, NexusDownloadLink, NexusAPIError
-from .nxm_handler import NxmLink
-from Utils.downloads import bandwidth_limit
 from Utils.app_log import app_log
 from Utils.ca_bundle import resolve_ca_bundle
-import hashlib
+from Utils.downloads import bandwidth_limit
+
+from .nexus_api import NexusAPI, NexusAPIError, NexusDownloadLink
+from .nxm_handler import NxmLink
 
 # Default chunk size for streaming downloads (256 KB)
 _CHUNK_SIZE = 256 * 1024
@@ -144,6 +145,7 @@ def _md5_cache_load() -> dict:
 def _md5_cache_save(data: dict) -> None:
     try:
         import json
+
         from Utils.atomic_write import write_atomic_text
         write_atomic_text(_md5_cache_path(), json.dumps(data))
     except Exception:
@@ -788,7 +790,7 @@ class NexusDownloader:
             if not _has_archive_ext:
                 # Try the URL path first — CDN URLs always embed the real filename
                 try:
-                    from urllib.parse import urlparse, unquote
+                    from urllib.parse import unquote, urlparse
                     _url_path = unquote(urlparse(url).path)
                     _url_basename = os.path.basename(_url_path)
                     if _url_basename and any(_url_basename.lower().endswith(e) for e in _ARCHIVE_EXTS):

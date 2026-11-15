@@ -24,6 +24,7 @@ from __future__ import annotations
 import base64
 import configparser
 import hashlib
+import json as _json
 import os
 import re
 import shutil
@@ -31,7 +32,6 @@ import struct
 import subprocess
 import tempfile
 import urllib.request
-import json as _json
 import zipfile
 from pathlib import Path
 from typing import TYPE_CHECKING, Callable

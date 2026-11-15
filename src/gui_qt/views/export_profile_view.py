@@ -12,30 +12,52 @@ the zip. All packaging logic lives in the neutral ``Utils.profile.profile_export
 from __future__ import annotations
 
 import threading
+import time
 from datetime import datetime
 from pathlib import Path
 
-from PySide6.QtCore import Qt, Signal, QTimer
+from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton,
-    QTableWidget, QTableWidgetItem, QCheckBox, QHeaderView, QListWidget,
     QAbstractItemView,
+    QCheckBox,
+    QHBoxLayout,
+    QHeaderView,
+    QLabel,
+    QLineEdit,
+    QListWidget,
+    QPushButton,
+    QTableWidget,
+    QTableWidgetItem,
+    QVBoxLayout,
+    QWidget,
 )
 
-from gui_qt.theme.theme_qt import active_palette, _c
+from gui_qt.theme.theme_qt import _c, active_palette
 from gui_qt.views.mod_row_widgets import (
     SOURCE_LABELS as _SOURCE_LABELS,
-    source_button_qss as _source_button_qss,
+)
+from gui_qt.views.mod_row_widgets import (
     CardOverlay as _CardOverlay,
-    card_title as _card_title,
-    card_button_bar as _card_button_bar,
+)
+from gui_qt.views.mod_row_widgets import (
     SourceOverlay as _SourceOverlay,
+)
+from gui_qt.views.mod_row_widgets import (
     VersionOverlay as _VersionOverlay,
+)
+from gui_qt.views.mod_row_widgets import (
+    card_button_bar as _card_button_bar,
+)
+from gui_qt.views.mod_row_widgets import (
+    card_title as _card_title,
+)
+from gui_qt.views.mod_row_widgets import (
     center_checkbox as _center_checkbox,
 )
+from gui_qt.views.mod_row_widgets import (
+    source_button_qss as _source_button_qss,
+)
 from Utils.profile import profile_export
-import time
-
 
 # ---------------------------------------------------------------------------
 # Load-settings picker (Export Profile's own — not shared with Create

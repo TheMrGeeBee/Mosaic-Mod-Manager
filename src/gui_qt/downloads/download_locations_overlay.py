@@ -12,12 +12,18 @@ from __future__ import annotations
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
-    QWidget, QHBoxLayout, QLabel, QCheckBox, QListWidget, QPushButton, QFrame,
+    QCheckBox,
+    QFrame,
+    QHBoxLayout,
+    QLabel,
+    QListWidget,
+    QPushButton,
+    QWidget,
 )
 
 import Utils.downloads.download_locations as dl
 from gui_qt.overlay_base import OverlayBase
-from gui_qt.theme.theme_qt import active_palette, _c
+from gui_qt.theme.theme_qt import _c, active_palette
 
 
 class DownloadLocationsOverlay(OverlayBase):

@@ -16,9 +16,10 @@ all. Registering ourselves covers both cases.
 from __future__ import annotations
 
 import subprocess
-from Utils.wine_proton.steam_finder import proton_run_command
 from pathlib import Path
 from typing import Callable
+
+from Utils.wine_proton.steam_finder import proton_run_command
 
 
 def _posix_to_wine_path(p: Path) -> str:

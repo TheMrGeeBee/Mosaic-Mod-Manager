@@ -17,24 +17,24 @@ Public API:
 
 from __future__ import annotations
 
+import hashlib
+import importlib.util
+import json
 import os
 import re
 import shutil
 import stat
 import subprocess
+import sys as _sys
 import tarfile
 import tempfile
 import threading
 import zipfile
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Callable, Optional
 
 from Utils.extract_budget import get_uncompressed_size
-from concurrent.futures import ThreadPoolExecutor
-import hashlib
-import json
-import importlib.util
-import sys as _sys
 
 LogFn = Callable[[str], None]
 ProgressFn = Callable[[int, int, Optional[str]], None]
@@ -1324,8 +1324,11 @@ def prepare_archive(archive_path: str, game, profile_dir: Path, *,
     # wrapper-peel + bounded BFS. (Rebuilding the config path with a lowercase
     # "fomod" broke uppercase FOMOD/ dirs on case-sensitive filesystems and
     # misrouted such archives to the BAIN probe.)
-    from Utils.installers.fomod_parser import (detect_fomod, detect_scripted_fomod,
-                                    parse_module_config)
+    from Utils.installers.fomod_parser import (
+        detect_fomod,
+        detect_scripted_fomod,
+        parse_module_config,
+    )
     fomod_base: Path | None = None
     config = None
     fomod_result = detect_fomod(str(extract_dir))
@@ -1365,7 +1368,10 @@ def prepare_archive(archive_path: str, game, profile_dir: Path, *,
     # layout so the caller can show the picker.
     if fomod_result is None and getattr(game, "supports_bain", True):
         try:
-            from Utils.installers.bain_installer import detect_bain, bain_unwrap_single_folder
+            from Utils.installers.bain_installer import (
+                bain_unwrap_single_folder,
+                detect_bain,
+            )
             bain_root = bain_unwrap_single_folder(str(extract_dir))
             subpkgs = detect_bain(
                 bain_root, extra_exts=getattr(game, "plugin_extensions", None))
@@ -1394,7 +1400,7 @@ def prepare_archive(archive_path: str, game, profile_dir: Path, *,
     if (fomod_result is None and not prepared.bain_subpkgs
             and getattr(game, "mod_supports_bundles", False)):
         try:
-            from Utils.profile.re_bundle import detect_re_bundle, detect_multi_mod
+            from Utils.profile.re_bundle import detect_multi_mod, detect_re_bundle
             bundle_root = unwrap_single_folder(str(extract_dir))
             layout = detect_re_bundle(bundle_root)
             if layout is not None:
@@ -1587,9 +1593,13 @@ def finish_install(prepared: "PreparedInstall", fomod_selections, *,
             # selection live in meta.ini's [Bundle] section; the Bundle Options
             # tab re-materialises on change. Downstream (scan/filemap/deploy/
             # update) sees a normal mod.
-            from Utils.profile.re_bundle import (layout_to_spec, merge_bundle_spec,
-                                         write_bundle_spec,
-                                         materialize_selection, BUNDLE_LIB_DIR)
+            from Utils.profile.re_bundle import (
+                BUNDLE_LIB_DIR,
+                layout_to_spec,
+                materialize_selection,
+                merge_bundle_spec,
+                write_bundle_spec,
+            )
             layout = p.bundle_layout
             spec = layout_to_spec(layout)
             log_fn(f"Installing bundle '{layout.bundle_name}' as one mod "
@@ -1665,7 +1675,9 @@ def finish_install(prepared: "PreparedInstall", fomod_selections, *,
     if p.is_fomod() and p.fomod_config is not None:
         try:
             from Utils.installers.fomod_installer import (
-                collect_unselected_dep_plugins, collect_selected_dep_plugins)
+                collect_selected_dep_plugins,
+                collect_unselected_dep_plugins,
+            )
             sel = fomod_selections or {}
             fomod_pending_deps = ";".join(
                 collect_unselected_dep_plugins(p.fomod_config, sel))
@@ -1727,7 +1739,7 @@ def _collection_plugin_context(game, profile_dir: "Path | None"
     loose_files: set[str] = set()
     if profile_dir is not None:
         try:
-            from Utils.plugins.plugins import read_plugins, read_loadorder
+            from Utils.plugins.plugins import read_loadorder, read_plugins
             # Respect the game's plugins.txt convention: star-prefix games mark
             # enabled plugins with a leading "*" (bare = disabled); no-star games
             # list only enabled plugins (all listed = active). Using the default
@@ -2030,8 +2042,10 @@ def install_collection_archive(
             cross_mod_dep = False
             try:
                 from Utils.installers.fomod_installer import (
-                    resolve_files, check_module_dependencies,
-                    fomod_has_cross_mod_dependency)
+                    check_module_dependencies,
+                    fomod_has_cross_mod_dependency,
+                    resolve_files,
+                )
                 ok, msg = check_module_dependencies(
                     config, installed_files, active_files, loose_files)
                 if not ok:
@@ -2095,9 +2109,11 @@ def install_collection_archive(
                 # replay the selections as given.
                 if fomod_auto_choices is not None:
                     from Utils.collections.collection_fomod_audit import (
-                        resolve_recorded_choices)
+                        resolve_recorded_choices,
+                    )
                     from Utils.collections.collection_install import (
-                        choose_recorded_choices)
+                        choose_recorded_choices,
+                    )
                     _choices = choose_recorded_choices(fomod_auto_choices, config)
                     final_selections, _findings = resolve_recorded_choices(
                         config, _choices)
@@ -2166,8 +2182,9 @@ def install_collection_archive(
                     log_fn(f"FOMOD complete — {len(file_list or [])} file(s) to install.")
                     try:
                         from Utils.installers.fomod_installer import (
+                            collect_selected_dep_plugins,
                             collect_unselected_dep_plugins,
-                            collect_selected_dep_plugins)
+                        )
                         _sel = final_selections or {}
                         fomod_pending_deps = ";".join(
                             collect_unselected_dep_plugins(config, _sel))
@@ -2187,7 +2204,10 @@ def install_collection_archive(
             # keeps BAIN mutually exclusive with FOMOD, and this branch used to
             # ignore that, sending such an archive to the BAIN picker.)
             from Utils.installers.bain_installer import (
-                detect_bain, resolve_bain_files, bain_unwrap_single_folder)
+                bain_unwrap_single_folder,
+                detect_bain,
+                resolve_bain_files,
+            )
             bain_root = bain_unwrap_single_folder(str(prepared.extract_dir))
             bain_subpkgs = detect_bain(
                 bain_root, extra_exts=getattr(game, "plugin_extensions", None))
@@ -2260,9 +2280,13 @@ def install_collection_archive(
             # finish_install — option folders stashed in <mod>/.mm_bundle/,
             # selection materialised onto the mod root, spec in meta.ini's
             # [Bundle] section (preserved by _write_install_meta below).
-            from Utils.profile.re_bundle import (layout_to_spec, merge_bundle_spec,
-                                         write_bundle_spec,
-                                         materialize_selection, BUNDLE_LIB_DIR)
+            from Utils.profile.re_bundle import (
+                BUNDLE_LIB_DIR,
+                layout_to_spec,
+                materialize_selection,
+                merge_bundle_spec,
+                write_bundle_spec,
+            )
             layout = prepared.bundle_layout
             spec = layout_to_spec(layout)
             log_fn(f"Installing bundle '{layout.bundle_name}' as one mod "
@@ -2395,7 +2419,11 @@ def _default_fomod_file_list(config, installed_files, active_files, loose_files,
     contradictory flags.
     """
     from Utils.installers.fomod_installer import (
-        resolve_files, get_default_selections, update_flags, evaluate_dependency)
+        evaluate_dependency,
+        get_default_selections,
+        resolve_files,
+        update_flags,
+    )
     selections: dict = {}
     flag_state: dict = {}
     for i, step in enumerate(getattr(config, "steps", []) or []):
@@ -2683,7 +2711,10 @@ def _clean_mod_name(stem: str, game) -> str:
     """
     name = stem
     try:
-        from Utils.mods.mod_name_utils import _suggest_mod_names, sanitize_mod_folder_name
+        from Utils.mods.mod_name_utils import (
+            _suggest_mod_names,
+            sanitize_mod_folder_name,
+        )
         suggestions = _suggest_mod_names(stem)
         name = (suggestions[0] if suggestions else stem) or stem
         name = sanitize_mod_folder_name(name) or name
@@ -2722,7 +2753,10 @@ def _install_fomod(fomod_base: Path, config, dest_root: Path,
     False on failure (caller falls back to verbatim copy)."""
     try:
         from Utils.installers.fomod_installer import (
-            resolve_files, get_default_selections, update_flags)
+            get_default_selections,
+            resolve_files,
+            update_flags,
+        )
     except Exception as exc:
         log_fn(f"FOMOD installer unavailable ({exc}).")
         return False
@@ -2811,8 +2845,8 @@ def _build_nexus_api():
     metadata by MD5 without the API being threaded down from the app. Mirrors
     what the Qt app's _ensure_nexus_api() does at startup."""
     try:
-        from Nexus.nexus_oauth import load_oauth_tokens
         from Nexus.nexus_api import NexusAPI
+        from Nexus.nexus_oauth import load_oauth_tokens
         tokens = load_oauth_tokens()
         if tokens is None:
             return None
@@ -2848,9 +2882,13 @@ def _write_install_meta(dest_root: Path, archive: Path, game, log_fn: LogFn,
                         fomod_pending_deps: str = "",
                         fomod_active_deps: str = "") -> None:
     try:
-        from Nexus.nexus_meta import (
-            write_meta, resolve_nexus_meta_for_archive, NexusModMeta)
         from datetime import datetime
+
+        from Nexus.nexus_meta import (
+            NexusModMeta,
+            resolve_nexus_meta_for_archive,
+            write_meta,
+        )
         meta_path = dest_root / "meta.ini"
         meta = None
         domain = getattr(game, "nexus_game_domain", None) or getattr(game, "game_id", "")
@@ -3018,7 +3056,7 @@ def _check_nexus_flags_after_install(game, mod_names, log_fn: LogFn) -> None:
             staging_root = Path(game.get_effective_mod_staging_path())
         except Exception:
             return
-        from Nexus.nexus_meta import scan_installed_mods, read_meta, write_meta
+        from Nexus.nexus_meta import read_meta, scan_installed_mods, write_meta
         from Nexus.nexus_requirements import check_requirements_from_gql
 
         all_installed = scan_installed_mods(staging_root)
@@ -3070,8 +3108,8 @@ def _check_nexus_flags_after_install(game, mod_names, log_fn: LogFn) -> None:
 def _update_indexes(game, profile_dir: Path, mod_name: str, dest_root: Path,
                     log_fn: LogFn) -> None:
     try:
-        from Utils.filemap import rescan_mods_in_index
         from Utils.deploy.deploy import load_per_mod_strip_prefixes
+        from Utils.filemap import rescan_mods_in_index
         # The index MUST live where build_filemap reads it — next to the
         # effective filemap (= staging.parent / game root), NOT the profile dir.
         # Writing it to the profile dir leaves a fresh install invisible to the

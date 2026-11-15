@@ -8,25 +8,28 @@ Extracted from deploy.py during the 2026-04 refactor. No behaviour changes.
 from __future__ import annotations
 
 import concurrent.futures
+import configparser
 import errno
 import os
 import re as _re
 import shutil
+import stat as _stat_module
 import threading as _threading
 import time as _time
 from pathlib import Path
 
-from Utils.app_log import safe_log as _safe_log, app_log as _app_log
+from Utils.app_log import app_log as _app_log
+from Utils.app_log import safe_log as _safe_log
 from Utils.atomic_write import atomic_writer
-from Utils.path_utils import has_path_traversal as _has_traversal
 from Utils.deploy.deploy_shared import (
-    LinkMode,
     _OVERWRITE_NAME,
+    _TRASH_INFIX,
+    LinkMode,
+    _append_overwrite_log,
     _default_core,
     _deploy_workers,
     _do_link_ex,
     _get_staging_source_path,
-    _append_overwrite_log,
     _log_case_collisions,
     _map_batched,
     _mkdir_leaves,
@@ -36,10 +39,8 @@ from Utils.deploy.deploy_shared import (
     _resolve_root_path_str,
     _resolve_source,
     _timer,
-    _TRASH_INFIX,
 )
-import configparser
-import stat as _stat_module
+from Utils.path_utils import has_path_traversal as _has_traversal
 
 
 def _report_mode_breakdown(_log, mode_counts: "dict[LinkMode, int]",
@@ -477,9 +478,13 @@ def deploy_filemap(
     _per_merge: set[str] = set()
     try:
         from Utils.deploy.deploy_shared import (
-            load_separator_deploy_paths as _lsdp,
             expand_separator_link_modes as _eslm,
+        )
+        from Utils.deploy.deploy_shared import (
             expand_separator_merge_dirs as _esmd,
+        )
+        from Utils.deploy.deploy_shared import (
+            load_separator_deploy_paths as _lsdp,
         )
         from Utils.mods.modlist import read_modlist as _rml
         _sd = _lsdp(filemap_path.parent)
@@ -1612,7 +1617,7 @@ def restore_data_core(
             # than rglob-ing the entire overwrite tree.
             if rescued_overwrite_rels:
                 try:
-                    from Utils.filemap import update_mod_index, read_mod_index
+                    from Utils.filemap import read_mod_index, update_mod_index
                     # Default assumes overwrite_dir is the profile's top-level
                     # overwrite/ (so its parent is the profile root holding
                     # modindex.bin). Callers that pass a SUB-path of overwrite/

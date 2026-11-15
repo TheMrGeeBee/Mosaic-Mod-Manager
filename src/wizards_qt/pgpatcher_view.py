@@ -18,8 +18,8 @@ from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import QCheckBox, QHBoxLayout, QPushButton, QWidget
 
 from gui_qt.safe_emit import safe_emit
-from wizards_qt._view_base import GREEN, RED, WizardViewBase
 from Utils.modding_tools.xedit_tools import tool_exe_path
+from wizards_qt._view_base import GREEN, RED, WizardViewBase
 
 if TYPE_CHECKING:
     from Games.base_game import BaseGame
@@ -168,7 +168,9 @@ class PGPatcherView(WizardViewBase):
         def worker():
             from Utils.exe_launch.exe_launch import resolve_tool_prefix
             from Utils.wine_proton.protontricks import (
-                D3D_DEP_KEY, dotnet_dep_key, install_d3dcompiler_47,
+                D3D_DEP_KEY,
+                dotnet_dep_key,
+                install_d3dcompiler_47,
                 is_dep_installed,
             )
             _wlog = lambda m: self._log(f"PGPatcher Wizard: {m}")
@@ -248,7 +250,9 @@ class PGPatcherView(WizardViewBase):
                     raise RuntimeError(self.tr(
                         "{0} not found — please restart the wizard.").format(
                             _PATCHER_EXE))
-                from Utils.exe_launch.exe_args_builder import _bootstrap_pgpatcher_settings
+                from Utils.exe_launch.exe_args_builder import (
+                    _bootstrap_pgpatcher_settings,
+                )
                 _bootstrap_pgpatcher_settings(
                     exe,
                     game.get_game_path(),
@@ -319,8 +323,8 @@ class PGPatcherView(WizardViewBase):
         if not self._use_mo2_parity:
             self._mo2_dummy_dir = None
             return
-        from Utils.modding_tools.xedit_tools import applications_dir
         from Utils.installers.mo2_dummy import build_mo2_dummy_instance
+        from Utils.modding_tools.xedit_tools import applications_dir
 
         profile = getattr(self._ctx, "profile_name", None) or "default"
         apps_dir = applications_dir(self._game, _PATCHER_DIR)
@@ -349,11 +353,13 @@ class PGPatcherView(WizardViewBase):
         mo2_dummy_dir, mo2_game_type = self._mo2_dummy_dir, self._mo2_game_type
 
         def worker():
-            from Utils.wine_proton.bethesda_registry import maybe_register_for_game
             from Utils.exe_launch.exe_launch import (
-                link_plugins_txt, resolve_tool_prefix, run_tool_logged,
+                link_plugins_txt,
+                resolve_tool_prefix,
+                run_tool_logged,
                 shutdown_prefix_wineserver,
             )
+            from Utils.wine_proton.bethesda_registry import maybe_register_for_game
             _wlog = lambda m: self._log(f"PGPatcher Wizard: {m}")
             try:
                 result = prefix_env or resolve_tool_prefix(
@@ -379,7 +385,9 @@ class PGPatcherView(WizardViewBase):
                 # ran before the dummy was built, so this is the
                 # authoritative write of modmanager.type.
                 try:
-                    from Utils.exe_launch.exe_args_builder import _bootstrap_pgpatcher_settings
+                    from Utils.exe_launch.exe_args_builder import (
+                        _bootstrap_pgpatcher_settings,
+                    )
                     _bootstrap_pgpatcher_settings(
                         exe,
                         game.get_game_path(),

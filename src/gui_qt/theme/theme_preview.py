@@ -20,16 +20,35 @@ from typing import Callable
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QScrollArea, QFrame,
-    QLabel, QComboBox, QLineEdit, QPushButton, QCheckBox, QRadioButton,
-    QTabBar, QTreeWidget, QTreeWidgetItem, QListWidget, QProgressBar,
+    QCheckBox,
+    QComboBox,
+    QFrame,
+    QGridLayout,
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QListWidget,
+    QProgressBar,
+    QPushButton,
+    QRadioButton,
+    QScrollArea,
+    QTabBar,
+    QTreeWidget,
+    QTreeWidgetItem,
+    QVBoxLayout,
+    QWidget,
 )
 
 from gui_qt.theme.theme_qt import (
-    build_qss, build_qpalette, button_qss, contrast_text, qc, qc_contrast, _c,
+    _c,
+    build_qpalette,
+    build_qss,
+    button_qss,
+    contrast_text,
+    qc,
+    qc_contrast,
 )
 from gui_qt.wheel_guard import no_wheel
-
 
 # (base fill key, hover key, label) — one sample button per family. Hover is
 # interactive: button_qss emits a real :hover rule from the working palette.

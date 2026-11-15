@@ -33,6 +33,7 @@ ue5      — uses the UE5 multi-target manifest deploy; with no routing
 from __future__ import annotations
 
 import base64
+import copy
 import io
 import json
 import threading
@@ -41,28 +42,31 @@ from pathlib import Path
 
 from Games.base_game import BaseGame
 from Games.ue5_game import UE5Game, UE5Rule
+from Utils.config_paths import (
+    get_custom_game_images_dir,
+    get_custom_games_dir,
+    get_profiles_dir,
+)
 from Utils.deploy.deploy import (
     CustomRule,
     LinkMode,
     RestoreWhitelistRule,
+    cleanup_custom_deploy_dirs,
     deploy_core,
     deploy_custom_rules,
     deploy_filemap,
     deploy_filemap_to_root,
-    load_per_mod_strip_prefixes,
-    load_separator_deploy_paths,
     expand_separator_deploy_paths,
     expand_separator_link_modes,
     expand_separator_raw_deploy,
-    cleanup_custom_deploy_dirs,
+    load_per_mod_strip_prefixes,
+    load_separator_deploy_paths,
     move_to_core,
     restore_custom_rules,
     restore_data_core,
     restore_filemap_from_root,
 )
 from Utils.mods.modlist import read_modlist
-from Utils.config_paths import get_profiles_dir, get_custom_games_dir, get_custom_game_images_dir
-import copy
 
 _PROFILES_DIR = get_profiles_dir()
 

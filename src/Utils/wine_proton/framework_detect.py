@@ -86,8 +86,8 @@ def disabled_basenames(modlist_path, index_path) -> set[str]:
     if not modlist_path.is_file() or not index_path.is_file():
         return set()
     try:
-        from Utils.mods.modlist import read_modlist
         from Utils.filemap import read_mod_index
+        from Utils.mods.modlist import read_modlist
         disabled = {e.name for e in read_modlist(modlist_path)
                     if not e.is_separator and not e.enabled}
         if not disabled:

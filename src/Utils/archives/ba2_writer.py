@@ -48,7 +48,7 @@ class Ba2WriteError(Exception):
 # the packing rules stay in lockstep.
 # ---------------------------------------------------------------------------
 
-from Utils.archives.bsa_writer import is_packable, _INCOMPRESSIBLE_EXT  # noqa: E402
+from Utils.archives.bsa_writer import _INCOMPRESSIBLE_EXT, is_packable  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Hash — FO4 BA2 CRC-32 variant.  zlib.crc32 won't do because zlib's
@@ -1026,7 +1026,6 @@ from Utils.archives.bsa_writer import (  # noqa: E402  (re-export)
     is_our_stub_plugin,
     write_stub_plugin,
 )
-
 
 __all__ = [
     "Ba2Chunk",

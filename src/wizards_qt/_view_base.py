@@ -21,20 +21,25 @@ Standards baked in (see memory feedback notes):
 from __future__ import annotations
 
 import re
+import shutil
+import tempfile
 import threading
 import time
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from PySide6.QtCore import Qt, QCoreApplication, QTimer, Signal
+from PySide6.QtCore import QCoreApplication, Qt, QTimer, Signal
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QStackedWidget,
+    QHBoxLayout,
+    QLabel,
+    QPushButton,
+    QStackedWidget,
+    QVBoxLayout,
+    QWidget,
 )
 
 from gui_qt.safe_emit import safe_emit
-from gui_qt.theme.theme_qt import active_palette, _c, button_qss, ok_text, err_text
-import shutil
-import tempfile
+from gui_qt.theme.theme_qt import _c, active_palette, button_qss, err_text, ok_text
 
 if TYPE_CHECKING:
     from Games.base_game import BaseGame
@@ -474,8 +479,11 @@ class WizardViewBase(QWidget):
         self._set_status(self._extract_status, self.tr("Extracting…"))
 
         def worker():
+            from Utils.modding_tools.xedit_tools import (
+                applications_dir,
+                flatten_subdirs,
+            )
             from Utils.wizard_support.wizard_archives import extract_archive
-            from Utils.modding_tools.xedit_tools import applications_dir, flatten_subdirs
             try:
                 if archive is None or not archive.is_file():
                     raise RuntimeError(self.tr("Archive not found."))
@@ -554,10 +562,14 @@ class WizardViewBase(QWidget):
 
         def worker():
             from Utils.ca_bundle import download_file
-            from Utils.wizard_support.wizard_archives import (
-                extract_archive, fetch_latest_github_asset,
+            from Utils.modding_tools.xedit_tools import (
+                applications_dir,
+                flatten_subdirs,
             )
-            from Utils.modding_tools.xedit_tools import applications_dir, flatten_subdirs
+            from Utils.wizard_support.wizard_archives import (
+                extract_archive,
+                fetch_latest_github_asset,
+            )
             try:
                 safe_emit(status_sig,
                           self.tr("Fetching latest release from GitHub…"), "")

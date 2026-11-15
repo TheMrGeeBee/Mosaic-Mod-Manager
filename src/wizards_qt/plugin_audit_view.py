@@ -16,14 +16,20 @@ from typing import TYPE_CHECKING
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
-    QCheckBox, QHBoxLayout, QLabel, QProgressBar, QPushButton, QScrollArea,
-    QVBoxLayout, QWidget,
+    QCheckBox,
+    QHBoxLayout,
+    QLabel,
+    QProgressBar,
+    QPushButton,
+    QScrollArea,
+    QVBoxLayout,
+    QWidget,
 )
 
-from gui_qt.safe_emit import safe_emit
-from gui_qt.theme.theme_qt import active_palette, _c
-from wizards_qt._view_base import GREEN, RED, WizardViewBase
 import Utils.plugins.plugin_audit_core as core
+from gui_qt.safe_emit import safe_emit
+from gui_qt.theme.theme_qt import _c, active_palette
+from wizards_qt._view_base import GREEN, RED, WizardViewBase
 
 if TYPE_CHECKING:
     from Games.base_game import BaseGame

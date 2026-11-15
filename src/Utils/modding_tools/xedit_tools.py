@@ -13,11 +13,11 @@ from __future__ import annotations
 import os
 import re as _re
 import shutil
+import time as _time
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 from Utils.atomic_write import write_atomic_text
-import time as _time
 
 if TYPE_CHECKING:
     from Games.base_game import BaseGame

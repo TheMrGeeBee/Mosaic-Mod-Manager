@@ -11,15 +11,22 @@ Add → ``on_done(list[Path])``; Cancel / Esc / backdrop click → ``on_done(Non
 
 from __future__ import annotations
 
-from PySide6.QtCore import Qt, QRect
-from PySide6.QtGui import QPen, QBrush
+from PySide6.QtCore import QRect, Qt
+from PySide6.QtGui import QBrush, QPen
 from PySide6.QtWidgets import (
-    QWidget, QHBoxLayout, QLabel, QLineEdit, QListWidget, QListWidgetItem,
-    QPushButton, QStyledItemDelegate, QStyle,
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QListWidget,
+    QListWidgetItem,
+    QPushButton,
+    QStyle,
+    QStyledItemDelegate,
+    QWidget,
 )
 
 from gui_qt.overlay_base import OverlayBase
-from gui_qt.theme.theme_qt import active_palette, _c, qc, qc_contrast
+from gui_qt.theme.theme_qt import _c, active_palette, qc, qc_contrast
 
 CHECK_BOX = 17        # same as the modlist checkbox
 

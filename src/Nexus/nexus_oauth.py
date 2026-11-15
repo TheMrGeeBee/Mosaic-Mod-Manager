@@ -41,18 +41,18 @@ import secrets
 import threading
 import time
 import urllib.parse
-from Utils.xdg import open_url
 from dataclasses import dataclass
 from typing import Callable, Optional
 
 import keyring
 import requests
 
+from Nexus.nexus_api import _KEYRING_SERVICE, _migrate_keyring_entry
 from Utils.app_log import app_log
 from Utils.ca_bundle import resolve_ca_bundle
 from Utils.config_paths import get_config_dir
+from Utils.xdg import open_url
 from version import __version__
-from Nexus.nexus_api import _KEYRING_SERVICE, _migrate_keyring_entry
 
 # ---------------------------------------------------------------------------
 # Keyring availability check — fall back to file storage when DBus is slow
@@ -338,7 +338,9 @@ def _log_connection_diagnostics() -> None:
 
     # 1. Environment basics
     try:
-        import ssl, platform, sys
+        import platform
+        import ssl
+        import sys
         app_log(f"OAuth diagnostics: python={sys.version.split()[0]} "
                 f"openssl={ssl.OPENSSL_VERSION} platform={platform.platform()}")
         app_log(f"OAuth diagnostics: requests={requests.__version__}")
@@ -380,7 +382,8 @@ def _log_connection_diagnostics() -> None:
 
     # 4. System curl comparison (uses the OS cert store, like the user's manual test)
     try:
-        import subprocess, shutil
+        import shutil
+        import subprocess
         if shutil.which("curl"):
             proc = subprocess.run(
                 ["curl", "-sS", "-o", "/dev/null", "-w",

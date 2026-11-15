@@ -18,12 +18,17 @@ from typing import TYPE_CHECKING
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
-    QComboBox, QHBoxLayout, QLabel, QPlainTextEdit, QTreeWidget,
-    QTreeWidgetItem, QWidget,
+    QComboBox,
+    QHBoxLayout,
+    QLabel,
+    QPlainTextEdit,
+    QTreeWidget,
+    QTreeWidgetItem,
+    QWidget,
 )
 
 from gui_qt.safe_emit import safe_emit
-from gui_qt.theme.theme_qt import active_palette, _c
+from gui_qt.theme.theme_qt import _c, active_palette
 from wizards_qt._view_base import GREEN, RED, WizardViewBase
 
 if TYPE_CHECKING:
@@ -167,7 +172,9 @@ class BG3SortView(WizardViewBase):
                 raise RuntimeError("Could not determine the active profile.")
             self._modlist_path = modlist
             from Utils.mods.bg3_pak_index import (
-                cached_author_notes, refresh_author_notes)
+                cached_author_notes,
+                refresh_author_notes,
+            )
             try:        # public, cached for 7 days — usually no network at all
                 refresh_author_notes(self._game, modlist.parent, api=self._api,
                                      log_fn=self._log)
@@ -308,7 +315,10 @@ class BG3SortView(WizardViewBase):
 
     def _load_after(self, add: bool):
         from Utils.mods.bg3_pak_index import (
-            RuleConflict, add_load_after, clear_load_after)
+            RuleConflict,
+            add_load_after,
+            clear_load_after,
+        )
         mod = self._selected_mod()
         if not mod or self._modlist_path is None:
             return

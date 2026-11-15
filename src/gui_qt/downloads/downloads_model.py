@@ -15,8 +15,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PySide6.QtCore import (
-    Qt, QAbstractTableModel, QModelIndex, QT_TRANSLATE_NOOP)
+from PySide6.QtCore import QT_TRANSLATE_NOOP, QAbstractTableModel, QModelIndex, Qt
 
 from Utils.downloads.downloads_core import DownloadEntry, InstalledIndex
 
