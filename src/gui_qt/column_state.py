@@ -9,6 +9,7 @@ import configparser
 
 from Utils.ui_config import get_ui_config_path
 from Utils.atomic_write import write_atomic_text
+import io
 
 _SECTION = "qt_columns"
 
@@ -35,7 +36,6 @@ def _read():
 
 
 def _write(parser):
-    import io
     buf = io.StringIO()
     parser.write(buf)
     try:

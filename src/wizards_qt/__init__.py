@@ -25,6 +25,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Callable
+import importlib
 
 if TYPE_CHECKING:
     from PySide6.QtWidgets import QWidget
@@ -140,7 +141,6 @@ def _dyndolod_tool(tool: str):
 def _simple(module: str, cls: str):
     """Factory for a single-class view taking (game, log_fn, on_close, ctx)."""
     def factory(game, log_fn=None, on_close=None, ctx=None, **extra):
-        import importlib
         view_cls = getattr(importlib.import_module(module), cls)
         return view_cls(game, log_fn=log_fn, on_close=on_close, ctx=ctx, **extra)
     return factory
@@ -149,7 +149,6 @@ def _simple(module: str, cls: str):
 def _param(module: str, cls: str, **fixed):
     """Factory that injects fixed kwargs (e.g. tool=…) into the view."""
     def factory(game, log_fn=None, on_close=None, ctx=None, **extra):
-        import importlib
         view_cls = getattr(importlib.import_module(module), cls)
         return view_cls(game, log_fn=log_fn, on_close=on_close, ctx=ctx,
                         **fixed, **extra)

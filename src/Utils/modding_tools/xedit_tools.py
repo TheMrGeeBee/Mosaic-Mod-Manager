@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from Utils.atomic_write import write_atomic_text
+import time as _time
 
 if TYPE_CHECKING:
     from Games.base_game import BaseGame
@@ -100,7 +101,6 @@ def set_winxp_compat(prefix_path: Path, exe: Path, log_fn=None) -> None:
         HKCU\\Software\\Wine\\AppDefaults\\<exe.name>  "Version"="winxp"
     in user.reg.
     """
-    import time as _time
 
     _log = log_fn or _noop
 

@@ -19,6 +19,7 @@ import shutil
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Callable, Dict, List, Optional, Set, Tuple
+from collections import defaultdict
 
 if TYPE_CHECKING:
     from Games.base_game import BaseGame
@@ -1031,7 +1032,6 @@ def _gen_bos(out_dir: Path, dna_map, mods_path, data_path, is_selected,
 
 def _gen_skypatcher(out_dir: Path, dna_map, lo_map, mods_path, data_path,
                     is_selected, cancel_fn, log_fn) -> int:
-    from collections import defaultdict
     sp_dir = out_dir / "SKSE" / "Plugins" / "SkyPatcher"
     sp_dir.mkdir(parents=True, exist_ok=True)
     written = 0

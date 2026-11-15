@@ -42,6 +42,10 @@ from gui_qt.views.mod_row_widgets import (
 )
 from Utils.collections import collection_export
 from Utils.profile import profile_export
+import importlib.util
+import sys
+import tempfile
+import time
 
 
 def _load_bg3_modio(stem: str):
@@ -51,8 +55,6 @@ def _load_bg3_modio(stem: str):
     _load_bg3_modio uses, so this shares that cache rather than loading a
     second copy; duplicated here (not imported from gui_qt.app) to avoid a
     circular import (app.py imports this module to open the tab)."""
-    import importlib.util
-    import sys
     mod_name = f"{stem}_bg3"
     cached = sys.modules.get(mod_name)
     if cached is not None:
@@ -1137,7 +1139,6 @@ class CreateCollectionView(QWidget):
                          name="collection-publish").start()
 
     def _publish_worker(self, info: dict, existing):
-        import tempfile
         try:
             manifest, bundle_jobs, warnings = collection_export.build_collection_manifest(
                 self._all_rows, self._game, info, progress_cb=self._make_progress_cb())
@@ -1207,7 +1208,6 @@ class CreateCollectionView(QWidget):
             self._build_done.emit(False, str(exc), None)
 
     def _make_progress_cb(self):
-        import time
         last_emit = [0.0]
 
         def _cb(done, total, phase):

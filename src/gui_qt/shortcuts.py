@@ -38,6 +38,7 @@ from PySide6.QtWidgets import (
     QApplication, QLineEdit, QPlainTextEdit, QTextEdit,
     QAbstractSpinBox, QComboBox, QWidget,
 )
+import sys
 
 
 # ---------------------------------------------------------------------------
@@ -512,6 +513,5 @@ def register_shortcuts(win) -> None:
     if perftrace.is_enabled():
         sc("F11", lambda _win: perftrace.dump(), guarded=False)
         sc("Shift+F11", lambda _win: perftrace.reset(), guarded=False)
-        import sys
         print("[PERF] perftrace enabled — F11 = summary table, "
               "Shift+F11 = reset counters.", file=sys.stderr)

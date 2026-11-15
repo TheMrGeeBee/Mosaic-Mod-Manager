@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING
 
 from Utils.themes import load_palettes
 from Utils.ui_config import get_appearance_mode
+import tempfile
 
 if TYPE_CHECKING:
     from PySide6.QtGui import QColor, QPalette
@@ -43,7 +44,6 @@ def _tinted_icon_url(name: str, color: str) -> str:
     src = _ICONS_DIR / name
     if not src.is_file():
         return _icon_url(name)
-    import tempfile
     cache_dir = Path(tempfile.gettempdir()) / "mosaic_tinted_icons"
     safe_color = color.lstrip("#").lower() or "none"
     out = cache_dir / f"{Path(name).stem}_{safe_color}.png"

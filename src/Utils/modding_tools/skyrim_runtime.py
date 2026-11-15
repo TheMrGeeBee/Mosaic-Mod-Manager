@@ -32,6 +32,8 @@ from pathlib import Path, PurePosixPath
 from typing import Callable
 
 from Utils.wizard_support.pe_version import Version, format_version, read_file_version
+import platform
+import io
 
 STEAM_APP_ID = 489830
 VERSION_TARGET = "SkyrimSE.exe"          # its file version identifies the runtime
@@ -232,7 +234,6 @@ def ensure_hpatchz(
     found = find_hpatchz()
     if found:
         return found
-    import platform
     if platform.system() != "Linux" or platform.machine() not in ("x86_64", "AMD64"):
         raise RuntimeSwapError(_INSTALL_HPATCHZ)
     log_fn(f"Runtime swap: downloading hpatchz {HPATCHZ_VERSION} …")
@@ -244,7 +245,6 @@ def ensure_hpatchz(
         raise RuntimeSwapError(
             "The downloaded hpatchz didn't match its expected checksum, so it was not used. "
             + _INSTALL_HPATCHZ)
-    import io
     import zipfile
     try:
         with zipfile.ZipFile(io.BytesIO(blob)) as zf:

@@ -20,6 +20,9 @@ from PySide6.QtCore import QCoreApplication, QT_TRANSLATE_NOOP
 from gui_qt.overlays.confirm_overlay import ConfirmOverlay
 from gui_qt.modlist.modlist_model import COL_NAME
 from gui_qt.overlays.text_input_overlay import TextInputOverlay
+import os
+from pathlib import Path
+from datetime import datetime
 
 # Display-only shortcut hints shown right-aligned in the context menu. These MUST
 # match the real window-level QShortcut bindings in gui_qt/shortcuts.py — they are
@@ -994,8 +997,6 @@ def _installation_archive(view, name: str):
     filename = getattr(meta, "installation_file", "") if meta is not None else ""
     if not filename:
         return None
-    import os
-    from pathlib import Path
     game = getattr(view, "game", None)
     game_name = getattr(game, "name", "") or ""
     search_dirs = []
@@ -1352,7 +1353,6 @@ def _create_empty_mod_prompt(view, model, insert):
                 f"A mod or separator named '{name}' already exists.")
             return
         try:
-            from datetime import datetime
             mod_dir = staging / name
             mod_dir.mkdir(parents=True, exist_ok=True)
             installed = datetime.now().strftime("%Y-%m-%dT%H:%M:%S")

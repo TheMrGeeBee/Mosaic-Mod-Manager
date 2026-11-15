@@ -57,6 +57,7 @@ from Utils.deploy.deploy import LinkMode, load_per_mod_strip_prefixes, load_sepa
 from Utils.deploy.deploy_custom_rules import deploy_custom_rules, restore_custom_rules, compute_prefix_handled
 from Utils.mods.modlist import read_modlist
 from Utils.config_paths import get_profiles_dir
+import os
 
 _PROFILES_DIR = get_profiles_dir()
 
@@ -873,7 +874,6 @@ class UE5Game(BaseGame):
         if not user_rules:
             return resolved
         from Utils.deploy.deploy_custom_rules import _match_single_rule, _normalise_rule
-        import os
         # Index resolved entries by (staged_rel, mod_name) so we can overwrite.
         idx_by_key: dict[tuple[str, str], int] = {
             (sr, mn): i for i, (sr, mn, _d, _f) in enumerate(resolved)

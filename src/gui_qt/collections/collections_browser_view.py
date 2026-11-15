@@ -32,6 +32,7 @@ from gui_qt.safe_emit import safe_emit
 from gui_qt.nexus.nexus_mod_card import ThumbnailLoader
 from gui_qt.collections.collection_card import CollectionCard, CARD_W, IMG_W, IMG_H
 from gui_qt.selector_button import SelectorButton
+import dataclasses
 
 PAGE_SIZE = 20            # Tk parity (collections_dialog PAGE_SIZE)
 
@@ -407,7 +408,6 @@ class CollectionsBrowserView(QWidget):
         if not records:
             self._appended_host.hide()
             return
-        import dataclasses
         from Nexus.nexus_api import NexusCollection
         fields = {f.name for f in dataclasses.fields(NexusCollection)}
         primary_view = self._on_open_detail or self._on_view

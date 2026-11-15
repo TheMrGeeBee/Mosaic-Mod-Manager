@@ -34,6 +34,7 @@ from gui_qt.views.mod_row_widgets import (
     center_checkbox as _center_checkbox,
 )
 from Utils.profile import profile_export
+import time
 
 
 # ---------------------------------------------------------------------------
@@ -549,7 +550,6 @@ class ExportProfileView(QWidget):
         """Throttled bridge from write_amethyst's per-file callback (worker
         thread) to the progress signal — at most ~10 emits/s, but the final
         done==total update always goes through so the bar lands on 100%."""
-        import time
         last_emit = [0.0]
 
         def _cb(done: int, total: int, arcname: str):

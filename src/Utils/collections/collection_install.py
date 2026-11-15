@@ -54,6 +54,17 @@ from Nexus.nexus_meta import build_meta_from_download
 from Nexus.manual_download_watch import (
     start_manual_install, should_fallback_to_browser, is_transient_failure, is_mod_removed)
 from Utils.xdg import open_url as _open_browser_url
+import os
+import shutil
+import importlib.util
+import sys
+import configparser as _cp
+import shutil as _shutil_skip
+import os as _os_col
+import tempfile as _tf
+import shutil as _shutil
+import configparser as _cpi
+import re as _re
 
 
 # ---------------------------------------------------------------------------
@@ -719,8 +730,6 @@ def write_install_report(profile_dir: "Path | None", report: dict) -> "Path | No
     a stale report from an earlier run."""
     if profile_dir is None or not Path(profile_dir).is_dir():
         return None
-    import json
-    import os
     target = Path(profile_dir) / INSTALL_REPORT_NAME
     try:
         if not report.get("failed") and not report.get("warnings"):
@@ -748,7 +757,6 @@ def cleanup_cancelled_install(game, profile_dir: "Path | None", *,
     the profile itself (a fresh new-profile install). Continue/append/resume/
     update installs target a pre-existing profile — deleting it would destroy
     the user's mods and settings (GH#278)."""
-    import shutil
     if profile_dir is not None and Path(profile_dir).is_dir() and game is not None \
             and getattr(game, "is_configured", lambda: True)():
         # Whatever profile the user was actually on before this install — put it
@@ -888,8 +896,6 @@ def _load_bg3_modio(stem: str):
     shares that cache rather than loading a second copy. Duplicated here
     rather than imported, same reasoning as create_collection_view.py's own
     copy: avoids pulling a Qt-adjacent module into this toolkit-neutral one."""
-    import importlib.util
-    import sys
     mod_name = f"{stem}_bg3"
     cached = sys.modules.get(mod_name)
     if cached is not None:
@@ -1102,7 +1108,6 @@ def run_collection_install(
         except Exception:
             pass
 
-    import configparser as _cp
     if staging_path.exists():
         for mod_dir in staging_path.iterdir():
             if not mod_dir.is_dir():
@@ -1132,7 +1137,6 @@ def run_collection_install(
 
     # Remove staging folders for unticked optional mods
     if skipped_fids and skipped_mods:
-        import shutil as _shutil_skip
         _removed_folders: list[str] = []
         for mod in skipped_mods:
             if not mod.file_id or mod.file_id not in skipped_fids:
@@ -1280,7 +1284,6 @@ def run_collection_install(
     # per-archive 7z spawns for many tiny mods) fell behind.
     _PIPELINE_QUEUE_SIZE = max(_DL_WORKERS + _INSTALL_WORKERS + 8, 32)
     _DONE_SENTINEL = None
-    import os as _os_col
     _COL_TIMING = bool(_os_col.environ.get("MM_COL_TIMING"))
 
     _dl_total = len(to_download)
@@ -3011,8 +3014,6 @@ def _install_bundled_assets(game, api, profile_dir, staging_path, collection_sch
     """Returns ``(installed, skipped)`` — skipped counts bundled assets missing
     from the archive or that failed to copy (Tk counted these in the final
     "(N skipped)" summary)."""
-    import tempfile as _tf
-    import shutil as _shutil
     bundle_schema_mods = [
         m for m in schema_mods
         if (m.get("source") or {}).get("type", "").lower() == "bundle"]
@@ -3109,7 +3110,6 @@ def _install_bundled_assets(game, api, profile_dir, staging_path, collection_sch
 def _installed_bundled_meta_map(staging_path: Path, slug: str) -> "dict[str, str]":
     """Map installationfile/modname of installed bundled mods → folder name
     (ported from _installed_bundled_meta_map)."""
-    import configparser as _cpi
     meta_map: dict[str, str] = {}
     if not staging_path.is_dir():
         return meta_map
@@ -3144,8 +3144,6 @@ def _ensure_collection_archive_extracted(game, api, collection_slug,
                                          revision_number, download_link_path, log):
     """Return a dir with the extracted collection archive (cached .7z preferred),
     or None. Caller rmtree's the returned dir."""
-    import shutil as _shutil
-    import tempfile as _tf
     slug = (collection_slug or "").strip()
     rev = int(revision_number) if revision_number is not None else "x"
     if not slug:
@@ -3180,9 +3178,6 @@ def _ensure_collection_archive_extracted(game, api, collection_slug,
 
 def _install_bundled_from_extracted(archive_root, modlist_path, staging_path,
                                     collection_slug, revision_number, log):
-    import re as _re
-    import shutil as _shutil
-    import configparser as _cpi
     slug = (collection_slug or "").strip()
     rev_str = str(int(revision_number)) if revision_number is not None else ""
     bundled_root = archive_root / "bundled"
@@ -3326,7 +3321,6 @@ def _run_step3b(game, api, profile_dir, staging_path, collection_schema,
                 install_results, log):
     """Install bundled folders + apply binary patches + INI tweaks from the cached
     collection archive. Runs after modlist is written, before LOOT."""
-    import shutil as _shutil
     archive_root = _ensure_collection_archive_extracted(
         game, api, collection_slug, revision_number, download_link_path or "", log)
     if archive_root is None:

@@ -29,6 +29,8 @@ from PySide6.QtWidgets import (
 from gui_qt.theme.theme_qt import active_palette, _c, danger_close_button, button_qss, qc
 from gui_qt.safe_emit import safe_emit
 from Utils.mods.mod_files_versions import fmt_size
+from datetime import datetime
+from datetime import timezone
 
 # Translated at display time (setHorizontalHeaderLabels); register for lupdate.
 _COLS = [
@@ -53,7 +55,6 @@ def _hl_colors(p: dict | None = None) -> dict:
 def _fmt_date(unix_ts: int) -> str:
     if not unix_ts:
         return ""
-    from datetime import datetime, timezone
     try:
         return datetime.fromtimestamp(unix_ts, tz=timezone.utc).strftime("%Y-%m-%d")
     except (OSError, OverflowError, ValueError):

@@ -33,6 +33,8 @@ from PySide6.QtWidgets import (
 
 from gui_qt.safe_emit import safe_emit
 from gui_qt.theme.theme_qt import active_palette, _c, button_qss, ok_text, err_text
+import shutil
+import tempfile
 
 if TYPE_CHECKING:
     from Games.base_game import BaseGame
@@ -472,7 +474,6 @@ class WizardViewBase(QWidget):
         self._set_status(self._extract_status, self.tr("Extracting…"))
 
         def worker():
-            import shutil
             from Utils.wizard_support.wizard_archives import extract_archive
             from Utils.modding_tools.xedit_tools import applications_dir, flatten_subdirs
             try:
@@ -552,7 +553,6 @@ class WizardViewBase(QWidget):
         game = self._game
 
         def worker():
-            import tempfile
             from Utils.ca_bundle import download_file
             from Utils.wizard_support.wizard_archives import (
                 extract_archive, fetch_latest_github_asset,

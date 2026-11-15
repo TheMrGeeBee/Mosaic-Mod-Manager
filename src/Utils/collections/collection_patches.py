@@ -17,6 +17,7 @@ import zlib
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
+import configparser
 
 try:
     import bsdiff4  # type: ignore
@@ -45,7 +46,6 @@ def _tag_mod_as_patched(
 ) -> None:
     """Set ``[General] fromCollectionPatched=true`` (and revision) in the
     mod's ``meta.ini``. Preserves all other fields. Idempotent."""
-    import configparser
     meta = mod_dir / "meta.ini"
     cp = configparser.ConfigParser()
     if meta.is_file():

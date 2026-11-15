@@ -31,6 +31,7 @@ import requests
 from Nexus.nexus_api import _KEYRING_SERVICE, _derive_key, _keyring_ok
 from Utils.ca_bundle import resolve_ca_bundle
 from Utils.config_paths import get_config_dir
+from urllib.parse import urljoin
 
 LOGIN_URL = "https://www.loverslab.com/login/"
 _KEYRING_USER = "loverslab_session"
@@ -76,7 +77,6 @@ def _find_code_form(page_html: str, page_url: str) -> "tuple[str, dict, str] | N
     """``(action URL, hidden field values, code field name)`` of the form on
     the page that asks for a one-time code, or None."""
     from html.parser import HTMLParser
-    from urllib.parse import urljoin
 
     class _P(HTMLParser):
         def __init__(self):

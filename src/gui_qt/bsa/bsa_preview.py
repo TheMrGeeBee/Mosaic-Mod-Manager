@@ -30,6 +30,7 @@ from PySide6.QtWidgets import (
 
 from gui_qt.theme.theme_qt import active_palette, _c
 from gui_qt.icons import icon
+import threading
 
 # Archive extensions that get a content-preview tab instead of an image preview.
 ARCHIVE_EXTS = {".bsa", ".ba2", ".pak", ".utoc"}
@@ -324,7 +325,6 @@ class BsaPreview(QWidget):
         self._tree.collapseAll()
         # Conflict lookup off-thread; tints land via _conflicts_ready.
         if self._conflict_fn is not None:
-            import threading
             gen = self._gen
             fn = self._conflict_fn
 

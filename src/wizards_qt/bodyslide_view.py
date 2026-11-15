@@ -23,6 +23,7 @@ from gui_qt.safe_emit import safe_emit
 from wizards_qt._view_base import GREEN, RED, WizardViewBase
 from Utils.modding_tools.bodyslide_tools import sanitize_output_name
 from Utils.wizard_support.wizard_gates import find_staged_exe
+import subprocess
 
 if TYPE_CHECKING:
     from Games.base_game import BaseGame
@@ -170,7 +171,6 @@ class BodySlideView(WizardViewBase):
         output_mod_name, profile = self._output_mod_name, self._profile()
 
         def worker():
-            import subprocess
             from Utils.modding_tools.bodyslide_tools import apply_output_redirect
             from Utils.exe_launch.exe_launch import (
                 resolve_tool_prefix, run_tool_logged, shutdown_prefix_wineserver,

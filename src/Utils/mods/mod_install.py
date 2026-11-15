@@ -30,6 +30,11 @@ from pathlib import Path
 from typing import Callable, Optional
 
 from Utils.extract_budget import get_uncompressed_size
+from concurrent.futures import ThreadPoolExecutor
+import hashlib
+import json
+import importlib.util
+import sys as _sys
 
 LogFn = Callable[[str], None]
 ProgressFn = Callable[[int, int, Optional[str]], None]
@@ -146,7 +151,6 @@ def _copy_file_list(file_list, src_root: str, dest_root: Path, log_fn) -> None:
     """Copy each (src_rel, dst_rel, is_folder) from src_root → dest_root with
     case-insensitive resolution + destination dedup (later wins = FOMOD priority).
     Folders via the recursive copytree; files in parallel."""
-    from concurrent.futures import ThreadPoolExecutor
 
     folder_copied = 0
     file_entries: list = []
@@ -1779,7 +1783,6 @@ def _resolve_files_from_hashes(root, hashes, log_fn
     None if ANY entry is unresolvable. All-or-nothing on purpose: staging a
     subset would silently produce a broken mod, which is worse than prompting.
     """
-    import hashlib
 
     files: "list[str]" = []
     for dirpath, _dirs, names in os.walk(root):
@@ -2430,7 +2433,6 @@ def _write_profile_fomod_selection(game, mod_name: str, selections,
     if not pdir:
         return
     try:
-        import json
         pfomod = Path(pdir) / "fomod"
         pfomod.mkdir(parents=True, exist_ok=True)
         with open(pfomod / f"{mod_name}.json", "w", encoding="utf-8") as f:
@@ -2450,7 +2452,6 @@ def _write_profile_bain_selection(game, mod_name: str, result,
     if not pdir:
         return
     try:
-        import json
         pbain = Path(pdir) / "bain"
         pbain.mkdir(parents=True, exist_ok=True)
         with open(pbain / f"{mod_name}.json", "w", encoding="utf-8") as f:
@@ -2493,7 +2494,6 @@ def _read_saved_fomod_selections(game, mod_name: str, log_fn: LogFn,
     game_name = getattr(game, "name", "")
     if not game_name:
         return None
-    import json
     from Utils.config_paths import get_fomod_selections_path
     candidates = [get_fomod_selections_path(game_name, mod_name)]
     pdir = profile_dir if profile_dir is not None \
@@ -2526,7 +2526,6 @@ def _persist_fomod_selection(game, mod_name: str, selections,
     game_name = getattr(game, "name", "")
     if game_name:
         try:
-            import json
             from Utils.config_paths import get_fomod_selections_path
             sel_path = get_fomod_selections_path(game_name, mod_name)
             with open(sel_path, "w", encoding="utf-8") as f:
@@ -2551,7 +2550,6 @@ def _read_saved_bain_selections(game, mod_name: str, log_fn: LogFn,
     game_name = getattr(game, "name", "")
     if not game_name:
         return None
-    import json
     from Utils.config_paths import get_bain_selections_path
     candidates = [get_bain_selections_path(game_name, mod_name)]
     pdir = profile_dir if profile_dir is not None \
@@ -2582,7 +2580,6 @@ def _persist_bain_selection(game, mod_name: str, result, profile_dir=None) -> No
     if not game_name:
         return
     try:
-        import json
         from Utils.config_paths import get_bain_selections_path
         sel_path = get_bain_selections_path(game_name, mod_name)
         sel_path.parent.mkdir(parents=True, exist_ok=True)
@@ -2932,8 +2929,6 @@ def _load_bg3_sibling(stem: str):
     Cached in ``sys.modules`` under ``f"{stem}_bg3"``, mirroring the same
     loader duplicated in ``modio_meta.py`` and ``gui_qt/app.py``.
     """
-    import importlib.util
-    import sys as _sys
     mod_name = f"{stem}_bg3"
     cached = _sys.modules.get(mod_name)
     if cached is not None:

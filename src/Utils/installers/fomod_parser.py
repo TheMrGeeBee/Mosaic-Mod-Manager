@@ -12,6 +12,7 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 from dataclasses import dataclass, field
 from typing import Optional
+import re as _re
 
 
 def resolve_path_ci(base: str, rel: str) -> Optional[str]:
@@ -561,7 +562,6 @@ def detect_scripted_fomod(extracted_root: str) -> Optional[str]:
 
 def _parse_xml_tolerant(xml_path: str) -> ET.Element:
     """Parse an XML file, tolerating incorrect encoding declarations."""
-    import re as _re
     with open(xml_path, "rb") as f:
         raw = f.read()
     # Detect actual encoding from BOM first, then sniff for the XML prolog

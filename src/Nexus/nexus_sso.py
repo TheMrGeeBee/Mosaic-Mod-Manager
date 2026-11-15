@@ -41,6 +41,7 @@ import websocket  # websocket-client
 
 from version import __version__
 from Utils.app_log import app_log
+import time
 
 SSO_WEBSOCKET_URL = "wss://sso.nexusmods.com"
 SSO_AUTH_URL = "https://www.nexusmods.com/sso"
@@ -215,7 +216,6 @@ class NexusSSOClient:
         app_log(f"SSO connection closed (status={close_status}), will reconnect in {_RECONNECT_DELAY:.0f}s")
         self._on_status("Connection lost — reconnecting...")
 
-        import time
         time.sleep(_RECONNECT_DELAY)
 
         if not self._cancelled:

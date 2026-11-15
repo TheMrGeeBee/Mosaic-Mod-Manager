@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Callable
 
 from Utils.app_log import app_log
+import urllib.parse
 
 _DEBUG = os.environ.get("PORTAL_DEBUG", "1") not in ("", "0", "false", "False")
 
@@ -81,7 +82,6 @@ def _uri_to_path(uri: str) -> Path | None:
     path_str = uri[7:]  # strip "file://"
     # URI may be percent-encoded
     if "%" in path_str:
-        import urllib.parse
         path_str = urllib.parse.unquote(path_str)
     return Path(path_str)
 

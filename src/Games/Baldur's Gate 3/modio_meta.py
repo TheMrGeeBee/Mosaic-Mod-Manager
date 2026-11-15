@@ -37,6 +37,8 @@ from typing import Callable, Optional
 
 from Utils.app_log import app_log
 from Utils.archives.pak_reader import extract_meta_lsx
+import sys
+import html
 
 _SECTION = "General"
 
@@ -79,7 +81,6 @@ def _load_sibling(stem: str):
     The module is registered in ``sys.modules`` before execution so that
     ``@dataclass`` (which resolves ``cls.__module__``) works.
     """
-    import sys
     mod_name = f"{stem}_bg3"
     cached = sys.modules.get(mod_name)
     if cached is not None:
@@ -128,7 +129,6 @@ def _attr(block: str, name: str) -> str:
     m = re.search(_ATTR_RE_TMPL.format(name=re.escape(name)), block)
     if not m:
         return ""
-    import html
     return html.unescape(m.group(1))
 
 

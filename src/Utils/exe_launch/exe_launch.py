@@ -46,6 +46,9 @@ from Utils.wine_proton.run_host_shim import (  # noqa: F401
     _run_host_shim_prefix,
 )
 from Utils.xdg import spawn_watched
+import tempfile
+import threading
+import glob
 
 _LAUNCH_MODE_FILE = "exe_launch_mode.json"
 _CUSTOM_EXES_FILE = "custom_exes.json"
@@ -817,8 +820,6 @@ def spawn_process_watched(cmd: list, *, env: "dict | None" = None,
     The exit line also fires on a normal quit hours later — that's fine, it
     confirms the lifecycle in the session log.
     """
-    import tempfile
-    import threading
 
     errfile = None
     try:
@@ -1625,7 +1626,6 @@ def _wine_process_alive(exe_name: str) -> bool:
     (a shell history line, an editor argument, this very diagnostic) can't
     false-positive.
     """
-    import glob
     needle = exe_name.lower()
     for cmdline_path in glob.glob("/proc/[0-9]*/cmdline"):
         try:
@@ -1652,7 +1652,6 @@ class ToolPresenceWatcher:
     used to cost a fixed 20 s wait, 2026-09-26)."""
 
     def __init__(self, exe_name: str, alive_fn=None, interval: float = 0.5):
-        import threading
         self._name = exe_name
         self._alive = alive_fn or _wine_process_alive
         self._interval = interval
@@ -2521,5 +2520,4 @@ def launch_jar(jar_path: Path, game, log_fn=_noop_log) -> None:
         if rc != 0:
             log_fn(f"Run JAR: {jar_path.name} exited with code {rc}")
 
-    import threading
     threading.Thread(target=_pump, daemon=True).start()

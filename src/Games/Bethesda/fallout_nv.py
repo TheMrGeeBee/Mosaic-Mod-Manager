@@ -8,6 +8,7 @@ from pathlib import Path
 from Games.base_game import WizardTool
 from Games.Bethesda.fallout_3 import Fallout_3
 from Games.Bethesda.bethesda_ini import _set_ini_key
+import shutil
 
 
 class Fallout_NV(Fallout_3):
@@ -221,7 +222,6 @@ class Fallout_NV(Fallout_3):
         the prefix INIs into the profile's 'ini files' folder (without
         overwriting), and write the TTW FalloutCustom.ini values. Idempotent.
         Caller must set the active-profile context to *profile* first."""
-        import shutil
 
         _log = log_fn or (lambda _m: None)
 

@@ -18,6 +18,7 @@ from Games.Bethesda.bethesda_ini import _read_ini_key, _set_ini_key
 from Utils.deploy.deploy import LinkMode, deploy_core, deploy_custom_rules, deploy_filemap, load_per_mod_strip_prefixes, load_separator_deploy_paths, expand_separator_deploy_paths, expand_separator_link_modes, expand_separator_raw_deploy, cleanup_custom_deploy_dirs, restore_custom_rules, move_to_core, restore_data_core
 from Utils.mods.modlist import read_modlist
 from Utils.config_paths import get_profiles_dir
+import os
 
 _PROFILES_DIR = get_profiles_dir()
 
@@ -854,7 +855,6 @@ class Fallout_3(BaseGame):
         the original left in an ``ESP/`` subfolder — is a stale plugins.txt line,
         not an out-of-date deploy, and Deploy can never fix it.
         """
-        import os
         if not self.get_deploy_active() or self.get_last_deployed_profile() != profile:
             return []
         game_path = self.get_game_path()

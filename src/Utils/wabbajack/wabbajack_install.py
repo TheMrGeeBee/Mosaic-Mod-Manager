@@ -76,6 +76,7 @@ from .wabbajack_manifest import (
     mosaic_game_for,
 )
 from .wabbajack_vfs import ArchiveIndex
+import tempfile
 
 PROFILE_FILES_DIR = "wabbajack_profile_files"
 # Wabbajack builds the loose files that go into a rebuilt BSA/BA2 under
@@ -399,7 +400,6 @@ def _profile_mod_names(plan: InstallPlan, wabbajack_path) -> "set[str] | None":
     separator uncoloured -- which is exactly what the first real VtMB run
     produced. They are inline files of a few hundred bytes, so keeping them
     costs no download."""
-    import tempfile
     entries = [d for d in plan.profile_directives
                if Path(d.to).name.lower() == "modlist.txt"
                and isinstance(d, (InlineFileDirective, RemappedInlineFileDirective))]

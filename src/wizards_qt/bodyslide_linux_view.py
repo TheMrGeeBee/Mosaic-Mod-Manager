@@ -22,6 +22,7 @@ from PySide6.QtWidgets import QHBoxLayout, QLabel, QLineEdit, QWidget
 from gui_qt.safe_emit import safe_emit
 from wizards_qt._view_base import GREEN, RED, WizardViewBase
 from Utils.modding_tools.bodyslide_tools import sanitize_output_name
+import subprocess
 
 if TYPE_CHECKING:
     from Games.base_game import BaseGame
@@ -179,7 +180,6 @@ class BodySlideLinuxView(WizardViewBase):
         output_mod_name, profile = self._output_mod_name, self._profile()
 
         def worker():
-            import subprocess
             import Utils.bodyslide_linux as bl
             from Utils.modding_tools.bodyslide_tools import ensure_output_mod
             _wlog = lambda m: self._log(f"{name} Wizard: {m}")

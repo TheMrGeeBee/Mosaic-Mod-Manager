@@ -23,6 +23,7 @@ from PySide6.QtCore import Qt, QT_TRANSLATE_NOOP, Signal
 
 from gui_qt.safe_emit import safe_emit
 from wizards_qt._view_base import GREEN, RED, WizardViewBase
+import subprocess
 
 if TYPE_CHECKING:
     from Games.base_game import BaseGame
@@ -175,7 +176,6 @@ class ModLoaderInstallerView(WizardViewBase):
 
     # -- run installer ------------------------------------------------------------
     def _do_run(self):
-        import subprocess
         from Utils.exe_launch.exe_launch import get_game_prefix_env
         from Utils.wine_proton.steam_finder import proton_run_command
         try:

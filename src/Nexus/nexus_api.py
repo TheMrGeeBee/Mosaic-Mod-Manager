@@ -40,6 +40,11 @@ from Utils.config_paths import get_config_dir
 from Utils.app_log import app_log
 from Utils.ca_bundle import resolve_ca_bundle
 from version import __version__
+import base64
+import hashlib
+import json as _json
+import os as _os
+import tempfile
 
 API_BASE = "https://api.nexusmods.com/v1"
 GRAPHQL_BASE = "https://api.nexusmods.com/v2/graphql"
@@ -398,7 +403,6 @@ def _derive_key() -> bytes:
     value" fallback possible here — the derived key either matches or it
     doesn't). Leave it alone.
     """
-    import base64, hashlib
     machine_id = ""
     for p in ("/etc/machine-id", "/var/lib/dbus/machine-id"):
         try:
@@ -432,7 +436,6 @@ def _load_key_file() -> str:
 def _save_key_file(key: str) -> None:
     """Save API key to encrypted file fallback."""
     from cryptography.fernet import Fernet
-    import json as _json, os as _os
     p = _api_key_file_path()
     p.parent.mkdir(parents=True, exist_ok=True)
     cipher = Fernet(_derive_key())
@@ -2878,7 +2881,6 @@ class NexusAPI:
         If ``keep_archive_at`` is provided, the archive is streamed directly
         to that path (no temp copy).
         """
-        import tempfile
 
         import py7zr
         import requests as _requests
@@ -2979,9 +2981,6 @@ class NexusAPI:
         If ``keep_archive_at`` is provided, the archive is streamed directly
         to that path (no temp copy).
         """
-        import json as _json
-        import os as _os
-        import tempfile
 
         import py7zr
         import requests as _requests

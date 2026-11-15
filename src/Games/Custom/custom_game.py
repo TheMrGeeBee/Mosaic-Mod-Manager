@@ -62,6 +62,7 @@ from Utils.deploy.deploy import (
 )
 from Utils.mods.modlist import read_modlist
 from Utils.config_paths import get_profiles_dir, get_custom_games_dir, get_custom_game_images_dir
+import copy
 
 _PROFILES_DIR = get_profiles_dir()
 
@@ -275,7 +276,6 @@ BUILTIN_GAME_TEMPLATES: list[dict] = [
 
 def load_builtin_game_templates() -> list[dict]:
     """Return deep copies of the built-in preset templates (safe to mutate)."""
-    import copy
     return [copy.deepcopy(t) for t in BUILTIN_GAME_TEMPLATES]
 
 

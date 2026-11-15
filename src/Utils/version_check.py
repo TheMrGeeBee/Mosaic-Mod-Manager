@@ -9,6 +9,8 @@ import shlex
 import subprocess
 
 from Utils.gh_cache import fetch_text as _gh_fetch_text
+import json
+import shutil
 
 _APP_UPDATE_RELEASES_API_URL = "https://api.github.com/repos/TheMrGeeBee/Mosaic-Mod-Manager/releases/latest"
 _APP_UPDATE_RELEASES_LIST_API_URL = "https://api.github.com/repos/TheMrGeeBee/Mosaic-Mod-Manager/releases?per_page=20"
@@ -119,7 +121,6 @@ def _fetch_latest_version(
     Uses ETag caching + a 1-hour throttle. Pass force=True to bypass the
     throttle (e.g. when the user manually toggles the pre-release channel).
     """
-    import json
     try:
         if not allow_prerelease:
             raw = _gh_fetch_text(
@@ -168,7 +169,6 @@ def _fetch_aur_version(*, force: bool = False) -> str | None:
     """
     if not _AUR_PACKAGE_AVAILABLE:
         return None
-    import json
     try:
         raw = _gh_fetch_text(
             _AUR_API_URL,
@@ -320,7 +320,6 @@ def run_flatpak_installer(latest_tag: str) -> bool:
     NB: the bundle is stamped without a tag, so the download URL carries the
     version. ``latest_tag`` is the release tag (with or without a leading 'v').
     """
-    import shutil
 
     if not shutil.which("flatpak-spawn"):
         return False
@@ -385,7 +384,6 @@ def _host_flatpak(*args: str, timeout: int = 60):
     Uses flatpak-spawn --host (we're sandboxed). Returns None if flatpak-spawn
     is unavailable or the call raises, so callers can treat that as "unknown".
     """
-    import shutil
     if not shutil.which("flatpak-spawn"):
         return None
     try:
@@ -628,7 +626,6 @@ def enroll_flatpak_remote(*, allow_prerelease: bool = False) -> str:
     """
     if not _FLATPAK_REMOTE_AVAILABLE:
         return "unavailable"
-    import shutil
     if not shutil.which("flatpak-spawn"):
         return "unavailable"
 
@@ -654,7 +651,6 @@ def update_flatpak_from_remote(*, allow_prerelease: bool = False) -> str:
     """
     if not _FLATPAK_REMOTE_AVAILABLE:
         return "unavailable"
-    import shutil
     if not shutil.which("flatpak-spawn"):
         return "unavailable"
 

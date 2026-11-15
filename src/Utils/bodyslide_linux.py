@@ -25,6 +25,9 @@ from __future__ import annotations
 import json
 from pathlib import Path
 from typing import TYPE_CHECKING, Callable
+import shutil
+import tempfile
+import os
 
 if TYPE_CHECKING:
     from Games.base_game import BaseGame
@@ -114,8 +117,6 @@ def install_or_update(log_fn: Callable[[str], None] = _noop) -> bool:
         return True
 
     log_fn(f"BodySlide (Native Linux): downloading {tag}…")
-    import shutil
-    import tempfile
     dest = install_dir()
     suffix = "".join(Path(dl_url).suffixes[-2:]) or ".tar.zst"
     try:
@@ -151,7 +152,6 @@ def launch_env(exe_name: str, game: "BaseGame",
     Returns None if the game isn't one BSOS_TARGET_GAME supports, or the
     launcher isn't installed. Caller owns the actual Popen/wait + UI
     signalling (mirrors BodySlideView._start_run's shape)."""
-    import os
 
     launcher = find_launcher(exe_name)
     if launcher is None:

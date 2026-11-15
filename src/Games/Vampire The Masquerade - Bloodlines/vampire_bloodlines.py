@@ -312,7 +312,6 @@ class VampireBloodlines(BaseGame):
 
     def get_launch_command(self) -> "list[str] | None":
         """Steam with ``-game`` (steam://rungameid drops args)."""
-        import shutil
         cmd = ["steam", "-applaunch", _STEAM_ID, "-game", self.get_mod_dir_name()]
         if Path("/.flatpak-info").exists() and shutil.which("flatpak-spawn"):
             return ["flatpak-spawn", "--host", *cmd]

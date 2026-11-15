@@ -25,6 +25,7 @@ from gui_qt.modlist.modlist_model import (
 from gui_qt.modlist.modlist_delegate import ModRowDelegate, SEP_H
 from gui_qt import column_state
 from gui_qt.modlist.modlist_header import TkStyleHeader
+import textwrap
 
 
 class _StayOpenMenu(QMenu):
@@ -1105,7 +1106,6 @@ class ModListView(QTreeView):
             return False
         if len(desc) > self._TOOLTIP_MAX_CHARS:
             desc = desc[:self._TOOLTIP_MAX_CHARS].rstrip() + "…"
-        import textwrap
         wrapped = "\n".join(
             textwrap.fill(line, width=self._TOOLTIP_WRAP_CHARS,
                           break_long_words=False, break_on_hyphens=False)

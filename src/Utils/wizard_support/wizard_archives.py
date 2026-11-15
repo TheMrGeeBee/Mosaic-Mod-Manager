@@ -24,6 +24,7 @@ import urllib.request
 import zipfile
 from pathlib import Path
 from typing import TYPE_CHECKING, Callable
+import tempfile
 
 try:
     import py7zr
@@ -171,7 +172,6 @@ def extract_archive(archive: Path, dest: Path, strip_top_dir: bool = True) -> li
     Returns created paths in **reverse depth order** (deepest first) so
     callers can delete files before their parent directories.
     """
-    import tempfile
     tmp = Path(tempfile.mkdtemp())
     try:
         extract_to_dir(archive, tmp)

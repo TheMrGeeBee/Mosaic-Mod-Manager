@@ -12,6 +12,7 @@ import subprocess
 from pathlib import Path
 
 from Utils.config_paths import get_config_dir
+import json
 
 _INI_SECTION = "ui"
 
@@ -1919,7 +1920,6 @@ _NAME_PATTERNS_INTRODUCED_OPTION = "introduced"
 
 def _read_install_name_patterns_raw(parser) -> list[dict] | None:
     """Parse the stored JSON list, or None if the option is absent/blank/bad."""
-    import json
     raw = parser.get(_NAME_PATTERNS_SECTION, _NAME_PATTERNS_OPTION, fallback="").strip()
     if not raw:
         return None
@@ -2049,7 +2049,6 @@ def save_install_name_patterns(rules: list[dict]) -> None:
     applied top-to-bottom at install time). Carries the optional ``id``/``label``
     on built-in default rows so the editor can offer a reset. Always sets the
     ``seeded`` marker so defaults are seeded at most once (see load_*)."""
-    import json
     cleaned = []
     for r in rules:
         if not str(r.get("search", "")).strip():

@@ -20,6 +20,7 @@ from __future__ import annotations
 import os
 
 from Utils.app_log import app_log
+from pathlib import Path
 
 # Common system trust stores across distros (Arch/SteamOS, Debian, Fedora, …)
 _SYSTEM_CA_PATHS = (
@@ -116,7 +117,6 @@ def download_file(url, dest, timeout=60, reporthook=None):
     file first so a partial download never leaves a corrupt file at ``dest``.
     """
     import urllib.request
-    from pathlib import Path
 
     dest = Path(dest)
     dest.parent.mkdir(parents=True, exist_ok=True)

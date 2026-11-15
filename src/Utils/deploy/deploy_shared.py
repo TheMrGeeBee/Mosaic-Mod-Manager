@@ -21,6 +21,10 @@ from pathlib import Path
 from Utils.app_log import safe_log as _safe_log
 from Utils.atomic_write import atomic_writer
 from Utils.path_utils import has_path_traversal as _has_traversal
+import stat as _stat
+import fnmatch as _fnmatch
+import sys
+import stat as _stat_m
 
 
 def _mkdir_leaves(dirs: "set[str]") -> None:
@@ -298,7 +302,6 @@ def cleanup_custom_deploy_dirs(
     except Exception:
         pass
 
-    import stat as _stat
     for abs_str, src_str in file_list:
         # Entries are absolute filesystem paths by design — only reject ``..``
         # segments, not the leading ``/``.
@@ -702,7 +705,6 @@ def build_restore_whitelist_matcher(rules, rel_prefix: str = ""):
     matcher covers them).  A glob folder rule matching the deploy subfolder
     name itself is not re-based into the subtree (rare; use a literal instead).
     """
-    import fnmatch as _fnmatch
 
     def _norm(p: str) -> str:
         return p.replace("\\", "/").strip("/ ").lower()
@@ -849,7 +851,6 @@ def _notify_symlink_fallback(exc: OSError) -> None:
     if _symlink_fallback_notified:
         return
     _symlink_fallback_notified = True
-    import sys
     sys.stderr.write(
         f"[deploy] symlink unsupported on this path ({exc.strerror or exc}); "
         f"falling back to copy. This usually means the game lives on a "
@@ -868,7 +869,6 @@ def _notify_hardlink_fallback(exc: OSError) -> None:
     if _hardlink_fallback_notified:
         return
     _hardlink_fallback_notified = True
-    import sys
     sys.stderr.write(
         f"[deploy] hardlink unsupported on this path ({exc.strerror or exc}); "
         f"falling back to symlink/copy. This usually means the game and mod "
@@ -945,7 +945,6 @@ def _move_crash_safe(src: "Path | str", dst: "Path | str") -> None:
     tmp = dst_str + _MOVE_TMP_SUFFIX
     _rm_any(tmp)
     src_st = os.lstat(src_str)
-    import stat as _stat_m
     if _stat_m.S_ISDIR(src_st.st_mode):
         shutil.copytree(src_str, tmp, symlinks=True)
         os.rename(tmp, dst_str)
@@ -962,7 +961,6 @@ def _rm_any(path: str) -> None:
         st = os.lstat(path)
     except OSError:
         return
-    import stat as _stat_m
     if _stat_m.S_ISDIR(st.st_mode):
         shutil.rmtree(path, ignore_errors=True)
     else:

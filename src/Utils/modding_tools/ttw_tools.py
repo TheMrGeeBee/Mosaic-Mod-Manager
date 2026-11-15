@@ -10,6 +10,10 @@ from __future__ import annotations
 
 from pathlib import Path
 from typing import TYPE_CHECKING, Callable
+import json
+import os
+import shutil
+import tempfile
 
 if TYPE_CHECKING:
     from Games.base_game import BaseGame
@@ -63,10 +67,6 @@ def download_installer(game: "BaseGame",
     """Download the latest MPI-installer release from GitHub into
     Applications/TTW and return the executable path. Raises on failure.
     Shared by the TTW and BSA-Decompressor wizards (same binary)."""
-    import json
-    import os
-    import shutil
-    import tempfile
     import urllib.request
     from Utils.ca_bundle import download_file, get_ssl_context
     from Utils.wizard_support.wizard_archives import extract_archive
@@ -159,8 +159,6 @@ def extract_mpi_from_archive(archive: Path, dest_dir: Path,
     """Extract *archive* to a temp dir, move the .mpi inside it into
     *dest_dir* and return its path. An already-extracted .mpi of the same
     name is reused. Raises when the archive holds no .mpi."""
-    import shutil
-    import tempfile
     from Utils.wizard_support.wizard_archives import extract_to_dir
 
     tmp = Path(tempfile.mkdtemp())

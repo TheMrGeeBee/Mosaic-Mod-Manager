@@ -31,6 +31,7 @@ from __future__ import annotations
 import shutil
 from pathlib import Path
 from xml.etree import ElementTree as ET
+import os
 
 # (subdir, manifest item tag, list root tag, output filename, gold baseline)
 # The gold files (DAO_Addins.xml / DAO_Offers.xml) are vendored from the MO2 DAO
@@ -114,7 +115,6 @@ def _iter_manifests(search_root: Path, subdir: str):
     (``<staging>/<mod>/addins/<uid>/Manifest.xml``). Matching is by the
     presence of the subdir name (case-insensitive) in the path.
     """
-    import os
     want = subdir.casefold()
     if not search_root.is_dir():
         return

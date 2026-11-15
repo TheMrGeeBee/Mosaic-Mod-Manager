@@ -9,6 +9,7 @@ from __future__ import annotations
 from pathlib import Path
 from PySide6.QtGui import QIcon, QPixmap, QTransform, QPainter, QColor
 from PySide6.QtCore import QSize, Qt
+from pathlib import Path as _Path
 
 # src/icons/ — same dir the Tk app uses (gui/ is a sibling of icons/).
 _ICONS_DIR = Path(__file__).resolve().parent.parent / "icons"
@@ -61,7 +62,6 @@ def exe_icon(path, size: int = 18) -> "QIcon | None":
     via QImage so the exe entries in the play-bar dropdown carry their own icon.
     Cached by (path, mtime); None is cached too so a bad exe isn't reparsed.
     """
-    from pathlib import Path as _Path
     p = _Path(path)
     try:
         key = (str(p), p.stat().st_mtime)

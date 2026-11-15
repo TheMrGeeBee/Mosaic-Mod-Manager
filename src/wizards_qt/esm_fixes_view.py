@@ -29,6 +29,7 @@ from Utils.modding_tools.esm_fixes_tools import (
     find_extracted_mpi, packages_dir,
 )
 from Utils.modding_tools.ttw_tools import find_ttw_installer
+import subprocess
 
 if TYPE_CHECKING:
     from Games.base_game import BaseGame
@@ -487,7 +488,6 @@ class ESMFixesView(WizardViewBase):
         self._run_output.appendPlainText(text)
 
     def _do_run(self):
-        import subprocess
         from Utils.modding_tools.esm_fixes_tools import register_output
         from Utils.modding_tools.ttw_tools import (
             fnv_required_esms, missing_vanilla_esms, restore_to_vanilla,

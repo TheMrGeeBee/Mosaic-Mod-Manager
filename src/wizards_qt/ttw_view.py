@@ -27,6 +27,7 @@ from Utils.modding_tools.ttw_tools import (
     GITHUB_REPO_URL, MODPUB_URL, OUTPUT_NAME,
     find_fo3_install, find_ttw_installer, ttw_mod_dir,
 )
+import subprocess
 
 if TYPE_CHECKING:
     from Games.base_game import BaseGame
@@ -288,7 +289,6 @@ class TTWView(WizardViewBase):
         self._run_output.appendPlainText(text)
 
     def _do_run(self):
-        import subprocess
         from Utils.modding_tools.ttw_tools import (
             FO3_REQUIRED_ESMS, OUTPUT_NAME as _ON, fnv_required_esms,
             missing_vanilla_esms, register_output, restore_to_vanilla,

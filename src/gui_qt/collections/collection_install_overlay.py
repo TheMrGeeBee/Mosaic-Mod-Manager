@@ -32,6 +32,7 @@ from PySide6.QtWidgets import (
 )
 
 from gui_qt.theme.theme_qt import active_palette, _c
+from html import escape
 
 # Status tones (match the Tk overlay: queued = amber, active = normal text).
 _QUEUED_TONE = "#e5a640"
@@ -408,7 +409,6 @@ class CollectionInstallOverlay(QWidget):
         pass
 
     def _render_extract(self):
-        from html import escape
         lines = []
         for fid, name in self._extract_active.items():
             if self._ex_slot_of.get(fid, -1) == -1:   # no bar row — text line

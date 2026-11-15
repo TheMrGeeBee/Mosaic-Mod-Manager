@@ -26,6 +26,7 @@ from Utils.deploy.deploy_shared import (
     _resolve_source,
     _restore_backup_dir,
 )
+import stat as _stat
 
 
 _CUSTOM_RULES_LOG_NAME = "custom_rules_deployed.txt"
@@ -841,7 +842,6 @@ def restore_custom_rules(
             dirs_to_prune.add(parent)
             parent = parent.parent
 
-    import stat as _stat
 
     def _unlink_one(p: Path) -> int:
         try:

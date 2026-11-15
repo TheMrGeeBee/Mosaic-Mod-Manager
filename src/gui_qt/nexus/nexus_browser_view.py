@@ -34,6 +34,7 @@ from gui_qt.safe_emit import safe_emit
 from gui_qt.worker import run_in_worker
 from gui_qt.selector_button import SelectorButton
 from gui_qt.nexus.nexus_mod_card import NexusModCard, ThumbnailLoader, CARD_W
+from concurrent.futures import ThreadPoolExecutor
 
 # label → API value (verbatim from Tk browse_mods_panel.SORT_KEYS / TIME_RANGES)
 SORT_KEYS = [
@@ -1207,7 +1208,6 @@ class NexusBrowserView(QWidget):
                 return None
 
         def work():
-            from concurrent.futures import ThreadPoolExecutor
             premium = self._resolve_premium()
             with ThreadPoolExecutor(max_workers=4) as pool:
                 files = list(pool.map(files_for, entries))

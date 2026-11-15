@@ -15,6 +15,10 @@ import keyring  # type: ignore
 
 from Utils.app_log import app_log
 from Utils.config_paths import get_config_dir
+import base64
+import hashlib
+import json as _json
+import os as _os
 
 # Reuse the same keyring service as the Nexus key so all secrets live under
 # one logical app entry; only the user/account differs.
@@ -49,8 +53,6 @@ def _derive_key() -> bytes:
     would silently break decryption of any existing encrypted-file-fallback
     key with no way to migrate it.
     """
-    import base64
-    import hashlib
     machine_id = ""
     for p in ("/etc/machine-id", "/var/lib/dbus/machine-id"):
         try:
@@ -83,8 +85,6 @@ def _load_key_file() -> str:
 
 def _save_key_file(key: str) -> None:
     from cryptography.fernet import Fernet
-    import json as _json
-    import os as _os
     p = _api_key_file_path()
     p.parent.mkdir(parents=True, exist_ok=True)
     cipher = Fernet(_derive_key())

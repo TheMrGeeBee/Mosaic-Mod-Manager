@@ -14,6 +14,9 @@ from pathlib import Path
 
 from Utils.app_log import app_log
 from Utils.wine_proton.run_host_shim import _apply_run_host_shim
+import re as _re
+import glob as _glob
+import concurrent.futures
 
 # ---------------------------------------------------------------------------
 # Known Steam base directories for different install methods
@@ -682,8 +685,6 @@ def find_proton_for_game(steam_id: str) -> Path | None:
         STEAM_COMPAT_CLIENT_INSTALL_PATH=<steam_root>
         python3 <proton_script> run <exe_path>
     """
-    import re as _re
-    import glob as _glob
 
     _COMPAT_TOOL_NAMES: dict[str, str] = {
         "proton_experimental": "Proton - Experimental",
@@ -960,7 +961,6 @@ def scan_drives_for_exe(exe_names: list[str],
     Pass *stop_event* to allow an external caller (e.g. a closing dialog) to
     abort the walk early.
     """
-    import concurrent.futures
 
     # basename -> list of lowercased subdir-part tuples that must match the
     # containing directory's tail (empty tuple = exe expected at the root

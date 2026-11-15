@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Callable
 
 from Utils.wine_proton.steam_finder import proton_run_command
+import shutil
 
 LogFn = Callable[[str], None]
 
@@ -260,7 +261,6 @@ def _host_forward(cmd: list[str], env: dict, log_fn: LogFn) -> list[str]:
     ``os.environ`` (STEAM_COMPAT_*, WINEPREFIX, …) is re-exported with
     ``--env=`` flags. ``--directory=/`` avoids inheriting a sandbox-only cwd.
     """
-    import shutil
 
     if not os.path.exists("/.flatpak-info"):
         return cmd

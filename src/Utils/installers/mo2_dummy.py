@@ -35,6 +35,7 @@ if TYPE_CHECKING:
     from Games.base_game import BaseGame
 
 from Utils.wine_proton.wine_paths import to_wine_path as _to_wine_path
+import shutil
 
 DUMMY_DIRNAME = "amm_mo2_dummy"
 _PROFILE_NAME = "Default"
@@ -123,7 +124,6 @@ def build_mo2_dummy_instance(
     # mod_directory straight at staging, so drop the stale symlink dir.
     legacy_mods = instance_dir / "mods"
     if legacy_mods.exists():
-        import shutil
         shutil.rmtree(legacy_mods, ignore_errors=True)
 
     game_path = game.get_game_path()

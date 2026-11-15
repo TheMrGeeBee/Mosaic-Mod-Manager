@@ -38,6 +38,7 @@ from pathlib import Path
 from Nexus.nexus_meta import normalise_game_domain
 from Utils.config_paths import get_download_cache_dir
 from Utils.profile.profile_export import resolve_installer_choices
+import re
 
 PHASE_META = "meta"
 PHASE_HASH = "hash"
@@ -243,7 +244,6 @@ _FILENAME_ILLEGAL_RE = None
 def _safe_archive_component(name: str) -> str:
     global _FILENAME_ILLEGAL_RE
     if _FILENAME_ILLEGAL_RE is None:
-        import re
         _FILENAME_ILLEGAL_RE = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
     safe = _FILENAME_ILLEGAL_RE.sub("", name or "").strip(". ")
     return safe or "mod"

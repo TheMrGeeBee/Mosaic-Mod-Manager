@@ -24,6 +24,7 @@ from Utils.deploy.deploy import (
 )
 from Utils.mods.modlist import read_modlist
 from Utils.config_paths import get_profiles_dir
+import importlib.util
 
 _PROFILES_DIR = get_profiles_dir()
 
@@ -89,7 +90,6 @@ class JaggedAlliance3(BaseGame):
         The handler is imported via spec_from_file_location, so its folder is
         not on sys.path and a plain ``import`` fails.
         """
-        import importlib.util
         sibling = Path(__file__).resolve().parent / f"{stem}.py"
         spec = importlib.util.spec_from_file_location(f"{stem}_ja3", str(sibling))
         module = importlib.util.module_from_spec(spec)

@@ -41,6 +41,10 @@ import requests
 from Utils.app_log import app_log
 from Utils.ca_bundle import resolve_ca_bundle
 from Utils.config_paths import get_config_dir
+import base64
+import hashlib
+import json as _json
+import os as _os
 
 # Same per-game subdomain as modio_api.py's _API_ROOT — mirrored here rather
 # than imported since this module is loaded standalone by file path (see
@@ -74,8 +78,6 @@ def _derive_key() -> bytes:
     """Machine-bound Fernet key — identical derivation to modio_key.py's
     _derive_key (same salt, same rationale: opaque KDF input, changing it
     would silently break decryption of any existing fallback file)."""
-    import base64
-    import hashlib
     machine_id = ""
     for p in ("/etc/machine-id", "/var/lib/dbus/machine-id"):
         try:
@@ -111,8 +113,6 @@ def _load_file_tokens() -> dict:
 
 def _save_file_tokens(access_token: str, refresh_token: str) -> None:
     from cryptography.fernet import Fernet
-    import json as _json
-    import os as _os
     p = _tokens_file_path()
     p.parent.mkdir(parents=True, exist_ok=True)
     cipher = Fernet(_derive_key())

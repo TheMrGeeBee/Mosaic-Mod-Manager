@@ -40,6 +40,8 @@ from Utils.deploy.deploy import (
 )
 from Utils.mods.modlist import read_modlist
 from Utils.config_paths import get_profiles_dir
+import importlib.util
+import os
 
 _PROFILES_DIR = get_profiles_dir()
 
@@ -114,7 +116,6 @@ class DragonAgeOrigins(BaseGame):
         not on sys.path and a plain ``import`` fails. Resolve the sibling file
         relative to this module instead.
         """
-        import importlib.util
         sibling = Path(__file__).resolve().parent / f"{stem}.py"
         spec = importlib.util.spec_from_file_location(
             f"{stem}_dao_origins", str(sibling)
@@ -467,7 +468,6 @@ class DragonAgeOrigins(BaseGame):
     def _prune_empty_dirs(self, data_root: Path, log_fn=None) -> None:
         """Remove empty directories under the data root, leaving the genuine
         game folders (Settings, Logs, packages/core/data) intact even if empty."""
-        import os
         _log = log_fn or (lambda _: None)
         keep = {"Settings", "Logs"}
         for dirpath, dirnames, filenames in os.walk(data_root, topdown=False):

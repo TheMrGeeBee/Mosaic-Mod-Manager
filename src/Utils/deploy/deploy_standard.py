@@ -38,6 +38,8 @@ from Utils.deploy.deploy_shared import (
     _timer,
     _TRASH_INFIX,
 )
+import configparser
+import stat as _stat_module
 
 
 def _report_mode_breakdown(_log, mode_counts: "dict[LinkMode, int]",
@@ -290,7 +292,6 @@ def _tag_mod_xedit_modified(mod_dir: Path, plugin_name: str) -> None:
     staging folder during restore, so the modlist can flag the mod as
     containing a plugin modified in xEdit.  Preserves all other meta.ini
     content and is idempotent (a plugin already listed is not duplicated)."""
-    import configparser
     meta = mod_dir / "meta.ini"
     cp = configparser.ConfigParser()
     if meta.is_file():
@@ -713,7 +714,6 @@ def deploy_filemap(
     # once the dir-symlink pass settles, and again after the transfers.
     _write_custom_log([dst for _src, dst, _r, is_c, _u, _o in tasks if is_c])
 
-    import stat as _stat_module
 
     # Wholesale-replace pass: for every top-level folder that custom-deploy
     # mods are writing into, move the existing folder at the destination
@@ -1858,7 +1858,6 @@ def undeploy_mod_files(
             return 0, 0, None, f"  WARN: could not remove deployed file {p}: {exc}", None
 
     if targets:
-        import concurrent.futures
         from Utils.deploy.deploy_shared import _deploy_workers
         with concurrent.futures.ThreadPoolExecutor(max_workers=_deploy_workers()) as pool:
             for n, k, parent, warn, info in pool.map(_unlink_one, targets):

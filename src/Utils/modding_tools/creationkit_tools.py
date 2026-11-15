@@ -11,6 +11,8 @@ import json
 import urllib.request
 from pathlib import Path
 from typing import TYPE_CHECKING, Callable
+import shutil
+import tempfile
 
 if TYPE_CHECKING:
     from Games.base_game import BaseGame
@@ -76,8 +78,6 @@ def install_ckpe_mod(game: "BaseGame", *,
     folder CKPE needs at startup, and index the mod so the next deploy sees
     the files (build_filemap reads modindex.bin).
     """
-    import shutil
-    import tempfile
 
     from Utils.ca_bundle import download_file, get_ssl_context
     from Utils.wizard_support.wizard_archives import extract_archive

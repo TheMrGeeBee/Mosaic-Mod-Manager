@@ -56,6 +56,9 @@ import shutil
 from pathlib import Path
 
 from Utils.config_paths import get_fomod_selections_path, get_bain_selections_path
+import json as _json
+import tempfile
+from datetime import datetime
 
 
 # ---------------------------------------------------------------------------
@@ -519,7 +522,6 @@ def read_manifest(src_path) -> dict:
     Collection produces the same format) — unlike ``.mosaic``/``.amethyst``,
     which are zips, so the zip branch below never sees them."""
     src_path = Path(src_path)
-    import json as _json
     import zipfile as _zip
     if _zip.is_zipfile(src_path):
         with _zip.ZipFile(src_path, "r") as zf:
@@ -533,7 +535,6 @@ def read_manifest(src_path) -> dict:
     except ImportError:
         py7zr = None
     if py7zr is not None and py7zr.is_7zfile(src_path):
-        import tempfile
         with py7zr.SevenZipFile(src_path, "r") as zf:
             member = _pick_manifest_member(zf.getnames())
             if member is None:
@@ -701,7 +702,6 @@ def build_code_manifest(entries, game, app_version: str, *,
         info["name"] = profile_name
     if game_name:
         info["gameName"] = game_name
-    from datetime import datetime
     info["exported"] = datetime.now().isoformat(timespec="seconds")
     total_size = sum(
         int((m.get("source") or {}).get("fileSize") or 0)

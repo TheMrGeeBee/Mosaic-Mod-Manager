@@ -27,6 +27,7 @@ from PySide6.QtWidgets import (
 )
 
 from gui_qt.theme.theme_qt import active_palette, _c
+import threading
 
 _ICONS_DIR = Path(__file__).resolve().parent.parent.parent / "icons" / "games"
 
@@ -224,7 +225,6 @@ class AddGameView(QWidget):
         # a worker thread; results marshaled back via _installed_scanned. Show a
         # spinner over the grid while the (potentially slow) Steam/Heroic scan runs.
         self._loading_overlay.show_over()
-        import threading
         threading.Thread(target=self._scan_installed_games, daemon=True).start()
 
     @staticmethod

@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import zipfile
 from pathlib import Path
+import tempfile
 
 # Liberica Full 8 (Windows x64) — bundles JavaFX. Pinned to a known-good build;
 # BellSoft keeps old builds available indefinitely.
@@ -68,7 +69,6 @@ def install_windows_jre(compat_data: Path, log_fn=lambda _m: None,
     dest = compat_data / "pfx" / _JAVA_DIR_REL
     dest.mkdir(parents=True, exist_ok=True)
 
-    import tempfile
     archive = Path(tempfile.gettempdir()) / "liberica8-win-full.zip"
     log_fn("Java: downloading Liberica Full 8 (Windows, with JavaFX) …")
     try:

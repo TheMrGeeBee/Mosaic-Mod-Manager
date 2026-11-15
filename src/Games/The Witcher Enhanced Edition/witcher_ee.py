@@ -44,6 +44,7 @@ from Utils.deploy.deploy import (
 )
 from Utils.mods.modlist import read_modlist
 from Utils.config_paths import get_profiles_dir
+import os
 
 _PROFILES_DIR = get_profiles_dir()
 
@@ -343,7 +344,6 @@ class WitcherEnhancedEdition(BaseGame):
         """Remove now-empty nested subdirectories under root (e.g. a mod's
         own "textures/" folder inside Data/override/) bottom-up, leaving
         root itself for the caller to check/remove."""
-        import os
         for dirpath, _dirnames, _filenames in os.walk(root, topdown=False):
             p = Path(dirpath)
             if p == root:

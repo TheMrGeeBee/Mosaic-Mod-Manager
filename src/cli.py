@@ -19,6 +19,11 @@ from __future__ import annotations
 
 import argparse
 import sys
+import shutil
+import json
+import subprocess
+import tempfile
+from pathlib import Path
 
 
 def _setup_path():
@@ -147,7 +152,6 @@ def cmd_restore(games: dict, key: str):
 
 
 def _find_7z():
-    import shutil
     return (shutil.which("7zzs") or shutil.which("7zz")
             or shutil.which("7z") or shutil.which("7za"))
 
@@ -161,13 +165,9 @@ def cmd_audit_collection_fomod(target: str, cache_dir: "str | None") -> int:
     from; without it only the checks that need no archive run, which is still
     enough to compare a finished profile against its manifest.
     """
-    import json
-    import subprocess
-    import tempfile
-    from pathlib import Path
 
     from Utils.collections.collection_fomod_audit import (
-        audit_collection_manifest, format_audit, convert_choices)
+        audit_collection_manifest, format_audit)
     from Utils.installers.fomod_parser import parse_module_config
 
     tpath = Path(target).expanduser()

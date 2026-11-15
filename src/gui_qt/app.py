@@ -37,14 +37,30 @@ from Utils.wine_proton.proton_tools import DOTNET_VERSIONS
 # build). safe_print swallows stream errors; the text is mirrored to the GUI
 # log anyway. Shadowing the builtin makes every print(...) below crash-proof.
 from Utils.app_log import safe_print as print  # noqa: A004
+import importlib.util
+import sys as _sys
+import time as _time
+import threading
+from pathlib import Path as _P
+import shutil
+import time
+import sys
+import configparser
+import re as _re
+import dataclasses
+import json
+import concurrent.futures as _cf
+from concurrent.futures import ThreadPoolExecutor
+from html import escape
+from datetime import datetime
+from collections import deque
+import re
 
 
 def _load_bg3_modio(stem: str):
     """Load a Games/Baldur's Gate 3/<stem>.py module by file path (the folder
     name has a space, so it isn't importable by dotted path). Cached in
     sys.modules under f"{stem}_bg3" — shared with the Tk copy and the wizard."""
-    import importlib.util
-    import sys as _sys
     mod_name = f"{stem}_bg3"
     cached = _sys.modules.get(mod_name)
     if cached is not None:
@@ -387,7 +403,6 @@ class MainWindow(QMainWindow):
         self._splash_dismissed = False
         self._splash_shown_at = None
         if splash is not None:
-            import time as _time
             self._splash_shown_at = _time.monotonic()
         self._pal = active_palette()
         self._gs = GameState()
@@ -735,7 +750,6 @@ class MainWindow(QMainWindow):
         if self._splash_dismissed:
             return
         if self._splash is not None and self._splash_shown_at is not None:
-            import time as _time
             elapsed_ms = (_time.monotonic() - self._splash_shown_at) * 1000
             remaining = self._MIN_SPLASH_MS - elapsed_ms
             if remaining > 0:
@@ -809,7 +823,6 @@ class MainWindow(QMainWindow):
             ok = install_i386_extensions(log_fn=lambda m: app_log(f"[flatpak] {m}"))
             safe_emit(self._i386_repair_done, ok)
 
-        import threading
         threading.Thread(target=_run, daemon=True).start()
 
     def _on_i386_repair_done(self, ok: bool):
@@ -1123,7 +1136,6 @@ class MainWindow(QMainWindow):
         in the plugins panel stays live. Reuses one preview tab — browsing to a
         new image swaps it in place (Tk parity). When other mods ship the same
         file the preview offers a picker and a side-by-side compare."""
-        from pathlib import Path as _P
         from gui_qt.image_preview import ImagePreview
         name = rel_str.replace("\\", "/").rsplit("/", 1)[-1]
         providers = self._asset_providers(rel_key, mod_name)
@@ -1183,7 +1195,6 @@ class MainWindow(QMainWindow):
         Files tree in the plugins panel stays live. Reuses one preview tab —
         clicking another archive swaps it in place. Replaces the old Tk Archive
         tab; the TOC is read without decompressing any file data."""
-        from pathlib import Path as _P
         from gui_qt.bsa.bsa_preview import BsaPreview
         name = rel_str.replace("\\", "/").rsplit("/", 1)[-1]
         existing = getattr(self, "_bsa_preview_widget", None)
@@ -1281,7 +1292,6 @@ class MainWindow(QMainWindow):
         several can be open at once; re-opening the same file focuses its tab.
         The tab title gets a '*' while there are unsaved edits.
         *find_kw* (the active content-search keyword) is pre-highlighted."""
-        from pathlib import Path as _P
         from gui_qt.text_editor import TextEditor
         p = _P(path)
         name = rel_str.replace("\\", "/").rsplit("/", 1)[-1]
@@ -1773,7 +1783,6 @@ class MainWindow(QMainWindow):
                    and Path(dest_dir / Path(p).name).resolve() != Path(p).resolve()]
 
         def _do_move():
-            import shutil
             moved = 0
             for p in paths:
                 src = Path(p)
@@ -2208,7 +2217,6 @@ class MainWindow(QMainWindow):
         # milestones land (meta → plugins → conflicts → final plugin pass), so
         # stamp t0 here and mark elapsed at each (see _mark_since_switch).
         if perftrace.is_enabled():
-            import time
             self._switch_t0 = time.perf_counter()
             self._switch_conflicts_done = False
         with perftrace.span("switch.sync_total"):
@@ -2294,7 +2302,6 @@ class MainWindow(QMainWindow):
         t0 = getattr(self, "_switch_t0", None)
         if t0 is None:
             return
-        import time
         from Utils import perftrace
         perftrace.mark(label, time.perf_counter() - t0)
 
@@ -2538,7 +2545,6 @@ class MainWindow(QMainWindow):
         just covers games that aren't deployed again this session.  Runs on a
         daemon thread — it's pure cleanup and may touch slow drives.
         """
-        import threading
         from Utils.exe_launch.game_helpers import _GAMES
 
         games = [g for g in _GAMES.values() if g.is_configured()]
@@ -2587,7 +2593,6 @@ class MainWindow(QMainWindow):
         banner) that an update was found — instead of the automatic startup
         check's silence when there is nothing to report.
         """
-        import threading
         from gui_qt.safe_emit import safe_emit
         from version import __version__
         from Utils.ui_config import (
@@ -2987,7 +2992,6 @@ class MainWindow(QMainWindow):
         """Background: does the logged-in user already endorse Mosaic's own
         Nexus listing? Fetched once per login (not polled) to set the
         Endorse button's initial label/state."""
-        import threading
 
         def _worker():
             endorsed = False
@@ -3015,7 +3019,6 @@ class MainWindow(QMainWindow):
             self._notify(self.tr("Log in first: Nexus ▸ Login to Nexus."), "warning")
             return
         new_state = not getattr(self, "_mosaic_endorsed", False)
-        import threading
 
         def _worker():
             try:
@@ -3128,7 +3131,6 @@ class MainWindow(QMainWindow):
     def _handle_nxm_argv(self):
         """Check sys.argv for --nxm <url> and kick off a download once the
         window has finished building."""
-        import sys
         if "--nxm" not in sys.argv:
             return
         try:
@@ -3244,7 +3246,6 @@ class MainWindow(QMainWindow):
         dl_key = self._new_dl_key()
         self._nexus_download_progress(dl_key, "", 0, 0)   # show popup immediately
 
-        import threading
 
         def _worker():
             from Nexus.nexus_download import NexusDownloader
@@ -3420,7 +3421,6 @@ class MainWindow(QMainWindow):
         collections' and manual mods are never touched) plus its
         installed_collections/ record. Confirm → daemon worker (deploy mutex)
         → _appended_col_removed → reload."""
-        import threading
         from Utils.collections.installed_collections import resolve_owned_mod_names
         game = self._gs.game
         pdir = self._gs.profile_dir()
@@ -3574,7 +3574,6 @@ class MainWindow(QMainWindow):
         callback marshaled through a Signal (UI-thread slots update the
         overlay). Deferred FOMOD/BAIN mods block the worker on a wizard via
         _col_fomod / _col_bain (same handshake as _make_exists_cb)."""
-        import threading
         if self._col_install_running:
             self._notify(self.tr("A collection install is already running."), "warning")
             return
@@ -3691,7 +3690,6 @@ class MainWindow(QMainWindow):
         the older runtime SKSE64 supports. Mosaic applies that mod's patches
         itself (Utils.modding_tools.skyrim_runtime) and so never installs the
         mod. Nothing to report (the common case) proceeds with no dialog."""
-        import threading
         from Utils.collections import collection_preflight as pf
         game = info["game"]
         all_mods = list(info.get("mods") or [])
@@ -3778,7 +3776,6 @@ class MainWindow(QMainWindow):
         elif kind == "fixed":
             if overlay is not None:
                 overlay.set_busy(self.tr("Checking the game again…"))
-            import threading
             threading.Thread(target=self._preflight_check_worker, args=(ctx, True),
                              daemon=True, name="col-preflight").start()
         elif kind == "rechecked":
@@ -3822,7 +3819,6 @@ class MainWindow(QMainWindow):
 
     def _preflight_fix(self, ctx, overlay):
         """UI thread: the user pressed 'Fix and continue'."""
-        import threading
         overlay.set_busy(self.tr("Preparing the Skyrim runtime patch…"))
         threading.Thread(target=self._preflight_prepare_worker, args=(ctx,),
                          daemon=True, name="col-preflight-fix").start()
@@ -3878,7 +3874,6 @@ class MainWindow(QMainWindow):
     def _preflight_restore_then_apply(self, ctx):
         """UI thread: the game is deployed — Restore it (the normal restore path),
         then apply the swap on a worker."""
-        import threading
         overlay = ctx.get("overlay")
         if overlay is not None:
             overlay.set_busy(self.tr("Restoring the game to vanilla first…"))
@@ -4052,12 +4047,10 @@ class MainWindow(QMainWindow):
         """UI thread: user confirmed — scan staging for this collection's
         bundled/patched mods in a worker (meta.ini per mod = too slow for the
         UI thread on big collections), then finish on the UI thread."""
-        import threading
         from gui_qt.safe_emit import safe_emit
         game = info["game"]
 
         def worker():
-            import configparser
             from Utils.mods.modlist import read_modlist
             try:
                 snapshot = list(read_modlist(profile_dir / "modlist.txt")) \
@@ -4151,7 +4144,6 @@ class MainWindow(QMainWindow):
     def _start_collection_pipeline(self, info):
         """UI thread: premium confirmed — create the profile, open the overlay,
         and launch the orchestrator on a daemon thread."""
-        import threading
         game = info["game"]; api = info["api"]; collection = info["collection"]
         slug = info["slug"]; domain = info["domain"]
         revision_number = info["revision"]; mods = info["mods"]
@@ -4176,7 +4168,6 @@ class MainWindow(QMainWindow):
 
         from Utils.exe_launch.game_helpers import _create_profile, _profiles_for_game
         from Utils.profile.profile_state import write_collection_optional_skipped
-        import re as _re
 
         # overwrite_existing is None for new/continue (fresh modlist write); a bool
         # for append (preserves existing load order via _append_reconcile_modlist).
@@ -4234,7 +4225,6 @@ class MainWindow(QMainWindow):
         # (installed_collections/<slug>.json — see Utils.collections.installed_collections).
         append_card_info = None
         if overwrite_existing is not None:
-            import dataclasses
             try:
                 append_card_info = dataclasses.asdict(collection)
             except Exception:
@@ -4420,7 +4410,6 @@ class MainWindow(QMainWindow):
     def _make_col_fomod_cb(self):
         """resolve_fomod for the orchestrator: runs on the WORKER thread, asks the
         UI to open the FOMOD wizard, and BLOCKS until the user Finishes/Cancels."""
-        import threading
 
         def _cb(config, base, name, installed, active, loose, saved=None):
             holder = {"result": None}
@@ -4492,7 +4481,6 @@ class MainWindow(QMainWindow):
                             key="col_fomod_wizard")
 
     def _make_col_bain_cb(self):
-        import threading
 
         def _cb(subpkgs, root, name):
             holder = {"result": None}
@@ -4665,7 +4653,6 @@ class MainWindow(QMainWindow):
             return
 
         if kind == "cancelled":
-            import threading
             pd = payload.get("profile_dir") if isinstance(payload, dict) else None
             if ov is not None:
                 ov.set_status(self.tr("Cancelling…"))
@@ -4762,7 +4749,6 @@ class MainWindow(QMainWindow):
                               installed, total, skipped_n):
         """Extract a local .mosaic's bundled mods + profile files into the
         just-installed profile on a worker, then reload on the UI thread."""
-        import threading
         game = self._gs.game
         if game is None:
             self._select_installed_collection_profile(profile_name)
@@ -4940,7 +4926,6 @@ class MainWindow(QMainWindow):
         except Exception:
             slug = ""
 
-        import threading, json
 
         def worker():
             res = {"error": "unknown"}
@@ -5187,7 +5172,6 @@ class MainWindow(QMainWindow):
         self._updates_toast = self._notify(
             self.tr("Checking for updates ({0})…").format(n), "info", sticky=True)
 
-        import threading
         from Nexus.nexus_update_checker import check_for_updates
 
         def _worker():
@@ -5436,7 +5420,6 @@ class MainWindow(QMainWindow):
         except Exception:
             dl_workers = 8
 
-        import threading
 
         # One shared progress card for the whole batch (aggregate bytes).
         self._reinstall_dl_phase = self.tr(
@@ -5448,7 +5431,6 @@ class MainWindow(QMainWindow):
         last_emit = [0.0]
 
         def _post_aggregate(force=False):
-            import time as _time
             with progress_lock:
                 now = _time.monotonic()
                 if not force and now - last_emit[0] < 0.1:
@@ -5461,7 +5443,6 @@ class MainWindow(QMainWindow):
         _post_aggregate(force=True)
 
         def _download_all():
-            import concurrent.futures as _cf
             from Nexus.nexus_download import NexusDownloader
             from Nexus.nexus_meta import build_meta_from_download
             from Utils.config_paths import get_download_cache_dir_for_game
@@ -5532,7 +5513,6 @@ class MainWindow(QMainWindow):
         download page and arm a folder watcher that auto-installs when the
         browser download arrives. `items` =
         [(mod_name, domain, mod_id, file_id, filename), …]."""
-        import threading
         from gui_qt.safe_emit import safe_emit
 
         api = getattr(self, "_nexus_api", None)
@@ -5743,10 +5723,8 @@ class MainWindow(QMainWindow):
         self._notify(self.tr("Quick Update — checking {0} mod(s)…").format(len(targets)), "info")
         self._append_log(f"[nexus] Quick Update — checking {len(targets)} mod(s)…")
 
-        import threading
 
         def _resolve_worker():
-            import concurrent.futures as _cf
             from Utils.exe_launch.quick_update import resolve_quick_update_target
             queue = []
             skipped = []   # (mod_name, reason)
@@ -5813,7 +5791,6 @@ class MainWindow(QMainWindow):
         except Exception:
             dl_workers = 8
 
-        import threading
 
         # One shared progress card for the whole batch (Tk parity: a per-download
         # popup per mod stacks up fast). Progress is the aggregate byte count
@@ -5832,7 +5809,6 @@ class MainWindow(QMainWindow):
         last_emit = [0.0]
 
         def _post_aggregate(force=False):
-            import time as _time
             with progress_lock:
                 now = _time.monotonic()
                 if not force and now - last_emit[0] < 0.1:
@@ -5845,7 +5821,6 @@ class MainWindow(QMainWindow):
         _post_aggregate(force=True)       # show the card before downloads start
 
         def _download_all():
-            import concurrent.futures as _cf
             from Nexus.nexus_download import NexusDownloader
             from Nexus.nexus_meta import build_meta_from_download
             from Utils.config_paths import get_download_cache_dir_for_game
@@ -6031,10 +6006,8 @@ class MainWindow(QMainWindow):
             "info")
         self._append_log(f"[modio] Quick Update — checking {len(targets)} mod(s)…")
 
-        import threading
 
         def _resolve_worker():
-            import concurrent.futures as _cf
             modio_api = _load_bg3_modio("modio_api")
             modio_qu = _load_bg3_modio("modio_quick_update")
             try:
@@ -6080,7 +6053,6 @@ class MainWindow(QMainWindow):
         except Exception:
             dl_workers = 8
 
-        import threading
 
         self._qmu_dl_phase = self.tr("Downloading {0} mod(s)…").format(len(queue))
         progress = {}                     # mod_name → [cur_bytes, total_bytes]
@@ -6090,7 +6062,6 @@ class MainWindow(QMainWindow):
         last_emit = [0.0]
 
         def _post_aggregate(force=False):
-            import time as _time
             with progress_lock:
                 now = _time.monotonic()
                 if not force and now - last_emit[0] < 0.1:
@@ -6103,7 +6074,6 @@ class MainWindow(QMainWindow):
         _post_aggregate(force=True)       # show the card before downloads start
 
         def _download_all():
-            import concurrent.futures as _cf
             modio_api = _load_bg3_modio("modio_api")
             from Utils.config_paths import get_download_cache_dir_for_game
             dest = get_download_cache_dir_for_game(getattr(self._gs.game, "name", "") or "")
@@ -7081,7 +7051,6 @@ class MainWindow(QMainWindow):
         worker thread via the shared API, updates each mod's meta.ini `endorsed`
         flag, then refreshes the modlist so the ★ flag icon updates. Mirrors Tk
         _vote_selected_mods."""
-        import threading
         names = [n for n in (names or []) if n]
         if not names:
             return
@@ -7203,7 +7172,6 @@ class MainWindow(QMainWindow):
                 self._nexus_name_fetch_done.emit(
                     overlay, "", self.tr("Fetch failed: {0}").format(exc))
 
-        import threading
         threading.Thread(target=_worker, daemon=True, name="fetch-nexus-name").start()
 
     def _on_nexus_name_fetch_done(self, overlay, name: str, error: str) -> None:
@@ -7244,7 +7212,6 @@ class MainWindow(QMainWindow):
         refreshes the modlist so the flag icon updates. Mirrors
         _on_modlist_endorse; needs a mod.io OAuth login (not just the
         read-only API key — see modio_oauth.py)."""
-        import threading
         names = [n for n in (names or []) if n]
         if not names:
             return
@@ -7322,7 +7289,6 @@ class MainWindow(QMainWindow):
         """Start tracking the given mods on Nexus (right-click). Runs on a worker
         thread via the shared API, reading each mod's Nexus id from its meta.ini.
         Mirrors _on_modlist_endorse (track has no meta.ini flag to persist)."""
-        import threading
         names = [n for n in (names or []) if n]
         if not names:
             return
@@ -7443,8 +7409,6 @@ class MainWindow(QMainWindow):
                              src_staging, src_profile_dir, target_staging,
                              target_profile_dir, target_profile, game):
         """Worker: copy each planned mod, then (move) remove the sources."""
-        import threading
-        from pathlib import Path
         from Utils.mods import mod_copy
         # Serialize: a second copy/move while one runs would write the same
         # target folders concurrently (install has the same guard).
@@ -7705,11 +7669,9 @@ class MainWindow(QMainWindow):
             return
         self._req_batch_busy = True
         self._append_log(f"[nexus] fetching file lists for {len(items)} mod(s)…")
-        import threading
         from types import SimpleNamespace
 
         def worker():
-            from concurrent.futures import ThreadPoolExecutor
             premium = self._resolve_req_premium(api)
 
             def files_for(it):
@@ -7751,7 +7713,6 @@ class MainWindow(QMainWindow):
         NexusBatchChooser.show_over(self, mods, _done)
 
     def _start_req_batch_downloads(self, plan):
-        import threading
         try:
             from Utils.ui_config import load_collection_settings
             limit = max(1, int(load_collection_settings().get("max_concurrent", 8)))
@@ -7822,7 +7783,6 @@ class MainWindow(QMainWindow):
         self._req_installing = True
         ctx = {"mod_id": mod_id, "domain": domain, "name": name}
         self._append_log(f"[nexus] preparing install for {name}…")
-        import threading
 
         def worker():
             files = None
@@ -7888,7 +7848,6 @@ class MainWindow(QMainWindow):
         info_fallback.mod_id = mod_id
         info_fallback.domain_name = domain
         info_fallback.name = name
-        import threading
 
         def worker():
             archive = meta = None
@@ -8858,7 +8817,6 @@ class MainWindow(QMainWindow):
         if game is None or not game.is_configured():
             self._notify(self.tr("No configured game selected."), "warning")
             return
-        import threading
         from Utils.exe_launch import exe_launch
         label = self._play_exe_selector.current()
         exe_path = self._play_exe_paths.get(label)
@@ -9274,7 +9232,6 @@ class MainWindow(QMainWindow):
             self._notify(self.tr("Deploying {0}…").format(game.name), "info")
         rf_enabled = True
 
-        import threading
 
         def worker():
             from Utils.deploy.deploy_pipeline import run_deploy_pipeline
@@ -9449,7 +9406,6 @@ class MainWindow(QMainWindow):
         self._notify(self.tr("Restoring {0}…").format(game.name), "info")
         profile = self._gs.profile
 
-        import threading
         from Utils.deploy.deploy import restore_root_folder
 
         def worker():
@@ -9643,7 +9599,6 @@ class MainWindow(QMainWindow):
     def _open_folder_path(self, path, descr):
         """Open *path* in the file manager, or log why it can't be opened.
         Ported from gui/dialogs ProtonTools._open_folder."""
-        from pathlib import Path
         if path is None:
             self._notify(self.tr("{0} is not configured for this game.").format(descr), "warning")
             return
@@ -9833,7 +9788,6 @@ class MainWindow(QMainWindow):
 
     def _open_profile_dir(self, which: str):
         """Open the active profile's INI files or Saves folder."""
-        from pathlib import Path
         game = self._gs.game
         if game is None or not game.is_configured():
             self._notify(self.tr("No configured game selected."), "warning")
@@ -9953,7 +9907,6 @@ class MainWindow(QMainWindow):
         game = self._proton_game()
         if game is None:
             return
-        import threading
         from Utils.wine_proton.proton_tools import launch_winetricks
         self._notify(self.tr("Launching winetricks…"), "info")
         threading.Thread(
@@ -10015,7 +9968,6 @@ class MainWindow(QMainWindow):
         self._notify(self.tr("{0}…").format(title), "info")
         self._op_progress.emit(0, 0, title)   # indeterminate (busy) bar
 
-        import threading
 
         def _run():
             ok = False
@@ -10411,7 +10363,6 @@ class MainWindow(QMainWindow):
         show the Set-Prefix overlay (via _need_prefix) and BLOCKS on an Event
         until the user responds — mirroring the Tk non-main-thread prefix dialog.
         Returns the prefix str ("" = as-is), or None (cancel)."""
-        import threading
 
         def _cb(required, file_list, mod_name):
             holder = {"result": None}
@@ -10444,7 +10395,6 @@ class MainWindow(QMainWindow):
         Runs on the WORKER thread → shows the Mod-Already-Exists overlay on the
         UI thread and BLOCKS until the user picks (replace / rename:<n> / cancel),
         mirroring _make_need_prefix_cb."""
-        import threading
 
         def _cb(mod_name, conflict=False):
             holder = {"result": "cancel"}
@@ -10480,7 +10430,6 @@ class MainWindow(QMainWindow):
         from an unrelated alternate file on the same Nexus mod page (should
         install separately — e.g. a Male/Female variant pair, real report),
         so this always asks rather than silently guessing either way."""
-        import threading
 
         def _cb(existing_name, new_name):
             holder = {"result": "cancel"}
@@ -10515,7 +10464,6 @@ class MainWindow(QMainWindow):
         Event until the user chooses. Returns True to proceed, False to cancel.
         No conflict → returns True immediately without prompting (Tk parity:
         gui.dialogs.confirm_cet_symlink)."""
-        import threading
         from Utils.modding_tools.cet_check import cet_symlink_conflict
 
         def _cb() -> bool:
@@ -10572,7 +10520,6 @@ class MainWindow(QMainWindow):
         idx = self._install_total - len(self._install_queue)
         self._op_log.emit(f"Installing ({idx}/{self._install_total}): {Path(path).name}")
 
-        import threading
 
         meta = getattr(self, "_install_metas", {}).get(path)
         forced_name = getattr(self, "_install_preferred", {}).get(path, "")
@@ -10604,7 +10551,6 @@ class MainWindow(QMainWindow):
         through the existing sequential wizard handshake. Blocking UI prompts
         (need-prefix, mod-already-exists) are serialised so only one overlay
         shows at a time."""
-        import threading
 
         paths = list(self._install_queue)
         self._install_queue = []
@@ -10625,7 +10571,6 @@ class MainWindow(QMainWindow):
         variant_cb = _serialized(raw_variant_cb)
 
         def driver():
-            from concurrent.futures import ThreadPoolExecutor
             from Utils.mods.mod_install import (prepare_archive, finish_install,
                                            _archive_lists_fomod_config)
             from Utils.extract_budget import (ExtractionMemoryBudget,
@@ -10903,7 +10848,6 @@ class MainWindow(QMainWindow):
                                 key=tab_key)
 
     def _run_finish_install(self, prepared, selections, bain_selections=None):
-        import threading
 
         # Quick Update (forced folder name) auto-confirms Replace-All — pass
         # on_exists=None so finish_install silently replaces the existing folder
@@ -10955,7 +10899,6 @@ class MainWindow(QMainWindow):
         """Drain one queued detached-wizard staging job if nothing else is
         touching the shared game. Re-armed by _on_wizard_finish_done, and also by
         _on_install_done / _on_op_done when a blocking install/deploy finishes."""
-        import threading
 
         if not self._staged_finish_queue \
                 or self._staged_finish_running \
@@ -11882,7 +11825,6 @@ class MainWindow(QMainWindow):
             existing=plan.existing_any, kind=kind, on_done=on_done)
 
     def _start_pack_bsa(self, plan, opts):
-        import threading
         import Utils.archives.bsa_pack_ops as ops
         from gui_qt.safe_emit import safe_emit
 
@@ -11959,7 +11901,6 @@ class MainWindow(QMainWindow):
             plugin_exts=self._bsa_plugin_exts(), on_done=on_done)
 
     def _start_unpack_bsa(self, mod_dir, archive_paths):
-        import threading
         import Utils.archives.bsa_pack_ops as ops
         from gui_qt.safe_emit import safe_emit
 
@@ -12305,7 +12246,6 @@ class MainWindow(QMainWindow):
         panel = getattr(self, "_modlist_filter_panel", None)
         if panel is None:
             return
-        import threading
         staging = self._gs.staging_dir()
         staging_parent = staging.parent if staging is not None else None
         plugin_exts = getattr(self._gs.game, "plugin_extensions", None)
@@ -12816,7 +12756,6 @@ class MainWindow(QMainWindow):
         # first, and _on_modlist_meta_ready chains the conflict rebuild.
         meta_started = False
         if entries and staging is not None:
-            import threading
             ignored = self._ignored_missing_reqs
             pdir_meta = self._gs.profile_dir()
             is_bg3 = (getattr(self._gs.game, "game_id", "") == "baldurs_gate_3")
@@ -13150,7 +13089,6 @@ class MainWindow(QMainWindow):
         load order, so it runs on a daemon worker → _plugins_loaded → the
         UI applies the rows. A generation counter drops results from a
         superseded reload (game/profile switched mid-read)."""
-        import threading
         self._reassert_profile_paths()
         self._plugins_gen += 1
         gen = self._plugins_gen
@@ -13218,7 +13156,6 @@ class MainWindow(QMainWindow):
         # user can see + send it without an env var.
         self._append_log(f"[rescan-diag] plugins_loaded gen={gen} → applying "
                          f"{len(rows)} row(s) to the panel")
-        import time as _time
         _apply_t0 = _time.perf_counter()
         self._plugin_model.set_rows(rows, game=self._gs.game,
                                     profile=self._gs.profile,
@@ -13300,7 +13237,6 @@ class MainWindow(QMainWindow):
         names = [r.name for r in rows]
         if not names:
             return
-        import threading
 
         def worker():
             from gui_qt.plugin.plugin_state import compute_esl_eligibility
@@ -13903,7 +13839,6 @@ class MainWindow(QMainWindow):
         of the full _rebuild_conflicts_async, which rebuilds the filemap and
         reloads both the modlist and the Plugins panel. Tk parity: plugin
         toggle → recompute_bsa_conflicts (BSA-only), NOT a filemap rebuild."""
-        import threading
         g = self._gs.game
         if g is None or not self._gs.profile:
             return
@@ -14042,7 +13977,6 @@ class MainWindow(QMainWindow):
         _rebuild_conflicts_async so full rebuilds serialize/supersede normally;
         _conflict_maps_current deliberately stays armed (the maps still
         describe reality — that is exactly what the predicate proved)."""
-        import threading
         self._reassert_profile_paths()
         gen = getattr(self, "_conflict_gen", 0) + 1
         self._conflict_gen = gen
@@ -14104,7 +14038,6 @@ class MainWindow(QMainWindow):
         (queued → UI thread). A generation counter drops results from a
         superseded reload (user switched game before the build finished).
         rescan_index=True forces a full disk rescan (Refresh button)."""
-        import threading
         # The maps the move fast-path tests are about to be superseded.
         self._conflict_maps_current = False
         self._reassert_profile_paths()
@@ -14801,7 +14734,6 @@ class MainWindow(QMainWindow):
 
         *timestamp* (already formatted, e.g. ``2026-07-04 18:00:34``) is rendered
         as a dimmed prefix so each on-screen line shows when it was logged."""
-        from html import escape
         text = escape(line) or "&nbsp;"
         prefix = ""
         if timestamp:
@@ -14881,10 +14813,8 @@ class MainWindow(QMainWindow):
             pass
         line = message.rstrip("\n")
         severity = self._classify_log_line(line)
-        from datetime import datetime
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         if not hasattr(self, "_log_lines"):
-            from collections import deque
             # Bounded so a very long-running session (e.g. a multi-thousand-mod
             # collection install) can't grow this list forever.
             self._log_lines = deque(maxlen=20000)
@@ -14999,7 +14929,6 @@ class MainWindow(QMainWindow):
         holds ``gui_qt``). In the flatpak/AppImage the tree is flattened, so it
         sits right beside ``gui_qt``. Check both, plus the current working dir
         (the launcher ``cd``s into the share dir before running)."""
-        from pathlib import Path
         here = Path(__file__).resolve().parent  # .../gui_qt
         candidates = [
             here.parent / "Changelog.txt",         # flattened (flatpak/appimage)
@@ -15047,7 +14976,6 @@ class MainWindow(QMainWindow):
         headings so they render as prominent titles, leaving every other line
         untouched.
         """
-        import re
         version_re = re.compile(r"^\s*-\s*(v\d+(?:\.\d+)*)\s*$")
         out = []
         for line in text.splitlines():
@@ -15085,7 +15013,6 @@ def _apply_app_identity(app) -> None:
     3. setApplicationName() — helps the X11 WM_CLASS / labels. (We avoid
        setApplicationDisplayName, which Qt would append to every window title.)
     """
-    from pathlib import Path
     from PySide6.QtGui import QIcon
 
     app.setApplicationName("Mosaic Mod Manager")
@@ -15120,8 +15047,6 @@ def _apply_app_identity(app) -> None:
 
 
 def run() -> int:
-    import sys
-    import time
     from PySide6.QtWidgets import QApplication
     from Nexus.nxm_handler import NxmIPC, NxmHandler, nxm_log
     from Utils.instance_lock import InstanceLock

@@ -32,6 +32,7 @@ from gui_qt.worker import run_in_worker, NO_EMIT
 # kill worker threads). See Utils.app_log.safe_print.
 from Utils.app_log import safe_print as print  # noqa: A004
 from Utils.deploy.deploy import LinkMode
+import subprocess
 
 # Left column width — the image panel and the options panel share it.
 _LEFT_COL_W = 240
@@ -812,7 +813,6 @@ class ConfigureGameView(QWidget):
 
     def _open_path(self, path):
         if path and Path(path).exists():
-            import subprocess
             try:
                 subprocess.Popen(["xdg-open", str(path)])
             except Exception:

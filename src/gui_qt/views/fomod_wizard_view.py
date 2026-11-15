@@ -28,6 +28,7 @@ from Utils.installers.fomod_installer import (
     validate_selections, resolve_plugin_type, plugin_dep_unmet, plugin_dep_met,
 )
 from Utils.installers.fomod_parser import resolve_path_ci
+import os
 
 
 class FomodWizardView(QWidget):
@@ -526,7 +527,6 @@ class FomodWizardView(QWidget):
     def _on_reset(self):
         """Delete the saved-selections file and restart the wizard from step 0
         with the FOMOD's own defaults (Tk parity)."""
-        import os
         for _path in (self._selections_path, self._profile_selections_path):
             if _path is None:
                 continue

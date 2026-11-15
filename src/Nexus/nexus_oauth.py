@@ -130,7 +130,6 @@ _TOKEN_FILE = "nexus_oauth_tokens.bin"
 
 def _derive_key() -> bytes:
     """Derive a Fernet key from the machine ID so tokens are only usable on this device."""
-    import base64
     machine_id = ""
     for p in ("/etc/machine-id", "/var/lib/dbus/machine-id"):
         try:

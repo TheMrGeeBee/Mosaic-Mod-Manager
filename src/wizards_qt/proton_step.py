@@ -34,6 +34,7 @@ from Utils.exe_launch.exe_launch import (
     save_tool_launch_args, save_tool_launch_env, save_winetricks_style,
     shared_prefix_dir,
 )
+import shutil
 
 if TYPE_CHECKING:
     from Games.base_game import BaseGame
@@ -464,7 +465,6 @@ class ProtonStepWidget(QWidget):
         self._set_prefix_status(self.tr("Deleting '{0}'…").format(d.name))
 
         def worker(target=d):
-            import shutil
             try:
                 # Safety: only delete recognised tool-prefix dirs.
                 if not (target.name.startswith("prefix_")

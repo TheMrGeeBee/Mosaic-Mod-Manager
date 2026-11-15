@@ -26,6 +26,7 @@ from Utils.mods.modsettings import (
     scan_game_data_uuids,
     scan_mod_paks,
 )
+import heapq
 
 
 # ---------------------------------------------------------------------------
@@ -245,7 +246,6 @@ def compute_layered_plan(game, modlist_path: Path, log_fn=None,
     result satisfies every dependency, so deploy's own dependency sort
     moves nothing afterwards.
     """
-    import heapq
     from Utils.mods import bg3_layers as L
     from Utils.mods.bg3_pak_index import (
         INDEX_FILENAME, _looks_like_patch, build_index, collection_mods,

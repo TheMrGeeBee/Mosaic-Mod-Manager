@@ -28,6 +28,9 @@ from Utils.profile.profile_state import read_excluded_mod_files
 from Utils.ui_config import load_normalize_folder_case
 from Utils.wine_proton.protontricks import ensure_prefix_deps
 from Utils.wine_proton.wine_dll_config import deploy_game_wine_dll_overrides
+import os
+import platform
+import time as _time
 
 
 LogFn = Callable[[str], None]
@@ -41,7 +44,6 @@ def check_paths_mounted(game) -> "str | None":
     mkdir(parents=True) would silently recreate the game tree on the root
     filesystem and every file would land on the wrong drive.
     """
-    import os
 
     game_root = _safe(game.get_game_path)
     if game_root:
@@ -282,7 +284,6 @@ def _log_deploy_context(game, profile: str, profile_dir: Path,
     except Exception:
         app_version = "?"
 
-    import platform
 
     game_root  = _safe(game.get_game_path)
     staging    = _safe(game.get_effective_mod_staging_path)
@@ -617,7 +618,6 @@ def run_deploy_pipeline(
         log_fn(f"Deploy aborted: {mount_err}")
         return False
 
-    import time as _time
     _t_start = _time.perf_counter()
 
     try:

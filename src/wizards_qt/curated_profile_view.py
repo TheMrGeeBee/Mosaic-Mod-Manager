@@ -37,6 +37,7 @@ from PySide6.QtWidgets import QCheckBox, QHBoxLayout, QPushButton, QWidget
 
 from gui_qt.safe_emit import safe_emit
 from wizards_qt._view_base import GREEN, RED, WizardViewBase
+import dataclasses
 
 if TYPE_CHECKING:
     from Games.base_game import BaseGame
@@ -380,7 +381,6 @@ class CuratedProfileView(WizardViewBase):
         (ctx.profile_name is frozen at open, before the import switched)."""
         if self._ctx is None:
             return None
-        import dataclasses
         return dataclasses.replace(self._ctx,
                                    profile_name=self._current_profile())
 

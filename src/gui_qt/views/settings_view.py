@@ -28,6 +28,7 @@ from PySide6.QtWidgets import (
 from gui_qt.theme.theme_qt import active_palette, _c
 from gui_qt.wheel_guard import no_wheel
 from Utils import ui_config as uc
+from pathlib import Path as _P
 
 
 # ---------------------------------------------------------------------------
@@ -539,7 +540,6 @@ class SettingsView(QWidget):
         ``<profile>/fomod/`` mirrors. Both matter — the reader falls back to
         the mirror, so clearing only the global store lets selections come
         back."""
-        from pathlib import Path as _P
         out = []
         game = getattr(getattr(self._window, "_gs", None), "game", None)
         name = getattr(game, "name", "") or ""

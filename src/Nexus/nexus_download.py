@@ -41,6 +41,7 @@ from .nxm_handler import NxmLink
 from Utils.downloads import bandwidth_limit
 from Utils.app_log import app_log
 from Utils.ca_bundle import resolve_ca_bundle
+import hashlib
 
 # Default chunk size for streaming downloads (256 KB)
 _CHUNK_SIZE = 256 * 1024
@@ -194,7 +195,6 @@ def _md5_cache_forget(archive: Path) -> None:
 
 def _compute_md5(path: Path) -> str:
     """Return the lowercase hex md5 of *path*, or "" on any error."""
-    import hashlib
     try:
         h = hashlib.md5()
         with open(path, "rb") as f:
