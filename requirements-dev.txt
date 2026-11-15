@@ -15,3 +15,5 @@
 # __pycache__ or export PYTHONDONTWRITEBYTECODE=1.
 pytest
 pyflakes
+ruff
+vulture

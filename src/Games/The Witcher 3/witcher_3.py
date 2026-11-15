@@ -85,7 +85,7 @@ def _merge_tree_into(src: Path, dest: Path) -> int:
 # normal Python module elsewhere -- Utils.mods.tw3_load_index needs this
 # exact same routing to know which staged files would collide at the same
 # in-game path, prospectively, before any deploy has happened.
-from Utils.mods.tw3_routing import _ROOT_SEGMENTS, _SKIP_SEGMENTS, route_path as _route_path
+from Utils.mods.tw3_routing import route_path as _route_path
 
 
 # ---------------------------------------------------------------------------

@@ -8,7 +8,6 @@ If the exe is already present the extract step is skipped.
 from __future__ import annotations
 
 import threading
-from pathlib import Path
 from typing import TYPE_CHECKING
 
 from PySide6.QtCore import Qt, Signal

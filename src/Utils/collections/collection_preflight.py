@@ -24,7 +24,7 @@ from typing import Callable, Iterable
 
 from Utils.modding_tools import skyrim_runtime as sr
 from Utils.modding_tools import tw3_version as tw3v
-from Utils.wizard_support.pe_version import Version, format_version
+from Utils.wizard_support.pe_version import format_version
 
 FIX_RUNTIME_SWAP = "runtime-swap"
 

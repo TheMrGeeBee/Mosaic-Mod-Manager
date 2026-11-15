@@ -17,6 +17,7 @@ Usage::
 
 from __future__ import annotations
 
+import re
 import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
@@ -72,8 +73,6 @@ def _parse_install_date(meta: "NexusModMeta") -> Optional[datetime]:
 
     return None
 
-
-import re
 
 _VERSION_PART_RE = re.compile(r"(\d+)|([a-z]+)", re.IGNORECASE)
 # Tokens that, when present anywhere in the version string, mark it as a

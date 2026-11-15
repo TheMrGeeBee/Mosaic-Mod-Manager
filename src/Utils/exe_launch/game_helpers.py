@@ -14,7 +14,7 @@ from Utils.exe_launch.game_loader import discover_games
 from Utils.plugins.plugin_loader import discover_plugins
 from Utils.profile.profile_state import (
     merge_profile_settings,
-    profile_uses_specific_mods,  # re-exported: backend now imports from Utils
+    profile_uses_specific_mods,  # noqa: F401  # re-exported: backend now imports from Utils
     read_profile_settings,
     read_profile_state,
     write_profile_settings,

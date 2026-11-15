@@ -31,7 +31,6 @@ from gui_qt.icons import icon, icon_rotated
 from gui_qt.safe_emit import safe_emit
 from Games.Custom.custom_game import (
     _make_game_id,
-    decode_custom_game_definition,
     delete_custom_game_definition,
     encode_custom_game_definition,
     load_builtin_game_templates,

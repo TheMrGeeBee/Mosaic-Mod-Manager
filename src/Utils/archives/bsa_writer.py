@@ -60,6 +60,7 @@ from typing import Callable
 
 import lz4.frame
 
+from Utils.archives.archive_rules import is_packable  # noqa: F401  # re-export: callers import Utils.archives.bsa_writer.is_packable
 from Utils.atomic_write import atomic_writer
 
 
@@ -71,9 +72,6 @@ class BsaWriteError(Exception):
     """Raised when packing fails. Atomic writer guarantees no .bsa is left
     behind on the destination path; a stale .bsa.tmp may remain on disk."""
 
-
-# Re-export for callers importing Utils.archives.bsa_writer.is_packable.
-from Utils.archives.archive_rules import is_packable  # noqa: F401
 
 # Per-extension "do not compress" list — kept here because it drives
 # ``write_bsa``'s compression-bit decision and is independent of the

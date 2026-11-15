@@ -31,8 +31,7 @@ from Utils.collections.collection_manifest import fmt_size
 from Utils.collections.collection_preflight import blocking_failures
 from Utils.wabbajack.wabbajack_manifest import (ManualState, ModList, UnknownState,
                                                 mosaic_game_for)
-from Utils.wabbajack.wabbajack_preflight import (FIX_LOVERSLAB_LOGIN,
-                                                 FIX_MANUAL_DOWNLOADS)
+from Utils.wabbajack.wabbajack_preflight import FIX_LOVERSLAB_LOGIN
 
 _SOURCE_LABELS = {
     "NexusState": "Nexus Mods", "HttpState": "Direct link", "WabbajackCDNState": "Wabbajack CDN",

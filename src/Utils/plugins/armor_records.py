@@ -79,7 +79,7 @@ def active_plugin_paths(game, profile_dir: "Path | None") -> list:
     from Utils.filemap import read_mod_index
     from Utils.mods.mod_files import _mod_dir_for
     from Utils.mods.modlist import read_modlist
-    from Utils.plugins.plugins import read_loadorder, read_plugins
+    from Utils.plugins.plugins import read_plugins
 
     pl_path = profile_dir / "plugins.txt"
     if not pl_path.is_file():
