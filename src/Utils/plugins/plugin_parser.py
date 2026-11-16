@@ -37,6 +37,8 @@ import os
 import struct
 from pathlib import Path
 
+from Utils.path_utils import find_child_ci
+
 _MASTERS_CACHE: dict[str, tuple[int, int, list[str]]] = {}
 _MASTERS_CACHE_MAX = 8192
 
@@ -353,6 +355,7 @@ def check_version_mismatched_masters(
         Mapping of plugin name → list of master filenames with size mismatches.
     """
     mismatch_map: dict[str, list[str]] = {}
+    listings: dict = {}      # read the Data folder once, not once per master
 
     for plugin_name in plugin_names:
         path = plugin_paths.get(plugin_name.lower())
@@ -366,13 +369,7 @@ def check_version_mismatched_masters(
         mismatched: list[str] = []
         for master_name, expected_size in masters_with_sizes.items():
             # Find the master file on disk (case-insensitive)
-            master_lower = master_name.lower()
-            master_path: Path | None = None
-            if data_dir.is_dir():
-                for f in data_dir.iterdir():
-                    if f.name.lower() == master_lower:
-                        master_path = f
-                        break
+            master_path = find_child_ci(data_dir, master_name, listings=listings)
             if master_path is None or not master_path.is_file():
                 continue  # Missing masters handled separately
             actual_size = master_path.stat().st_size

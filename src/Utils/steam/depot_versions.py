@@ -43,6 +43,7 @@ from pathlib import Path
 
 from Utils.atomic_write import write_atomic_text
 from Utils.file_hash import file_digest
+from Utils.path_utils import find_child_ci
 
 from .acf import get_ci, read_vdf
 
@@ -463,14 +464,7 @@ def _resolve_ci(root: Path, rel: str) -> Path:
     yet keep the depot's spelling."""
     cur = root
     for part in Path(rel).parts:
-        exact = cur / part
-        if not exact.exists() and cur.is_dir():
-            try:
-                match = next((c for c in cur.iterdir() if c.name.lower() == part.lower()), None)
-            except OSError:
-                match = None
-            exact = match or exact
-        cur = exact
+        cur = find_child_ci(cur, part) or (cur / part)
     return cur
 
 

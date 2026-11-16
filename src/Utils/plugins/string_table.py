@@ -26,9 +26,10 @@ per catalog build, not once per localized plugin.
 """
 from __future__ import annotations
 
-import os
 import struct
 from pathlib import Path
+
+from Utils.path_utils import resolve_ci
 
 _TES4_LOCALIZED_FLAG = 0x80
 _HDR = struct.Struct("<II")        # count, data_size
@@ -81,16 +82,13 @@ def _read_loose(data_dir: Path, name_lower: str) -> "bytes | None":
     strings_dir = data_dir / "Strings"
     if not strings_dir.is_dir():
         return None
+    path = resolve_ci(strings_dir, name_lower, kind="file")
+    if path is None:
+        return None
     try:
-        for entry in os.scandir(strings_dir):
-            if entry.is_file() and entry.name.lower() == name_lower:
-                try:
-                    return Path(entry.path).read_bytes()
-                except OSError:
-                    return None
+        return path.read_bytes()
     except OSError:
         return None
-    return None
 
 
 def _read_from_archives(data_dir: Path, name_lower: str) -> "bytes | None":

@@ -19,6 +19,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
+from Utils.path_utils import resolve_ci
+
 STATE_INSTALLED = "installed"
 STATE_NOT_DEPLOYED = "not_deployed"
 STATE_NOT_ENABLED = "not_enabled"
@@ -37,17 +39,7 @@ def resolve_file_ci(base: Path, rel: Path) -> "Path | None":
     *base*, matching names case-insensitively (framework files may live in
     differently-cased folders on a case-sensitive filesystem). Returns the
     actual on-disk Path, or None when any component is missing."""
-    current = base
-    for part in rel.parts:
-        try:
-            entries = {e.name.lower(): e for e in current.iterdir()}
-        except OSError:
-            return None
-        match = entries.get(part.lower())
-        if match is None:
-            return None
-        current = match
-    return current if current.is_file() else None
+    return resolve_ci(base, rel, kind="file")
 
 
 def file_exists_ci(base: Path, rel: Path) -> bool:

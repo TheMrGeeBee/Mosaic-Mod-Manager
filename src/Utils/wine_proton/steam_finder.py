@@ -16,6 +16,7 @@ import threading
 from pathlib import Path
 
 from Utils.app_log import app_log
+from Utils.path_utils import find_child_ci, resolve_ci
 from Utils.wine_proton.run_host_shim import _apply_run_host_shim
 
 # ---------------------------------------------------------------------------
@@ -755,13 +756,9 @@ def find_proton_for_game(steam_id: str) -> Path | None:
                     return candidate
 
                 # Case-insensitive match (handles minor name variations)
-                if search_dir.is_dir():
-                    dir_lower = dir_name.lower()
-                    for entry in search_dir.iterdir():
-                        if entry.name.lower() == dir_lower:
-                            p = entry / "proton"
-                            if p.is_file():
-                                return p
+                entry = find_child_ci(search_dir, dir_name)
+                if entry is not None and (entry / "proton").is_file():
+                    return entry / "proton"
         return None
 
     found = _from_mapping(steam_id)
@@ -845,9 +842,6 @@ def find_game_by_steam_id(
     if not steam_id:
         return None
 
-    exe_lower = exe_name.lower()
-    has_subdir = "/" in exe_name or "\\" in exe_name
-
     for common in libraries:
         steamapps = common.parent  # steamapps/common -> steamapps
         acf = steamapps / f"appmanifest_{steam_id}.acf"
@@ -859,34 +853,8 @@ def find_game_by_steam_id(
         game_dir = common / installdir
         if not game_dir.is_dir():
             continue
-        if has_subdir:
-            candidate = game_dir / exe_name
-            if candidate.is_file():
-                return game_dir
-            parts = exe_lower.replace("\\", "/").split("/")
-            cur = game_dir
-            for part in parts:
-                match = None
-                try:
-                    for entry in cur.iterdir():
-                        if entry.name.lower() == part:
-                            match = entry
-                            break
-                except PermissionError:
-                    break
-                if match is None:
-                    break
-                cur = match
-            else:
-                if cur.is_file():
-                    return game_dir
-        else:
-            try:
-                for entry in game_dir.iterdir():
-                    if entry.name.lower() == exe_lower and entry.is_file():
-                        return game_dir
-            except PermissionError:
-                pass
+        if resolve_ci(game_dir, exe_name, kind="file") is not None:
+            return game_dir
 
     return None
 
@@ -898,45 +866,18 @@ def find_game_in_libraries(libraries: list[Path], exe_name: str) -> Path | None:
 
     exe_name may be a bare filename (e.g. "SkyrimSE.exe") — searched one
     level deep — or a relative path with subdirectories (e.g. "bin/bg3.exe")
-    which is checked as an exact relative path under each game folder.
+    which is resolved under each game folder, matching every path part
+    case-insensitively.
 
     The search is case-insensitive on the exe name to handle Linux/Proton layouts.
     """
-    exe_lower = exe_name.lower()
-    has_subdir = "/" in exe_name or "\\" in exe_name
-
     for common in libraries:
         try:
             for game_dir in common.iterdir():
                 if not game_dir.is_dir():
                     continue
-                if has_subdir:
-                    # Check as a relative path: <GameFolder>/bin/bg3.exe
-                    candidate = game_dir / exe_name
-                    if candidate.is_file():
-                        return game_dir
-                    # Case-insensitive fallback: walk the subpath segments
-                    parts = exe_lower.replace("\\", "/").split("/")
-                    cur = game_dir
-                    for part in parts:
-                        match = None
-                        try:
-                            for entry in cur.iterdir():
-                                if entry.name.lower() == part:
-                                    match = entry
-                                    break
-                        except PermissionError:
-                            break
-                        if match is None:
-                            break
-                        cur = match
-                    else:
-                        if cur.is_file():
-                            return game_dir
-                else:
-                    for entry in game_dir.iterdir():
-                        if entry.name.lower() == exe_lower and entry.is_file():
-                            return game_dir
+                if resolve_ci(game_dir, exe_name, kind="file") is not None:
+                    return game_dir
         except PermissionError:
             continue
 

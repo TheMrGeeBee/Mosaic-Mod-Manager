@@ -13,10 +13,11 @@ filesystem, while the index keys are lowercased).
 
 from __future__ import annotations
 
-import os
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Iterable, Mapping
+
+from Utils.path_utils import resolve_ci
 
 
 @dataclass(frozen=True)
@@ -44,33 +45,10 @@ def resolve_on_disk(mod_dir: "Path | None", rel_str: str,
                     key=len, reverse=True):
         candidates.append(f"{s}/{rel}")
     for cand in candidates:
-        hit = _walk_ci(mod_dir, cand.split("/"))
+        hit = resolve_ci(mod_dir, cand, kind="file")
         if hit is not None:
             return hit
     return None
-
-
-def _walk_ci(base: Path, parts: list[str]) -> "Path | None":
-    cur = base
-    for part in parts:
-        direct = cur / part
-        if direct.exists():
-            cur = direct
-            continue
-        want = part.lower()
-        found = None
-        try:
-            with os.scandir(cur) as it:
-                for entry in it:
-                    if entry.name.lower() == want:
-                        found = Path(entry.path)
-                        break
-        except OSError:
-            return None
-        if found is None:
-            return None
-        cur = found
-    return cur if cur.is_file() else None
 
 
 def find_providers(

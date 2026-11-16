@@ -32,6 +32,7 @@ from Utils.archives.bsa_writer import (
     write_bsa,
     write_stub_plugin,
 )
+from Utils.path_utils import resolve_ci
 
 ProgressCb = Callable[[int, int, str], None]
 CancelCb = Callable[[], bool]
@@ -351,40 +352,14 @@ def delete_loose_files(mod_dir: Path, packed_rel_keys: list[str]) -> int:
     if not packed_rel_keys:
         return 0
 
-    listing_cache: dict[Path, dict[str, str]] = {}
-
-    def _list_lower(d: Path) -> dict[str, str]:
-        cached = listing_cache.get(d)
-        if cached is not None:
-            return cached
-        mapping: dict[str, str] = {}
-        try:
-            for entry in d.iterdir():
-                mapping[entry.name.lower()] = entry.name
-        except OSError:
-            pass
-        listing_cache[d] = mapping
-        return mapping
-
-    def _resolve_ci(rel: str) -> Path | None:
-        cur = mod_dir
-        segments = rel.split("/")
-        for i, seg in enumerate(segments):
-            names = _list_lower(cur)
-            actual = names.get(seg.lower())
-            if actual is None:
-                return None
-            cur = cur / actual
-            if i < len(segments) - 1 and not cur.is_dir():
-                return None
-        return cur
+    listings: dict = {}
 
     deleted = 0
     empty_candidate_dirs: set[Path] = set()
     for rel in packed_rel_keys:
         target = mod_dir / rel
         if not target.is_file():
-            resolved = _resolve_ci(rel)
+            resolved = resolve_ci(mod_dir, rel, listings=listings)
             if resolved is None or not resolved.is_file():
                 continue
             target = resolved
@@ -392,7 +367,7 @@ def delete_loose_files(mod_dir: Path, packed_rel_keys: list[str]) -> int:
             target.unlink()
             deleted += 1
             empty_candidate_dirs.add(target.parent)
-            listing_cache.pop(target.parent, None)
+            listings.pop(target.parent, None)
         except OSError:
             pass
     # Remove any folders we may have just emptied, walking up to the mod root

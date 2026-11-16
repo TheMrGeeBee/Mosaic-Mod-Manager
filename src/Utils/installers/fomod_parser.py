@@ -14,6 +14,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
 
+from Utils.path_utils import resolve_ci
+
 
 def resolve_path_ci(base: str, rel: str) -> Optional[str]:
     """
@@ -22,20 +24,8 @@ def resolve_path_ci(base: str, rel: str) -> Optional[str]:
     resolve correctly on a case-sensitive Linux filesystem.
     Returns the real absolute path, or None if not found.
     """
-    current = str(base)
-    for part in rel.replace("\\", "/").split("/"):
-        if not part:
-            continue
-        try:
-            entries = os.listdir(current)
-        except OSError:
-            return None
-        entries_lower = {e.lower(): e for e in entries}
-        match = entries_lower.get(part.lower())
-        if match is None:
-            return None
-        current = os.path.join(current, match)
-    return current if os.path.isfile(current) else None
+    found = resolve_ci(base, rel, kind="file")
+    return str(found) if found is not None else None
 
 
 # ---------------------------------------------------------------------------

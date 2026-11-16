@@ -11,25 +11,15 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from Utils.path_utils import resolve_ci
+
 from ..wabbajack_hash import hash_file, hashes_match
 from ..wabbajack_manifest import GameFileSourceState
 from .http_source import WabbajackDownloadResult
 
 
 def _resolve_under(base: Path, game_file: str) -> "Path | None":
-    current = base
-    for part in game_file.replace("\\", "/").strip("/").split("/"):
-        if not part:
-            continue
-        exact = current / part
-        if exact.exists():
-            current = exact
-            continue
-        try:
-            current = next(c for c in current.iterdir() if c.name.lower() == part.lower())
-        except (StopIteration, OSError):
-            return None
-    return current if current.is_file() else None
+    return resolve_ci(base, game_file, kind="file")
 
 
 def runtime_swap_originals(game_name: str) -> "list[Path]":

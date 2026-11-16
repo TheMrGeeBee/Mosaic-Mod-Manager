@@ -28,6 +28,7 @@ import tempfile
 from pathlib import Path
 
 from Utils.file_hash import file_digest
+from Utils.path_utils import find_child_ci
 
 NEXUS_DOMAIN = "vampirebloodlines"
 NEXUS_MOD_ID = 80
@@ -105,17 +106,6 @@ _PATCH_KEY_RE = re.compile(r'"GameUI_Patch"\s+"([^"]*)"', re.IGNORECASE)
 _VERSION_RE = re.compile(r"Unofficial Patch\s+v?(\d+(?:\.\d+)*)", re.IGNORECASE)
 
 
-def _child_ci(parent: Path, name: str) -> Path | None:
-    """Case-insensitive child lookup (Linux paths are case-sensitive)."""
-    try:
-        for n in os.listdir(parent):
-            if n.lower() == name.lower():
-                return parent / n
-    except OSError:
-        pass
-    return None
-
-
 def _decode(raw: bytes) -> str:
     """Source ``.txt`` resources are UTF-16 (BOM) as often as UTF-8."""
     if raw[:2] in (b"\xff\xfe", b"\xfe\xff"):
@@ -171,9 +161,9 @@ def read_installed_version(game_root: Path,
     that folder to have it recognised as installed.
     """
     for folder in (*extra_dirs, *_VERSION_DIRS):
-        node = _child_ci(game_root, folder)
+        node = find_child_ci(game_root, folder)
         for part in _VERSION_FILE:
-            node = _child_ci(node, part) if node is not None else None
+            node = find_child_ci(node, part) if node is not None else None
         if node is None or not node.is_file():
             continue
         try:
