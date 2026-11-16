@@ -13,7 +13,6 @@ downgrade can be reverted from the backup.
 
 from __future__ import annotations
 
-import hashlib
 import json
 import os
 import re
@@ -25,6 +24,7 @@ from pathlib import Path
 from typing import Callable
 
 from Utils.atomic_write import write_atomic_text
+from Utils.file_hash import file_digest
 from Utils.wizard_support.pe_version import Version, format_version, read_file_version
 
 FROM_VERSION: Version = (1, 11, 240, 0)     # Anniversary Edition
@@ -250,11 +250,7 @@ def find_patches(root: "str | Path") -> dict[str, Path]:
 # ---- apply -------------------------------------------------------------------
 
 def _sha256(path: Path) -> str:
-    h = hashlib.sha256()
-    with open(path, "rb") as f:
-        for chunk in iter(lambda: f.read(1 << 20), b""):
-            h.update(chunk)
-    return h.hexdigest()
+    return file_digest(path, "sha256")
 
 
 def _fmt(version: Version | None) -> str:

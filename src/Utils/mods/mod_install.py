@@ -17,7 +17,6 @@ Public API:
 
 from __future__ import annotations
 
-import hashlib
 import importlib.util
 import json
 import os
@@ -35,6 +34,7 @@ from pathlib import Path
 from typing import Callable, Optional
 
 from Utils.extract_budget import get_uncompressed_size
+from Utils.file_hash import file_digest
 
 LogFn = Callable[[str], None]
 ProgressFn = Callable[[int, int, Optional[str]], None]
@@ -1813,15 +1813,10 @@ def _resolve_files_from_hashes(root, hashes, log_fn
     def _md5(path: str) -> str:
         got = md5_cache.get(path)
         if got is None:
-            h = hashlib.md5()
             try:
-                with open(path, "rb") as fh:
-                    for chunk in iter(lambda: fh.read(1 << 20), b""):
-                        h.update(chunk)
+                got = file_digest(path, "md5")
             except OSError:
                 got = ""
-            else:
-                got = h.hexdigest()
             md5_cache[path] = got
         return got
 

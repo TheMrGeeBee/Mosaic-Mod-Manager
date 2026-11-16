@@ -38,6 +38,7 @@ from pathlib import Path
 
 from Nexus.nexus_meta import normalise_game_domain
 from Utils.config_paths import get_download_cache_dir
+from Utils.file_hash import cached_md5
 from Utils.profile.profile_export import resolve_installer_choices
 
 PHASE_META = "meta"
@@ -214,28 +215,7 @@ def _cached_archive(meta, game_name: str = "") -> "Path | None":
 
 
 def _archive_md5(archive: Path) -> str:
-    try:
-        from Nexus.nexus_download import _md5_cache_get, _md5_cache_put
-    except Exception:
-        _md5_cache_get = _md5_cache_put = None
-    if _md5_cache_get is not None:
-        cached = _md5_cache_get(archive)
-        if cached:
-            return cached
-    md5 = hashlib.md5()
-    try:
-        with open(archive, "rb") as fh:
-            for chunk in iter(lambda: fh.read(1024 * 1024), b""):
-                md5.update(chunk)
-    except OSError:
-        return ""
-    digest = md5.hexdigest()
-    if _md5_cache_put is not None:
-        try:
-            _md5_cache_put(archive, digest)
-        except Exception:
-            pass
-    return digest
+    return cached_md5(archive)
 
 
 _FILENAME_ILLEGAL_RE = None

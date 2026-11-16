@@ -20,7 +20,7 @@ from pathlib import Path
 
 import xxhash
 
-_CHUNK_SIZE = 1 << 20  # 1 MiB, matches NexusDownloader._compute_md5's chunking
+_CHUNK_SIZE = 1 << 20  # 1 MiB, the same chunk size Utils.file_hash.file_digest reads in
 
 
 def _digest_to_b64(digest: int) -> str:

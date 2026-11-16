@@ -24,7 +24,6 @@ Scripts under python/ are plain .py files run by the game's embedded Python 2.1
 interpreter; Mosaic only links or copies them and never byte-compiles anything.
 """
 
-import hashlib
 import json
 import os
 import re
@@ -47,6 +46,7 @@ from Utils.deploy.deploy import (
     restore_custom_rules,
     restore_data_core,
 )
+from Utils.file_hash import file_digest
 from Utils.mods.modlist import read_modlist
 
 _PROFILES_DIR = get_profiles_dir()
@@ -371,11 +371,7 @@ class VampireBloodlines(BaseGame):
 
     @staticmethod
     def _sha1(path: Path) -> str:
-        h = hashlib.sha1()
-        with open(path, "rb") as f:
-            for chunk in iter(lambda: f.read(1 << 20), b""):
-                h.update(chunk)
-        return h.hexdigest()
+        return file_digest(path, "sha1")
 
     @staticmethod
     def _load_manifest(profile_dir: "Path | None") -> dict:

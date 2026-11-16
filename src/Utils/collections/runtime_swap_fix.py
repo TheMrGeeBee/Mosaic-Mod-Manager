@@ -11,7 +11,6 @@ No Qt. Runs on a worker thread; the caller applies the transition afterwards
 
 from __future__ import annotations
 
-import hashlib
 import shutil
 import tempfile
 from dataclasses import dataclass
@@ -19,6 +18,7 @@ from pathlib import Path
 from typing import Callable, Iterable
 
 from Utils.collections.collection_preflight import find_swap_archive
+from Utils.file_hash import file_digest
 from Utils.modding_tools import skyrim_runtime as sr
 
 
@@ -38,11 +38,7 @@ class PreparedSwap:
 
 
 def _md5(path: Path) -> str:
-    h = hashlib.md5()                                   # noqa: S324 — Nexus publishes md5, not a security use
-    with open(path, "rb") as f:
-        for chunk in iter(lambda: f.read(1 << 20), b""):
-            h.update(chunk)
-    return h.hexdigest()
+    return file_digest(path, "md5")        # Nexus publishes md5; not a security use
 
 
 def acquire_swap_archive(

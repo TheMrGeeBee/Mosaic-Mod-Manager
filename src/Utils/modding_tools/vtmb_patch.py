@@ -19,7 +19,6 @@ against the real installer.
 
 from __future__ import annotations
 
-import hashlib
 import os
 import re
 import shutil
@@ -27,6 +26,8 @@ import struct
 import subprocess
 import tempfile
 from pathlib import Path
+
+from Utils.file_hash import file_digest
 
 NEXUS_DOMAIN = "vampirebloodlines"
 NEXUS_MOD_ID = 80
@@ -236,11 +237,7 @@ def find_game_exe(game_root: Path) -> Path | None:
 
 
 def _sha1(p: Path) -> str:
-    h = hashlib.sha1()
-    with open(p, "rb") as f:
-        for chunk in iter(lambda: f.read(1 << 20), b""):
-            h.update(chunk)
-    return h.hexdigest()
+    return file_digest(p, "sha1")
 
 
 def install_exe(patched: Path, game_root: Path, log_fn=None) -> str:

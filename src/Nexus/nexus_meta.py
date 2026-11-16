@@ -36,6 +36,7 @@ from pathlib import Path
 from typing import Optional
 
 from Utils.app_log import app_log
+from Utils.file_hash import file_digest, md5_cache_get, md5_cache_put
 
 
 @dataclass
@@ -707,12 +708,10 @@ def resolve_nexus_meta_for_archive(
     # --- Strategy 2: MD5 hash lookup ---
     _log(f"Nexus: Computing MD5 hash of {archive_name}...")
     try:
-        import hashlib
-        md5 = hashlib.md5()
-        with open(archive_path, "rb") as fh:
-            for chunk in iter(lambda: fh.read(1024 * 1024), b""):
-                md5.update(chunk)
-        md5_hex = md5.hexdigest()
+        md5_hex = md5_cache_get(archive_path)
+        if not md5_hex:
+            md5_hex = file_digest(archive_path, "md5")
+            md5_cache_put(archive_path, md5_hex)
         _log(f"Nexus: MD5 = {md5_hex}, searching...")
 
         results = api.get_file_by_md5(game_domain, md5_hex)

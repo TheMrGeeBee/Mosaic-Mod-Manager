@@ -26,7 +26,6 @@ Usage
 
 from __future__ import annotations
 
-import hashlib
 import os
 import re
 import threading
@@ -40,6 +39,7 @@ import requests
 from Utils.app_log import app_log
 from Utils.ca_bundle import resolve_ca_bundle
 from Utils.downloads import bandwidth_limit
+from Utils.file_hash import md5_cache_forget, md5_matches
 
 from .nexus_api import NexusAPI, NexusAPIError, NexusDownloadLink
 from .nxm_handler import NxmLink
@@ -96,7 +96,7 @@ def delete_archive_and_sidecar(archive_path: Path) -> None:
     try:
         archive_path.unlink(missing_ok=True)
         _fileid_sidecar(archive_path).unlink(missing_ok=True)
-        _md5_cache_forget(archive_path)
+        md5_cache_forget(archive_path)
     except Exception:
         pass
 
@@ -115,115 +115,6 @@ def _write_sidecar_file_id(archive: Path, file_id: int) -> None:
         _fileid_sidecar(archive).write_text(str(file_id))
     except Exception:
         pass
-
-
-# -- md5 cache ---------------------------------------------------------------
-# Hashing a multi-GB archive is slow, so we cache results in a single JSON
-# file inside the app's download cache directory.  Entries are keyed by the
-# archive's absolute path and invalidated when size or mtime changes.  We
-# deliberately never write alongside the archive itself — that would pollute
-# the user's Downloads folder / any external download locations they've
-# configured.
-
-_MD5_CACHE_FILE = "md5_cache.json"
-_md5_cache_lock = threading.Lock()
-
-
-def _md5_cache_path() -> Path:
-    from Utils.config_paths import get_download_cache_dir
-    return get_download_cache_dir() / _MD5_CACHE_FILE
-
-
-def _md5_cache_load() -> dict:
-    try:
-        import json
-        return json.loads(_md5_cache_path().read_text(encoding="utf-8"))
-    except Exception:
-        return {}
-
-
-def _md5_cache_save(data: dict) -> None:
-    try:
-        import json
-
-        from Utils.atomic_write import write_atomic_text
-        write_atomic_text(_md5_cache_path(), json.dumps(data))
-    except Exception:
-        pass
-
-
-def _md5_cache_key(archive: Path) -> str:
-    try:
-        return str(archive.resolve())
-    except Exception:
-        return str(archive)
-
-
-def _md5_cache_get(archive: Path) -> str:
-    """Return the cached md5 for *archive*, or "" if absent/stale."""
-    try:
-        st = archive.stat()
-    except Exception:
-        return ""
-    key = _md5_cache_key(archive)
-    with _md5_cache_lock:
-        entry = _md5_cache_load().get(key)
-    if not entry:
-        return ""
-    if entry.get("size") != st.st_size or entry.get("mtime") != int(st.st_mtime):
-        return ""
-    return (entry.get("md5") or "").lower()
-
-
-def _md5_cache_put(archive: Path, md5_hex: str) -> None:
-    try:
-        st = archive.stat()
-    except Exception:
-        return
-    key = _md5_cache_key(archive)
-    with _md5_cache_lock:
-        data = _md5_cache_load()
-        data[key] = {"size": st.st_size, "mtime": int(st.st_mtime), "md5": md5_hex.lower()}
-        _md5_cache_save(data)
-
-
-def _md5_cache_forget(archive: Path) -> None:
-    key = _md5_cache_key(archive)
-    with _md5_cache_lock:
-        data = _md5_cache_load()
-        if data.pop(key, None) is not None:
-            _md5_cache_save(data)
-
-
-def _compute_md5(path: Path) -> str:
-    """Return the lowercase hex md5 of *path*, or "" on any error."""
-    try:
-        h = hashlib.md5()
-        with open(path, "rb") as f:
-            for chunk in iter(lambda: f.read(1024 * 1024), b""):
-                h.update(chunk)
-        return h.hexdigest()
-    except Exception:
-        return ""
-
-
-def _md5_matches(archive: Path, expected_md5: str) -> bool:
-    """Return True if *archive*'s md5 equals *expected_md5*.
-
-    Uses the shared md5 cache (in the app's download cache dir) to avoid
-    re-hashing archives we've already verified.  An empty *expected_md5*
-    means "no verification requested" and the function returns True.
-    """
-    if not expected_md5:
-        return True
-    expected = expected_md5.strip().lower()
-    cached = _md5_cache_get(archive)
-    if cached:
-        return cached == expected
-    actual = _compute_md5(archive)
-    if actual:
-        _md5_cache_put(archive, actual)
-    return actual == expected
 
 
 def _zip_is_intact(path: Path) -> bool:
@@ -377,7 +268,7 @@ def _find_cached_archive(
                 # Size (and optional name hint) match — verify md5 when
                 # provided (e.g. from a collection manifest) to rule out
                 # unrelated archives that happen to share the same size.
-                if expected_md5 and not _md5_matches(f, expected_md5):
+                if expected_md5 and not md5_matches(f, expected_md5):
                     continue
                 return f, _zip_is_intact(f)
             if ratio < _PARTIAL_CUTOFF:
@@ -412,7 +303,7 @@ def _find_cached_archive(
                 if mod_id_str else raw_stem
             norm_stem = re.sub(r'[^\w]', '', display_stem.lower())
             if norm_name and norm_stem == norm_name:
-                if expected_md5 and not _md5_matches(f, expected_md5):
+                if expected_md5 and not md5_matches(f, expected_md5):
                     continue
                 return f, _zip_is_intact(f)
 

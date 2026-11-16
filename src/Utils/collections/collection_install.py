@@ -53,7 +53,6 @@ from Nexus.nexus_download import (
     DownloadResult,
     _find_cached_archive,
     _get_downloads_dir,
-    _md5_matches,
     delete_archive_and_sidecar,
 )
 from Nexus.nexus_meta import build_meta_from_download
@@ -69,6 +68,7 @@ from Utils.downloads.download_locations import (
 )
 from Utils.downloads.download_scheduler import order_by_size, run_smallest_first
 from Utils.extract_budget import ExtractionMemoryBudget, get_uncompressed_size
+from Utils.file_hash import md5_matches
 from Utils.mods.mod_install import (
     BAIN_DEFERRED,
     FOMOD_DEFERRED,
@@ -883,7 +883,7 @@ def verify_download_md5(result, expected_md5: str, redownload=None,
     if (not expected or result is None or not result.success
             or not result.file_path or result.from_cache):
         return result
-    if _md5_matches(Path(result.file_path), expected):
+    if md5_matches(Path(result.file_path), expected):
         return result
     log_fn(f"Collection install: '{label}' downloaded archive failed its md5 check "
            f"({Path(result.file_path).name}) — deleting it"
@@ -891,7 +891,7 @@ def verify_download_md5(result, expected_md5: str, redownload=None,
     delete_archive_and_sidecar(Path(result.file_path))
     retry = redownload() if redownload is not None else None
     if (retry is not None and retry.success and retry.file_path
-            and _md5_matches(Path(retry.file_path), expected)):
+            and md5_matches(Path(retry.file_path), expected)):
         log_fn(f"Collection install: '{label}' re-downloaded and verified.")
         return retry
     if retry is not None and retry.success and retry.file_path:
@@ -2018,7 +2018,7 @@ def run_collection_install(
                 # installing anything.
                 _size_ok = (_osize <= 0
                            or abs(_dl_path.stat().st_size - _osize) / max(_osize, 1) <= 0.01)
-                _md5_ok = _md5_matches(_dl_path, _omd5)
+                _md5_ok = md5_matches(_dl_path, _omd5)
                 if not (_size_ok and _md5_ok):
                     log(f"Off-site mod '{_osname}' downloaded but doesn't "
                         f"match the collection's expected file (size/md5 "

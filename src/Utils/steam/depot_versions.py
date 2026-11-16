@@ -42,6 +42,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from Utils.atomic_write import write_atomic_text
+from Utils.file_hash import file_digest
 
 from .acf import get_ci, read_vdf
 
@@ -446,11 +447,7 @@ def _copy_hash(src: Path, dst: Path) -> str:
 
 
 def _sha256(path: Path) -> str:
-    h = hashlib.sha256()
-    with open(path, "rb") as f:
-        for chunk in iter(lambda: f.read(_CHUNK), b""):
-            h.update(chunk)
-    return h.hexdigest()
+    return file_digest(path, "sha256")
 
 
 def _free_bytes(path: Path) -> int:

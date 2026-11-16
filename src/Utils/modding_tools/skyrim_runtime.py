@@ -34,6 +34,7 @@ from pathlib import Path, PurePosixPath
 from typing import Callable
 
 from Utils.atomic_write import write_atomic_text
+from Utils.file_hash import file_digest
 from Utils.wizard_support.pe_version import Version, format_version, read_file_version
 
 STEAM_APP_ID = 489830
@@ -111,11 +112,7 @@ def find_swap_dir(root: "str | Path") -> Path | None:
 
 
 def _sha256(path: Path) -> str:
-    h = hashlib.sha256()
-    with open(path, "rb") as f:
-        for chunk in iter(lambda: f.read(1 << 20), b""):
-            h.update(chunk)
-    return h.hexdigest()
+    return file_digest(path, "sha256")
 
 
 def _safe_relpath(rel: str) -> str:
