@@ -16,7 +16,9 @@ from __future__ import annotations
 import threading
 from pathlib import Path
 
+from Nexus.manual_download_watch import download_with_retry
 from Nexus.nexus_download import NexusDownloader
+from Utils.app_log import noop_log
 
 from ..wabbajack_manifest import NexusState
 from .http_source import WabbajackDownloadResult
@@ -44,17 +46,26 @@ def nexus_domain_for(game_name: str) -> str:
 
 def download_nexus(state: NexusState, downloader: NexusDownloader, dest_dir: Path, *,
                     progress_cb=None,
-                    cancel: "threading.Event | None" = None) -> WabbajackDownloadResult:
-    """Download a Nexus-sourced archive via the existing ``NexusDownloader``."""
+                    cancel: "threading.Event | None" = None,
+                    log=noop_log, retry_delays=None) -> WabbajackDownloadResult:
+    """Download a Nexus-sourced archive via the existing ``NexusDownloader``.
+
+    A dropped connection, timeout or Nexus 5xx is retried after a short delay
+    (:data:`Nexus.manual_download_watch.DOWNLOAD_RETRY_DELAYS`) instead of
+    sending the archive straight to the manual-download queue; a real refusal
+    (rate limit, bad key, missing file) is returned at once."""
     domain = nexus_domain_for(state.game_name)
     if not domain or not state.mod_id or not state.file_id:
         return WabbajackDownloadResult(
             success=False,
             error=f"incomplete Nexus reference (domain={domain!r}, "
                   f"mod={state.mod_id}, file={state.file_id})")
-    result = downloader.download_file(
-        domain, state.mod_id, state.file_id, dest_dir=dest_dir,
-        progress_cb=progress_cb, cancel=cancel, known_file_name=state.name)
+    result = download_with_retry(
+        lambda: downloader.download_file(
+            domain, state.mod_id, state.file_id, dest_dir=dest_dir,
+            progress_cb=progress_cb, cancel=cancel, known_file_name=state.name),
+        cancel if cancel is not None else threading.Event(),
+        log, label=state.name, delays=retry_delays, context="Wabbajack")
     if not result.success:
         return WabbajackDownloadResult(success=False, error=result.error)
     return WabbajackDownloadResult(

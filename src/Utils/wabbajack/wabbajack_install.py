@@ -572,7 +572,8 @@ def _download_automatic(archive: Archive, download_dir: Path, *, nexus_downloade
             return None, "not logged in to Nexus Mods"
         def fetch():
             return download_nexus(state, nexus_downloader, download_dir,
-                                  progress_cb=progress, cancel=cancel)
+                                  progress_cb=progress, cancel=cancel,
+                                  log=cb.on_log)
     else:
         fn = resolve_downloader(state)
         if fn is None:

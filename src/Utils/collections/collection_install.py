@@ -44,8 +44,9 @@ from pathlib import Path
 from typing import Callable
 
 from Nexus.manual_download_watch import (
+    DOWNLOAD_RETRY_DELAYS,  # noqa: F401 -- re-exported for callers and tests
+    download_with_retry,
     is_mod_removed,
-    is_transient_failure,
     should_fallback_to_browser,
     start_manual_install,
 )
@@ -837,33 +838,6 @@ def cleanup_cancelled_install(game, profile_dir: "Path | None", *,
                 log_fn("Cancel: cleared download cache")
         except Exception as exc:
             log_fn(f"Cancel: failed to clear download cache: {exc}")
-
-
-# Delays before each retry of a transiently failed download (a dropped
-# connection, a timeout, a Nexus 5xx). Three retries span ~45 s, enough to ride
-# out a network blip without stalling the batch for long.
-DOWNLOAD_RETRY_DELAYS = (3.0, 10.0, 30.0)
-
-
-def download_with_retry(call, stop_event, log_fn=_noop, label: str = "",
-                        delays=None):
-    """Run ``call()`` (a download returning a DownloadResult) and retry it after
-    each delay while it fails *transiently*. Anything else — success, a real
-    refusal (403/404, rate limit, bad key), a cancel — returns immediately, so
-    the browser fallback still sees the original result. ``stop_event`` ends the
-    wait early when the install is cancelled."""
-    delays = DOWNLOAD_RETRY_DELAYS if delays is None else delays
-    result = call()
-    for attempt, delay in enumerate(delays, start=1):
-        if (result is None or result.success or stop_event.is_set()
-                or not is_transient_failure(result)):
-            break
-        log_fn(f"Collection install: '{label}' download failed ({result.error}) — "
-               f"retry {attempt}/{len(delays)} in {delay:g}s")
-        if stop_event.wait(delay):
-            break
-        result = call()
-    return result
 
 
 def verify_download_md5(result, expected_md5: str, redownload=None,

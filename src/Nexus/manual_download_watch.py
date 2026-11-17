@@ -25,6 +25,7 @@ from pathlib import Path
 from typing import Callable
 
 from Nexus.nexus_download import _find_cached_archive, _get_downloads_dir
+from Utils.app_log import noop_log
 from Utils.downloads.download_locations import (
     is_default_downloads_disabled,
     load_extra_download_locations,
@@ -129,6 +130,33 @@ def is_transient_failure(result) -> bool:
         error = (getattr(result, "error", "") or "").lower()
         return any(marker in error for marker in _TRANSIENT_ERROR_MARKERS)
     return False
+
+
+# Delays before each retry of a transiently failed download (a dropped
+# connection, a timeout, a Nexus 5xx). Three retries span ~45 s, enough to ride
+# out a network blip without stalling the batch for long.
+DOWNLOAD_RETRY_DELAYS = (3.0, 10.0, 30.0)
+
+
+def download_with_retry(call, stop_event, log_fn=noop_log, label: str = "",
+                        delays=None, context: str = "Collection install"):
+    """Run ``call()`` (a download returning a DownloadResult) and retry it after
+    each delay while it fails *transiently*. Anything else — success, a real
+    refusal (403/404, rate limit, bad key), a cancel — returns immediately, so
+    the browser fallback still sees the original result. ``stop_event`` ends the
+    wait early when the install is cancelled. *context* prefixes the log line."""
+    delays = DOWNLOAD_RETRY_DELAYS if delays is None else delays
+    result = call()
+    for attempt, delay in enumerate(delays, start=1):
+        if (result is None or result.success or stop_event.is_set()
+                or not is_transient_failure(result)):
+            break
+        log_fn(f"{context}: '{label}' download failed ({result.error}) — "
+               f"retry {attempt}/{len(delays)} in {delay:g}s")
+        if stop_event.wait(delay):
+            break
+        result = call()
+    return result
 
 
 def _expected_size(f) -> int:
