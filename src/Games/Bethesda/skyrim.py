@@ -6,10 +6,10 @@ Skyrim (Legendary Edition) game handler.
 from pathlib import Path
 
 from Games.base_game import WizardTool
-from Games.Bethesda.fallout_3 import Fallout_3
+from Games.Bethesda.bethesda_game import BethesdaGame
 
 
-class Skyrim(Fallout_3):
+class Skyrim(BethesdaGame):
 
     _archive_list_needs_mod_bsas = False
     # Skyrim 1.4.26+ orders plugins by plugins.txt, not file mtimes.

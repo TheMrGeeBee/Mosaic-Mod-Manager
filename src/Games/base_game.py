@@ -135,7 +135,7 @@ class BaseGame(ABC):
     # Opt-in for the incremental redeploy fast path (Utils/deploy_incremental).
     # Only safe for handlers whose deploy() is the plain standard sequence
     # (move_to_core → deploy_filemap → deploy_core) with a single Data-style
-    # target and idempotent post-deploy steps.  See Fallout_3 for the first
+    # target and idempotent post-deploy steps.  See BethesdaGame for the first
     # opted-in family.
     supports_incremental_deploy: bool = False
 

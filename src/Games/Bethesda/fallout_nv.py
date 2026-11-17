@@ -7,11 +7,11 @@ import shutil
 from pathlib import Path
 
 from Games.base_game import WizardTool
+from Games.Bethesda.bethesda_game import BethesdaGame
 from Games.Bethesda.bethesda_ini import _set_ini_key
-from Games.Bethesda.fallout_3 import Fallout_3
 
 
-class Fallout_NV(Fallout_3):
+class Fallout_NV(BethesdaGame):
 
     synthesis_registry_name = "FalloutNV"
 

@@ -6,10 +6,10 @@ Skyrim VR game handler.
 from pathlib import Path
 
 from Games.base_game import WizardTool
-from Games.Bethesda.fallout_3 import Fallout_3
+from Games.Bethesda.bethesda_game import BethesdaGame
 
 
-class SkyrimVR(Fallout_3):
+class SkyrimVR(BethesdaGame):
 
     _archive_list_needs_mod_bsas = False
     plugins_use_star_prefix = True

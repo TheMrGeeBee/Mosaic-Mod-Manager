@@ -6,10 +6,10 @@ Fallout 4 game handler.
 from pathlib import Path
 
 from Games.base_game import WizardTool
-from Games.Bethesda.fallout_3 import Fallout_3
+from Games.Bethesda.bethesda_game import BethesdaGame
 
 
-class Fallout_4(Fallout_3):
+class Fallout_4(BethesdaGame):
 
     _archive_list_needs_mod_bsas = False
     plugins_use_star_prefix = True
@@ -143,7 +143,7 @@ class Fallout_4(Fallout_3):
     # The AE launcher rewrites plugins.txt on launch — mark it read-only.
     _lock_plugins_txt = True
     # The engine's own filename is capital-P "Plugins.txt" (same as
-    # SkyrimSE/Oblivion/Starfield) — Fallout_3's lowercase default is wrong
+    # SkyrimSE/Oblivion/Starfield) — BethesdaGame's lowercase default is wrong
     # here. On a case-sensitive host Wine hands the game its own exact-case
     # "Plugins.txt" (the two-line "downloaded content" stub it creates on first
     # launch), never the lowercase file we'd deploy beside it, so the game

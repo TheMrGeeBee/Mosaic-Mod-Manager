@@ -7,11 +7,11 @@ import json
 from pathlib import Path
 
 from Games.base_game import WizardTool
+from Games.Bethesda.bethesda_game import BethesdaGame
 from Games.Bethesda.bethesda_ini import _read_ini_key, _set_ini_key
-from Games.Bethesda.fallout_3 import Fallout_3
 
 
-class Starfield(Fallout_3):
+class Starfield(BethesdaGame):
 
     plugins_use_star_prefix = True
     plugins_include_vanilla = False

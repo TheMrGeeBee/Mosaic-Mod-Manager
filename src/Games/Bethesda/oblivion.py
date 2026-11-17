@@ -6,10 +6,10 @@ Oblivion game handler.
 from pathlib import Path
 
 from Games.base_game import WizardTool
-from Games.Bethesda.fallout_3 import Fallout_3
+from Games.Bethesda.bethesda_game import BethesdaGame
 
 
-class Oblivion(Fallout_3):
+class Oblivion(BethesdaGame):
 
     # Don't force/reorder mod BSAs in SArchiveList (inherits False). Oblivion
     # auto-loads a mod's BSA via plugin-name association (the ESP loads it),

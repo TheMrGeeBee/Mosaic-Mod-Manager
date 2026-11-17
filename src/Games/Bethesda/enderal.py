@@ -6,10 +6,10 @@ Enderal game handler.
 from pathlib import Path
 
 from Games.base_game import WizardTool
-from Games.Bethesda.fallout_3 import Fallout_3
+from Games.Bethesda.bethesda_game import BethesdaGame
 
 
-class Enderal(Fallout_3):
+class Enderal(BethesdaGame):
 
     _archive_list_needs_mod_bsas = False
     # Skyrim LE engine — plugins.txt-ordered, not file mtimes.

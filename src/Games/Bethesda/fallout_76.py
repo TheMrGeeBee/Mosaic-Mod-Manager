@@ -6,11 +6,11 @@ Fallout 76 game handler.
 from pathlib import Path
 
 from Games.base_game import WizardTool
+from Games.Bethesda.bethesda_game import BethesdaGame
 from Games.Bethesda.bethesda_ini import _read_ini_key, _set_ini_key
-from Games.Bethesda.fallout_3 import Fallout_3
 
 
-class Fallout_76(Fallout_3):
+class Fallout_76(BethesdaGame):
     """Fallout 76 — a BA2-based Bethesda game with NO plugin system.
 
     The live game blocks .esp/.esm plugins, so there is no plugins.txt, no load
@@ -66,6 +66,14 @@ class Fallout_76(Fallout_3):
     @property
     def loot_game_type(self) -> str:
         return ""
+
+    # Inherited from Fallout 3 before the BethesdaGame split; kept as-is so
+    # behaviour is unchanged (LOOT is disabled for 76, so neither is consulted).
+    @property
+    def loot_masterlist_repo(self) -> str:
+        return "fallout3"
+
+    synthesis_registry_name = "Fallout3"
     
     @property
     def conflict_ignore_filenames(self) -> set[str]:

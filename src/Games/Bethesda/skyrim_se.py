@@ -10,7 +10,7 @@ Mod structure:
 from pathlib import Path
 
 from Games.base_game import MODERN_DIRECTX_DEPS, WizardTool
-from Games.Bethesda.fallout_3 import Fallout_3
+from Games.Bethesda.bethesda_game import BethesdaGame
 from Utils.deploy.deploy import (
     LinkMode,
     cleanup_custom_deploy_dirs,
@@ -29,13 +29,13 @@ from Utils.deploy.deploy import (
 from Utils.mods.modlist import read_modlist
 
 
-class SkyrimSE(Fallout_3):
+class SkyrimSE(BethesdaGame):
 
     # SSE auto-loads plugin-matched BSAs — it is NOT a FO3/FNV-style engine that
-    # only reads archives listed in the INI. Override the Fallout_3 default.
+    # only reads archives listed in the INI. Override the BethesdaGame default.
     _archive_list_needs_mod_bsas = False
     # The engine's own hardcoded filename is capital-P "Plugins.txt" (matches
-    # Oblivion/Starfield's override below) — Fallout_3's lowercase default is
+    # Oblivion/Starfield's override below) — BethesdaGame's lowercase default is
     # wrong here. On a case-sensitive Linux host this isn't cosmetic: Wine
     # resolves the game's own read/write of "Plugins.txt" to a *different*
     # file than whatever we deploy under the wrong casing, so our deploy
@@ -88,7 +88,7 @@ class SkyrimSE(Fallout_3):
     @property
     def mod_required_top_level_folders(self) -> set[str]:
         # Skyrim SE subset — excludes Fallout-specific folders (f4se, nvse,
-        # fose, config) that Fallout_3 includes.
+        # fose, config) that BethesdaGame includes.
         return {
             "skse",
             "textures",
@@ -460,7 +460,7 @@ class SkyrimSE(Fallout_3):
     def _script_extender_exe(self) -> str:
         return "skse64_loader.exe"
 
-    # swap_launcher / _restore_launcher are inherited from Fallout_3: it
+    # swap_launcher / _restore_launcher are inherited from BethesdaGame: it
     # derives the launcher name from exe_name (SkyrimSELauncher.exe — GOG uses
     # the same name, unlike GOG Fallout 3) and the SE loader from
     # _script_extender_exe above, so the base logic is already correct here.
