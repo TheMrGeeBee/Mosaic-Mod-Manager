@@ -576,22 +576,6 @@ class VampireBloodlines(BaseGame):
                 "Run 'Build Filemap' before deploying."
             )
 
-        from Utils.modding_tools.vtmb_patch import find_game_exe, is_large_address_aware
-        game_exe = find_game_exe(self._game_path)
-        if game_exe is not None and not is_large_address_aware(game_exe):
-            self.add_deploy_warning(
-                f"{game_exe.name} is Steam's stock exe (no 4 GB patch) and tends to "
-                "crash with mods. Run Wizard → Install Unofficial Patch to install "
-                "the patched exe."
-            )
-        if not (self._game_path / "Loader.exe").is_file() and \
-                not (self._game_path / "Bin" / "loader").is_dir():
-            self.add_deploy_warning(
-                "The Bloodlines Advanced EXE Loader (Loader.exe, Bin/loader) was not "
-                "found. Stock Vampire.exe cannot be relied on to honour -game; install "
-                "the Unofficial Patch (it bundles the Loader) or the standalone Loader."
-            )
-
         _log(f"Step 1: Moving {mod_dir.name}/ → {mod_dir.name}_Core/ ...")
         move_to_core(mod_dir, log_fn=_log)
         mod_dir.mkdir(parents=True, exist_ok=True)
@@ -651,6 +635,33 @@ class VampireBloodlines(BaseGame):
             f"Deploy complete. {linked_mod} mod + {linked_patch} patch "
             f"= {linked_mod + linked_patch} file(s) in {mod_dir.name}/."
         )
+
+    def _queue_exe_warnings(self) -> None:
+        """Warn about a stock exe / missing Loader, judged as the game will run.
+
+        Called from pop_deploy_warnings, i.e. after the whole pipeline: a modlist
+        can ship its own patched vampire.exe / Loader.exe as root-flagged mods,
+        and those are only placed after deploy() returns."""
+        from Utils.modding_tools.vtmb_patch import find_game_exe, is_large_address_aware
+        game_exe = find_game_exe(self._game_path)
+        if game_exe is not None and not is_large_address_aware(game_exe):
+            self.add_deploy_warning(
+                f"{game_exe.name} is Steam's stock exe (no 4 GB patch) and tends to "
+                "crash with mods. Run Wizard → Install Unofficial Patch to install "
+                "the patched exe."
+            )
+        if not (self._game_path / "Loader.exe").is_file() and \
+                not (self._game_path / "Bin" / "loader").is_dir():
+            self.add_deploy_warning(
+                "The Bloodlines Advanced EXE Loader (Loader.exe, Bin/loader) was not "
+                "found. Stock Vampire.exe cannot be relied on to honour -game; install "
+                "the Unofficial Patch (it bundles the Loader) or the standalone Loader."
+            )
+
+    def pop_deploy_warnings(self) -> list[str]:
+        if self._game_path is not None:
+            self._queue_exe_warnings()
+        return super().pop_deploy_warnings()
 
     def restore(self, log_fn=None, progress_fn=None) -> None:
         """Clear the profile folder (runtime files are rescued to overwrite/)."""

@@ -162,6 +162,27 @@ def test_deploy_is_quiet_once_the_exe_is_patched(tmp_path):
     assert not any("4 GB" in w for w in _deploy_with_exe(tmp_path, laa=True))
 
 
+def test_no_exe_warning_when_a_root_flagged_mod_replaces_the_stock_exe(tmp_path):
+    """Root-flagged mods (a modlist's own patched vampire.exe) are placed by the
+    pipeline *after* deploy() returns, so the stock exe is still there when
+    deploy() runs. The warning must judge the exe the game will actually run."""
+    g = _game(tmp_path)
+    root = g._game_path
+    (root / "vampire.exe").write_bytes(_pe(False))       # Steam's stock exe
+    (root / "Loader.exe").write_text("x")
+    _empty_filemap(g)
+    g.deploy(mode=LinkMode.HARDLINK, profile="default")
+
+    # What deploy_root_flagged_mods does next in the pipeline.
+    mod_exe = tmp_path / "ModRoot" / "Vampire.exe"
+    mod_exe.parent.mkdir()
+    mod_exe.write_bytes(_pe(True))
+    (root / "vampire.exe").unlink()
+    (root / "vampire.exe").symlink_to(mod_exe)
+
+    assert not any("4 GB" in w for w in g.pop_deploy_warnings())
+
+
 def _patch_layer_with_config(g, text="UP default config\n"):
     cfg = g._game_path / "Unofficial_Patch" / "cfg"
     cfg.mkdir(parents=True)
