@@ -107,9 +107,6 @@ def _mod_dir_name(profile: str) -> str:
 
 class VampireBloodlines(BaseGame):
 
-    def __init__(self) -> None:
-        super().__init__()
-
     # -----------------------------------------------------------------------
     # Identity
     # -----------------------------------------------------------------------
@@ -148,22 +145,6 @@ class VampireBloodlines(BaseGame):
     def reshade_arch(self) -> int | None:
         # vampire.exe is a 32-bit (x86) executable.
         return 32
-
-    @property
-    def plugin_extensions(self) -> list[str]:
-        return []
-
-    @property
-    def loot_sort_enabled(self) -> bool:
-        return False
-
-    @property
-    def loot_game_type(self) -> str:
-        return ""
-
-    @property
-    def loot_masterlist_url(self) -> str:
-        return ""
 
     # -----------------------------------------------------------------------
     # Mod archive layout

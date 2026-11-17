@@ -39,9 +39,6 @@ _MODS_SUBPATH = Path(
 
 class JaggedAlliance3(BaseGame):
 
-    def __init__(self) -> None:
-        super().__init__()
-
     # -----------------------------------------------------------------------
     # Identity
     # -----------------------------------------------------------------------
@@ -70,22 +67,6 @@ class JaggedAlliance3(BaseGame):
     def conflict_ignore_filenames(self) -> set[str]:
         return {"*read*.txt"}
     
-    @property
-    def plugin_extensions(self) -> list[str]:
-        return []
-
-    @property
-    def loot_sort_enabled(self) -> bool:
-        return False
-
-    @property
-    def loot_game_type(self) -> str:
-        return ""
-
-    @property
-    def loot_masterlist_url(self) -> str:
-        return ""
-
     @staticmethod
     def _load_ja3_module(stem: str):
         """Load a sibling JA3 module (ja3_packs) by file path.

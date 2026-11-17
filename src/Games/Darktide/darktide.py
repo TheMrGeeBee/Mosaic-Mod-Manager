@@ -51,9 +51,6 @@ from Utils.mods.modlist import read_modlist
 
 class Darktide(BaseGame):
 
-    def __init__(self) -> None:
-        super().__init__()
-
     # -----------------------------------------------------------------------
     # Identity
     # -----------------------------------------------------------------------
@@ -101,10 +98,6 @@ class Darktide(BaseGame):
 
     @property
     def normalize_folder_case(self) -> bool:
-        return False
-
-    @property
-    def loot_sort_enabled(self) -> bool:
         return False
 
     @property

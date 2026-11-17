@@ -58,9 +58,6 @@ _PREFIX_USER_SUBPATH = "drive_c/users/steamuser"
 
 class WitcherEnhancedEdition(BaseGame):
 
-    def __init__(self) -> None:
-        super().__init__()
-
     # -----------------------------------------------------------------------
     # Identity
     # -----------------------------------------------------------------------

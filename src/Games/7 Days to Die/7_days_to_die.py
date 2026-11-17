@@ -81,9 +81,6 @@ class SevenDaysToDie(BaseGame):
     # 7DTD can deploy by copying, so the saved "copy" mode must be honoured.
     deploy_mode_supports_copy = True
 
-    def __init__(self) -> None:
-        super().__init__()
-
     # -----------------------------------------------------------------------
     # Identity
     # -----------------------------------------------------------------------

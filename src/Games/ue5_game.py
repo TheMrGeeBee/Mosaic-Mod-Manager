@@ -156,9 +156,6 @@ class UE5Game(BaseGame):
 
     _PREFIX_SKIP_DEST = "__prefix_skip__"
 
-    def __init__(self) -> None:
-        super().__init__()
-
     @property
     def filemap_casing_pins(self) -> dict[str, str]:
         """UE4SS loads a lua mod's entry point from ``Scripts/main.lua`` (capital

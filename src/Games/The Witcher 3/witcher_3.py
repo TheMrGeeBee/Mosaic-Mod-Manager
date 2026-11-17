@@ -101,9 +101,6 @@ from Utils.mods.tw3_routing import route_path as _route_path
 
 class Witcher3(BaseGame):
 
-    def __init__(self) -> None:
-        super().__init__()
-
     # -----------------------------------------------------------------------
     # Identity
     # -----------------------------------------------------------------------

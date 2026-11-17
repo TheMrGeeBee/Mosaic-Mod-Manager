@@ -31,9 +31,6 @@ from Utils.mods.modlist import read_modlist
 
 class KingdomComeDeliverance2(BaseGame):
 
-    def __init__(self) -> None:
-        super().__init__()
-
     # -----------------------------------------------------------------------
     # Identity
     # -----------------------------------------------------------------------

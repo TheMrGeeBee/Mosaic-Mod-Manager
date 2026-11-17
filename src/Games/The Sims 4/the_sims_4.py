@@ -35,9 +35,6 @@ _MODS_SUBPATH = Path(
 
 class TheSims4(BaseGame):
 
-    def __init__(self) -> None:
-        super().__init__()
-
     # -----------------------------------------------------------------------
     # Identity
     # -----------------------------------------------------------------------
@@ -69,22 +66,6 @@ class TheSims4(BaseGame):
     @property
     def mod_install_extensions(self) -> set[str]:
         return {".package", ".ts4script"}
-
-    @property
-    def plugin_extensions(self) -> list[str]:
-        return []
-
-    @property
-    def loot_sort_enabled(self) -> bool:
-        return False
-
-    @property
-    def loot_game_type(self) -> str:
-        return ""
-
-    @property
-    def loot_masterlist_url(self) -> str:
-        return ""
 
     # -----------------------------------------------------------------------
     # Paths

@@ -32,9 +32,6 @@ _AT_SPLIT_PNG_RE = re.compile(r"^texture_\d+\.png$", re.IGNORECASE)
 
 class StardewValley(BaseGame):
 
-    def __init__(self) -> None:
-        super().__init__()
-
     # -----------------------------------------------------------------------
     # Identity
     # -----------------------------------------------------------------------
@@ -72,14 +69,6 @@ class StardewValley(BaseGame):
         return {"mods"}
     
     @property
-    def plugin_extensions(self) -> list[str]:
-        return []
-
-    @property
-    def loot_sort_enabled(self) -> bool:
-        return False
-
-    @property
     def normalize_folder_case(self) -> bool:
         return False
 
@@ -94,14 +83,6 @@ class StardewValley(BaseGame):
     @property
     def wizard_tools(self) -> list[WizardTool]:
         return self._base_wizard_tools()
-
-    @property
-    def loot_game_type(self) -> str:
-        return ""
-
-    @property
-    def loot_masterlist_url(self) -> str:
-        return ""
 
     # -----------------------------------------------------------------------
     # Paths

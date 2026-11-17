@@ -84,10 +84,6 @@ class Subnautica(BaseGame):
         return {self.mods_dir}
     
     @property
-    def plugin_extensions(self) -> list[str]:
-        return []
-
-    @property
     def wine_dll_overrides(self) -> dict[str, str]:
         return {
             "winhttp": "native,builtin",

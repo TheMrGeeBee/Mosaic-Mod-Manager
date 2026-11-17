@@ -30,9 +30,6 @@ from Utils.mods.modlist import read_modlist
 
 class MountAndBlade2Bannerlord(BaseGame):
 
-    def __init__(self) -> None:
-        super().__init__()
-
     # -----------------------------------------------------------------------
     # Identity
     # -----------------------------------------------------------------------

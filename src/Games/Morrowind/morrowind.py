@@ -46,9 +46,6 @@ class Morrowind(BaseGame):
     def supports_bain(self) -> bool:
         return True
 
-    def __init__(self) -> None:
-        super().__init__()
-
     # -----------------------------------------------------------------------
     # Identity
     # -----------------------------------------------------------------------

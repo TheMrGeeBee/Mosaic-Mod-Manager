@@ -32,9 +32,6 @@ class Cyberpunk2077(BaseGame):
     # titles. Installed via the Proton-menu installers, not winetricks.
     auto_install_deps = MODERN_DIRECTX_DEPS
 
-    def __init__(self) -> None:
-        super().__init__()
-
     # -----------------------------------------------------------------------
     # Identity
     # -----------------------------------------------------------------------

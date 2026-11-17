@@ -180,10 +180,6 @@ class BaldursGate3(BaseGame):
         ]
     
     @property
-    def plugin_extensions(self) -> list[str]:
-        return []
-    
-    @property
     def conflict_ignore_filenames(self) -> set[str]:
         return {"info.json","*.txt"}
     
