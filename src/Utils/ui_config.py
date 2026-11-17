@@ -10,6 +10,7 @@ import json
 import os
 import re as _re
 import subprocess
+import time
 from pathlib import Path
 
 from Utils.config_paths import get_config_dir
@@ -80,6 +81,42 @@ def _new_parser() -> "configparser.ConfigParser":
     read here raise DuplicateOptionError and break all saves. strict=False lets
     the file still load so settings can be written."""
     return configparser.ConfigParser(strict=False)
+
+
+# mosaic.ini is read by dozens of getters, often several per UI refresh. Parsing
+# it each time is wasted work, so read-only lookups share one parsed copy per
+# file, revalidated on every call by (mtime_ns, size, inode).
+_ini_cache: dict[Path, tuple[tuple[int, int, int], "configparser.ConfigParser"]] = {}
+# A file modified this recently is never cached: filesystem timestamps are
+# coarse, so a write in the same tick as our parse could leave an unchanged
+# (mtime, size) key over different content - this also covers writers outside
+# this module (column_state, game_state, ...).
+_INI_RACY_WINDOW_NS = 2_000_000_000
+
+
+def _read_ini(path: Path) -> "configparser.ConfigParser":
+    """Parsed ``mosaic.ini`` for READ-ONLY use (do not mutate the result).
+
+    Same result as ``_new_parser()`` followed by ``parser.read(path)``: a
+    missing file gives an empty parser and a malformed one raises
+    ``configparser.Error``. Code that modifies and rewrites the file must keep
+    using ``_new_parser()`` so it never edits the shared copy.
+    """
+    try:
+        st = os.stat(path)
+    except OSError:
+        return _new_parser()
+    key = (st.st_mtime_ns, st.st_size, st.st_ino)
+    cached = _ini_cache.get(path)
+    if cached is not None and cached[0] == key:
+        return cached[1]
+    parser = _new_parser()
+    parser.read(path)
+    if time.time_ns() - st.st_mtime_ns > _INI_RACY_WINDOW_NS:
+        _ini_cache[path] = (key, parser)
+    else:
+        _ini_cache.pop(path, None)
+    return parser
 
 
 def _get_portal_scale() -> float:
@@ -468,8 +505,7 @@ def load_ui_scale() -> float:
         _seed_first_run_defaults(path)
         return _ui_scale
     try:
-        parser = _new_parser()
-        parser.read(path)
+        parser = _read_ini(path)
         if parser.has_section(_INI_SECTION) and parser.has_option(_INI_SECTION, _INI_OPTION):
             raw = parser.get(_INI_SECTION, _INI_OPTION).strip().lower()
             if raw == _INI_AUTO:
@@ -548,8 +584,7 @@ def load_ui_scale_is_auto() -> bool:
     if not path.is_file():
         return True
     try:
-        parser = _new_parser()
-        parser.read(path)
+        parser = _read_ini(path)
         raw = parser.get(_INI_SECTION, _INI_OPTION, fallback=_INI_AUTO).strip().lower()
         return raw == _INI_AUTO
     except Exception:
@@ -563,8 +598,7 @@ def load_font_family() -> str:
     if not path.is_file():
         return _font_family
     try:
-        parser = _new_parser()
-        parser.read(path)
+        parser = _read_ini(path)
         value = parser.get(_INI_SECTION, _INI_FONT_OPTION, fallback="").strip()
         _font_family = value if value else _DEFAULT_FONT_FAMILY
     except Exception:
@@ -604,8 +638,7 @@ def load_language() -> str:
     if not path.is_file():
         return _language
     try:
-        parser = _new_parser()
-        parser.read(path)
+        parser = _read_ini(path)
         _language = parser.get(
             _INI_SECTION, _INI_LANGUAGE_OPTION, fallback="").strip()
     except Exception:
@@ -656,8 +689,7 @@ def get_tab_pin(key: str) -> "str | None":
     if not path.is_file():
         return None
     try:
-        parser = _new_parser()
-        parser.read(path)
+        parser = _read_ini(path)
         val = parser.get(_TAB_PINS_SECTION, key, fallback="").strip()
         return val if val in _VALID_TAB_MODES else None
     except Exception:
@@ -725,8 +757,7 @@ def load_collection_settings() -> dict:
     if not path.is_file():
         return defaults
     try:
-        parser = _new_parser()
-        parser.read(path)
+        parser = _read_ini(path)
         if not parser.has_section(_COLLECTIONS_SECTION):
             return defaults
         s = parser[_COLLECTIONS_SECTION]
@@ -763,8 +794,7 @@ def load_download_speed_limit() -> float:
     if not path.is_file():
         return 0.0
     try:
-        parser = _new_parser()
-        parser.read(path)
+        parser = _read_ini(path)
         if not parser.has_section(_COLLECTIONS_SECTION):
             return 0.0
         raw = parser[_COLLECTIONS_SECTION].get(_DL_SPEED_LIMIT_KEY, "0")
@@ -846,8 +876,7 @@ def load_backup_retention_limit() -> int:
     if not path.is_file():
         return _BACKUP_LIMIT_DEFAULT
     try:
-        parser = _new_parser()
-        parser.read(path)
+        parser = _read_ini(path)
         if not parser.has_section(_BACKUPS_SECTION):
             return _BACKUP_LIMIT_DEFAULT
         raw = parser[_BACKUPS_SECTION].get(_BACKUP_LIMIT_KEY, str(_BACKUP_LIMIT_DEFAULT))
@@ -884,8 +913,7 @@ def load_extraction_settings() -> dict:
     if not path.is_file():
         return defaults
     try:
-        parser = _new_parser()
-        parser.read(path)
+        parser = _read_ini(path)
         if not parser.has_section(_EXTRACTION_SECTION):
             return defaults
         s = parser[_EXTRACTION_SECTION]
@@ -933,8 +961,7 @@ def load_nexus_show_adult() -> bool:
     if not path.is_file():
         return False
     try:
-        parser = _new_parser()
-        parser.read(path)
+        parser = _read_ini(path)
         return parser.getboolean(_NEXUS_SECTION, "show_adult", fallback=False)
     except Exception:
         return False
@@ -949,8 +976,7 @@ def load_nexus_last_premium() -> "bool | None":
     if not path.is_file():
         return None
     try:
-        parser = _new_parser()
-        parser.read(path)
+        parser = _read_ini(path)
         raw = parser.get(_NEXUS_SECTION, "last_known_premium", fallback="")
         if raw.strip().lower() in ("true", "false"):
             return raw.strip().lower() == "true"
@@ -983,8 +1009,7 @@ def load_column_widths() -> dict[int, int]:
     if not path.is_file():
         return {}
     try:
-        parser = _new_parser()
-        parser.read(path)
+        parser = _read_ini(path)
         if _COLUMNS_SECTION not in parser:
             return {}
         result = {}
@@ -1032,8 +1057,7 @@ def load_column_order() -> list[int]:
     if not path.is_file():
         return list(_DEFAULT_COL_ORDER)
     try:
-        parser = _new_parser()
-        parser.read(path)
+        parser = _read_ini(path)
         raw = parser.get(_COLUMNS_SECTION, "order", fallback=None)
         if raw is None:
             return list(_DEFAULT_COL_ORDER)
@@ -1079,8 +1103,7 @@ def load_column_hidden() -> set[int]:
     if not path.is_file():
         return set()
     try:
-        parser = _new_parser()
-        parser.read(path)
+        parser = _read_ini(path)
         raw = parser.get(_COLUMNS_SECTION, "hidden", fallback=None)
         if raw is None:
             return set()
@@ -1131,8 +1154,7 @@ def load_sort_state() -> tuple[str | None, bool]:
     if not path.is_file():
         return None, True
     try:
-        parser = _new_parser()
-        parser.read(path)
+        parser = _read_ini(path)
         col = parser.get(_COLUMNS_SECTION, "sort_column", fallback=None)
         if col == "none":
             col = None
@@ -1163,8 +1185,7 @@ def load_window_geometry() -> str | None:
     if not path.is_file():
         return None
     try:
-        parser = _new_parser()
-        parser.read(path)
+        parser = _read_ini(path)
         return parser.get(_WINDOW_SECTION, "geometry", fallback=None)
     except Exception:
         return None
@@ -1197,8 +1218,7 @@ def load_qt_window_state() -> dict:
     if not path.is_file():
         return result
     try:
-        parser = _new_parser()
-        parser.read(path)
+        parser = _read_ini(path)
         geo = parser.get(_WINDOW_SECTION, "qt_geometry", fallback="").strip()
         if geo:
             result["geometry"] = geo
@@ -1241,8 +1261,7 @@ def load_dev_mode() -> bool:
     if not path.is_file():
         return False
     try:
-        parser = _new_parser()
-        parser.read(path)
+        parser = _read_ini(path)
         return parser.get(_DEV_SECTION, "devmode", fallback="false").strip().lower() == "true"
     except Exception:
         return False
@@ -1258,8 +1277,7 @@ def load_force_manual_install() -> bool:
     if not path.is_file():
         return False
     try:
-        parser = _new_parser()
-        parser.read(path)
+        parser = _read_ini(path)
         return parser.get(_DEV_SECTION, "force_manual_install", fallback="false").strip().lower() == "true"
     except Exception:
         return False
@@ -1282,8 +1300,7 @@ def load_suppress_i386_warning() -> bool:
     if not path.is_file():
         return False
     try:
-        parser = _new_parser()
-        parser.read(path)
+        parser = _read_ini(path)
         return parser.getboolean(_FLATPAK_SECTION, "suppress_i386_warning", fallback=False)
     except Exception:
         return False
@@ -1315,8 +1332,7 @@ def load_normalize_folder_case() -> bool:
     if not path.is_file():
         return True
     try:
-        parser = _new_parser()
-        parser.read(path)
+        parser = _read_ini(path)
         return parser.getboolean(_FILEMAP_SECTION, "normalize_folder_case", fallback=True)
     except Exception:
         return True
@@ -1348,8 +1364,7 @@ def load_allow_prerelease() -> bool:
     if not path.is_file():
         return False
     try:
-        parser = _new_parser()
-        parser.read(path)
+        parser = _read_ini(path)
         return parser.getboolean(_UPDATES_SECTION, "allow_prerelease", fallback=False)
     except Exception:
         return False
@@ -1375,8 +1390,7 @@ def load_update_notifications() -> bool:
     if not path.is_file():
         return True
     try:
-        parser = _new_parser()
-        parser.read(path)
+        parser = _read_ini(path)
         return parser.getboolean(_UPDATES_SECTION, "update_notifications",
                                  fallback=True)
     except Exception:
@@ -1414,8 +1428,7 @@ def load_favourite_wizards() -> set[str]:
     if not path.is_file():
         return set()
     try:
-        parser = _new_parser()
-        parser.read(path)
+        parser = _read_ini(path)
         if _WIZARD_FAV_SECTION not in parser:
             return set()
         return {k for k, v in parser[_WIZARD_FAV_SECTION].items()
@@ -1444,8 +1457,7 @@ def load_clear_archive_after_install() -> bool:
     if not path.is_file():
         return True
     try:
-        parser = _new_parser()
-        parser.read(path)
+        parser = _read_ini(path)
         return parser.getboolean(_FILEMAP_SECTION, "clear_archive_after_install", fallback=True)
     except Exception:
         return True
@@ -1473,8 +1485,7 @@ def load_install_mods_disabled() -> bool:
     if not path.is_file():
         return False
     try:
-        parser = _new_parser()
-        parser.read(path)
+        parser = _read_ini(path)
         return parser.getboolean(_FILEMAP_SECTION, "install_mods_disabled", fallback=False)
     except Exception:
         return False
@@ -1504,8 +1515,7 @@ def load_keep_fomod_archives() -> bool:
     if not path.is_file():
         return False
     try:
-        parser = _new_parser()
-        parser.read(path)
+        parser = _read_ini(path)
         return parser.getboolean(_FILEMAP_SECTION, "keep_fomod_archives", fallback=False)
     except Exception:
         return False
@@ -1531,8 +1541,7 @@ def load_show_summary_tooltips() -> bool:
     if not path.is_file():
         return True
     try:
-        parser = _new_parser()
-        parser.read(path)
+        parser = _read_ini(path)
         return parser.getboolean(_FILEMAP_SECTION, "show_summary_tooltips", fallback=True)
     except Exception:
         return True
@@ -1562,8 +1571,7 @@ def load_hide_bsa_conflicts() -> bool:
     if not path.is_file():
         return False
     try:
-        parser = _new_parser()
-        parser.read(path)
+        parser = _read_ini(path)
         return parser.getboolean(_FILEMAP_SECTION, "hide_bsa_conflicts", fallback=False)
     except Exception:
         return False
@@ -1592,8 +1600,7 @@ def load_rename_mod_after_install() -> bool:
     if not path.is_file():
         return False
     try:
-        parser = _new_parser()
-        parser.read(path)
+        parser = _read_ini(path)
         return parser.getboolean(_FILEMAP_SECTION, "rename_mod_after_install", fallback=False)
     except Exception:
         return False
@@ -1623,8 +1630,7 @@ def load_restore_on_close() -> bool:
     if not path.is_file():
         return False
     try:
-        parser = _new_parser()
-        parser.read(path)
+        parser = _read_ini(path)
         return parser.getboolean(_FILEMAP_SECTION, "restore_on_close", fallback=False)
     except Exception:
         return False
@@ -1664,8 +1670,7 @@ def load_nexus_page_size(default: int = 30) -> int:
     if not path.is_file():
         return default
     try:
-        parser = _new_parser()
-        parser.read(path)
+        parser = _read_ini(path)
         val = parser.getint(_NEXUS_SECTION, "page_size", fallback=default)
         return val if val in (20, 30, 40, 50) else default
     except Exception:
@@ -1698,8 +1703,7 @@ def load_heroic_config_path() -> str:
     if not path.is_file():
         return ""
     try:
-        parser = _new_parser()
-        parser.read(path)
+        parser = _read_ini(path)
         return parser.get(_PATHS_SECTION, "heroic_config_path", fallback="").strip()
     except Exception:
         return ""
@@ -1725,8 +1729,7 @@ def load_lutris_data_path() -> str:
     if not path.is_file():
         return ""
     try:
-        parser = _new_parser()
-        parser.read(path)
+        parser = _read_ini(path)
         return parser.get(_PATHS_SECTION, "lutris_data_path", fallback="").strip()
     except Exception:
         return ""
@@ -1752,8 +1755,7 @@ def load_lutris_appimage_path() -> str:
     if not path.is_file():
         return ""
     try:
-        parser = _new_parser()
-        parser.read(path)
+        parser = _read_ini(path)
         return parser.get(_PATHS_SECTION, "lutris_appimage_path", fallback="").strip()
     except Exception:
         return ""
@@ -1779,8 +1781,7 @@ def load_steam_libraries_vdf_path() -> str:
     if not path.is_file():
         return ""
     try:
-        parser = _new_parser()
-        parser.read(path)
+        parser = _read_ini(path)
         return parser.get(_PATHS_SECTION, "steam_libraries_vdf", fallback="").strip()
     except Exception:
         return ""
@@ -1810,8 +1811,7 @@ def load_default_staging_path() -> str:
     if not path.is_file():
         return ""
     try:
-        parser = _new_parser()
-        parser.read(path)
+        parser = _read_ini(path)
         return parser.get(_PATHS_SECTION, "default_staging_path", fallback="").strip()
     except Exception:
         return ""
@@ -1842,8 +1842,7 @@ def load_download_cache_path() -> str:
     if not path.is_file():
         return ""
     try:
-        parser = _new_parser()
-        parser.read(path)
+        parser = _read_ini(path)
         return parser.get(_PATHS_SECTION, "download_cache_path", fallback="").strip()
     except Exception:
         return ""
@@ -1873,8 +1872,7 @@ def load_onboarding_complete() -> bool:
     if not path.is_file():
         return False
     try:
-        parser = _new_parser()
-        parser.read(path)
+        parser = _read_ini(path)
         return parser.getboolean(_ONBOARDING_SECTION, "complete", fallback=False)
     except Exception:
         return False
@@ -1974,8 +1972,7 @@ def load_install_name_patterns() -> list[dict]:
     except Exception:
         defaults = []
     try:
-        parser = _new_parser()
-        parser.read(path)
+        parser = _read_ini(path)
         rules = _read_install_name_patterns_raw(parser)
         already_seeded = parser.getboolean(
             _NAME_PATTERNS_SECTION, _NAME_PATTERNS_SEEDED_OPTION, fallback=False)
@@ -2182,8 +2179,7 @@ def load_theme_colors() -> dict[str, str]:
     path = get_ui_config_path()
     if path.is_file():
         try:
-            parser = _new_parser()
-            parser.read(path)
+            parser = _read_ini(path)
             if parser.has_section(_THEME_SECTION):
                 for key in THEME_DEFAULTS:
                     raw = parser.get(_THEME_SECTION, key, fallback="").strip()
@@ -2246,8 +2242,7 @@ def get_appearance_mode() -> str:
     if not path.is_file():
         return _APPEARANCE_DEFAULT
     try:
-        parser = _new_parser()
-        parser.read(path)
+        parser = _read_ini(path)
         raw = parser.get(_INI_SECTION, _APPEARANCE_OPTION, fallback=_APPEARANCE_DEFAULT).strip().lower()
         return raw if _APPEARANCE_ID_RE.match(raw) else _APPEARANCE_DEFAULT
     except Exception:
@@ -2283,8 +2278,7 @@ def load_last_session() -> "tuple[str | None, str | None]":
     if not path.is_file():
         return (None, None)
     try:
-        parser = _new_parser()
-        parser.read(path)
+        parser = _read_ini(path)
         g = parser.get(_SESSION_SECTION, "last_game", fallback="") or ""
         p = parser.get(_SESSION_SECTION, "last_profile", fallback="") or ""
         return (g or None, p or None)
@@ -2394,8 +2388,7 @@ def load_wabbajack_manual_settings() -> dict:
     if not path.is_file():
         return out
     try:
-        parser = _new_parser()
-        parser.read(path)
+        parser = _read_ini(path)
         if not parser.has_section(_WJ_MANUAL_SECTION):
             return out
         sec = parser[_WJ_MANUAL_SECTION]
