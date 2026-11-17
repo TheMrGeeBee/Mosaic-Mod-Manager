@@ -20,7 +20,6 @@ import shutil
 from pathlib import Path
 
 from Games.base_game import BaseGame, WizardTool
-from Utils.config_paths import get_profiles_dir
 from Utils.deploy.deploy import (
     LinkMode,
     cleanup_custom_deploy_dirs,
@@ -33,8 +32,6 @@ from Utils.deploy.deploy import (
     restore_data_core,
 )
 from Utils.mods.modlist import read_modlist
-
-_PROFILES_DIR = get_profiles_dir()
 
 _OPENMW_FLATPAK_ID = "org.openmw.OpenMW"
 
@@ -228,11 +225,6 @@ class OpenMW(BaseGame):
         # 'Data Files/' is reverted via its _Core backup; capture only files outside it.
         return {"Data Files"}
 
-    def get_mod_staging_path(self) -> Path:
-        if self._staging_path is not None:
-            return self._staging_path / "mods"
-        return _PROFILES_DIR / self.name / "mods"
-
     # -----------------------------------------------------------------------
     # Configuration persistence
     # -----------------------------------------------------------------------
@@ -252,23 +244,12 @@ class OpenMW(BaseGame):
             "openmw_cfg_path": str(self._openmw_cfg_path) if self._openmw_cfg_path else "",
         }
 
-    def set_staging_path(self, path: "Path | str | None") -> None:
-        self._staging_path = Path(path) if path else None
-        self.save_paths()
-
     # OpenMW is a native Linux binary — no Proton prefix.
     def get_prefix_path(self) -> Path | None:
         return None
 
     def set_prefix_path(self, path: "Path | str | None") -> None:
         pass  # Not applicable for OpenMW.
-
-    def get_deploy_mode(self) -> LinkMode:
-        return self._deploy_mode
-
-    def set_deploy_mode(self, mode: LinkMode) -> None:
-        self._deploy_mode = mode
-        self.save_paths()
 
     # -----------------------------------------------------------------------
     # Deployment

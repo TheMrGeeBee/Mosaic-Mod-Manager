@@ -36,7 +36,6 @@ import os
 from pathlib import Path
 
 from Games.base_game import BaseGame
-from Utils.config_paths import get_profiles_dir
 from Utils.deploy.deploy import (
     CustomRule,
     LinkMode,
@@ -51,8 +50,6 @@ from Utils.deploy.deploy import (
     restore_custom_rules,
 )
 from Utils.mods.modlist import read_modlist
-
-_PROFILES_DIR = get_profiles_dir()
 
 # Relative path from a Wine/Proton prefix root to the user's home inside the
 # virtual Windows filesystem (Documents/The Witcher/ lives under here).
@@ -154,11 +151,6 @@ class WitcherEnhancedEdition(BaseGame):
             return None
         return self._game_path / "Data" / "override"
 
-    def get_mod_staging_path(self) -> Path:
-        if self._staging_path is not None:
-            return self._staging_path / "mods"
-        return _PROFILES_DIR / self.name / "mods"
-
     def get_hardlink_deploy_targets(self) -> list[tuple[str, "Path | None"]]:
         return [
             ("Game directory", self._game_path),
@@ -169,24 +161,6 @@ class WitcherEnhancedEdition(BaseGame):
     # Configuration persistence
     # -----------------------------------------------------------------------
     # load_paths / save_paths are inherited from BaseGame (profile-aware).
-
-    def set_staging_path(self, path: "Path | str | None") -> None:
-        self._staging_path = Path(path) if path else None
-        self.save_paths()
-
-    def get_prefix_path(self) -> Path | None:
-        return self._prefix_path
-
-    def set_prefix_path(self, path: "Path | str | None") -> None:
-        self._prefix_path = Path(path) if path else None
-        self.save_paths()
-
-    def get_deploy_mode(self) -> LinkMode:
-        return self._deploy_mode
-
-    def set_deploy_mode(self, mode: LinkMode) -> None:
-        self._deploy_mode = mode
-        self.save_paths()
 
     # -----------------------------------------------------------------------
     # Deployment

@@ -31,7 +31,6 @@ import shutil
 from pathlib import Path
 
 from Games.base_game import BaseGame, WizardTool
-from Utils.config_paths import get_profiles_dir
 from Utils.deploy.deploy import (
     CustomRule,
     LinkMode,
@@ -48,8 +47,6 @@ from Utils.deploy.deploy import (
 )
 from Utils.file_hash import file_digest
 from Utils.mods.modlist import read_modlist
-
-_PROFILES_DIR = get_profiles_dir()
 
 # Files the game rewrites at runtime. They must be real per-profile copies: a link
 # into the patch layer or a mod's staged folder would let the engine write straight
@@ -236,29 +233,6 @@ class VampireBloodlines(BaseGame):
         if self._game_path is None:
             return None
         return self._game_path / self.get_mod_dir_name()
-
-    def get_mod_staging_path(self) -> Path:
-        if self._staging_path is not None:
-            return self._staging_path / "mods"
-        return _PROFILES_DIR / self.name / "mods"
-
-    def set_staging_path(self, path: Path | str | None) -> None:
-        self._staging_path = Path(path) if path else None
-        self.save_paths()
-
-    def get_prefix_path(self) -> Path | None:
-        return self._prefix_path
-
-    def get_deploy_mode(self) -> LinkMode:
-        return self._deploy_mode
-
-    def set_deploy_mode(self, mode: LinkMode) -> None:
-        self._deploy_mode = mode
-        self.save_paths()
-
-    def set_prefix_path(self, path: Path | str | None) -> None:
-        self._prefix_path = Path(path) if path else None
-        self.save_paths()
 
     # -----------------------------------------------------------------------
     # Launch

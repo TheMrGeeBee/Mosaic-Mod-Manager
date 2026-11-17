@@ -18,7 +18,6 @@ import importlib.util
 from pathlib import Path
 
 from Games.base_game import BaseGame
-from Utils.config_paths import get_profiles_dir
 from Utils.deploy.deploy import (
     LinkMode,
     cleanup_custom_deploy_dirs,
@@ -31,8 +30,6 @@ from Utils.deploy.deploy import (
     restore_data_core,
 )
 from Utils.mods.modlist import read_modlist
-
-_PROFILES_DIR = get_profiles_dir()
 
 # Path inside the Proton prefix where Jagged Alliance 3 reads mods from
 _MODS_SUBPATH = Path(
@@ -133,31 +130,8 @@ class JaggedAlliance3(BaseGame):
             return None
         return self._prefix_path / _MODS_SUBPATH
 
-    def get_mod_staging_path(self) -> Path:
-        if self._staging_path is not None:
-            return self._staging_path / "mods"
-        return _PROFILES_DIR / self.name / "mods"
-
     def get_hardlink_deploy_targets(self) -> list[tuple[str, "Path | None"]]:
         return [("Proton prefix", self._prefix_path)]
-
-    def set_staging_path(self, path: "Path | str | None") -> None:
-        self._staging_path = Path(path) if path else None
-        self.save_paths()
-
-    def get_prefix_path(self) -> Path | None:
-        return self._prefix_path
-
-    def get_deploy_mode(self) -> LinkMode:
-        return self._deploy_mode
-
-    def set_deploy_mode(self, mode: LinkMode) -> None:
-        self._deploy_mode = mode
-        self.save_paths()
-
-    def set_prefix_path(self, path: Path | str | None) -> None:
-        self._prefix_path = Path(path) if path else None
-        self.save_paths()
 
     # -----------------------------------------------------------------------
     # Deployment

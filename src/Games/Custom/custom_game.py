@@ -45,7 +45,6 @@ from Games.ue5_game import UE5Game, UE5Rule
 from Utils.config_paths import (
     get_custom_game_images_dir,
     get_custom_games_dir,
-    get_profiles_dir,
 )
 from Utils.deploy.deploy import (
     CustomRule,
@@ -67,9 +66,6 @@ from Utils.deploy.deploy import (
     restore_filemap_from_root,
 )
 from Utils.mods.modlist import read_modlist
-
-_PROFILES_DIR = get_profiles_dir()
-
 
 # ---------------------------------------------------------------------------
 # Definition → Python type helpers
@@ -567,35 +563,12 @@ class StandardCustomGame(BaseGame):
         top = rel.replace("\\", "/").split("/")[0]
         return {top} if top else None
 
-    def get_mod_staging_path(self) -> Path:
-        if self._staging_path is not None:
-            return self._staging_path / "mods"
-        return _PROFILES_DIR / self.name / "mods"
-
     # ------------------------------------------------------------------
     # Persistence
     # ------------------------------------------------------------------
 
     # load_paths / save_paths are inherited from BaseGame (profile-aware);
     # custom games deploy via symlink/hardlink only.
-
-    def set_staging_path(self, path: Path | str | None) -> None:
-        self._staging_path = Path(path) if path else None
-        self.save_paths()
-
-    def get_prefix_path(self) -> Path | None:
-        return self._prefix_path
-
-    def get_deploy_mode(self) -> LinkMode:
-        return self._deploy_mode
-
-    def set_deploy_mode(self, mode: LinkMode) -> None:
-        self._deploy_mode = mode
-        self.save_paths()
-
-    def set_prefix_path(self, path: Path | str | None) -> None:
-        self._prefix_path = Path(path) if path else None
-        self.save_paths()
 
     # ------------------------------------------------------------------
     # Deployment

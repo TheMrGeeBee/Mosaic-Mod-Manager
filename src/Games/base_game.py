@@ -17,9 +17,18 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from Utils.config_paths import get_game_config_dir, get_game_config_path
+from Utils.config_paths import (
+    get_game_config_dir,
+    get_game_config_path,
+    get_profiles_dir,
+)
 from Utils.deploy.deploy import LinkMode
 from Utils.wine_proton.steam_finder import find_prefix as _find_steam_prefix
+
+# Snapshot once at import (as each game module used to): get_profiles_dir()
+# depends on whether the legacy Profiles dir exists, so re-resolving per call
+# could flip the staging root mid-session.
+_PROFILES_DIR = get_profiles_dir()
 
 if TYPE_CHECKING:
     from typing import Callable
@@ -878,17 +887,25 @@ class BaseGame(ABC):
         return []
 
     def get_prefix_path(self) -> Path | None:
-        """
-        Return the saved Proton prefix path (the pfx/ directory) for this game,
-        or None if not set.  Subclasses persist this in paths.json.
-        """
-        return None
+        """Return the saved Proton prefix path (the pfx/ directory), or None."""
+        return self._prefix_path
 
     def set_prefix_path(self, path: "Path | str | None") -> None:
-        """
-        Save the Proton prefix path and persist it to paths.json.
-        Subclasses should override this to write it alongside game_path.
-        """
+        """Save the Proton prefix path and persist it to paths.json."""
+        self._prefix_path = Path(path) if path else None
+        self.save_paths()
+
+    def get_deploy_mode(self) -> LinkMode:
+        return self._deploy_mode
+
+    def set_deploy_mode(self, mode: LinkMode) -> None:
+        self._deploy_mode = mode
+        self.save_paths()
+
+    def set_staging_path(self, path: "Path | str | None") -> None:
+        """Set a custom staging root (or None for the default) and persist it."""
+        self._staging_path = Path(path) if path else None
+        self.save_paths()
 
     @property
     def plugin_extensions(self) -> list[str]:
@@ -1288,7 +1305,6 @@ class BaseGame(ABC):
         """
         return self.get_mod_data_path()
 
-    @abstractmethod
     def get_mod_staging_path(self) -> Path:
         """
         Return the path where this manager stages installed mods before
@@ -1296,6 +1312,9 @@ class BaseGame(ABC):
         whether the directory exists yet.
         e.g. Profiles/Skyrim Special Edition/mods/
         """
+        if self._staging_path is not None:
+            return self._staging_path / "mods"
+        return _PROFILES_DIR / self.name / "mods"
 
     def get_hardlink_deploy_targets(self) -> list[tuple[str, "Path | None"]]:
         """

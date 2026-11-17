@@ -13,7 +13,6 @@ from __future__ import annotations
 from pathlib import Path
 
 from Games.base_game import BaseGame, WizardTool
-from Utils.config_paths import get_profiles_dir
 from Utils.deploy.deploy import (
     LinkMode,
     cleanup_custom_deploy_dirs,
@@ -30,8 +29,6 @@ from Utils.deploy.deploy import (
     restore_data_core,
 )
 from Utils.mods.modlist import read_modlist
-
-_PROFILES_DIR = get_profiles_dir()
 
 
 class Morrowind(BaseGame):
@@ -194,35 +191,12 @@ class Morrowind(BaseGame):
         # 'Data Files/' is reverted via its _Core backup; capture only files outside it.
         return {"Data Files"}
 
-    def get_mod_staging_path(self) -> Path:
-        if self._staging_path is not None:
-            return self._staging_path / "mods"
-        return _PROFILES_DIR / self.name / "mods"
-
     # -----------------------------------------------------------------------
     # Configuration persistence
     # -----------------------------------------------------------------------
 
     # load_paths / save_paths are inherited from BaseGame (profile-aware);
     # deploy_mode_supports_copy preserves the "copy" deploy mode.
-
-    def set_staging_path(self, path: Path | str | None) -> None:
-        self._staging_path = Path(path) if path else None
-        self.save_paths()
-
-    def get_prefix_path(self) -> Path | None:
-        return self._prefix_path
-
-    def set_prefix_path(self, path: Path | str | None) -> None:
-        self._prefix_path = Path(path) if path else None
-        self.save_paths()
-
-    def get_deploy_mode(self) -> LinkMode:
-        return self._deploy_mode
-
-    def set_deploy_mode(self, mode: LinkMode) -> None:
-        self._deploy_mode = mode
-        self.save_paths()
 
     # -----------------------------------------------------------------------
     # Deployment

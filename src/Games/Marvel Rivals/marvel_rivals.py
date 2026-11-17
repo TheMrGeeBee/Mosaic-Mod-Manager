@@ -25,10 +25,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from Games.ue5_game import UE5Game, UE5Rule
-from Utils.config_paths import get_profiles_dir
 from Utils.deploy.deploy import CustomRule
-
-_PROFILES_DIR = get_profiles_dir()
 
 # Path from the Steam install dir to the UE5 game root
 _GAME_SUBDIR_PARTS = ["MarvelGame", "Marvel"]
@@ -170,8 +167,3 @@ class MarvelRivals(UE5Game):
                 return self._game_path
             current = found
         return current
-
-    def get_mod_staging_path(self) -> Path:
-        if self._staging_path is not None:
-            return self._staging_path / "mods"
-        return _PROFILES_DIR / self.name / "mods"

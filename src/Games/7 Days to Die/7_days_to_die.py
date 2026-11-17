@@ -43,12 +43,9 @@ import shutil
 from pathlib import Path
 
 from Games.base_game import BaseGame
-from Utils.config_paths import get_profiles_dir
 from Utils.deploy.deploy import LinkMode
 from Utils.mods.modlist import read_modlist
 from Utils.profile.profile_state import read_excluded_mod_files
-
-_PROFILES_DIR = get_profiles_dir()
 
 # Zero-padding width for the priority prefix (``0001_Foo``).  Four digits is
 # enough for 9999 enabled mods — the modlist cap in practice is well under that.
@@ -160,11 +157,6 @@ class SevenDaysToDie(BaseGame):
             return None
         return self._game_path / self.mods_dir
 
-    def get_mod_staging_path(self) -> Path:
-        if self._staging_path is not None:
-            return self._staging_path / "mods"
-        return _PROFILES_DIR / self.name / "mods"
-
     # -----------------------------------------------------------------------
     # Configuration persistence
     # -----------------------------------------------------------------------
@@ -172,24 +164,6 @@ class SevenDaysToDie(BaseGame):
     # load_paths / save_paths are inherited from BaseGame (profile-aware);
     # deploy_mode_supports_copy preserves the "copy" deploy mode, and
     # prefix_numbering is per-profile via the profile-aware _save_settings.
-
-    def set_staging_path(self, path: Path | str | None) -> None:
-        self._staging_path = Path(path) if path else None
-        self.save_paths()
-
-    def get_prefix_path(self) -> Path | None:
-        return self._prefix_path
-
-    def set_prefix_path(self, path: Path | str | None) -> None:
-        self._prefix_path = Path(path) if path else None
-        self.save_paths()
-
-    def get_deploy_mode(self) -> LinkMode:
-        return self._deploy_mode
-
-    def set_deploy_mode(self, mode: LinkMode) -> None:
-        self._deploy_mode = mode
-        self.save_paths()
 
     @property
     def prefix_numbering(self) -> bool:

@@ -30,7 +30,6 @@ import json
 from pathlib import Path
 
 from Games.base_game import BaseGame, WizardTool
-from Utils.config_paths import get_profiles_dir
 from Utils.deploy.deploy import (
     CustomRule,
     LinkMode,
@@ -49,8 +48,6 @@ from Utils.deploy.deploy import (
 )
 from Utils.mods.modlist import read_modlist
 from Utils.mods.modsettings import write_modsettings, write_vanilla_modsettings
-
-_PROFILES_DIR = get_profiles_dir()
 
 # Path inside the Proton prefix where the Larian data folder lives
 _PREFIX_LARIAN_SUBPATH = Path(
@@ -224,11 +221,6 @@ class BaldursGate3(BaseGame):
         root = self._larian_root()
         return root / _MODS_REL if root is not None else None
 
-    def get_mod_staging_path(self) -> Path:
-        if self._staging_path is not None:
-            return self._staging_path / "mods"
-        return _PROFILES_DIR / self.name / "mods"
-
     def get_hardlink_deploy_targets(self) -> list[tuple[str, "Path | None"]]:
         if self._prefix_path is None and _NATIVE_LARIAN_ROOT.is_dir():
             data_target: Path | None = _NATIVE_LARIAN_ROOT
@@ -263,24 +255,6 @@ class BaldursGate3(BaseGame):
         if _NATIVE_LARIAN_ROOT.is_dir():
             return None
         return super()._find_prefix_for_load()
-
-    def set_staging_path(self, path: "Path | str | None") -> None:
-        self._staging_path = Path(path) if path else None
-        self.save_paths()
-
-    def get_prefix_path(self) -> Path | None:
-        return self._prefix_path
-
-    def get_deploy_mode(self) -> LinkMode:
-        return self._deploy_mode
-
-    def set_deploy_mode(self, mode: LinkMode) -> None:
-        self._deploy_mode = mode
-        self.save_paths()
-
-    def set_prefix_path(self, path: Path | str | None) -> None:
-        self._prefix_path = Path(path) if path else None
-        self.save_paths()
 
     def get_patch_version(self) -> int:
         return self._patch_version

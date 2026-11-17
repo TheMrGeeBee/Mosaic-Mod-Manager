@@ -16,7 +16,6 @@ from pathlib import Path
 
 from Games.base_game import MODERN_DIRECTX_DEPS, BaseGame, WizardTool
 from Games.Bethesda.bethesda_ini import _read_ini_key, _set_ini_key
-from Utils.config_paths import get_profiles_dir
 from Utils.deploy.deploy import (
     LinkMode,
     cleanup_custom_deploy_dirs,
@@ -33,8 +32,6 @@ from Utils.deploy.deploy import (
     restore_data_core,
 )
 from Utils.mods.modlist import read_modlist
-
-_PROFILES_DIR = get_profiles_dir()
 
 
 class Fallout_3(BaseGame):
@@ -470,11 +467,6 @@ class Fallout_3(BaseGame):
             return None
         return self._game_path / "Data"
 
-    def get_mod_staging_path(self) -> Path:
-        if self._staging_path is not None:
-            return self._staging_path / "mods"
-        return _PROFILES_DIR / self.name / "mods"
-
     def _load_paths_extra(self, data: dict) -> None:
         self._script_extender_swap = data.get("script_extender_swap", True)
         self._profile_ini_files = data.get("profile_ini_files", False)
@@ -507,20 +499,6 @@ class Fallout_3(BaseGame):
             "profile_saves":        self._profile_saves,
             "plugins_txt_filename": self.plugins_txt_filename,
         }
-
-    def set_staging_path(self, path: "Path | str | None") -> None:
-        self._staging_path = Path(path) if path else None
-        self.save_paths()
-
-    def get_prefix_path(self) -> Path | None:
-        return self._prefix_path
-
-    def get_deploy_mode(self) -> LinkMode:
-        return self._deploy_mode
-
-    def set_deploy_mode(self, mode: LinkMode) -> None:
-        self._deploy_mode = mode
-        self.save_paths()
 
     @property
     def script_extender_swap(self) -> bool:
@@ -621,10 +599,6 @@ class Fallout_3(BaseGame):
                     parents=True, exist_ok=True)
             except OSError:
                 pass
-
-    def set_prefix_path(self, path: Path | str | None) -> None:
-        self._prefix_path = Path(path) if path else None
-        self.save_paths()
 
     # -----------------------------------------------------------------------
     # Deployment

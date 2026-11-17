@@ -46,7 +46,6 @@ from Utils.archives.re_pak_patcher import (
     restore_pak_file,
     update_root_manifest,
 )
-from Utils.config_paths import get_profiles_dir
 from Utils.deploy.deploy import (
     LinkMode,
     cleanup_custom_deploy_dirs,
@@ -56,8 +55,6 @@ from Utils.deploy.deploy import (
 )
 from Utils.modding_tools.tex_convert import convert_tex_v10_to_v34, tex_needs_conversion
 from Utils.mods.modlist import read_modlist
-
-_PROFILES_DIR = get_profiles_dir()
 
 
 class ResidentEvilVillage(BaseGame):
@@ -142,29 +139,6 @@ class ResidentEvilVillage(BaseGame):
 
     def get_mod_data_path(self) -> Path | None:
         return self._game_path
-
-    def get_mod_staging_path(self) -> Path:
-        if self._staging_path is not None:
-            return self._staging_path / "mods"
-        return _PROFILES_DIR / self.name / "mods"
-
-    def set_staging_path(self, path: Path | str | None) -> None:
-        self._staging_path = Path(path) if path else None
-        self.save_paths()
-
-    def get_prefix_path(self) -> Path | None:
-        return self._prefix_path
-
-    def get_deploy_mode(self) -> LinkMode:
-        return self._deploy_mode
-
-    def set_deploy_mode(self, mode: LinkMode) -> None:
-        self._deploy_mode = mode
-        self.save_paths()
-
-    def set_prefix_path(self, path: Path | str | None) -> None:
-        self._prefix_path = Path(path) if path else None
-        self.save_paths()
 
     # -----------------------------------------------------------------------
     # PAK patch helpers

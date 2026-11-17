@@ -25,13 +25,11 @@ from __future__ import annotations
 from pathlib import Path
 
 from Games.ue5_game import UE5Game, UE5Rule
-from Utils.config_paths import get_profiles_dir
 from Utils.deploy.deploy import CustomRule, LinkMode
 
 # Plugins.txt lives here inside the game root (OblivionRemastered/)
 _PLUGINS_TXT_GAME_REL = Path("Content/Dev/ObvData/Data/Plugins.txt")
 
-_PROFILES_DIR = get_profiles_dir()
 
 # Game root subfolder inside the Steam install directory
 _GAME_SUBDIR = "OblivionRemastered"
@@ -243,11 +241,6 @@ class OblivionRemastered(UE5Game):
             pass
         # Fallback: user pointed directly at the subfolder
         return self._game_path
-
-    def get_mod_staging_path(self) -> Path:
-        if self._staging_path is not None:
-            return self._staging_path / "mods"
-        return _PROFILES_DIR / self.name / "mods"
 
     # -----------------------------------------------------------------------
     # Deploy / restore (adds Plugins.txt symlink)

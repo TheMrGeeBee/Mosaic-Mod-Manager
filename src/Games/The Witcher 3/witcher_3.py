@@ -36,7 +36,6 @@ import shutil
 from pathlib import Path
 
 from Games.base_game import BaseGame
-from Utils.config_paths import get_profiles_dir
 from Utils.deploy.deploy import (
     _FILEMAP_SNAPSHOT_NAME,
     LinkMode,
@@ -52,8 +51,6 @@ from Utils.deploy.deploy import (
 from Utils.modding_tools.tw3_filelist import update_menu_filelists
 from Utils.mods.modlist import read_modlist
 from Utils.mods.tw3_mods_settings import write_mods_settings
-
-_PROFILES_DIR = get_profiles_dir()
 
 # Manifest written next to filemap.txt so restore knows exactly what to remove
 _DEPLOYED_MANIFEST = "tw3_deployed.txt"
@@ -179,29 +176,6 @@ class Witcher3(BaseGame):
     def get_mod_data_path(self) -> Path | None:
         """Mods deploy into the game root (mods/, dlc/, bin/, etc.)."""
         return self._game_path
-
-    def get_mod_staging_path(self) -> Path:
-        if self._staging_path is not None:
-            return self._staging_path / "mods"
-        return _PROFILES_DIR / self.name / "mods"
-
-    def set_staging_path(self, path: "Path | str | None") -> None:
-        self._staging_path = Path(path) if path else None
-        self.save_paths()
-
-    def get_prefix_path(self) -> Path | None:
-        return self._prefix_path
-
-    def get_deploy_mode(self) -> LinkMode:
-        return self._deploy_mode
-
-    def set_deploy_mode(self, mode: LinkMode) -> None:
-        self._deploy_mode = mode
-        self.save_paths()
-
-    def set_prefix_path(self, path: Path | str | None) -> None:
-        self._prefix_path = Path(path) if path else None
-        self.save_paths()
 
     # -----------------------------------------------------------------------
     # Wizard tools
