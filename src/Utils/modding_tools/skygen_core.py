@@ -14,6 +14,7 @@ cancel_fn, is_selected) instead of touching widgets.
 from __future__ import annotations
 
 import mmap
+import os
 import re
 import shutil
 from collections import defaultdict
@@ -502,7 +503,44 @@ def _parse_header(path: Path) -> Tuple[str, List[str]]:
         return "Unknown", []
 
 
-def _detect_scents(plugin_path: Path, mod_folder: Optional[Path]) -> Set[str]:
+_SCENT_EXTS = (".ini", ".json", ".yaml")
+
+
+def _index_scent_files(root: Path) -> Dict[str, Set[str]]:
+    """One walk of *root*: lower-cased names of its regular files, grouped by
+    extension (only .ini/.json/.yaml, matched case-sensitively like
+    ``rglob("*.ini")``). Symlinked directories are not followed."""
+    index: Dict[str, Set[str]] = {ext: set() for ext in _SCENT_EXTS}
+    stack = [str(root)]
+    while stack:
+        try:
+            with os.scandir(stack.pop()) as it:
+                for entry in it:
+                    try:
+                        if entry.is_dir(follow_symlinks=False):
+                            stack.append(entry.path)
+                        elif entry.is_file():
+                            for ext in _SCENT_EXTS:
+                                if entry.name.endswith(ext):
+                                    index[ext].add(entry.name.lower())
+                                    break
+                    except OSError:
+                        continue
+        except OSError:
+            continue
+    return index
+
+
+def _detect_scents(
+    plugin_path: Path,
+    mod_folder: Optional[Path],
+    file_index: Optional[Dict[Path, Dict[str, Set[str]]]] = None,
+) -> Set[str]:
+    """*file_index* memoises :func:`_index_scent_files` per search root; pass
+    one dict for a whole scan so each mod folder is walked once, not once per
+    plugin per marker file."""
+    if file_index is None:
+        file_index = {}
     scents: Set[str] = set()
     if mod_folder and mod_folder.is_dir():
         stem = plugin_path.stem
@@ -513,16 +551,16 @@ def _detect_scents(plugin_path: Path, mod_folder: Optional[Path]) -> Set[str]:
         if data_sub.is_dir():
             search_roots.append(data_sub)
 
+        def _files(root: Path) -> Dict[str, Set[str]]:
+            if root not in file_index:
+                file_index[root] = _index_scent_files(root)
+            return file_index[root]
+
         for search_root in search_roots:
             # BOS: <stem>_SWAP.ini anywhere in mod
-            try:
-                for f in search_root.rglob("*.ini"):
-                    if f.is_file() and f.name.lower() == f"{stem.lower()}_swap.ini":
-                        scents.add("PRE_PATCHED_BOS")
-                        scents.add("BOS_FRAMEWORK")
-                        break
-            except OSError:
-                pass
+            if f"{stem.lower()}_swap.ini" in _files(search_root)[".ini"]:
+                scents.add("PRE_PATCHED_BOS")
+                scents.add("BOS_FRAMEWORK")
             # Also check SKSE/Plugins/Data/Base Object Swapper/
             bos_dir = search_root / "SKSE" / "Plugins" / "Data" / "Base Object Swapper"
             if bos_dir.is_dir():
@@ -554,36 +592,16 @@ def _detect_scents(plugin_path: Path, mod_folder: Optional[Path]) -> Set[str]:
         # Additional patch frameworks
         for search_root in search_roots:
             # SPID: <stem>_DISTR.ini
-            try:
-                for f in search_root.rglob("*.ini"):
-                    if f.is_file() and f.name.lower() == f"{stem.lower()}_distr.ini":
-                        scents.add("PRE_PATCHED_SPID")
-                        break
-            except OSError:
-                pass
+            if f"{stem.lower()}_distr.ini" in _files(search_root)[".ini"]:
+                scents.add("PRE_PATCHED_SPID")
             # KID: <stem>_KID.ini
-            try:
-                for f in search_root.rglob("*.ini"):
-                    if f.is_file() and f.name.lower() == f"{stem.lower()}_kid.ini":
-                        scents.add("PRE_PATCHED_KID")
-                        break
-            except OSError:
-                pass
+            if f"{stem.lower()}_kid.ini" in _files(search_root)[".ini"]:
+                scents.add("PRE_PATCHED_KID")
             # DSD: <stem>_DSD.json / _DSD.yaml
-            try:
-                for f in search_root.rglob("*.json"):
-                    if f.is_file() and f.name.lower() == f"{stem.lower()}_dsd.json":
-                        scents.add("PRE_PATCHED_DSD")
-                        break
-            except OSError:
-                pass
-            try:
-                for f in search_root.rglob("*.yaml"):
-                    if f.is_file() and f.name.lower() == f"{stem.lower()}_dsd.yaml":
-                        scents.add("PRE_PATCHED_DSD")
-                        break
-            except OSError:
-                pass
+            if f"{stem.lower()}_dsd.json" in _files(search_root)[".json"]:
+                scents.add("PRE_PATCHED_DSD")
+            if f"{stem.lower()}_dsd.yaml" in _files(search_root)[".yaml"]:
+                scents.add("PRE_PATCHED_DSD")
 
         # OAR: SKSE/Plugins/OpenAnimationReplacer/
         oar_dir = mod_folder / "SKSE" / "Plugins" / "OpenAnimationReplacer"
@@ -607,10 +625,14 @@ def _detect_scents(plugin_path: Path, mod_folder: Optional[Path]) -> Set[str]:
     return scents
 
 
-def _sniff_plugin(plugin_path: Path, mod_folder: Optional[Path]) -> PluginDNA:
+def _sniff_plugin(
+    plugin_path: Path,
+    mod_folder: Optional[Path],
+    file_index: Optional[Dict[Path, Dict[str, Set[str]]]] = None,
+) -> PluginDNA:
     sigs = _extract_signatures(plugin_path)
     author, masters = _parse_header(plugin_path)
-    scents = _detect_scents(plugin_path, mod_folder)
+    scents = _detect_scents(plugin_path, mod_folder, file_index)
     return PluginDNA(
         plugin_name=plugin_path.name,
         signatures=sigs,
@@ -839,6 +861,7 @@ def scan_load_order(game: "BaseGame", *,
 
     total = len(lo)
     dna_map: Dict[str, PluginDNA] = {}
+    file_index: Dict[Path, Dict[str, Set[str]]] = {}
 
     log_fn("Building cross-mod patch index…")
     bos_index, sp_index = _build_patch_index(mods_path)
@@ -854,7 +877,7 @@ def scan_load_order(game: "BaseGame", *,
             continue
         mod_folder = _find_mod_folder(plugin_path, mods_path)
         try:
-            dna = _sniff_plugin(plugin_path, mod_folder)
+            dna = _sniff_plugin(plugin_path, mod_folder, file_index)
         except Exception as exc:
             log_fn(f"Sniff failed for {plugin_name}: {exc}")
             continue
