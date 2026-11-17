@@ -17,13 +17,13 @@ Nexus 189855) that patches the game. Mosaic applies those patches itself (see
 
 from __future__ import annotations
 
-import shutil
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Iterable
 
 from Utils.modding_tools import skyrim_runtime as sr
 from Utils.modding_tools import tw3_version as tw3v
+from Utils.path_utils import free_bytes as _free_bytes
 from Utils.wizard_support.pe_version import format_version
 
 FIX_RUNTIME_SWAP = "runtime-swap"
@@ -262,13 +262,6 @@ def check_disk_space(
                       blocking=False)]
     return [Check("disk-space", True, "Enough free disk space",
                   f"{have / gib:.0f} GB free for about {install_size / gib:.0f} GB of mods.")]
-
-
-def _free_bytes(path: Path) -> int:
-    probe = path
-    while not probe.exists() and probe != probe.parent:
-        probe = probe.parent
-    return shutil.disk_usage(probe).free
 
 
 def _same_fs(a: Path, b: Path) -> bool:

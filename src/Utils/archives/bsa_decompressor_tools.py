@@ -13,6 +13,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING, Callable
 
+from Utils.app_log import noop_log as _noop
 from Utils.modding_tools.ttw_tools import (
     extract_mpi_from_archive,
     find_mpi_archive,
@@ -40,10 +41,6 @@ ARCHIVE_KEYWORDS = ["bsa", "decompressor"]
 NEXUS_GAME_DOMAIN = "newvegas"
 NEXUS_MOD_ID = 65854
 NEXUS_FILE_ID = 1000136741
-
-
-def _noop(_msg: str) -> None:
-    pass
 
 
 def find_decompressor_archive() -> "Path | None":

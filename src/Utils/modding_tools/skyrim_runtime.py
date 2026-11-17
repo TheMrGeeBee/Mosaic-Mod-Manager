@@ -33,8 +33,10 @@ from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
 from typing import Callable
 
+from Utils.app_log import noop_log as _noop
 from Utils.atomic_write import write_atomic_text
 from Utils.file_hash import file_digest
+from Utils.path_utils import free_bytes as _free_bytes
 from Utils.wizard_support.pe_version import Version, format_version, read_file_version
 
 STEAM_APP_ID = 489830
@@ -62,10 +64,6 @@ _INSTALL_HPATCHZ = ("hpatchz was not found. Install it (Arch: 'paru -S hdiffpatc
 
 class RuntimeSwapError(RuntimeError):
     """A runtime-swap step failed; the message is fit to show the user."""
-
-
-def _noop(_msg: str) -> None:
-    pass
 
 
 # ---- the swap description ------------------------------------------------------
@@ -580,13 +578,6 @@ def _restore_from_backup(game_root: Path, backup: Path, paths: list[str]) -> Non
             f"Could not roll back {', '.join(failed)}. The original files are in "
             f"{backup} — copy them back into the game folder, or use Steam's "
             "'Verify integrity of game files'.")
-
-
-def _free_bytes(path: Path) -> int:
-    probe = path
-    while not probe.exists() and probe != probe.parent:
-        probe = probe.parent
-    return shutil.disk_usage(probe).free
 
 
 def apply_transition(

@@ -46,6 +46,7 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Callable, Sequence
 
+from Utils.app_log import noop_log as _noop
 from Utils.downloads.download_scheduler import order_by_size, run_smallest_first
 from Utils.mods.mo2_separator_meta import scan_separator_colors, scan_separator_nesting
 from Utils.mods.modlist import (
@@ -102,10 +103,6 @@ ROOT_MOD_SUFFIX = " - Root"
 # the copy is skipped -- on the first VtMB list all 4620 of its files that came
 # from a downloaded archive hashed identical to a clean install.
 _STOCK_GAME_DIR = "StockGame"
-
-
-def _noop(*_a, **_k):
-    return None
 
 
 @dataclass

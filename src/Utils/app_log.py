@@ -47,7 +47,11 @@ def set_app_log(log_fn: callable[[str], None], after_fn: callable) -> None:
     after_fn(0, _drain_log_queue)
 
 
-_NOOP_LOG: callable = lambda _: None
+def noop_log(*_args, **_kwargs) -> None:
+    """A log callback that does nothing -- the default for ``log_fn`` parameters."""
+
+
+_NOOP_LOG: callable = noop_log
 
 
 def safe_log(log_fn: callable | None) -> callable:

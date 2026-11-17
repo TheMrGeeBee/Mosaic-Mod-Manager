@@ -29,6 +29,8 @@ import tempfile
 from pathlib import Path
 from typing import TYPE_CHECKING, Callable
 
+from Utils.app_log import noop_log as _noop
+
 if TYPE_CHECKING:
     from Games.base_game import BaseGame
 
@@ -56,10 +58,6 @@ BSOS_TARGET_GAME = {
 }
 
 _VERSION_FILE = "mosaic_bodyslide_meta.json"
-
-
-def _noop(_msg: str) -> None:
-    pass
 
 
 def bsos_target_game(game: "BaseGame") -> int | None:

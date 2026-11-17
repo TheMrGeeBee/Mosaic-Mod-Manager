@@ -26,13 +26,11 @@ import zipfile
 from pathlib import Path
 from typing import Callable
 
+from Utils.app_log import noop_log as _noop
+
 LogFn = Callable[[str], None]
 
 _GITHUB_API_URL = "https://api.github.com/repos/Pathoschild/SMAPI/releases/latest"
-
-
-def _noop(_msg: str) -> None:
-    pass
 
 
 # ---------------------------------------------------------------------------

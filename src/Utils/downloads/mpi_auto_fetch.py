@@ -18,15 +18,13 @@ import threading
 from pathlib import Path
 from typing import Callable
 
+from Utils.app_log import noop_log as _noop
+
 _POLL_S = 2.0
 
 # In-flight browser download temp names (Firefox / Chromium / Safari). A
 # final-named file with one of these siblings is still being written.
 _PARTIAL_SUFFIXES = (".part", ".crdownload", ".download")
-
-
-def _noop(*_a) -> None:
-    pass
 
 
 def _has_partial_sibling(path: Path) -> bool:

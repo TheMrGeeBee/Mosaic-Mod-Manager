@@ -16,6 +16,7 @@ import subprocess
 from pathlib import Path
 from typing import Callable
 
+from Utils.app_log import noop_log as _noop
 from Utils.wine_proton.steam_finder import proton_run_command
 
 LogFn = Callable[[str], None]
@@ -33,10 +34,6 @@ DOTNET_URLS: dict[str, str] = {
     "9":  "https://builds.dotnet.microsoft.com/dotnet/WindowsDesktop/9.0.14/windowsdesktop-runtime-9.0.14-win-x64.exe",
     "10": "https://builds.dotnet.microsoft.com/dotnet/WindowsDesktop/10.0.5/windowsdesktop-runtime-10.0.5-win-x64.exe",
 }
-
-
-def _noop(_msg: str) -> None:
-    pass
 
 
 # --- shared .NET desktop-runtime installer ---------------------------------

@@ -56,6 +56,7 @@ from Nexus.nexus_download import (
     delete_archive_and_sidecar,
 )
 from Nexus.nexus_meta import build_meta_from_download
+from Utils.app_log import noop_log as _noop
 from Utils.atomic_write import write_atomic_text
 from Utils.collections.collection_reset import (
     _apply_collection_groups,
@@ -573,8 +574,6 @@ class _PipelineState:
 # ---------------------------------------------------------------------------
 # Callback / control interface (the Qt caller wires each to a Signal.emit).
 # ---------------------------------------------------------------------------
-def _noop(*_a, **_k):
-    return None
 
 
 @dataclass

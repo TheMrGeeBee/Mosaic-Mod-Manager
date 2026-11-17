@@ -14,6 +14,8 @@ import urllib.request
 from pathlib import Path
 from typing import TYPE_CHECKING, Callable
 
+from Utils.app_log import noop_log as _noop
+
 if TYPE_CHECKING:
     from Games.base_game import BaseGame
 
@@ -22,10 +24,6 @@ CKPE_MOD_NAME = "Creation Kit Platform Extended"
 CKPE_GITHUB_API = (
     "https://api.github.com/repos/Perchik71/Creation-Kit-Platform-Extended/releases/latest"
 )
-
-
-def _noop(_msg: str) -> None:
-    pass
 
 
 def creationkit_exe_path(game: "BaseGame") -> Path | None:

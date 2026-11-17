@@ -17,13 +17,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Iterable
 
+from Utils.app_log import noop_log as _noop
 from Utils.collections.collection_preflight import find_swap_archive
 from Utils.file_hash import file_digest
 from Utils.modding_tools import skyrim_runtime as sr
-
-
-def _noop(_msg: str) -> None:
-    pass
 
 
 @dataclass

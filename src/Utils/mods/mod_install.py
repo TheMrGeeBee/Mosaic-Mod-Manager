@@ -33,6 +33,7 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Callable, Optional
 
+from Utils.archive_tools import find_7z
 from Utils.extract_budget import get_uncompressed_size
 from Utils.file_hash import file_digest
 
@@ -837,8 +838,7 @@ def _extract_archive(archive_path: str, dest_dir: str, log_fn: LogFn,
     else:
         _mmt = "-mmt=on"
 
-    _7z = (shutil.which("7zzs") or shutil.which("7zz")
-           or shutil.which("7z") or shutil.which("7za"))
+    _7z = find_7z()
     if _7z:
         rc, err, killed = _run_extractor_cancellable(
             [_7z, "x", archive_path, f"-o{dest_dir}", "-y", _mmt, "-bsp1"],
@@ -1877,8 +1877,7 @@ def _archive_lists_fomod_config(archive_path: str) -> bool:
                 return any(_hit(n) for n in zf.namelist())
         except Exception:
             return False
-    _7z = (shutil.which("7zzs") or shutil.which("7zz")
-           or shutil.which("7z") or shutil.which("7za"))
+    _7z = find_7z()
     if _7z:
         try:
             res = subprocess.run(

@@ -19,7 +19,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import shutil
 import subprocess
 import sys
 import tempfile
@@ -151,11 +150,6 @@ def cmd_restore(games: dict, key: str):
     _log(f"Restore complete: {game.name}")
 
 
-def _find_7z():
-    return (shutil.which("7zzs") or shutil.which("7zz")
-            or shutil.which("7z") or shutil.which("7za"))
-
-
 def cmd_audit_collection_fomod(target: str, cache_dir: "str | None") -> int:
     """Check whether a collection's recorded FOMOD choices survive a replay.
 
@@ -194,7 +188,8 @@ def cmd_audit_collection_fomod(target: str, cache_dir: "str | None") -> int:
                 fid_to_archive.setdefault(fid, archive)
         print(f"Download cache: {len(fid_to_archive)} archive(s) in {cdir}")
 
-    sevenzip = _find_7z()
+    from Utils.archive_tools import find_7z
+    sevenzip = find_7z()
 
     def parse_fomod(mod):
         fid = int((mod.get("source") or {}).get("fileId") or 0)

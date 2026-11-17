@@ -36,6 +36,8 @@ import zipfile
 from pathlib import Path
 from typing import TYPE_CHECKING, Callable
 
+from Utils.app_log import noop_log as _noop
+from Utils.archive_tools import strip_single_top_dir
 from Utils.config_paths import (
     get_dotnet_cache_dir,
     get_game_config_dir,
@@ -48,10 +50,6 @@ if TYPE_CHECKING:
     from Games.base_game import BaseGame
 
 LogFn = Callable[[str], None]
-
-
-def _noop(_msg: str) -> None:
-    pass
 
 
 APP_DIR_NAME = "Synthesis"
@@ -138,20 +136,13 @@ def fetch_latest_synthesis_asset() -> tuple[str, str]:
     raise RuntimeError(f"No Synthesis zip in latest GitHub release ({tag}).")
 
 
-def _strip_single_top_dir(tmp: Path) -> Path:
-    entries = [e for e in tmp.iterdir() if e.name != "__MACOSX"]
-    if len(entries) == 1 and entries[0].is_dir():
-        return entries[0]
-    return tmp
-
-
 def extract_zip_flat(archive: Path, dest: Path) -> None:
     """Extract *archive* into *dest*, stripping a single top-level wrapper."""
     tmp = Path(tempfile.mkdtemp())
     try:
         with zipfile.ZipFile(archive, "r") as zf:
             zf.extractall(tmp)
-        src = _strip_single_top_dir(tmp)
+        src = strip_single_top_dir(tmp)
         for root, _dirs, files in os.walk(src):
             for f in files:
                 src_file = Path(root) / f

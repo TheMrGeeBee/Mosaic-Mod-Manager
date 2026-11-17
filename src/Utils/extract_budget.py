@@ -12,9 +12,10 @@ project imports.
 from __future__ import annotations
 
 import os
-import shutil
 import threading
 import zipfile
+
+from Utils.archive_tools import find_7z
 
 # Below this compressed size the `7z l -slt` metadata probe is skipped and the
 # 15× fallback used instead. The estimate only gates extraction memory, and the
@@ -53,7 +54,7 @@ def get_uncompressed_size(path: str, compressed_size: int = 0) -> int:
     if 0 < compressed_size < _PROBE_MIN_COMPRESSED_BYTES:
         return compressed_size * 15
     # 7z/rar/zip fallback: use `7z l -slt` which prints Size: per entry
-    _7z_bin = shutil.which("7zzs") or shutil.which("7zz") or shutil.which("7z") or shutil.which("7za")
+    _7z_bin = find_7z()
     if _7z_bin:
         try:
             import subprocess

@@ -34,6 +34,7 @@ import threading
 import time as _time
 from pathlib import Path
 
+from Utils.app_log import noop_log as _noop_log
 from Utils.config_paths import (
     get_exe_args_path,
     get_game_config_dir,
@@ -78,10 +79,6 @@ def _is_native_binary(exe_path: Path) -> bool:
     """True if *exe_path* isn't a Windows .exe/.bat and should run directly on
     the host instead of through Proton."""
     return exe_path.suffix.lower() not in (".exe", ".bat")
-
-
-def _noop_log(_msg: str) -> None:
-    pass
 
 
 # ---------------------------------------------------------------------------

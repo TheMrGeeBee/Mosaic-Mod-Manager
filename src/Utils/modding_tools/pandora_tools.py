@@ -20,6 +20,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from Games.base_game import BaseGame
 
+from Utils.app_log import noop_log as _noop
 from Utils.wine_proton.protontricks import dotnet_dep_key as _dotnet_dep_key
 
 EXE_NAME = "Pandora Behaviour Engine+.exe"
@@ -27,10 +28,6 @@ EXE_NAME = "Pandora Behaviour Engine+.exe"
 # .NET 10 install now runs through Utils.wine_proton.proton_tools.install_dotnet_runtime
 # (single source of truth for URL/filename/exit-code handling).
 NET10_DEP_KEY = _dotnet_dep_key("10")
-
-
-def _noop(_msg: str) -> None:
-    pass
 
 
 def find_pandora_exe(game: "BaseGame") -> Path | None:

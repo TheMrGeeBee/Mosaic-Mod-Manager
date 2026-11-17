@@ -17,14 +17,11 @@ import time as _time
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from Utils.app_log import noop_log as _noop
 from Utils.atomic_write import write_atomic_text
 
 if TYPE_CHECKING:
     from Games.base_game import BaseGame
-
-
-def _noop(_msg: str) -> None:
-    pass
 
 
 # xEdit / QuickAutoClean can save the cleaned plugin to a temp file and queue

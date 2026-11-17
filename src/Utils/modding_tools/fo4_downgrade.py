@@ -23,6 +23,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable
 
+from Utils.app_log import noop_log as _noop
 from Utils.atomic_write import write_atomic_text
 from Utils.file_hash import file_digest
 from Utils.wizard_support.pe_version import Version, format_version, read_file_version
@@ -55,10 +56,6 @@ _INSTALL_XDELTA3 = ("xdelta3 was not found. Install it (Arch: 'sudo pacman -S xd
 
 class DowngradeError(RuntimeError):
     """A downgrade/revert step failed; the message is fit to show the user."""
-
-
-def _noop(_msg: str) -> None:
-    pass
 
 
 # ---- discovery ---------------------------------------------------------------

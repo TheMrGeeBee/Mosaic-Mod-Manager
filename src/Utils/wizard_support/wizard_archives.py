@@ -26,6 +26,9 @@ import zipfile
 from pathlib import Path
 from typing import TYPE_CHECKING, Callable
 
+from Utils.app_log import noop_log as _noop
+from Utils.archive_tools import find_7z, strip_single_top_dir
+
 try:
     import py7zr
 except ImportError:
@@ -36,10 +39,6 @@ if TYPE_CHECKING:
 
 ARCHIVE_EXTS = {".zip", ".7z", ".rar", ".tar", ".tar.gz", ".tar.bz2", ".tar.xz",
                 ".tar.zst", ".tzst"}
-
-
-def _noop(_msg: str) -> None:
-    pass
 
 
 # ---------------------------------------------------------------------------
@@ -111,10 +110,7 @@ def extract_to_dir(archive: Path, dest: Path) -> None:
         # Prefer a native 7-zip binary — the Flatpak bundles `7zz` at
         # /app/bin and the AppImage bundles `7zzs`. py7zr is a last resort:
         # it can't decode the BCJ2 filter that SKSE-style archives use.
-        _7z_bin = (
-            shutil.which("7zzs") or shutil.which("7zz")
-            or shutil.which("7z") or shutil.which("7za")
-        )
+        _7z_bin = find_7z()
         if _7z_bin:
             result = subprocess.run(
                 [_7z_bin, "x", str(archive), f"-o{dest}", "-y"],
@@ -149,15 +145,6 @@ def extract_to_dir(archive: Path, dest: Path) -> None:
         raise RuntimeError(f"Unsupported archive format: {archive.name}")
 
 
-def _strip_single_top_dir(tmp: Path) -> Path:
-    """If *tmp* contains a single top-level directory, return it so the
-    caller can copy its *contents* instead of the wrapper folder."""
-    entries = [e for e in tmp.iterdir() if e.name != "__MACOSX"]
-    if len(entries) == 1 and entries[0].is_dir():
-        return entries[0]
-    return tmp
-
-
 def extract_archive(archive: Path, dest: Path, strip_top_dir: bool = True) -> list[Path]:
     """Extract *archive* into *dest*, stripping a single top-level wrapper
     directory if present (e.g. ``f4se_0_07_07/`` -> contents go straight
@@ -175,7 +162,7 @@ def extract_archive(archive: Path, dest: Path, strip_top_dir: bool = True) -> li
     tmp = Path(tempfile.mkdtemp())
     try:
         extract_to_dir(archive, tmp)
-        src = _strip_single_top_dir(tmp) if strip_top_dir else tmp
+        src = strip_single_top_dir(tmp) if strip_top_dir else tmp
 
         created: list[Path] = []
         for root, _dirs, files in os.walk(src):

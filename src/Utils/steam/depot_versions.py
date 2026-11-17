@@ -44,6 +44,7 @@ from pathlib import Path
 from Utils.atomic_write import write_atomic_text
 from Utils.file_hash import file_digest
 from Utils.path_utils import find_child_ci
+from Utils.path_utils import free_bytes as _free_bytes
 
 from .acf import get_ci, read_vdf
 
@@ -449,13 +450,6 @@ def _copy_hash(src: Path, dst: Path) -> str:
 
 def _sha256(path: Path) -> str:
     return file_digest(path, "sha256")
-
-
-def _free_bytes(path: Path) -> int:
-    probe = Path(path)
-    while not probe.exists() and probe != probe.parent:
-        probe = probe.parent
-    return shutil.disk_usage(probe).free
 
 
 def _resolve_ci(root: Path, rel: str) -> Path:

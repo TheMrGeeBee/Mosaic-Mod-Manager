@@ -14,6 +14,7 @@ Two groups:
 from __future__ import annotations
 
 import os
+import shutil
 from collections.abc import Iterable
 from pathlib import Path, PurePath
 
@@ -118,3 +119,15 @@ def resolve_ci(root: "str | Path", rel: "str | PurePath | Iterable[str]", *,
     if kind == "dir" and not current.is_dir():
         return None
     return current
+
+
+def free_bytes(path: "str | Path") -> int:
+    """Free space, in bytes, on the filesystem that holds (or would hold) *path*.
+
+    *path* need not exist yet: the nearest existing ancestor is measured, which
+    is what a "will this fit?" check before creating a folder needs.
+    """
+    probe = Path(path)
+    while not probe.exists() and probe != probe.parent:
+        probe = probe.parent
+    return shutil.disk_usage(probe).free

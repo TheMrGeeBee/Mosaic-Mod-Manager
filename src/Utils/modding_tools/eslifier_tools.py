@@ -16,6 +16,8 @@ import shutil
 from pathlib import Path
 from typing import TYPE_CHECKING, Callable
 
+from Utils.app_log import noop_log as _noop
+
 if TYPE_CHECKING:
     from Games.base_game import BaseGame
 
@@ -23,10 +25,6 @@ GITHUB_API_URL = "https://api.github.com/repos/MaskPlague/ESLifier/releases/late
 EXE_NAME = "ESLifier.exe"
 APP_DIR = "ESLifier"
 OUTPUT_NAME = "ESLifier Output"
-
-
-def _noop(_msg: str) -> None:
-    pass
 
 
 def find_eslifier_exe(game: "BaseGame") -> Path | None:
