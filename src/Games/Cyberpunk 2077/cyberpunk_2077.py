@@ -60,9 +60,7 @@ class Cyberpunk2077(BaseGame):
     def nexus_game_domain(self) -> str:
         return "cyberpunk2077"
 
-    @property
-    def reshade_dll(self) -> str:
-        return "dxgi.dll"
+    reshade_dll = 'dxgi.dll'
 
     @property
     def mod_required_top_level_folders(self) -> set[str]:
@@ -99,9 +97,7 @@ class Cyberpunk2077(BaseGame):
         # Drop any foldered entry whose top level isn't a required folder.
         return True
 
-    @property
-    def mod_auto_strip_until_required(self) -> bool:
-        return True
+    mod_auto_strip_until_required = True
 
     @property
     def custom_routing_rules(self) -> list[CustomRule]:

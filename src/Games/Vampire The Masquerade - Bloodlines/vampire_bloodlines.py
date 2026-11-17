@@ -136,15 +136,9 @@ class VampireBloodlines(BaseGame):
     def nexus_game_domain(self) -> str:
         return "vampirebloodlines"
 
-    @property
-    def reshade_dll(self) -> str | None:
-        # Source engine on DirectX 9 (the engine loads shaderapidx9.dll).
-        return "d3d9.dll"
+    reshade_dll = 'd3d9.dll'
 
-    @property
-    def reshade_arch(self) -> int | None:
-        # vampire.exe is a 32-bit (x86) executable.
-        return 32
+    reshade_arch = 32
 
     # -----------------------------------------------------------------------
     # Mod archive layout
@@ -163,9 +157,7 @@ class VampireBloodlines(BaseGame):
             "textures", "vdata",
         }
 
-    @property
-    def mod_auto_strip_until_required(self) -> bool:
-        return True
+    mod_auto_strip_until_required = True
 
     def _routing_rules(self, profile: str | None = None) -> list[CustomRule]:
         return [
@@ -182,10 +174,7 @@ class VampireBloodlines(BaseGame):
     def custom_routing_rules(self) -> list[CustomRule]:
         return self._routing_rules()
 
-    @property
-    def supports_bain(self) -> bool:
-        # Option-folder packs ("With / Without Unofficial Patch version") are common.
-        return True
+    supports_bain = True
 
     @property
     def conflict_ignore_filenames(self) -> set[str]:

@@ -60,9 +60,7 @@ class OpenMW(BaseGame):
 
     vanilla_plugins = ["Morrowind.esm", "Tribunal.esm", "Bloodmoon.esm"]
 
-    @property
-    def supports_bain(self) -> bool:
-        return True
+    supports_bain = True
 
     def __init__(self):
         self._openmw_cfg_path: Path | None = None  # None → auto-detect
@@ -123,17 +121,13 @@ class OpenMW(BaseGame):
             "video",
         }
 
-    @property
-    def mod_auto_strip_until_required(self) -> bool:
-        return True
+    mod_auto_strip_until_required = True
 
     @property
     def mod_required_file_types(self) -> set[str]:
         return {".esp", ".esm", ".omwscripts", ".omwaddon", ".ini"}
 
-    @property
-    def mod_install_as_is_if_no_match(self) -> bool:
-        return True
+    mod_install_as_is_if_no_match = True
 
     @property
     def conflict_ignore_filenames(self) -> set[str]:

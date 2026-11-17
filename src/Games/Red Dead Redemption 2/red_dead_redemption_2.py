@@ -11,7 +11,6 @@ Mod structure:
   the game install root via custom routing rules.
 """
 
-from pathlib import Path
 
 from Games.base_game import BaseGame
 from Utils.deploy.deploy import (
@@ -59,9 +58,7 @@ class RedDeadRedemption2(BaseGame):
     def nexus_game_domain(self) -> str:
         return "reddeadredemption2"
 
-    @property
-    def reshade_dll(self) -> str:
-        return "dxgi.dll"
+    reshade_dll = 'dxgi.dll'
 
     @property
     def mods_dir(self) -> str:
@@ -79,13 +76,9 @@ class RedDeadRedemption2(BaseGame):
     def mod_folder_strip_prefixes_post(self) -> set[str]:
         return {"lml"}
 
-    @property
-    def mod_auto_strip_until_required(self) -> bool:
-        return True
+    mod_auto_strip_until_required = True
 
-    @property
-    def mod_install_as_is_if_no_match(self) -> bool:
-        return True
+    mod_install_as_is_if_no_match = True
 
     @property
     def conflict_ignore_filenames(self) -> set[str]:
@@ -123,12 +116,6 @@ class RedDeadRedemption2(BaseGame):
     # -----------------------------------------------------------------------
     # Paths
     # -----------------------------------------------------------------------
-
-    def get_mod_data_path(self) -> Path | None:
-        """Mods go into lml/ inside the game directory."""
-        if self._game_path is None:
-            return None
-        return self._game_path / self.mods_dir
 
     # -----------------------------------------------------------------------
     # Deployment

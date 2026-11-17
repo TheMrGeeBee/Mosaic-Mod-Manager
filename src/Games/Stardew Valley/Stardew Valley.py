@@ -88,12 +88,6 @@ class StardewValley(BaseGame):
     # Paths
     # -----------------------------------------------------------------------
 
-    def get_mod_data_path(self) -> Path | None:
-        """Mods go into Mods/ inside the game directory."""
-        if self._game_path is None:
-            return None
-        return self._game_path / self.mods_dir
-
     # -----------------------------------------------------------------------
     # Deployment
     # -----------------------------------------------------------------------

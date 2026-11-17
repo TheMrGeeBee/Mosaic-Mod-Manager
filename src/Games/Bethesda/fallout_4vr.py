@@ -19,13 +19,9 @@ class Fallout_4VR(Fallout_3):
     vanilla_dlc_plugins: list[str] = []
     synthesis_registry_name = "Fallout 4 VR"
 
-    @property
-    def reshade_dll(self) -> str:
-        return "dxgi.dll"
+    reshade_dll = 'dxgi.dll'
 
-    @property
-    def reshade_arch(self) -> int:
-        return 64
+    reshade_arch = 64
 
     @property
     def wizard_tools(self) -> list[WizardTool]:

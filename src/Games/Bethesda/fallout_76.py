@@ -121,13 +121,9 @@ class Fallout_76(Fallout_3):
         # FO76 has no script extender — skip framework detection entirely.
         return {}
     
-    @property
-    def reshade_dll(self) -> str:
-        return ""
+    reshade_dll = ''
 
-    @property
-    def reshade_arch(self) -> int:
-        return 64
+    reshade_arch = 64
 
     # -- Non-whitelisted DLL handling --------------------------------------
     # FO76's anti-cheat refuses to launch if unexpected *.dll files sit in the

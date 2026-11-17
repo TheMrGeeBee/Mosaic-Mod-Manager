@@ -158,9 +158,7 @@ class Witcher3(BaseGame):
         """Install mods with any structure; deploy-time routing handles placement."""
         return True
 
-    @property
-    def reshade_dll(self) -> str:
-        return "dxgi.dll"
+    reshade_dll = 'dxgi.dll'
     
     @property
     def filemap_casing(self) -> str:

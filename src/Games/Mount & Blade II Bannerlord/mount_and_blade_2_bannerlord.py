@@ -11,7 +11,6 @@ Mod structure:
 """
 
 import shutil
-from pathlib import Path
 
 from Games.base_game import BaseGame, WizardTool
 from Utils.deploy.deploy import (
@@ -149,12 +148,6 @@ class MountAndBlade2Bannerlord(BaseGame):
     # -----------------------------------------------------------------------
     # Paths
     # -----------------------------------------------------------------------
-
-    def get_mod_data_path(self) -> Path | None:
-        """Mods go into Modules/ inside the game directory."""
-        if self._game_path is None:
-            return None
-        return self._game_path / self.mods_dir
 
     # -----------------------------------------------------------------------
     # Deployment

@@ -48,9 +48,7 @@ class OblivionRemastered(UE5Game):
 
     # Data-folder mods (often ported from original Oblivion) can still be
     # authored as BAIN packages, so keep the picker despite the UE5 base.
-    @property
-    def supports_bain(self) -> bool:
-        return True
+    supports_bain = True
 
     # -----------------------------------------------------------------------
     # Identity
@@ -92,13 +90,9 @@ class OblivionRemastered(UE5Game):
     def mod_required_top_level_folders(self) -> set[str]:
         return {"OblivionRemastered", "Content", "Paks", "~mods", "Binaries", "Win64","ue4ss","Mods"}
 
-    @property
-    def mod_auto_strip_until_required(self) -> bool:
-        return True
+    mod_auto_strip_until_required = True
 
-    @property
-    def mod_install_as_is_if_no_match(self) -> bool:
-        return True
+    mod_install_as_is_if_no_match = True
 
     @property
     def mod_folder_strip_prefixes_post(self) -> set[str]:

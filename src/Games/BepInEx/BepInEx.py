@@ -10,7 +10,6 @@ Mod structure:
 """
 
 import stat
-from pathlib import Path
 
 from Games.base_game import BaseGame
 from Utils.deploy.deploy import (
@@ -113,19 +112,11 @@ class Subnautica(BaseGame):
             CustomRule(dest="", folders=["qmods"], flatten=True, loose_only=True),
         ]
     
-    @property
-    def reshade_dll(self) -> str:
-        return "dxgi.dll"
+    reshade_dll = 'dxgi.dll'
 
     # -----------------------------------------------------------------------
     # Paths
     # -----------------------------------------------------------------------
-
-    def get_mod_data_path(self) -> Path | None:
-        """Mods go into BepInEx/Plugins/ inside the game directory."""
-        if self._game_path is None:
-            return None
-        return self._game_path / self.mods_dir
 
     def _load_paths_extra(self, data: dict) -> None:
         self._saved_heroic_app_name = data.get("heroic_app_name") or None

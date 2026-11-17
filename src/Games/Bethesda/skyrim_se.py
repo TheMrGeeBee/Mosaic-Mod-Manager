@@ -165,13 +165,9 @@ class SkyrimSE(Fallout_3):
     def frameworks(self) -> dict[str, str]:
         return {"Script Extender": "skse64_loader.exe"}
 
-    @property
-    def reshade_dll(self) -> str:
-        return "dxgi.dll"
+    reshade_dll = 'dxgi.dll'
 
-    @property
-    def reshade_arch(self) -> int:
-        return 64
+    reshade_arch = 64
 
     @property
     def filemap_casing_pins(self) -> dict[str, str]:

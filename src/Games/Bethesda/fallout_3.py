@@ -69,9 +69,7 @@ class Fallout_3(BaseGame):
 
     # BAIN packages are authored for Bethesda games, so re-enable the
     # sub-package picker that BaseGame disables by default.
-    @property
-    def supports_bain(self) -> bool:
-        return True
+    supports_bain = True
 
     def __init__(self):
         self._script_extender_swap: bool = True
@@ -197,17 +195,13 @@ class Fallout_3(BaseGame):
                 "src",
                 }
 
-    @property
-    def mod_auto_strip_until_required(self) -> bool:
-        return True
+    mod_auto_strip_until_required = True
 
     @property
     def mod_required_file_types(self) -> set[str]:
         return {".esp", ".esl", ".esm", ".ini", ".bsa", ".ba2"}
 
-    @property
-    def mod_install_as_is_if_no_match(self) -> bool:
-        return True
+    mod_install_as_is_if_no_match = True
 
     @property
     def conflict_ignore_filenames(self) -> set[str]:
@@ -239,13 +233,9 @@ class Fallout_3(BaseGame):
     def loot_masterlist_repo(self) -> str:
         return "fallout3"
 
-    @property
-    def reshade_dll(self) -> str:
-        return "d3d9.dll"
+    reshade_dll = 'd3d9.dll'
 
-    @property
-    def reshade_arch(self) -> int:
-        return 32
+    reshade_arch = 32
     
     @property
     def custom_routing_rules(self) -> list:

@@ -86,11 +86,7 @@ class WitcherEnhancedEdition(BaseGame):
     def nexus_game_domain(self) -> str:
         return "witcher"
 
-    @property
-    def mod_install_as_is_if_no_match(self) -> bool:
-        # TW1 mods ship in wildly inconsistent shapes — most are loose files
-        # with no wrapper at all (same rationale as Dragon Age Origins).
-        return True
+    mod_install_as_is_if_no_match = True
 
     @property
     def filemap_casing(self) -> str:

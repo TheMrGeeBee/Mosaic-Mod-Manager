@@ -103,9 +103,7 @@ class DragonAgeOrigins(BaseGame):
     # everything as-is and let normalize_dao_mod restructure the staged tree
     # into packages/core/override (see additional_install_logic). This keeps
     # the filemap destinations correct without per-mod guesswork.
-    @property
-    def mod_install_as_is_if_no_match(self) -> bool:
-        return True
+    mod_install_as_is_if_no_match = True
 
     @property
     def additional_install_logic(self) -> list:

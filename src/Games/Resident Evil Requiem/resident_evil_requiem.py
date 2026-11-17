@@ -69,13 +69,9 @@ class ResidentEvilRequiem(BaseGame):
     def mod_required_top_level_folders(self) -> set[str]:
         return {"reframework", "natives", "pak_mods"}
     
-    @property
-    def mod_install_as_is_if_no_match(self) -> bool:
-        return True
+    mod_install_as_is_if_no_match = True
 
-    @property
-    def mod_auto_strip_until_required(self) -> bool:
-        return True
+    mod_auto_strip_until_required = True
 
     @property
     def mod_supports_bundles(self) -> bool:
@@ -89,9 +85,7 @@ class ResidentEvilRequiem(BaseGame):
     def wine_dll_overrides(self) -> dict[str, str]:
         return {"dinput8": "native,builtin"}
 
-    @property
-    def reshade_dll(self) -> str:
-        return "dxgi.dll"
+    reshade_dll = 'dxgi.dll'
 
     @property
     def frameworks(self) -> dict[str, str]:

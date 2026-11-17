@@ -25,13 +25,9 @@ class SkyrimVR(Fallout_3):
     # (libloadorder/Vortex parity: hardcoded masters + SkyrimVR.esm only).
     synthesis_registry_name = "Skyrim VR"
 
-    @property
-    def reshade_dll(self) -> str:
-        return "dxgi.dll"
+    reshade_dll = 'dxgi.dll'
 
-    @property
-    def reshade_arch(self) -> int:
-        return 64
+    reshade_arch = 64
 
     @property
     def wizard_tools(self) -> list[WizardTool]:

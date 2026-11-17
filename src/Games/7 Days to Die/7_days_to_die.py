@@ -121,13 +121,9 @@ class SevenDaysToDie(BaseGame):
     def mod_required_top_level_folders(self) -> set[str]:
         return {"mods"}
 
-    @property
-    def mod_auto_strip_until_required(self) -> bool:
-        return True
+    mod_auto_strip_until_required = True
 
-    @property
-    def mod_install_as_is_if_no_match(self) -> bool:
-        return True
+    mod_install_as_is_if_no_match = True
 
     @property
     def mod_folder_strip_prefixes_post(self) -> set[str]:
@@ -148,11 +144,6 @@ class SevenDaysToDie(BaseGame):
     # -----------------------------------------------------------------------
     # Paths
     # -----------------------------------------------------------------------
-
-    def get_mod_data_path(self) -> Path | None:
-        if self._game_path is None:
-            return None
-        return self._game_path / self.mods_dir
 
     # -----------------------------------------------------------------------
     # Configuration persistence

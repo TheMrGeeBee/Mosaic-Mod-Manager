@@ -145,12 +145,6 @@ class Darktide(BaseGame):
     # Paths
     # -----------------------------------------------------------------------
 
-    def get_mod_data_path(self) -> Path | None:
-        """Mods go into the mods/ subfolder of the game root directory."""
-        if self._game_path is None:
-            return None
-        return self._game_path / self.mods_dir
-
     # -----------------------------------------------------------------------
     # Deployment
     # -----------------------------------------------------------------------

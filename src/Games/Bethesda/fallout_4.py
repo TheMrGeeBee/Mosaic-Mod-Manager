@@ -25,13 +25,9 @@ class Fallout_4(Fallout_3):
     vanilla_ccc_filename = "Fallout4.ccc"
     synthesis_registry_name = "Fallout4"
 
-    @property
-    def reshade_dll(self) -> str:
-        return "dxgi.dll"
+    reshade_dll = 'dxgi.dll'
 
-    @property
-    def reshade_arch(self) -> int:
-        return 64
+    reshade_arch = 64
 
     @property
     def wizard_tools(self) -> list[WizardTool]:

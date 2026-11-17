@@ -154,13 +154,9 @@ class BaldursGate3(BaseGame):
     def mod_required_file_types(self) -> set[str]:
         return {".pak"}
     
-    @property
-    def mod_auto_strip_until_required(self) -> bool:
-        return True
+    mod_auto_strip_until_required = True
     
-    @property
-    def mod_install_as_is_if_no_match(self) -> bool:
-        return True
+    mod_install_as_is_if_no_match = True
 
     @property
     def custom_routing_rules(self) -> list:

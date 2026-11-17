@@ -1286,13 +1286,20 @@ class BaseGame(ABC):
         """
         return self._game_path
 
-    @abstractmethod
+    # Mod-install subfolder inside the game directory ("" = the game root).
+    mods_dir: str = ""
+
     def get_mod_data_path(self) -> Path | None:
         """
         Return the directory inside the game where mod files are installed.
         e.g. for Skyrim SE: <game_path>/Data
         Returns None if game_path is not configured.
+
+        Default: <game_path>/<mods_dir>.  Override for anything more involved.
         """
+        if self._game_path is None:
+            return None
+        return self._game_path / self.mods_dir
 
     def get_vanilla_plugins_path(self) -> Path | None:
         """

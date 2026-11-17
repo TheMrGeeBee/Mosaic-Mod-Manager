@@ -9,7 +9,6 @@ Mod structure:
   Root_Folder/ files deploy straight to the game install root (handled by GUI).
 """
 
-from pathlib import Path
 
 from Games.base_game import BaseGame
 from Utils.deploy.deploy import (
@@ -67,12 +66,6 @@ class SlayTheSpire2(BaseGame):
     # -----------------------------------------------------------------------
     # Paths
     # -----------------------------------------------------------------------
-
-    def get_mod_data_path(self) -> Path | None:
-        """Mods go into mods/ inside the game directory."""
-        if self._game_path is None:
-            return None
-        return self._game_path / self.mods_dir
 
     # -----------------------------------------------------------------------
     # Deployment

@@ -176,9 +176,7 @@ class Mewgenics(BaseGame):
     def conflict_ignore_filenames(self) -> set[str]:
         return {"description.json", "info.json" , "preview.png" , "changelog.txt" , "README.md" }
 
-    @property
-    def mod_auto_strip_until_required(self) -> bool:
-        return True
+    mod_auto_strip_until_required = True
 
     @property
     def restore_before_deploy(self) -> bool:
