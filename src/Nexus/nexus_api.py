@@ -36,7 +36,7 @@ import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Callable, Optional
 
 import keyring
 import requests
@@ -550,6 +550,16 @@ class NexusAPIError(Exception):
         self.url = url
 
 
+def _v3_error_message(resp: requests.Response) -> str:
+    """Error text for a non-OK v3 REST response: its message/title field,
+    falling back to the raw body, then the HTTP reason."""
+    try:
+        body_json = resp.json()
+        return body_json.get("message") or body_json.get("title") or resp.reason
+    except Exception:
+        return resp.text[:300] or resp.reason
+
+
 def _response_error_message(resp: requests.Response) -> str:
     """Best-effort human-readable message for a failed response — Nexus's
     JSON error body's "message" field when present, else the raw body text,
@@ -749,15 +759,19 @@ class NexusAPI:
             except Exception:
                 pass
 
-    def _get(self, path: str, params: dict | None = None,
-             retries: int = _MAX_RETRIES) -> Any:
-        """Issue a GET request against the v1 API, with retry on 429."""
+    def _request(self, method: str, url: str, path: str, retries: int,
+                 error_message: Callable[[requests.Response], str],
+                 **kwargs: Any) -> Any:
+        """Send one request, retrying on HTTP 429, and return the decoded JSON.
+
+        *path* is only used for logging; *error_message* turns a non-OK
+        response into the text of the raised ``NexusAPIError``.
+        """
         self._refresh_oauth_if_needed()
-        url = API_BASE + path
+        send = getattr(self._session, method.lower())
         for attempt in range(retries):
             try:
-                resp = self._session.get(url, params=params,
-                                         timeout=self._timeout)
+                resp = send(url, timeout=self._timeout, **kwargs)
             except requests.ConnectionError as exc:
                 raise NexusAPIError(
                     f"Connection failed: {exc}", url=url) from exc
@@ -767,7 +781,7 @@ class NexusAPI:
                     url=url) from exc
 
             self._update_rate_limits(resp)
-            self._log_response("GET", path, resp)
+            self._log_response(method, path, resp)
 
             if resp.status_code == 429:
                 wait = _RATE_LIMIT_BACKOFF * (attempt + 1)
@@ -781,54 +795,23 @@ class NexusAPI:
                     "Invalid or expired API key", 401, url)
 
             if not resp.ok:
-                raise NexusAPIError(_response_error_message(resp), resp.status_code, url)
+                raise NexusAPIError(error_message(resp), resp.status_code, url)
 
             return resp.json()
 
         raise RateLimitError(url)
+
+    def _get(self, path: str, params: dict | None = None,
+             retries: int = _MAX_RETRIES) -> Any:
+        """Issue a GET request against the v1 API, with retry on 429."""
+        return self._request("GET", API_BASE + path, path, retries,
+                             _response_error_message, params=params)
 
     def _post_v3(self, path: str, body: dict,
                  retries: int = _MAX_RETRIES) -> Any:
         """Issue a POST request against the v3 REST API, with retry on 429."""
-        self._refresh_oauth_if_needed()
-        url = V3_BASE + path
-        for attempt in range(retries):
-            try:
-                resp = self._session.post(url, json=body,
-                                          timeout=self._timeout)
-            except requests.ConnectionError as exc:
-                raise NexusAPIError(
-                    f"Connection failed: {exc}", url=url) from exc
-            except requests.Timeout as exc:
-                raise NexusAPIError(
-                    f"Request timed out after {self._timeout}s",
-                    url=url) from exc
-
-            self._update_rate_limits(resp)
-            self._log_response("POST", path, resp)
-
-            if resp.status_code == 429:
-                wait = _RATE_LIMIT_BACKOFF * (attempt + 1)
-                app_log(f"Nexus 429 rate-limited, backing off {wait:.1f}s "
-                        f"(attempt {attempt + 1}/{retries})")
-                time.sleep(wait)
-                continue
-
-            if resp.status_code == 401:
-                raise NexusAPIError(
-                    "Invalid or expired API key", 401, url)
-
-            if not resp.ok:
-                try:
-                    body_json = resp.json()
-                    msg = body_json.get("message") or body_json.get("title") or resp.reason
-                except Exception:
-                    msg = resp.text[:300] or resp.reason
-                raise NexusAPIError(msg, resp.status_code, url)
-
-            return resp.json()
-
-        raise RateLimitError(url)
+        return self._request("POST", V3_BASE + path, path, retries,
+                             _v3_error_message, json=body)
 
     @property
     def rate_limits(self) -> NexusRateLimits:
