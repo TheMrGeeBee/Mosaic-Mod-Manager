@@ -40,7 +40,8 @@ class ConfirmOverlay(OverlayBase):
                 f" color:{contrast_text(_c(p,'BTN_DANGER'))};"
                 f" border:none; border-radius:4px; padding:6px 14px;"
                 f" font-weight:600; }}"
-                f" #DangerButton:hover {{ background:{_c(p,'BTN_DANGER_HOV')}; }}"))
+                f" #DangerButton:hover {{ background:{_c(p,'BTN_DANGER_HOV')}; }}"
+                f" QPushButton:focus {{ border:2px solid {_c(p,'ACCENT')}; }}"))
 
         title_lbl = QLabel(title)
         title_lbl.setStyleSheet(
@@ -55,6 +56,8 @@ class ConfirmOverlay(OverlayBase):
 
         bar = QHBoxLayout()
         bar.addStretch(1)
+        self._buttons: list[QPushButton] = []
+        cancel = None
         if cancel_label is not None:
             cancel_text = (self.tr("Cancel")
                            if cancel_label is self._NO_CANCEL else cancel_label)
@@ -63,15 +66,52 @@ class ConfirmOverlay(OverlayBase):
             cancel.setCursor(Qt.PointingHandCursor)
             cancel.clicked.connect(lambda: self._finish(False))
             bar.addWidget(cancel)
+            self._buttons.append(cancel)
         confirm = QPushButton(
             confirm_label if confirm_label is not None else self.tr("Remove"))
         confirm.setObjectName("DangerButton" if danger else "PrimaryButton")
         confirm.setCursor(Qt.PointingHandCursor)
         confirm.clicked.connect(lambda: self._finish(True))
         bar.addWidget(confirm)
+        self._buttons.append(confirm)
         v.addLayout(bar)
 
+        # Keyboard: a destructive prompt starts on Cancel so a stray Enter
+        # can't delete anything; Tab / arrows move between the buttons and
+        # Enter presses the focused one.
+        (cancel if danger and cancel is not None else confirm).setFocus()
         self._present()
+
+    # -- keyboard -------------------------------------------------------------
+    def _focus_step(self, step: int) -> None:
+        """Move focus to the next/previous button, wrapping around."""
+        if not self._buttons:
+            return
+        current = self.focusWidget()
+        i = self._buttons.index(current) if current in self._buttons else -1
+        self._buttons[(i + step) % len(self._buttons)].setFocus(
+            Qt.TabFocusReason)
+
+    def focusNextPrevChild(self, next_: bool) -> bool:
+        # Keep Tab inside the card; the default would walk into the widgets
+        # behind the overlay.
+        self._focus_step(1 if next_ else -1)
+        return True
+
+    def keyPressEvent(self, event):
+        key = event.key()
+        if key in (Qt.Key_Right, Qt.Key_Down):
+            self._focus_step(1)
+        elif key in (Qt.Key_Left, Qt.Key_Up):
+            self._focus_step(-1)
+        elif key in (Qt.Key_Return, Qt.Key_Enter):
+            focused = self.focusWidget()
+            if focused in self._buttons:
+                focused.click()
+            elif self._buttons:
+                self._buttons[-1].click()
+        else:
+            super().keyPressEvent(event)
 
     @classmethod
     def show_over(cls, host, title, body, on_done, **kw):
