@@ -761,6 +761,38 @@ def log_fomod_summary(summary: dict, log) -> None:
             log(f"    • {_n}")
 
 
+def find_missing_mods(ordered_mods, install_results: "dict[int, str]",
+                      mod_outcomes: "dict[int, dict]", staging) -> list:
+    """Manifest mods that did not end up staged, as ``(name, mod_id, file_id,
+    status, detail)`` tuples (the shape :func:`build_install_report` takes).
+
+    A mod counts as staged when its folder exists under *staging*. That folder is
+    in *install_results* for mods installed in this run, but a mod an earlier run
+    already installed is only recorded as status ``existing`` with its folder as the
+    detail; without that fallback every resumed or repeated install reported all
+    of its earlier mods as "did not install" (87 false failures after a collection
+    install that had been resumed after crashes)."""
+    missing: list = []
+    for mod in ordered_mods:
+        fid = getattr(mod, "file_id", 0) or 0
+        if not fid:
+            continue
+        oc = mod_outcomes.get(fid, {})
+        folder = install_results.get(fid)
+        if not folder and oc.get("status") == "existing":
+            folder = oc.get("detail")
+        staged_ok = bool(folder) and (staging is not None
+                                      and (Path(staging) / folder).is_dir())
+        if staged_ok:
+            continue
+        if oc.get("status") == "skipped_manual":
+            continue  # user chose to skip an optional mod
+        missing.append((getattr(mod, "mod_name", "") or f"file {fid}",
+                        getattr(mod, "mod_id", 0) or 0, fid,
+                        oc.get("status", "unknown"), oc.get("detail", "")))
+    return missing
+
+
 def build_install_report(missing, *, total: int, slug: str = "",
                          revision: "int | None" = None,
                          fomod: "dict | None" = None) -> dict:
@@ -2339,22 +2371,8 @@ def run_collection_install(
             # status="installed" in mod_outcomes — the check just looked in
             # the wrong directory).
             _final_staging = staging_path
-            _missing: list = []
-            for mod in ordered_mods:
-                fid = getattr(mod, "file_id", 0) or 0
-                if not fid:
-                    continue
-                folder = state.install_results.get(fid)
-                staged_ok = bool(folder) and (_final_staging is not None
-                                              and (Path(_final_staging) / folder).is_dir())
-                if not staged_ok:
-                    oc = state.mod_outcomes.get(fid, {})
-                    if oc.get("status") == "skipped_manual":
-                        continue  # user chose to skip an optional mod
-                    _missing.append((getattr(mod, "mod_name", "") or f"file {fid}",
-                                     getattr(mod, "mod_id", 0) or 0, fid,
-                                     oc.get("status", "unknown"),
-                                     oc.get("detail", "")))
+            _missing = find_missing_mods(
+                ordered_mods, state.install_results, state.mod_outcomes, _final_staging)
             with state.install_lock:
                 _fomod_summary = build_fomod_summary(dict(state.fomod_outcomes))
             log_fomod_summary(_fomod_summary, log)
