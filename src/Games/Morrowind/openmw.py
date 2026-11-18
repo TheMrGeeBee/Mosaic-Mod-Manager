@@ -32,6 +32,7 @@ from Utils.deploy.deploy import (
     restore_data_core,
 )
 from Utils.mods.modlist import read_modlist
+from Utils.path_utils import find_child_ci
 
 _OPENMW_FLATPAK_ID = "org.openmw.OpenMW"
 
@@ -78,13 +79,25 @@ class OpenMW(BaseGame):
     def game_id(self) -> str:
         return "morrowind_openmw"
 
+    # The "game folder" is the Morrowind install (it holds "Data Files"), not the
+    # OpenMW program folder, so the exe checked there is Morrowind's own. It used
+    # to be "openmw-launcher", which on a native install lives in /usr/bin: that
+    # folder passed validation and every deploy then failed with no "Data Files".
+    # OpenMW itself is started through get_launch_command(), not through this exe.
     @property
     def exe_name(self) -> str:
-        return "openmw-launcher"
+        return "Morrowind Launcher.exe"
 
     @property
     def exe_name_alts(self) -> list[str]:
-        return ["Morrowind Launcher.exe", "Morrowind.exe"]
+        return ["Morrowind.exe"]
+
+    # Tells the configure view to explain that the folder asked for is the install.
+    game_folder_is_install_dir = True
+
+    # The Plugins panel offers "Mark as groundcover": those plugins are written to
+    # openmw.cfg as groundcover= (see Games/Morrowind/openmw_cfg.py).
+    supports_groundcover = True
 
     @property
     def plugin_extensions(self) -> list[str]:
@@ -210,14 +223,67 @@ class OpenMW(BaseGame):
     # Paths
     # -----------------------------------------------------------------------
 
-    def get_mod_data_path(self) -> Path | None:
+    def _data_files_dir(self) -> Path | None:
+        """<game folder>/Data Files, matched ignoring case (Linux installs often
+        have "data files"); the literal name when it does not exist yet."""
         if self._game_path is None:
             return None
-        return self._game_path / "Data Files"
+        return find_child_ci(self._game_path, "Data Files") or self._game_path / "Data Files"
+
+    def get_mod_data_path(self) -> Path | None:
+        return self._data_files_dir()
+
+    def _game_folder_problem(self) -> str | None:
+        """Why the configured game folder cannot receive mods, or None if it can."""
+        data_dir = self._data_files_dir()
+        if data_dir is None:
+            return "Game path is not configured."
+        if data_dir.is_dir():
+            return None
+        msg = (f"'{self._game_path}' has no 'Data Files' folder. The game folder must be "
+               "your Morrowind installation (the folder that contains 'Data Files'), "
+               "not the folder OpenMW itself is installed in.")
+        if (self._game_path / "openmw-launcher").is_file() or (self._game_path / "openmw").is_file():
+            msg += " This looks like the OpenMW program folder."
+        return msg
+
+    def validate_install(self) -> list[str]:
+        errors = super().validate_install()
+        problem = self._game_folder_problem()
+        if problem and self.is_configured():
+            # Replaces the bare "Mod data directory does not exist" with the fix.
+            errors = [e for e in errors if not e.startswith("Mod data directory")]
+            errors.append(problem)
+        return errors
+
+    def detect_game_path(self) -> Path | None:
+        """The Morrowind install OpenMW is already set up with, from openmw.cfg.
+
+        OpenMW's own installer wizard writes a data= line for the folder holding
+        Morrowind.esm; reuse it so the user need not browse for it again."""
+        cfg = _detect_openmw_cfg()
+        if cfg is None:
+            return None
+        try:
+            lines = cfg.read_text(encoding="utf-8", errors="replace").splitlines()
+        except OSError:
+            return None
+        for raw in lines:
+            key, sep, value = raw.strip().partition("=")
+            if not sep or key.strip().lower() != "data":
+                continue
+            data_dir = Path(value.strip().strip('"'))
+            if data_dir.is_dir() and find_child_ci(data_dir, "Morrowind.esm"):
+                # <install>/Data Files is the usual layout; anything else is
+                # not something deploy can use, so offer nothing for it.
+                if data_dir.name.lower() == "data files":
+                    return data_dir.parent
+        return None
 
     def runtime_snapshot_exclude_dirs(self) -> set[str] | None:
         # 'Data Files/' is reverted via its _Core backup; capture only files outside it.
-        return {"Data Files"}
+        data_dir = self._data_files_dir()
+        return {data_dir.name if data_dir is not None else "Data Files"}
 
     # -----------------------------------------------------------------------
     # Configuration persistence
@@ -256,12 +322,13 @@ class OpenMW(BaseGame):
         if self._game_path is None:
             raise RuntimeError("Game path is not configured.")
 
-        data_dir = self._game_path / "Data Files"
+        data_dir = self._data_files_dir()
         filemap  = self.get_effective_filemap_path()
         staging  = self.get_effective_mod_staging_path()
 
-        if not data_dir.is_dir():
-            raise RuntimeError(f"'Data Files' directory not found: {data_dir}")
+        problem = self._game_folder_problem()
+        if problem:
+            raise RuntimeError(problem)
         if not filemap.is_file():
             raise RuntimeError(
                 f"filemap.txt not found: {filemap}\n"
@@ -352,7 +419,7 @@ class OpenMW(BaseGame):
         if self._game_path is None:
             raise RuntimeError("Game path is not configured.")
 
-        data_dir = self._game_path / "Data Files"
+        data_dir = self._data_files_dir()
 
         _profile_dir = self._active_profile_dir
         _entries = read_modlist(_profile_dir / "modlist.txt") if _profile_dir else []

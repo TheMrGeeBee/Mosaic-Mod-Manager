@@ -1289,6 +1289,16 @@ class BaseGame(ABC):
     # Mod-install subfolder inside the game directory ("" = the game root).
     mods_dir: str = ""
 
+    # True when the folder asked for in Configure Game is the game's install folder
+    # rather than the folder of a program that starts it (e.g. OpenMW lives in
+    # /usr/bin; the folder it needs is the Morrowind install). The configure view
+    # then explains this under the folder field.
+    game_folder_is_install_dir: bool = False
+
+    # True when the engine has a separate groundcover (grass) plugin list the user can
+    # fill from the Plugins panel (OpenMW's groundcover= entries).
+    supports_groundcover: bool = False
+
     def get_mod_data_path(self) -> Path | None:
         """
         Return the directory inside the game where mod files are installed.

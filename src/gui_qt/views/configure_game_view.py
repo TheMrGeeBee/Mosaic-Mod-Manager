@@ -297,6 +297,11 @@ class ConfigureGameView(QWidget):
         v.addWidget(self._section_header(self.tr("Game Installation Folder")))
         self._game_status = self._status(self.tr("Scanning Steam libraries…"), "TEXT_WARN")
         v.addWidget(self._game_status)
+        if getattr(g, "game_folder_is_install_dir", False):
+            v.addWidget(self._status(self.tr(
+                "Select the game's installation folder — for OpenMW, your Morrowind "
+                "folder (the one that contains 'Data Files'), not the folder OpenMW "
+                "itself is installed in."), "TEXT_DIM"))
         self._game_edit = self._path_edit()
         self._game_edit.editingFinished.connect(self._on_game_typed)
         v.addWidget(self._game_edit)
@@ -716,13 +721,15 @@ class ConfigureGameView(QWidget):
         # paths the folder is whatever the user picked — verify the exe is
         # actually inside and warn (rather than silently claiming "Found") if
         # it isn't.
-        if source in ("steam", "heroic", "lutris") or configured:
+        if source in ("steam", "heroic", "lutris", "config") or configured:
             if configured:
                 msg, tone = "Game already configured. You can update the path below.", "TEXT_OK"
             elif source == "heroic":
                 msg, tone = "Found via Heroic Games Launcher.", "TEXT_OK"
             elif source == "lutris":
                 msg, tone = self.tr("Found via Lutris."), "TEXT_OK"
+            elif source == "config":
+                msg, tone = self.tr("Found via the game's own configuration file."), "TEXT_OK"
             else:
                 msg, tone = "Found via Steam libraries.", "TEXT_OK"
         else:
@@ -898,8 +905,16 @@ class ConfigureGameView(QWidget):
             exe_names = [getattr(g, "exe_name", None)] + list(
                 getattr(g, "exe_name_alts", []) or [])
             exe_names = [e for e in exe_names if e]
+            # A handler can know the install from its own config (OpenMW's
+            # openmw.cfg names the Morrowind folder), which beats guessing.
+            detect = getattr(g, "detect_game_path", None)
+            if callable(detect):
+                found = detect()
+                if found:
+                    source = "config"
+                    app_log(f"[Configure Game] Found via the game's own config: {found}")
             app_log(f"[Configure Game] Checking Heroic (exe names: {exe_names})")
-            for exe in exe_names:
+            for exe in ([] if found else exe_names):
                 info = find_heroic_game_info_by_exe(exe)
                 if info:
                     found, fpfx, _app = info
