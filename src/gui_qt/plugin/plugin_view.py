@@ -47,6 +47,7 @@ from gui_qt.plugin.plugin_model import (
 from gui_qt.plugin.plugin_state import (
     PF_DIRTY,
     PF_ESL,
+    PF_GROUNDCOVER,
     PF_LATE,
     PF_LOOT,
     PF_MISSING,
@@ -120,6 +121,7 @@ class PluginDelegate(QStyledItemDelegate):
         self.c_check = qc(p, "CHECK_FILL")   # checkbox fill when enabled
         self.c_check_off = qc(p, "BG_DEEP")
         self.c_esl = qc(p, "TONE_BLUE_SOFT")
+        self.c_groundcover = qc(p, "TONE_GREEN")
         self.c_master = qc(p, "TEXT_WARN")
         # Userlist dot (Tk parity: TEXT_WHITE fill, STATUS_BADGE_RED when the
         # plugin's userlist rules form a cycle).
@@ -241,6 +243,8 @@ class PluginDelegate(QStyledItemDelegate):
             items.append(("uldot", PF_USERLIST, None))
         if bits & PF_ESL:
             items.append(("esl", PF_ESL, None))
+        if bits & PF_GROUNDCOVER:
+            items.append(("gc", PF_GROUNDCOVER, None))
         for bit, name in _PLUGIN_FLAG_ICONS_POST:
             if bit == PF_TAGS and not SHOW_TAG_FLAG:
                 continue
@@ -264,6 +268,10 @@ class PluginDelegate(QStyledItemDelegate):
                 f = QFont(); f.setBold(True); f.setPixelSize(13); p.setFont(f)
                 p.setPen(self.c_esl)
                 p.drawText(cell, Qt.AlignCenter, "L")
+            elif kind == "gc":
+                f = QFont(); f.setBold(True); f.setPixelSize(13); p.setFont(f)
+                p.setPen(self.c_groundcover)
+                p.drawText(cell, Qt.AlignCenter, "G")
             elif kind == "uldot":
                 # Small filled circle: white = managed in userlist.yaml,
                 # red = its rules currently form a broken cycle (Tk parity).
@@ -303,6 +311,9 @@ class PluginDelegate(QStyledItemDelegate):
         fixed strings. Returns None when there's nothing to show."""
         if hit == PF_ESL:
             return "This plugin is marked as Light (ESL)"
+        if hit == PF_GROUNDCOVER:
+            return self.tr("Groundcover: written to openmw.cfg as groundcover=, "
+                           "not as a normal content file")
 
         row = index.data(RowRole)
         if hit == PF_USERLIST:

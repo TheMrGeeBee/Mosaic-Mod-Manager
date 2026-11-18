@@ -427,6 +427,7 @@ class MainWindow:
         self._plugin_view.userlist_plugins = state.plugins
         self._plugin_view.userlist_cycles = state.cycle_plugins
         self._plugin_model.set_userlist_groups(state.group_map)
+        self._plugin_view.on_groundcover_changed = self._on_groundcover_changed
         self._plugin_view.on_userlist_add = self._on_userlist_add
         self._plugin_view.on_group_add = self._on_group_add
         self._plugin_view.on_userlist_remove = self._on_userlist_remove
@@ -665,6 +666,15 @@ class MainWindow:
         self._refresh_cycle_tab_data()
 
     # ---- userlist context-menu actions (plugin_menu callbacks) -------------
+    def _on_groundcover_changed(self, count: int, marked: bool):
+        """Groundcover marks were saved from the Plugins panel; openmw.cfg gets them
+        on the next deploy."""
+        if marked:
+            msg = self.tr("{0} plugin(s) marked as groundcover — Deploy to apply.")
+        else:
+            msg = self.tr("{0} plugin(s) no longer groundcover — Deploy to apply.")
+        self._notify(msg.format(count), "info")
+
     def _on_userlist_add(self, plugin_name: str, row: int):
         """'Add to userlist…' — open the inline bar prefilled with the
         plugin's current load-order neighbours (Tk _add_plugin_to_userlist)."""

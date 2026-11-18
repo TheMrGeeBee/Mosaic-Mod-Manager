@@ -10,8 +10,12 @@ content= lines — no mtime manipulation is needed.
 
 Managed keys (fully replaced on every deploy):
   data=        — directories OpenMW searches for assets and plugins
-  content=     — ordered plugin load list
+  content=     — ordered plugin load list (enabled plugins only)
   groundcover= — grass/groundcover plugins (preserved if caller passes None)
+
+Groundcover plugins must be listed as ``groundcover=`` and NOT as ``content=``:
+OpenMW would otherwise spawn every blade of grass as a normal object. Which plugins
+are groundcover is kept per profile in ``groundcover.txt`` (see read_groundcover).
 
 All other lines (sections, comments, and other key=value pairs) are left
 untouched.
@@ -20,6 +24,7 @@ untouched.
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Iterable
 
 # Vanilla masters are always present and always load first.
 _VANILLA_MASTERS = [
@@ -52,25 +57,77 @@ def _is_managed_line(line: str) -> bool:
 
 
 def _read_plugins_txt(plugins_txt: Path) -> list[str]:
-    """Return the ordered list of active plugin filenames from plugins.txt.
+    """Return the ordered list of ENABLED plugin filenames from plugins.txt.
 
-    Handles MO2-style '*' prefixes for active entries; '#' lines are comments.
+    plugins.txt is MO2-style: ``*Name`` is enabled, a bare ``Name`` is disabled and
+    must not reach openmw.cfg (it used to be written as ``content=`` anyway, so
+    disabling a plugin in Mosaic had no effect on OpenMW). '#' lines are comments.
     """
-    if not plugins_txt.is_file():
-        return []
-    plugins: list[str] = []
-    for raw in plugins_txt.read_text(encoding="utf-8", errors="replace").splitlines():
-        line = raw.strip()
-        if not line or line.startswith("#"):
+    from Utils.plugins.plugins import read_plugins
+    return [e.name for e in read_plugins(plugins_txt, star_prefix=True) if e.enabled]
+
+
+GROUNDCOVER_FILE = "groundcover.txt"
+
+# Name fragments that mark grass/groundcover plugins in practice (Fantasia Grass
+# "FGM_*", "Ozzy's Grass - …", "Grass WG.esp", "Aesthesia groundcover" …). Used only to
+# SUGGEST plugins; nothing is marked without the user choosing it.
+_GROUNDCOVER_HINTS = ("grass", "groundcover", "fgm_")
+
+
+def looks_like_groundcover(plugin_name: str) -> bool:
+    """True if *plugin_name* looks like a grass/groundcover plugin."""
+    low = plugin_name.lower()
+    return low.endswith((".esp", ".omwaddon")) and any(h in low for h in _GROUNDCOVER_HINTS)
+
+
+def read_groundcover(profile_dir: "Path | None") -> "list[str] | None":
+    """Plugins the user marked as groundcover for this profile, in file order.
+
+    ``None`` means the profile has never used the feature (no groundcover.txt), in
+    which case deploy leaves any ``groundcover=`` lines already in openmw.cfg alone.
+    """
+    if profile_dir is None:
+        return None
+    path = Path(profile_dir) / GROUNDCOVER_FILE
+    if not path.is_file():
+        return None
+    out: list[str] = []
+    seen: set[str] = set()
+    for raw in path.read_text(encoding="utf-8", errors="replace").splitlines():
+        name = raw.strip()
+        if not name or name.startswith("#") or name.lower() in seen:
             continue
-        if line.startswith("*"):
-            line = line[1:].strip()
-        # Normalise extension to lowercase.
-        dot = line.rfind(".")
-        if dot != -1:
-            line = line[:dot] + line[dot:].lower()
-        plugins.append(line)
-    return plugins
+        seen.add(name.lower())
+        out.append(name)
+    return out
+
+
+def write_groundcover(profile_dir: Path, names: "Iterable[str]") -> None:
+    """Save the profile's groundcover plugin names (de-duplicated, order kept)."""
+    from Utils.atomic_write import write_atomic_text
+    seen: set[str] = set()
+    lines: list[str] = []
+    for n in names:
+        n = str(n).strip()
+        if n and n.lower() not in seen:
+            seen.add(n.lower())
+            lines.append(n)
+    write_atomic_text(Path(profile_dir) / GROUNDCOVER_FILE,
+                      "\n".join(lines) + ("\n" if lines else ""), encoding="utf-8")
+
+
+def set_groundcover(profile_dir: Path, names: "Iterable[str]", marked: bool) -> "list[str]":
+    """Mark or unmark *names* as groundcover; returns the new list."""
+    change = {str(n).lower(): str(n) for n in names}
+    current = read_groundcover(profile_dir) or []
+    if marked:
+        have = {c.lower() for c in current}
+        current = current + [n for low, n in change.items() if low not in have]
+    else:
+        current = [c for c in current if c.lower() not in change]
+    write_groundcover(profile_dir, current)
+    return current
 
 
 def update_openmw_cfg(
@@ -134,7 +191,10 @@ def update_openmw_cfg(
     # ------------------------------------------------------------------
     active = _read_plugins_txt(plugins_txt)
     vanilla_lower = {p.lower() for p in _VANILLA_MASTERS}
-    user_plugins = [p for p in active if p.lower() not in vanilla_lower]
+    # A groundcover plugin is listed as groundcover=, never as content= as well.
+    gc_lower = {g.lower() for g in groundcover_plugins or ()}
+    user_plugins = [p for p in active
+                    if p.lower() not in vanilla_lower and p.lower() not in gc_lower]
     ordered = _VANILLA_MASTERS + user_plugins
 
     # ------------------------------------------------------------------

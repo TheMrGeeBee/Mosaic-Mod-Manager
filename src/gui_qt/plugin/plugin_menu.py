@@ -145,6 +145,11 @@ def _build_plugin_menu(view, model, row, toggleable, multi,
             divider()
             _build_esl_items(view, model, esl_rows, multi, act, stub)
 
+    # ---- groundcover (OpenMW) ----------------------------------------------
+    if getattr(game, "supports_groundcover", False):
+        divider()
+        _build_groundcover_items(view, model, toggleable, multi, act)
+
     # ---- userlist / groups / cycles (LOOT userlist.yaml) -------------------
     # The app sets the callbacks + membership sets on the view in
     # _reload_plugins; hide the whole block when they're absent (no profile).
@@ -190,6 +195,37 @@ def _build_plugin_menu(view, model, row, toggleable, multi,
     if not multi:
         for text in _loot_locations(view, model.row(row).name):
             stub(text)
+
+
+def _build_groundcover_items(view, model, rows, multi, act):
+    """Mark / unmark plugins as OpenMW groundcover, plus a one-click "mark all that
+    look like grass". Marked plugins are written to openmw.cfg as groundcover=."""
+    from Games.Morrowind.openmw_cfg import looks_like_groundcover
+    from gui_qt.plugin.plugin_state import PF_GROUNDCOVER
+
+    marked = [i for i in rows if model.row(i).flags & PF_GROUNDCOVER]
+    unmarked = [i for i in rows if not model.row(i).flags & PF_GROUNDCOVER]
+    if not multi:
+        i = rows[0]
+        if marked:
+            act(_mt("Remove groundcover mark"), lambda: _set_groundcover(view, [i], False))
+        else:
+            act(_mt("Mark as groundcover (OpenMW)"), lambda: _set_groundcover(view, [i], True))
+    else:
+        if unmarked:
+            act(_mtf("Mark selected as groundcover ({0})", len(unmarked)),
+                lambda: _set_groundcover(view, unmarked, True))
+        if marked:
+            act(_mtf("Remove groundcover mark from selected ({0})", len(marked)),
+                lambda: _set_groundcover(view, marked, False))
+    # Every unmarked grass-looking plugin in the whole list (not just the selection).
+    guesses = [i for i in range(model.rowCount())
+               if not model.row(i).vanilla
+               and not model.row(i).flags & PF_GROUNDCOVER
+               and looks_like_groundcover(model.row(i).name)]
+    if guesses:
+        act(_mtf("Mark all grass/groundcover plugins ({0})", len(guesses)),
+            lambda: _set_groundcover(view, guesses, True))
 
 
 def _build_esl_items(view, model, esl_rows, multi, act, stub):
@@ -249,6 +285,31 @@ def _set_enabled(view, indices, enabled: bool):
     cb = getattr(view, "on_plugins_changed", None)
     if callable(cb):
         cb()
+
+
+def _set_groundcover(view, indices, marked: bool):
+    """Save the groundcover marks for *indices* and repaint their flags. The change
+    reaches openmw.cfg on the next deploy."""
+    from Games.Morrowind.openmw_cfg import set_groundcover
+    from gui_qt.plugin.plugin_model import COL_FLAGS, PFlagsRole
+    from gui_qt.plugin.plugin_state import PF_GROUNDCOVER
+    model = view.model()
+    profile_dir = getattr(model, "_profile_dir", None)
+    if profile_dir is None:
+        return
+    rows = [model.row(i) for i in indices if 0 <= i < model.rowCount()]
+    if not rows:
+        return
+    set_groundcover(profile_dir, [r.name for r in rows], marked)
+    for i in indices:
+        if 0 <= i < model.rowCount():
+            r = model.row(i)
+            r.flags = (r.flags | PF_GROUNDCOVER) if marked else (r.flags & ~PF_GROUNDCOVER)
+    lo, hi = min(indices), max(indices)
+    model.dataChanged.emit(model.index(lo, COL_FLAGS), model.index(hi, COL_FLAGS), [PFlagsRole])
+    cb = getattr(view, "on_groundcover_changed", None)
+    if callable(cb):
+        cb(len(rows), marked)
 
 
 def _toggle_esl(view, indices, enable: bool):
@@ -333,7 +394,12 @@ _TR_MARKERS = (
     QT_TRANSLATE_NOOP("PluginMenu", "Disable — {0} patch replaces it"),
     QT_TRANSLATE_NOOP("PluginMenu", "Enable plugin"),
     QT_TRANSLATE_NOOP("PluginMenu", "Enable selected ({0})"),
+    QT_TRANSLATE_NOOP("PluginMenu", "Mark all grass/groundcover plugins ({0})"),
     QT_TRANSLATE_NOOP("PluginMenu", "Mark as Light (ESL)"),
+    QT_TRANSLATE_NOOP("PluginMenu", "Mark as groundcover (OpenMW)"),
+    QT_TRANSLATE_NOOP("PluginMenu", "Mark selected as groundcover ({0})"),
+    QT_TRANSLATE_NOOP("PluginMenu", "Remove groundcover mark"),
+    QT_TRANSLATE_NOOP("PluginMenu", "Remove groundcover mark from selected ({0})"),
     QT_TRANSLATE_NOOP("PluginMenu", "Mark as Light (ESL) — none eligible "),
     QT_TRANSLATE_NOOP("PluginMenu", "Mark selected as Light (ESL) ({0})"),
     QT_TRANSLATE_NOOP("PluginMenu", "Not ESL-safe (per LOOT — compact in xEdit first)"),

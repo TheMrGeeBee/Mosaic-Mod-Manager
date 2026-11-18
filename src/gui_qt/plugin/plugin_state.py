@@ -62,6 +62,7 @@ PF_USERLIST = 1 << 8   # managed in userlist.yaml (white dot)
 PF_UL_CYCLE = 1 << 9   # userlist rules form a broken cycle (dot turns red)
 PF_ESL_SAFE = 1 << 10  # .esp/.esm eligible for the ESL flag (libloot verdict)
 PF_ESL_UNSAFE = 1 << 11  # .esp/.esm too many records for ESL (libloot verdict)
+PF_GROUNDCOVER = 1 << 12  # marked as groundcover (OpenMW groundcover= entry)
 
 # Bump when check_esl_eligible() changes its verdict criteria so cached
 # eligibility results are invalidated (mirrors Tk _ESL_ELIG_CACHE_VERSION).
@@ -624,6 +625,8 @@ def load_plugins(game, profile: str,
         _apply_loot_flags(rows, p.parent, resolver)
     with span("plugins.userlist_flags"):
         _apply_userlist_flags(rows, p.parent)
+    if getattr(game, "supports_groundcover", False):
+        apply_groundcover_flags(rows, p.parent)
     if cancelled():
         return None
     # ESL eligibility deliberately NOT computed here — see
@@ -1116,6 +1119,17 @@ def _apply_userlist_flags(rows: list[PluginRow], profile_dir: Path) -> None:
             r.flags |= PF_USERLIST
             if low in state.cycle_plugins:
                 r.flags |= PF_UL_CYCLE
+
+
+def apply_groundcover_flags(rows: list[PluginRow], profile_dir: "Path | None") -> None:
+    """Set/clear PF_GROUNDCOVER on every row from <profile>/groundcover.txt."""
+    from Games.Morrowind.openmw_cfg import read_groundcover
+    marked = {n.lower() for n in (read_groundcover(profile_dir) or [])}
+    for r in rows:
+        if r.name.lower() in marked:
+            r.flags |= PF_GROUNDCOVER
+        else:
+            r.flags &= ~PF_GROUNDCOVER
 
 
 def compute_esl_eligibility(names: list[str], resolved: dict[str, Path],

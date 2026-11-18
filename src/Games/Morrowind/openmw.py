@@ -396,10 +396,21 @@ class OpenMW(BaseGame):
                         _seen_bsa.add(_key)
                         bsa_archives.append(_bsa_name)
 
+        # Groundcover plugins (grass) go in groundcover=, not content=. None = this
+        # profile never marked any, so lines already in openmw.cfg are left alone.
+        from Games.Morrowind.openmw_cfg import _read_plugins_txt, read_groundcover
+        marked = read_groundcover(profile_dir)
+        groundcover = None
+        if marked is not None:
+            wanted = {m.lower() for m in marked}
+            groundcover = [p for p in _read_plugins_txt(plugins_txt) if p.lower() in wanted]
+            _log(f"  Groundcover: {len(groundcover)} plugin(s) written as groundcover=.")
+
         update_openmw_cfg(
             cfg_path=cfg_path,
             data_dirs=[data_dir],
             plugins_txt=plugins_txt,
+            groundcover_plugins=groundcover,
             fallback_archives=bsa_archives,
             log_fn=_log,
         )
