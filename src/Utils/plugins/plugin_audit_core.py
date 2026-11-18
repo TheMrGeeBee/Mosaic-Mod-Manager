@@ -11,6 +11,7 @@ scan/disable/cleanup functions ported from the Tk wizard's methods.
 from __future__ import annotations
 
 import mmap
+import os
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -287,6 +288,29 @@ def _scan_data_for_new_records(data: bytes) -> bool:
     return new_count > 0
 
 
+_DISTR_EXTS = (".ini", ".json", ".yaml", ".yml")
+
+
+def _walk_patch_candidates(mod_dir: Path) -> "Tuple[List[str], List[Path]]":
+    """Walk *mod_dir* once; return (names ending ``_swap.ini``, files with a
+    SPID/KID/DSD-relevant extension).  Matching is case-sensitive, like the
+    ``rglob`` patterns this replaces; symlinked folders are not followed.  The
+    ``_swap.ini`` names include folders of that name (as ``rglob`` yielded
+    them); the second list holds files only.  Unreadable folders are skipped."""
+    swap_names: List[str] = []
+    files: List[Path] = []
+    for root, dirs, names in os.walk(mod_dir):
+        for n in dirs:
+            if n.endswith("_swap.ini"):
+                swap_names.append(n)
+        for n in names:
+            if n.endswith("_swap.ini"):
+                swap_names.append(n)
+            if n.endswith(_DISTR_EXTS):
+                files.append(Path(root) / n)
+    return swap_names, files
+
+
 def _build_patch_index(mods_path: Path) -> Tuple[Set[str], Set[str]]:
     """Return (bos_patched, sp_patched) — lower-case plugin name sets."""
     bos_patched: Set[str] = set()
@@ -317,15 +341,15 @@ def _build_patch_index(mods_path: Path) -> Tuple[Set[str], Set[str]]:
                                 break
                         for ext in (".esp", ".esm", ".esl"):
                             bos_patched.add(stem + ext)
-            try:
-                for ini in mod_dir.rglob("*_swap.ini"):
-                    stem = ini.stem.lower()
-                    if stem.endswith("_swap"):
-                        stem = stem[:-5]
-                    for ext in (".esp", ".esm", ".esl"):
-                        bos_patched.add(stem + ext)
-            except OSError:
-                pass
+            # One walk of the mod folder serves both the bare *_swap.ini scan and
+            # the SPID / KID / DSD scan below (they used to rglob it 5 times).
+            swap_names, distr_files = _walk_patch_candidates(mod_dir)
+            for name in swap_names:
+                stem = name[:-4].lower()          # drop ".ini"
+                if stem.endswith("_swap"):
+                    stem = stem[:-5]
+                for ext in (".esp", ".esm", ".esl"):
+                    bos_patched.add(stem + ext)
             for sp_name in ("SkyPatcher", "SkyPatcher2"):
                 sp_dir = mod_dir / "SKSE" / "Plugins" / sp_name
                 if sp_dir.is_dir():
@@ -346,32 +370,28 @@ def _build_patch_index(mods_path: Path) -> Tuple[Set[str], Set[str]]:
                                 sp_patched.add(stem + ext)
                     break
             # SPID / KID / DSD — scan relevant extensions only
-            try:
-                for pattern in ("*.ini", "*.json", "*.yaml", "*.yml"):
-                    for f in mod_dir.rglob(pattern):
-                        if not f.is_file():
-                            continue
-                        nl = f.name.lower()
-                        stem = f.stem.lower()
-                        base_stem = stem
-                        for suffix in ("_distr", "_kid", "_dsd"):
-                            if stem.endswith(suffix):
-                                base_stem = stem[:-len(suffix)]
-                                break
-                        if nl.endswith("_distr.ini"):
-                            sp_patched.add(base_stem + ".esp")
-                            sp_patched.add(base_stem + ".esm")
-                            sp_patched.add(base_stem + ".esl")
-                        elif nl.endswith("_kid.ini"):
-                            sp_patched.add(base_stem + ".esp")
-                            sp_patched.add(base_stem + ".esm")
-                            sp_patched.add(base_stem + ".esl")
-                        elif nl.endswith("_dsd.json") or nl.endswith("_dsd.yaml"):
-                            sp_patched.add(base_stem + ".esp")
-                            sp_patched.add(base_stem + ".esm")
-                            sp_patched.add(base_stem + ".esl")
-            except OSError:
-                pass
+            for f in distr_files:
+                if not f.is_file():            # broken symlink
+                    continue
+                nl = f.name.lower()
+                stem = f.stem.lower()
+                base_stem = stem
+                for suffix in ("_distr", "_kid", "_dsd"):
+                    if stem.endswith(suffix):
+                        base_stem = stem[:-len(suffix)]
+                        break
+                if nl.endswith("_distr.ini"):
+                    sp_patched.add(base_stem + ".esp")
+                    sp_patched.add(base_stem + ".esm")
+                    sp_patched.add(base_stem + ".esl")
+                elif nl.endswith("_kid.ini"):
+                    sp_patched.add(base_stem + ".esp")
+                    sp_patched.add(base_stem + ".esm")
+                    sp_patched.add(base_stem + ".esl")
+                elif nl.endswith("_dsd.json") or nl.endswith("_dsd.yaml"):
+                    sp_patched.add(base_stem + ".esp")
+                    sp_patched.add(base_stem + ".esm")
+                    sp_patched.add(base_stem + ".esl")
     except OSError:
         pass
     return bos_patched, sp_patched
@@ -391,8 +411,33 @@ def _get_priority_for_plugin(plugin_name: str, mods_path: Path,
     return -1
 
 
-def _has_skygen_ini(plugin_name: str, mods_path: Optional[Path]) -> bool:
-    """True if a SkyGen INI for this plugin exists in the SkyGen output directories."""
+class _SkygenIniIndex:
+    """File names under the SkyGen output mods, gathered once per scan so the
+    per-plugin check does not walk those trees again for every plugin."""
+    __slots__ = ("bos_names", "sp_stems")
+
+    def __init__(self, mods_path: Optional[Path]):
+        self.bos_names: List[str] = []   # lower-case *.ini names under SkyGen BOS
+        self.sp_stems: Set[str] = set()  # load-order-prefix-stripped SkyPatcher stems
+        if not mods_path or not mods_path.is_dir():
+            return
+        bos_mod = mods_path / "SkyGen BOS"
+        if bos_mod.is_dir():
+            self.bos_names = [f.name.lower() for f in bos_mod.rglob("*.ini")]
+        for sp_dir_name in ("SkyPatcher", "SkyPatcher2"):
+            sp_dir = mods_path / "SkyGen SkyPatcher" / "SKSE" / "Plugins" / sp_dir_name
+            if not sp_dir.is_dir():
+                continue
+            self.sp_stems = {re.sub(r"^[0-9a-f]+-", "", f.stem.lower())
+                             for f in sp_dir.rglob("*.ini")}
+            break
+
+
+def _has_skygen_ini(plugin_name: str, mods_path: Optional[Path],
+                    index: "Optional[_SkygenIniIndex]" = None) -> bool:
+    """True if a SkyGen INI for this plugin exists in the SkyGen output directories.
+
+    Pass a prebuilt *index* when checking many plugins in a row."""
     if not mods_path or not mods_path.is_dir():
         return False
     stem = Path(plugin_name).stem.lower()
@@ -403,28 +448,17 @@ def _has_skygen_ini(plugin_name: str, mods_path: Optional[Path]) -> bool:
     if ini.is_file():
         return True
 
+    if index is None:
+        index = _SkygenIniIndex(mods_path)
+
     # BOS (legacy naming): {stem}_SkyGen_SWAP.ini anywhere in mod
-    bos_mod = base / "SkyGen BOS"
-    if bos_mod.is_dir():
-        for f in bos_mod.rglob("*.ini"):
-            fn = f.name.lower()
-            if fn == f"{stem}_skygen_swap.ini" or fn.endswith(f"{stem}_skygen_swap.ini"):
-                return True
+    target = f"{stem}_skygen_swap.ini"
+    if any(fn.endswith(target) for fn in index.bos_names):
+        return True
 
     # SkyPatcher: uses load-order prefix, so we check within the SP dir
-    for sp_dir_name in ("SkyPatcher", "SkyPatcher2"):
-        sp_dir = base / "SkyGen SkyPatcher" / "SKSE" / "Plugins" / sp_dir_name
-        if not sp_dir.is_dir():
-            continue
-        for f in sp_dir.rglob("*.ini"):
-            fn_lower = f.stem.lower()
-            # Strip load-order prefix (e.g. "03-") then check for _skygen
-            cleaned = re.sub(r"^[0-9a-f]+-", "", fn_lower)
-            if cleaned == f"{stem}_skygen" or cleaned == stem:
-                return True
-        break
-
-    return False
+    # (names already stripped of that prefix, e.g. "03-")
+    return f"{stem}_skygen" in index.sp_stems or stem in index.sp_stems
 
 
 
@@ -518,6 +552,7 @@ def scan_load_order(game: "BaseGame", *,
     bos_idx, sp_idx = _build_patch_index(mods_path)
     log_fn(f"Patch index: {len(bos_idx)} BOS, {len(sp_idx)} SP/other targets")
 
+    skygen_idx = _SkygenIniIndex(mods_path)
     total = len(lo)
     entries: Dict[str, AuditEntry] = {}
     for i, plugin_name in enumerate(lo):
@@ -552,7 +587,7 @@ def scan_load_order(game: "BaseGame", *,
         entries[plugin_name] = AuditEntry(
             plugin_name=plugin_name, masters=masters, patch_scents=scents,
             mod_name=mod_name, priority=priority, has_new_records=has_new,
-            patch_is_skygen=_has_skygen_ini(plugin_name, mods_path))
+            patch_is_skygen=_has_skygen_ini(plugin_name, mods_path, skygen_idx))
 
     # --- Bashed Patch coverage ---
     _bp_masters: Set[str] = set()
