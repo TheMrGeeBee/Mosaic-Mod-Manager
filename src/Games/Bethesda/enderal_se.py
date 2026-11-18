@@ -23,6 +23,11 @@ class EnderalSE(BethesdaGame):
     vanilla_dlc_plugins: list[str] = []
     synthesis_registry_name = "Enderal Special Edition"
 
+    # 64-bit DirectX 11 (Skyrim SE engine): not the 32-bit DX9 default that
+    # BethesdaGame carries for the classic titles.
+    reshade_dll = 'dxgi.dll'
+    reshade_arch = 64
+
     @property
     def name(self) -> str:
         return "Enderal SE"

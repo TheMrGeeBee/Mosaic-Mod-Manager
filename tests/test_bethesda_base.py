@@ -27,3 +27,24 @@ def test_fallout3_identity():
     g = Fallout_3()
     assert (g.name, g.game_id, g.steam_id) == ("Fallout 3", "Fallout3", "22300")
     assert g.loot_game_type == "Fallout3"
+
+
+def test_reshade_hints_match_each_games_engine():
+    """The base default (d3d9 / 32-bit) is for the classic DX9 titles only; a 64-bit
+    DX11 game must set its own (Enderal SE once inherited the 32-bit default)."""
+    from Games.Bethesda.enderal import Enderal
+    from Games.Bethesda.enderal_se import EnderalSE
+    from Games.Bethesda.fallout_4 import Fallout_4
+    from Games.Bethesda.fallout_nv import Fallout_NV
+    from Games.Bethesda.oblivion import Oblivion
+    from Games.Bethesda.skyrim import Skyrim
+
+    expected = {
+        Fallout_3: ("d3d9.dll", 32), Fallout_NV: ("d3d9.dll", 32),
+        Oblivion: ("d3d9.dll", 32), Skyrim: ("d3d9.dll", 32), Enderal: ("d3d9.dll", 32),
+        SkyrimSE: ("dxgi.dll", 64), EnderalSE: ("dxgi.dll", 64),
+        Fallout_4: ("dxgi.dll", 64),
+    }
+    for cls, hint in expected.items():
+        g = cls()
+        assert (g.reshade_dll, g.reshade_arch) == hint, cls.__name__
