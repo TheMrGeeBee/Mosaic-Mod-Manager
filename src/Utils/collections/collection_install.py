@@ -122,14 +122,22 @@ def _build_collision_suffix_map(
 
     result: dict[int, str] = {}
     for fid, base in fid_to_base.items():
-        siblings = base_to_fids.get(base.lower(), [])
+        # Distinct files only: the same file listed twice (e.g. one FOMOD with two
+        # choice sets) is one install, not a collision.
+        siblings = list(dict.fromkeys(base_to_fids.get(base.lower(), [])))
         if len(siblings) <= 1:
             result[fid] = ""
             continue
         sibling_mod_ids = {fid_to_mod_id.get(s) for s in siblings}
         sibling_mod_ids.discard(None)
         if len(sibling_mod_ids) <= 1:
-            result[fid] = ""
+            # Several files of ONE mod page under one name (main + HD, variants,
+            # patches). They used to share a folder, so each install replaced the
+            # one before it and only the last file survived (OAAB_Data's HD
+            # textures wiped its .esm: "missing master"). Number them in manifest
+            # order; the first keeps the plain name so existing installs match.
+            n = siblings.index(fid) + 1
+            result[fid] = "" if n == 1 else f" ({n})"
             continue
         mod_id = fid_to_mod_id.get(fid)
         result[fid] = f" ({mod_id})" if mod_id else ""
@@ -439,6 +447,25 @@ def _name_candidates(idx: CollectionSchemaIndex, mod) -> "list[str]":
     return candidates
 
 
+def _name_fallback_folder(idx: CollectionSchemaIndex, mod,
+                          staging_lower_map: "dict[str, str]",
+                          staging_folder_fid: "dict[str, int]") -> str:
+    """Existing staging folder matched to *mod* by name alone, or "".
+
+    Skips a folder whose meta.ini records a different file of THIS collection: with
+    same-named files of one mod page (main + HD) the plain name belongs to the first
+    file, and claiming it for the others would mark them installed when they are not."""
+    for candidate in _name_candidates(idx, mod):
+        folder = staging_lower_map.get(candidate.lower())
+        if not folder:
+            continue
+        owner = staging_folder_fid.get(folder.lower(), 0)
+        if owner and owner != mod.file_id and owner in idx.file_id_to_pos:
+            continue
+        return folder
+    return ""
+
+
 def _preferred_name(idx: CollectionSchemaIndex, mod) -> str:
     """Install-folder name for *mod*, plus any collision suffix."""
     logical = idx.file_id_to_logical.get(mod.file_id, "") or ""
@@ -446,6 +473,23 @@ def _preferred_name(idx: CollectionSchemaIndex, mod) -> str:
         idx.file_id_to_pos.get(mod.file_id, -1), "") or ""
     pref = logical or schema_name or mod.mod_name or ""
     return pref + idx.file_id_to_suffix.get(mod.file_id, "")
+
+
+def _resolve_existing_folder(idx: CollectionSchemaIndex, mod, already_by_ids: dict,
+                             already_by_fid: dict, staging_lower_map: "dict[str, str]",
+                             staging_folder_fid: "dict[str, int]") -> str:
+    """The staging folder already holding *mod*, or "" if it still needs installing."""
+    folder = _match_existing(idx, already_by_ids, already_by_fid, mod)
+    if folder:
+        # A same-named sibling (number 2, 3, ...) matched by its file id to the PLAIN
+        # name was installed under the old scheme, where every file of the page shared
+        # that one folder and the last install won. Its content is gone from there, and
+        # its own numbered folder does not exist yet: install it again.
+        suffix = idx.file_id_to_suffix.get(mod.file_id, "")
+        if suffix and folder.lower() == _preferred_name(idx, mod)[:-len(suffix)].lower():
+            return ""
+        return folder
+    return _name_fallback_folder(idx, mod, staging_lower_map, staging_folder_fid)
 
 
 def _manual_domain(idx: CollectionSchemaIndex, game_domain: str, mod) -> str:
@@ -1207,14 +1251,9 @@ def run_collection_install(
             _record_outcome(mod, "no_file_id")
             skipped += 1
             continue
-        existing_folder: str = _match_existing(
-            idx, already_installed_by_ids, already_installed_by_fid, mod)
-        if not existing_folder:
-            for candidate in _name_candidates(idx, mod):
-                key = candidate.lower()
-                if key in staging_lower_map:
-                    existing_folder = staging_lower_map[key]
-                    break
+        existing_folder: str = _resolve_existing_folder(
+            idx, mod, already_installed_by_ids, already_installed_by_fid,
+            staging_lower_map, staging_folder_fid)
         if existing_folder:
             log(f"Collection install: '{mod.mod_name}' already installed as "
                 f"'{existing_folder}' — skipping")
