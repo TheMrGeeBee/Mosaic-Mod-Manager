@@ -1852,6 +1852,10 @@ def run() -> int:
         pass
 
     app = QApplication(sys.argv)
+    # Garbage-collect cycles on the GUI thread only: PySide6 6.12 / Python 3.14
+    # segfaults when the collector runs on a worker thread (see gui_qt/gc_guard.py).
+    from gui_qt.gc_guard import install as _install_gc_guard
+    _install_gc_guard(app)
     _apply_app_identity(app)
     # Install UI translators before any widget is built (Qt only translates
     # tr() calls made after the translator is installed). Language comes from
