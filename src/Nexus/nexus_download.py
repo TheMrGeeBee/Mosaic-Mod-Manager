@@ -376,6 +376,43 @@ class NexusDownloader:
         self._download_dir = path
         self._download_dir.mkdir(parents=True, exist_ok=True)
 
+    # -- Cache reuse --------------------------------------------------------
+
+    @staticmethod
+    def _reuse_cached(dest: Path, file_name: str, expected_size_bytes: int,
+                      game_domain: str, mod_id: int, file_id: int
+                      ) -> "DownloadResult | None":
+        """A finished result for an archive already in *dest*, else None.
+
+        An archive that is found but incomplete (a truncated earlier download)
+        is deleted so the caller's fresh download starts cleanly.  With no
+        name and no size only the exact ``.fileid`` sidecar can match, which
+        needs no API call."""
+        cached, is_complete = _find_cached_archive(
+            dest, file_name, expected_size_bytes, mod_id, file_id
+        )
+        if cached is None:
+            return None
+        if is_complete:
+            app_log(f"Skipping download — cached archive found: {cached.name}")
+            return DownloadResult(
+                success=True,
+                file_path=cached,
+                file_name=cached.name,
+                bytes_downloaded=cached.stat().st_size,
+                game_domain=game_domain,
+                mod_id=mod_id,
+                file_id=file_id,
+                from_cache=True,
+            )
+        app_log(f"Removing partial download before retry: {cached.name}")
+        try:
+            cached.unlink(missing_ok=True)
+            _fileid_sidecar(cached).unlink(missing_ok=True)
+        except Exception:
+            pass
+        return None
+
     # -- Public API ---------------------------------------------------------
 
     def download_from_nxm(
@@ -385,6 +422,7 @@ class NexusDownloader:
         progress_cb: ProgressCallback | None = None,
         cancel: threading.Event | None = None,
         known_file_name: str = "",
+        expected_size_bytes: int = 0,
     ) -> DownloadResult:
         """
         Download a file using a parsed NXM link.
@@ -398,11 +436,42 @@ class NexusDownloader:
         dest_dir    : Override download directory. Defaults to self.download_dir.
         progress_cb : Called periodically with (bytes_so_far, total_bytes).
         cancel      : Set this event to abort the download.
+        known_file_name / expected_size_bytes : Optional, from the caller; the
+                      missing ones are read from the file's API record.
+
+        An identical, complete archive already in the download folder is reused
+        instead of fetching it again (and instead of saving ``Name (1).zip``
+        beside it): matched by the ``.fileid`` sidecar Mosaic writes, else by
+        name and size, which also finds archives downloaded by hand.  A hit
+        returns ``from_cache=True`` without using the NXM key.  When the size
+        cannot be determined nothing is reused and the file is downloaded.
 
         Returns
         -------
         DownloadResult with file_path on success, or error message on failure.
         """
+        dest = dest_dir or self._download_dir
+        file_name = known_file_name or ""
+        size = expected_size_bytes
+
+        # The file's size is needed to tell a finished archive from a truncated
+        # one (the sidecar is written when a download *starts*), so read it
+        # from the API record when the caller did not pass it.  That call was
+        # made here anyway, just after the download links.
+        if not file_name or not size:
+            try:
+                file_info = self._api.get_file_info(
+                    link.game_domain, link.mod_id, link.file_id)
+                file_name = file_name or file_info.file_name
+                size = size or (file_info.size_in_bytes or 0)
+            except Exception:
+                pass
+        if size:
+            hit = self._reuse_cached(
+                dest, file_name, size, link.game_domain, link.mod_id, link.file_id)
+            if hit is not None:
+                return hit
+
         try:
             links = self._api.get_download_links(
                 game_domain=link.game_domain,
@@ -426,21 +495,10 @@ class NexusDownloader:
                 mod_id=link.mod_id, file_id=link.file_id,
             )
 
-        # Use caller-supplied filename if available; otherwise fall back to
-        # a dedicated get_file_info call (costs 1 rate-limited request).
-        file_name = known_file_name or ""
-        if not file_name:
-            try:
-                file_info = self._api.get_file_info(
-                    link.game_domain, link.mod_id, link.file_id)
-                file_name = file_info.file_name
-            except Exception:
-                pass
-
         return self._download_from_links(
             links=links,
             file_name=file_name,
-            dest_dir=dest_dir or self._download_dir,
+            dest_dir=dest,
             progress_cb=progress_cb,
             cancel=cancel,
             game_domain=link.game_domain,
@@ -534,33 +592,10 @@ class NexusDownloader:
         # fallback.  Partial downloads (size < 95 % of expected) are deleted
         # so the download starts cleanly.
         _dest = dest_dir or self._download_dir
-        cached, is_complete = _find_cached_archive(
-            _dest, known_file_name, expected_size_bytes, mod_id, file_id
-        )
-        if cached is not None:
-            if is_complete:
-                app_log(
-                    f"Skipping download — cached archive found: {cached.name}"
-                )
-                return DownloadResult(
-                    success=True,
-                    file_path=cached,
-                    file_name=cached.name,
-                    bytes_downloaded=cached.stat().st_size,
-                    game_domain=game_domain,
-                    mod_id=mod_id,
-                    file_id=file_id,
-                    from_cache=True,
-                )
-            else:
-                app_log(
-                    f"Removing partial download before retry: {cached.name}"
-                )
-                try:
-                    cached.unlink(missing_ok=True)
-                    _fileid_sidecar(cached).unlink(missing_ok=True)
-                except Exception:
-                    pass
+        hit = self._reuse_cached(
+            _dest, known_file_name, expected_size_bytes, game_domain, mod_id, file_id)
+        if hit is not None:
+            return hit
 
         # Fetch a fresh signed CDN link (one rate-limited API call per download).
         try:

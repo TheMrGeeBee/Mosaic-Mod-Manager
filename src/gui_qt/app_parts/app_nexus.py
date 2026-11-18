@@ -341,6 +341,9 @@ class MainWindow:
         except Exception as exc:
             self._append_log(f"[nexus] could not build metadata: {exc}")
 
+        if result.from_cache:
+            self._append_log(
+                f"[nexus] using the archive already downloaded: {result.file_name}")
         path = str(result.file_path)
         metas = {path: meta} if meta is not None else None
         self._install_paths([path], metas=metas)
