@@ -4,6 +4,28 @@ reset to v1.0.0; they keep Amethyst Mod Manager's original numbering, which
 overlaps the numbers above, and the prefix is what keeps the two apart (and
 keeps release tooling from matching the wrong section).
 
+- v1.14.0
+  ### Additions
+  - OpenMW groundcover. In the Plugins panel, right-click a plugin and choose "Mark as groundcover (OpenMW)", or use "Mark all grass/groundcover plugins" to mark every plugin whose name looks like grass. Marked plugins are kept per profile and written to openmw.cfg as groundcover= instead of content=, so OpenMW uses its groundcover system rather than spawning each blade of grass as an ordinary object. They show a green "G" in the Flags column. A profile that never marks anything leaves any groundcover= lines already in openmw.cfg alone. OpenMW still needs "[Groundcover] enabled = true" in its own settings.cfg, which Mosaic does not write.
+  - Confirm dialogs can be used from the keyboard: Tab and the arrow keys move between the buttons and Enter chooses. A dangerous confirmation starts on Cancel.
+
+  ### Changes
+  - A Wabbajack install now retries a Nexus download that failed for a transient reason before it asks you to download the file by hand.
+  - Clicking "Download with Mod Manager" for a file you already have no longer downloads it again and saves "Name (1).zip" beside it. A complete archive already in the download folder is reused, whether Mosaic downloaded it earlier or you saved it from the Nexus site, and the unused Nexus link is left untouched.
+  - Faster scanning: the SkyGen scan walks each mod folder once instead of five times per plugin, the Plugin Audit scan does the same (about 10 times faster on a large Skyrim profile), and read-only lookups in mosaic.ini no longer re-parse the file each time.
+  - Behind the scenes, the main window (app.py, 15,300 lines) was split into 18 focused modules, game handlers now share the staging, deploy-mode and prefix code through the base class (and Bethesda games through a common BethesdaGame), and duplicated helpers were merged. No behaviour changes are intended; imports are now checked by ruff.
+
+  ### Bug Fixes
+  - Fixed a crash (segmentation fault) during collection installs. It happened inside Python's garbage collector when it ran on a worker thread, with PySide6 6.12 on Python 3.14, and it hit three times in an hour right after a BAIN picker closed. The collector now runs only on the main thread.
+  - Fixed OpenMW being unusable on a native install. Mosaic asked for the folder containing the OpenMW launcher (/usr/bin on Arch), which looked valid, and every deploy then failed because that folder has no "Data Files". The game folder is now your Morrowind install, checked by Morrowind's own exe and filled in automatically from the data= line in openmw.cfg. Picking the OpenMW program folder now gives a message saying what to choose instead.
+  - A plugin disabled in Mosaic is no longer written to openmw.cfg as content=. Disabling had no effect on OpenMW before.
+  - Fixed files of one mod page being overwritten in collection installs. When a collection lists several files of the same Nexus page under the same name (main file + HD textures, variants, patches), they shared one folder and each install replaced the previous one, leaving only the last. In the Morrowind Remastered collection this affected 41 mods; for example OAAB_Data's HD textures wiped its .esm, which then showed as a missing master. Such files now get numbered folders, and resuming an install repairs profiles made the old way.
+  - Fixed "N mod(s) did not install" listing mods that had installed fine. After an install was resumed (for example after a crash), every mod from the earlier run was reported as failed.
+  - The Vampire: The Masquerade - Bloodlines "stock exe (no 4 GB patch)" warning no longer appears when a modlist supplies its own patched vampire.exe or Loader.exe. It was checked before those root-level files were put in place.
+  - Enderal Special Edition's ReShade wizard now pre-selects dxgi.dll and 64-bit, matching its engine, instead of the 32-bit d3d9 defaults meant for the original Elder Scrolls games.
+
+---
+
 - v1.13.3
   ### Bug Fixes
   - Fixed collection mods that belong to another Nexus game or to Nexus's own "site" section failing to download. A collection can pin a mod from outside its own game, and records that in its manifest as a per-mod domain. The collection installer's download step ignored it and asked Nexus for every mod under the collection's own game, so Nexus answered "No Mod Found" or "No File found" and the install fell back to opening a browser tab on the wrong page. Tainted Grail: Fall of Avalon's "Epic Edition" rev 70 hit this with TFC Installer for UE2-UE3 (mod 588, under "site") and Intro Video Replacements (mod 181, under Spyro Reignited Trilogy): both exist on Nexus, and neither could be found. The mod's own domain is now used for the download and for the install's metadata, the same as the manual-download path already did.
