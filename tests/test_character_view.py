@@ -250,27 +250,28 @@ def test_the_weight_slider_shows_its_value_and_rebuilds_after_a_pause(app, view,
 
 def test_worn_pieces_follow_the_body_weight(app, view, catalog):
     _ready(app, view)
-    got = _capture_builds(view)
+    by_gen = {}                          # worker builds can finish out of order: key by generation, not arrival
+    view._build_ready.connect(lambda gen, res: by_gen.__setitem__(gen, res))
+    current = lambda: by_gen.get(view._gen)                                 # noqa: E731
+    shapes = lambda: [s.name for s in current()["scene"].shapes]            # noqa: E731
     view.equip(entry(catalog, "meshes/armor/iron/f/cuirass_1.nif"))        # equipped as the heavy version
     view.equip(entry(catalog, "meshes/armor/iron/f/boots_1.nif"))           # has no slim version
     _wait(app, lambda: len(view._pieces) == 2)
-    _wait(app, lambda: got and "boots" in [s.name for s in got[-1]["scene"].shapes])
-    reach = lambda: next(s for s in got[-1]["scene"].shapes if s.name == "cuirass_f").positions[3]   # noqa: E731
-    assert reach() == 3.0 and not got[-1]["matched"] and not got[-1]["blended"]        # Heavy: as equipped
+    _wait(app, lambda: current() and "boots" in shapes())
+    reach = lambda: next(s for s in current()["scene"].shapes if s.name == "cuirass_f").positions[3]   # noqa: E731
+    assert reach() == 3.0 and not current()["matched"] and not current()["blended"]        # Heavy: as equipped
 
-    n = len(got)
     _set_weight(view, 0)                                                   # slim: the _0 file
-    _wait(app, lambda: len(got) > n)
+    _wait(app, lambda: current() is not None)
     assert reach() == 1.0
-    assert "boots" in [s.name for s in got[-1]["scene"].shapes]            # no boots_0: keeps the _1
-    assert got[-1]["matched"] == ["cuirass_0.nif"] and not got[-1]["blended"]
+    assert "boots" in shapes()                                             # no boots_0: keeps the _1
+    assert current()["matched"] == ["cuirass_0.nif"] and not current()["blended"]
     assert "matched to body weight: cuirass_0.nif" in view._info.text()
     assert view._slot_labels["body"].text() == "cuirass_1.nif"             # the slot still shows what was chosen
 
-    n = len(got)
     _set_weight(view, 100)
-    _wait(app, lambda: len(got) > n and reach() == 3.0)
-    assert got[-1]["matched"] == []
+    _wait(app, lambda: current() is not None)
+    assert reach() == 3.0 and current()["matched"] == []
 
 
 def test_in_between_weights_blend_the_slim_and_heavy_meshes(app, view, catalog):
