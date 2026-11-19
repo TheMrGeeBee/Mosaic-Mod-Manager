@@ -328,7 +328,10 @@ class CollectionInstallOverlay(QWidget):
         already be in the download cache. Reverts the moment a real download
         is seen (dl_done keeps counting cache hits too, so this only ever
         holds true while EVERY processed mod was a hit)."""
-        all_cached = dl_done > 0 and cache_hit_done >= dl_done
+        # The counts only cover FINISHED mods, so a download still in flight is
+        # invisible to them: without this check a resumed install fetching two big
+        # files showed "nothing to download" and hid their progress rows.
+        all_cached = dl_done > 0 and cache_hit_done >= dl_done and not self._dl_slot_of
         if all_cached != self._all_cached:
             self._all_cached = all_cached
             self._dl_frame.setVisible(not all_cached)
@@ -346,6 +349,12 @@ class CollectionInstallOverlay(QWidget):
     def dl_start(self, file_id: int, name: str, size: int):
         if file_id in self._dl_slot_of:
             return
+        if self._all_cached:
+            # A real download began: leave the "found in cache" state at once.
+            self._all_cached = False
+            self._dl_frame.setVisible(True)
+            self._agg_bar.setRange(0, 0)
+            self._agg_lbl.setText(self.tr("Downloading…"))
         free = next((i for i in range(_DL_SLOTS) if i not in self._dl_slot_of.values()),
                     None)
         if free is None:
