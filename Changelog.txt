@@ -4,6 +4,17 @@ reset to v1.0.0; they keep Amethyst Mod Manager's original numbering, which
 overlaps the numbers above, and the prefix is what keeps the two apart (and
 keeps release tooling from matching the wrong section).
 
+- v1.14.1
+  ### Additions
+  - OpenMW script load order. Mosaic now reads each .omwscripts file's Lua and, when a script uses another script's interface (for example I.SomeFramework) that the profile loads later, writes it to openmw.cfg just after the script that provides it. Everything else keeps its place, and each move is listed in the deploy log.
+  - OpenMW settings. The Plugins panel menu has a new "OpenMW settings…" entry that edits a few engine settings in OpenMW's settings.cfg: groundcover (on/off, stomping, density), distant terrain, post processing, shadows and field of view. Only the lines you change are touched, and a backup (settings.cfg.mosaic-bak) is made first.
+
+  ### Bug Fixes
+  - A deploy with groundcover plugins marked now says so in the log when "[Groundcover] enabled" is off in settings.cfg, since OpenMW draws no grass until it is on.
+  - Fixed the download progress rows of a resumed collection install being hidden. When the mods finished so far had all come from the download cache, a new download still in flight was ignored and the overlay kept showing "nothing to download".
+
+---
+
 - v1.14.0
   ### Additions
   - OpenMW groundcover. In the Plugins panel, right-click a plugin and choose "Mark as groundcover (OpenMW)", or use "Mark all grass/groundcover plugins" to mark every plugin whose name looks like grass. Marked plugins are kept per profile and written to openmw.cfg as groundcover= instead of content=, so OpenMW uses its groundcover system rather than spawning each blade of grass as an ordinary object. They show a green "G" in the Flags column. A profile that never marks anything leaves any groundcover= lines already in openmw.cfg alone. OpenMW still needs "[Groundcover] enabled = true" in its own settings.cfg, which Mosaic does not write.
