@@ -226,6 +226,14 @@ def _build_groundcover_items(view, model, rows, multi, act):
     if guesses:
         act(_mtf("Mark all grass/groundcover plugins ({0})", len(guesses)),
             lambda: _set_groundcover(view, guesses, True))
+    game = getattr(view, "game", None)
+    if hasattr(game, "get_openmw_cfg_path"):
+        act(_mt("OpenMW settings…"), lambda: _open_openmw_settings(view, game))
+
+
+def _open_openmw_settings(view, game):
+    from gui_qt.views.openmw_settings_dialog import open_openmw_settings
+    open_openmw_settings(view, game)
 
 
 def _build_esl_items(view, model, esl_rows, multi, act, stub):
@@ -396,6 +404,7 @@ _TR_MARKERS = (
     QT_TRANSLATE_NOOP("PluginMenu", "Enable selected ({0})"),
     QT_TRANSLATE_NOOP("PluginMenu", "Mark all grass/groundcover plugins ({0})"),
     QT_TRANSLATE_NOOP("PluginMenu", "Mark as Light (ESL)"),
+    QT_TRANSLATE_NOOP("PluginMenu", "OpenMW settings…"),
     QT_TRANSLATE_NOOP("PluginMenu", "Mark as groundcover (OpenMW)"),
     QT_TRANSLATE_NOOP("PluginMenu", "Mark selected as groundcover ({0})"),
     QT_TRANSLATE_NOOP("PluginMenu", "Remove groundcover mark"),

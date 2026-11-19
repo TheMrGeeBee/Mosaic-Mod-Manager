@@ -136,6 +136,7 @@ def update_openmw_cfg(
     plugins_txt: Path,
     groundcover_plugins: list[str] | None = None,
     fallback_archives: list[str] | None = None,
+    script_orderer=None,
     log_fn=None,
 ) -> None:
     """Rewrite the managed data= / content= / groundcover= / fallback-archive= entries in openmw.cfg.
@@ -151,6 +152,10 @@ def update_openmw_cfg(
         fallback_archives:   Ordered list of .bsa archive names to write as
                              fallback-archive= entries.  When None, existing
                              fallback-archive= lines from the cfg are preserved unchanged.
+        script_orderer:      Optional callable ``(names) -> (names, moves, notes)`` that
+                             reorders the .omwscripts entries so a script loads after
+                             the scripts whose Lua interfaces it uses (see
+                             omw_script_order.make_orderer). None = keep plugins.txt order.
         log_fn:              Optional logging callable.
     """
     _log = log_fn or (lambda _: None)
@@ -195,6 +200,12 @@ def update_openmw_cfg(
     gc_lower = {g.lower() for g in groundcover_plugins or ()}
     user_plugins = [p for p in active
                     if p.lower() not in vanilla_lower and p.lower() not in gc_lower]
+    if script_orderer is not None:
+        user_plugins, moves, notes = script_orderer(user_plugins)
+        for m in moves:
+            _log(f"  Script order: {m.name} now loads after {m.after} (it uses {m.because}).")
+        for note in notes:
+            _log(f"  Script order: {note}.")
     ordered = _VANILLA_MASTERS + user_plugins
 
     # ------------------------------------------------------------------

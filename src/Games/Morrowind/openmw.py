@@ -374,6 +374,7 @@ class OpenMW(BaseGame):
         _log(f"  Renamed {_renamed} file(s).")
 
         _log("Step 5: Updating openmw.cfg ...")
+        from Games.Morrowind.omw_script_order import make_orderer
         from Games.Morrowind.openmw_cfg import update_openmw_cfg
         plugins_txt = profile_dir / "plugins.txt"
         cfg_path    = self.get_openmw_cfg_path()
@@ -405,6 +406,16 @@ class OpenMW(BaseGame):
             wanted = {m.lower() for m in marked}
             groundcover = [p for p in _read_plugins_txt(plugins_txt) if p.lower() in wanted]
             _log(f"  Groundcover: {len(groundcover)} plugin(s) written as groundcover=.")
+            if groundcover:
+                from Games.Morrowind.openmw_settings import (
+                    read_settings,
+                    settings_cfg_path,
+                )
+                _on = read_settings(settings_cfg_path(cfg_path)).get(("groundcover", "enabled"), "false")
+                if _on.strip().lower() not in ("true", "1", "yes", "on"):
+                    _log("  Note: [Groundcover] enabled is off in settings.cfg, so OpenMW "
+                         "will not draw grass. Turn it on under OpenMW settings… in the "
+                         "Plugins panel menu.")
 
         update_openmw_cfg(
             cfg_path=cfg_path,
@@ -412,6 +423,7 @@ class OpenMW(BaseGame):
             plugins_txt=plugins_txt,
             groundcover_plugins=groundcover,
             fallback_archives=bsa_archives,
+            script_orderer=make_orderer([data_dir]),
             log_fn=_log,
         )
 
