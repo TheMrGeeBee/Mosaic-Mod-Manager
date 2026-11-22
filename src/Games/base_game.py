@@ -1025,6 +1025,13 @@ class BaseGame(ABC):
         return ""
 
     @property
+    def modhold_game_slug(self) -> str:
+        """Modhold's slug for this game (e.g. 'skyrim-se'), or "" when Modhold
+        does not list it. Looked up in Modhold/game_slugs.py by ``game_id``."""
+        from Modhold.game_slugs import modhold_slug_for
+        return modhold_slug_for(self.game_id)
+
+    @property
     def nexus_game_domain(self) -> str:
         """
         Nexus Mods game domain name used for API requests.
@@ -1268,6 +1275,15 @@ class BaseGame(ABC):
                 description="Switch the game to another Steam build with Valve's own "
                             "depot downloads, and back.",
                 dialog_class_path="wizards.game_version.GameVersionWizard",
+            ))
+        if self.modhold_game_slug:
+            tools.append(WizardTool(
+                id="modhold_account",
+                label="Modhold account",
+                description="Connect your Modhold account to download mods and "
+                            "loadouts (a Pass unlocks alpha/beta and paid mods).",
+                dialog_class_path="wizards.modhold_settings.ModholdSettingsWizard",
+                category="Update tracking",
             ))
         return tools
 

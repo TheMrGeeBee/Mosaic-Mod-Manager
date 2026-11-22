@@ -178,6 +178,8 @@ REGISTRY: dict[str, QtWizardSpec] = {
         QtWizardSpec(_simple("wizards_qt.gpak_view", "GpakView")),
     "wizards.modio_settings.ModioSettingsWizard":
         QtWizardSpec(_simple("wizards_qt.modio_settings_view", "ModioSettingsView")),
+    "wizards.modhold_settings.ModholdSettingsWizard":
+        QtWizardSpec(_simple("wizards_qt.modhold_settings_view", "ModholdSettingsView")),
     "wizards.fnv_4gb_patch.Fnv4GbPatchWizard":
         QtWizardSpec(_simple("wizards_qt.fnv_4gb_view", "Fnv4GbView")),
     "wizards.fallout_downgrade.FalloutDowngradeWizard":
