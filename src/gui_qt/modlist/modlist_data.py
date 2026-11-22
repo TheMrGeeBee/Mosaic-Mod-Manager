@@ -29,6 +29,7 @@ FLAG_ROOT_RULE = 1 << 12   # owns files with a custom root-routing rule — file
 FLAG_RERUN_FOMOD = 1 << 13  # a FOMOD option's fileDependency plugin is now in the load order — live overlay
 FLAG_MODIO_LIKED = 1 << 14  # BG3 mod.io: the logged-in user has rated this mod positively
 FLAG_COLLECTION_ORDER_LOCKED = 1 << 15  # TW3: this mod's priority is set by a Collection's loadOrder
+FLAG_MODHOLD_UPDATE = 1 << 16  # a newer file of this Modhold mod exists (modholdLatest* keys)
 
 
 def _parse_missing_req_pairs(raw: str) -> list[tuple[int, str]]:
@@ -253,6 +254,21 @@ def read_meta_for_entries(entries: list[ModEntry], staging_dir: Path,
                         categories[e.name] = _modio_tags
             except Exception:
                 pass
+        # Modhold update (any game): the newest counterpart file is newer than the
+        # installed one. Cheap text pre-check, so non-Modhold mods cost no parse.
+        try:
+            from Modhold.modhold_meta import read_modhold_meta_fast, update_pending
+            mh = read_modhold_meta_fast(meta_path)
+            if mh is not None:
+                if update_pending(mh):
+                    bits |= FLAG_MODHOLD_UPDATE
+                    updates.add(e.name)
+                if e.name not in versions and mh.version:
+                    versions[e.name] = mh.version
+                if e.name not in authors and mh.uploader:
+                    authors[e.name] = mh.uploader
+        except Exception:
+            pass
         # Per-profile user note.
         if notes.get(e.name):
             bits |= FLAG_NOTE

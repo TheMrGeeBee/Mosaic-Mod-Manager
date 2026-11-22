@@ -22,6 +22,7 @@ from gui_qt.modlist.modlist_data import (
     FLAG_COLLECTION_PATCHED,
     FLAG_ENDORSED,
     FLAG_MISSING_REQS,
+    FLAG_MODHOLD_UPDATE,
     FLAG_MODIFIED_MF,
     FLAG_MODIO_LIKED,
     FLAG_MODIO_UPDATE,
@@ -58,6 +59,7 @@ _FLAG_ICONS = [
     (FLAG_RERUN_FOMOD, "rerun_fomod.png"),
     (FLAG_UPDATE, "update.png"),
     (FLAG_MODIO_UPDATE, "update_modio.png"),
+    (FLAG_MODHOLD_UPDATE, "update.png#e0a84e"),   # the update arrow in Modhold gold
     (FLAG_ENDORSED, "endorsed.png"),
     (FLAG_MODIO_LIKED, "modio_liked.png"),
     # info.png: pre-RTX OR collection bundled/patched — only ONE ever paints (see
@@ -89,6 +91,7 @@ _FLAG_TIPS = {
     FLAG_RERUN_FOMOD: QT_TRANSLATE_NOOP("ModRowDelegate", "A FOMOD patch option's plugin is now installed — click to re-run the FOMOD installer"),
     FLAG_UPDATE: QT_TRANSLATE_NOOP("ModRowDelegate", "Update available on Nexus Mods"),
     FLAG_MODIO_UPDATE: QT_TRANSLATE_NOOP("ModRowDelegate", "Update available on mod.io"),
+    FLAG_MODHOLD_UPDATE: QT_TRANSLATE_NOOP("ModRowDelegate", "Update available on Modhold"),
     FLAG_ENDORSED: QT_TRANSLATE_NOOP("ModRowDelegate", "Endorsed"),
     FLAG_MODIO_LIKED: QT_TRANSLATE_NOOP("ModRowDelegate", "Liked on mod.io"),
     FLAG_PRERTX: QT_TRANSLATE_NOOP("ModRowDelegate", "Pre-RTX mod"),
