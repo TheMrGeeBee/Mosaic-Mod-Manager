@@ -898,6 +898,10 @@ class MainWindow:
         self._modlist_view.on_quick_update = self._quick_update_mods
         # Quick Update (mod.io): right-click on mod.io-update-flagged mods.
         self._modlist_view.on_quick_update_modio = self._quick_update_modio_mods
+        # Quick Update (Modhold): right-click on Modhold-update-flagged mods.
+        self._modlist_view.on_quick_update_modhold = self._update_modhold_mods
+        # Change Version (Modhold): right-click on a Modhold mod.
+        self._modlist_view.on_change_version_modhold = self._change_version_modhold
         # Reinstall: right-click item(s) whose install archive is still on disk.
         self._modlist_view.on_reinstall = self._reinstall_mods
         # Show Conflicts: right-click item.

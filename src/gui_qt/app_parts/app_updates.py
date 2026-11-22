@@ -65,6 +65,32 @@ def _check_modio_updates(game, staging, log_fn, only_names=None, access_token=No
         log_fn(f"mod.io: update check failed — {e}")
         return []
 
+def _modhold_present(game, staging) -> bool:
+    """True when this game has a Modhold slug and a mod in *staging* came from
+    Modhold. Reading a mod needs no key, so no login is required to check."""
+    try:
+        if not getattr(game, "modhold_game_slug", ""):
+            return False
+        from Modhold.modhold_update_checker import has_modhold_mods
+        return has_modhold_mods(Path(staging))
+    except Exception:
+        return False
+
+
+def _check_modhold_updates(staging, log_fn, only_names=None):
+    """Modhold update check. Returns a list of ModholdUpdateInfo (mods with a newer
+    file, or an unknown installed file). *only_names* restricts the check to those
+    staging folder names. Never raises."""
+    try:
+        from Modhold.modhold_api import ModholdAPI
+        from Modhold.modhold_update_checker import check_for_updates
+        return check_for_updates(Path(staging), ModholdAPI(), progress_cb=log_fn,
+                                 only_names=only_names)
+    except Exception as e:
+        log_fn(f"Modhold: update check failed — {e}")
+        return []
+
+
 class MainWindow:
 
     def _on_check_updates(self, names=None):
@@ -95,10 +121,14 @@ class MainWindow:
         # _check_modio_updates); None (not logged in via email) just skips
         # that part, update-checking itself only ever needed the api_key.
         modio_access_token = self._ensure_modio_oauth()
+        # Modhold needs no login to read a mod, so a profile with only Modhold mods
+        # (and no Nexus login) can still check for updates.
+        _staging_pre = self._gs.staging_dir()
+        have_modhold = _staging_pre is not None and _modhold_present(game, _staging_pre)
 
         # mod.io (BG3) can run without a Nexus login. Only bail for "needs Nexus
         # login" when there's also no mod.io key to fall back on.
-        if not have_nexus and not have_modio:
+        if not have_nexus and not have_modio and not have_modhold:
             if getattr(game, "game_id", "") == "baldurs_gate_3":
                 self._notify(
                     self.tr("Log in to Nexus (Nexus ▸ Login) or set a mod.io API key "
@@ -140,7 +170,7 @@ class MainWindow:
             # silently reads as "all mods up to date" when Nexus wasn't
             # actually checked.
             out = {
-                "nexus": None, "modio": [], "subset": subset,
+                "nexus": None, "modio": [], "modhold": [], "subset": subset,
                 "nexus_skipped": bool(domain and not have_nexus),
             }
             try:
@@ -160,6 +190,20 @@ class MainWindow:
                         target=_modio_work, daemon=True, name="check-modio")
                     modio_thread.start()
 
+                # Modhold runs alongside too: its own API, its own meta.ini keys.
+                modhold_box = {"results": []}
+
+                def _modhold_work():
+                    modhold_box["results"] = _check_modhold_updates(
+                        staging, lambda m: self._op_log.emit(f"[modhold] {m}"),
+                        only_names=subset)
+
+                modhold_thread = None
+                if have_modhold:
+                    modhold_thread = threading.Thread(
+                        target=_modhold_work, daemon=True, name="check-modhold")
+                    modhold_thread.start()
+
                 if have_nexus:
                     try:
                         out["nexus"] = check_for_updates(
@@ -173,6 +217,9 @@ class MainWindow:
                 if modio_thread is not None:
                     modio_thread.join()
                     out["modio"] = modio_box["results"]
+                if modhold_thread is not None:
+                    modhold_thread.join()
+                    out["modhold"] = modhold_box["results"]
             except Exception as exc:
                 self._append_log(f"update check failed: {exc}")
                 self._updates_ready.emit(None)
@@ -223,6 +270,15 @@ class MainWindow:
         if modio_unknown:
             parts.append(f"{len(modio_unknown)} mod.io version"
                          f"{'s' if len(modio_unknown) != 1 else ''} unknown")
+        modhold = result.get("modhold") or []
+        modhold_updates = [u for u in modhold if not getattr(u, "unknown", False)]
+        modhold_unknown = [u for u in modhold if getattr(u, "unknown", False)]
+        if modhold_updates:
+            parts.append(f"Modhold: {len(modhold_updates)} update"
+                         f"{'s' if len(modhold_updates) != 1 else ''}")
+        if modhold_unknown:
+            parts.append(f"{len(modhold_unknown)} Modhold version"
+                         f"{'s' if len(modhold_unknown) != 1 else ''} unknown")
         if result.get("nexus_skipped"):
             # Nexus has a page for this game but wasn't actually queried (no
             # valid login) — say so explicitly rather than letting an empty

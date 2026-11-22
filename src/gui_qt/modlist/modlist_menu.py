@@ -281,9 +281,12 @@ def _build_mod_menu(view, model, row, entry, sel_mods, multi, act, stub, divider
         _check_multi = [nm for nm in _names
                         if _has_nexus_id(view, nm) or bool(_modio_url(view, nm))]
         _nexus_multi = [nm for nm in _names if _has_nexus_page(view, nm)]
+        _modhold_multi = [nm for nm in _names if _has_modhold_id(view, nm)]
+        _modhold_page_multi = [nm for nm in _names if _modhold_url(view, nm)]
         _reqs_multi = [nm for nm in _names if _has_missing_reqs(view, nm)]
         _qu = [nm for nm in _names if _has_update_flag(view, nm)]
         _qu_modio = [nm for nm in _names if _has_modio_update_flag(view, nm)]
+        _qu_modhold = [nm for nm in _names if _has_modhold_update_flag(view, nm)]
         _modio_like_multi = [nm for nm in _names
                              if _has_modio_id(view, nm) and not _is_modio_liked(view, nm)]
         _modio_unlike_multi = [nm for nm in _names
@@ -317,6 +320,18 @@ def _build_mod_menu(view, model, row, entry, sel_mods, multi, act, stub, divider
                  lambda ns=_nexus_multi: _open_on_nexus_multi(view, ns)))
         if _nexus_sub:
             submenu(_mt("Nexus Actions"), _nexus_sub)
+        # Modhold items nest under their own submenu too.
+        _modhold_sub = []
+        if _modhold_multi:
+            _modhold_sub.append(
+                (_mtf("Check Updates ({0})", len(_modhold_multi)),
+                 lambda ns=_modhold_multi: _check_updates(view, ns)))
+        if _modhold_page_multi:
+            _modhold_sub.append(
+                (_mtf("Open on Modhold ({0})", len(_modhold_page_multi)),
+                 lambda ns=_modhold_page_multi: _open_on_modhold_multi(view, ns)))
+        if _modhold_sub:
+            submenu(_mt("Modhold Actions"), _modhold_sub)
         # mod.io items nest under their own submenu, mirroring "Nexus Actions".
         _modio_sub = []
         if _modio_unlike_multi:
@@ -338,6 +353,9 @@ def _build_mod_menu(view, model, row, entry, sel_mods, multi, act, stub, divider
         if _qu_modio:
             act(_mtf("Quick Update (mod.io) ({0})", len(_qu_modio)),
                 lambda ns=_qu_modio: _quick_update_modio(view, ns))
+        if _qu_modhold:
+            act(_mtf("Quick Update (Modhold) ({0})", len(_qu_modhold)),
+                lambda ns=_qu_modhold: _quick_update_modhold(view, ns))
         if _reinstall_multi:
             act(_mtf("Reinstall ({0})", len(_reinstall_multi)),
                 lambda ns=_reinstall_multi: _reinstall(view, ns))
@@ -448,12 +466,27 @@ def _build_mod_menu(view, model, row, entry, sel_mods, multi, act, stub, divider
             (_mt("Open on mod.io"), lambda: _open_on_modio(view, name)))
     if _modio_items:
         submenu(_mt("mod.io Actions"), _modio_items)
-    if _has_id or bool(_modio_url(view, name)):
+    # Modhold items nest under their own submenu, mirroring "Nexus Actions".
+    # Modhold has no public endorse/track call, so those two stay on its site
+    # ("Open on Modhold"); Change Version picks among the mod's current files.
+    _has_modhold = _has_modhold_id(view, name)
+    _modhold_items = []
+    if _has_modhold:
+        _modhold_items.append(
+            (_mt("Change Version (Modhold)"), lambda: _change_version_modhold(view, name)))
+    if _modhold_url(view, name):
+        _modhold_items.append(
+            (_mt("Open on Modhold"), lambda: _open_on_modhold(view, name)))
+    if _modhold_items:
+        submenu(_mt("Modhold Actions"), _modhold_items)
+    if _has_id or bool(_modio_url(view, name)) or _has_modhold:
         act(_mt("Check Updates"), lambda: _check_updates(view, [name]))
     if _has_update_flag(view, name):
         act(_mt("Quick Update"), lambda: _quick_update(view, [name]))
     if _has_modio_update_flag(view, name):
         act(_mt("Quick Update (mod.io)"), lambda: _quick_update_modio(view, [name]))
+    if _has_modhold_update_flag(view, name):
+        act(_mt("Quick Update (Modhold)"), lambda: _quick_update_modhold(view, [name]))
     divider()
     # Group 4: organise / layout
     act(_mt("Add separator above"), lambda: _add_separator(view, model, row, True))
@@ -616,6 +649,18 @@ def _has_modio_update_flag(view, name: str) -> bool:
     return bool(bits & FLAG_MODIO_UPDATE)
 
 
+def _has_modhold_update_flag(view, name: str) -> bool:
+    """True if *name* carries the Modhold update flag (FLAG_MODHOLD_UPDATE), read
+    off the model's flag bitmask like the mod.io one."""
+    try:
+        model = view.model()
+    except Exception:
+        return False
+    from gui_qt.modlist.modlist_data import FLAG_MODHOLD_UPDATE
+    bits = model._flags.get(name, 0) if hasattr(model, "_flags") else 0
+    return bool(bits & FLAG_MODHOLD_UPDATE)
+
+
 def _has_missing_reqs(view, name: str) -> bool:
     """True if *name* carries the missing-requirements flag (FLAG_MISSING_REQS).
     Read off the model's flag bitmask (same source the row paints), so the menu
@@ -663,6 +708,16 @@ def _quick_update_modio(view, names):
     it isn't wired (e.g. headless)."""
     cb = getattr(view, "on_quick_update_modio", None)
     targets = [n for n in names if _has_modio_update_flag(view, n)]
+    if cb is not None and targets:
+        cb(targets)
+
+
+def _quick_update_modhold(view, names):
+    """Download and install the newest file for each Modhold-update-flagged mod in
+    *names* (the window installs the callback in _reload_modlist). No-op if it
+    isn't wired (e.g. headless)."""
+    cb = getattr(view, "on_quick_update_modhold", None)
+    targets = [n for n in names if _has_modhold_update_flag(view, n)]
     if cb is not None and targets:
         cb(targets)
 
@@ -790,6 +845,54 @@ def _has_modio_id(view, name: str) -> bool:
         return int(cp.get("General", "modioModId", fallback="0") or "0") > 0
     except Exception:
         return False
+
+
+def _modhold_meta(view, name: str):
+    """The mod's Modhold record from meta.ini, or None when it is not a Modhold mod."""
+    staging = getattr(view, "staging_dir", None)
+    if staging is None:
+        return None
+    try:
+        from Modhold.modhold_meta import read_modhold_meta_fast
+        return read_modhold_meta_fast(staging / name / "meta.ini")
+    except Exception:
+        return None
+
+
+def _has_modhold_id(view, name: str) -> bool:
+    """True if *name* has a Modhold mod id recorded in meta.ini (mirrors
+    _has_nexus_id / _has_modio_id)."""
+    return _modhold_meta(view, name) is not None
+
+
+def _modhold_url(view, name: str) -> str:
+    """The mod's Modhold page URL from meta.ini ("" if none)."""
+    m = _modhold_meta(view, name)
+    return (m.url or "").strip() if m is not None else ""
+
+
+def _open_on_modhold(view, name: str):
+    url = _modhold_url(view, name)
+    if not url:
+        return
+    try:
+        from Utils.xdg import open_url
+        open_url(url)
+    except Exception:
+        pass
+
+
+def _open_on_modhold_multi(view, names):
+    for nm in names:
+        _open_on_modhold(view, nm)
+
+
+def _change_version_modhold(view, name):
+    """Open the Change Version (Modhold) picker for *name* (the window installs
+    the callback in _reload_modlist). No-op if it isn't wired (e.g. headless)."""
+    cb = getattr(view, "on_change_version_modhold", None)
+    if cb is not None and name:
+        cb(name)
 
 
 def _change_version_modio(view, name):
@@ -1727,6 +1830,10 @@ _TR_MARKERS = (
     QT_TRANSLATE_NOOP("ModListMenu", "View Requirements"),
     QT_TRANSLATE_NOOP("ModListMenu", "Mod name:"),
     QT_TRANSLATE_NOOP("ModListMenu", "mod.io Actions"),
+    QT_TRANSLATE_NOOP("ModListMenu", "Modhold Actions"),
+    QT_TRANSLATE_NOOP("ModListMenu", "Change Version (Modhold)"),
+    QT_TRANSLATE_NOOP("ModListMenu", "Open on Modhold"),
+    QT_TRANSLATE_NOOP("ModListMenu", "Open on Modhold ({0})"),
     QT_TRANSLATE_NOOP("ModListMenu", "Move to profile"),
     QT_TRANSLATE_NOOP("ModListMenu", "Move to profile ({0})"),
     QT_TRANSLATE_NOOP("ModListMenu", "Move to separator"),
@@ -1742,6 +1849,8 @@ _TR_MARKERS = (
     QT_TRANSLATE_NOOP("ModListMenu", "Quick Update ({0})"),
     QT_TRANSLATE_NOOP("ModListMenu", "Quick Update (mod.io)"),
     QT_TRANSLATE_NOOP("ModListMenu", "Quick Update (mod.io) ({0})"),
+    QT_TRANSLATE_NOOP("ModListMenu", "Quick Update (Modhold)"),
+    QT_TRANSLATE_NOOP("ModListMenu", "Quick Update (Modhold) ({0})"),
     QT_TRANSLATE_NOOP("ModListMenu", "Reinstall ({0})"),
     QT_TRANSLATE_NOOP("ModListMenu", "Reinstall (Redownload)"),
     QT_TRANSLATE_NOOP("ModListMenu", "Reinstall Mod"),

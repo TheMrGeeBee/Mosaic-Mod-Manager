@@ -35,6 +35,7 @@ from gui_qt.app_parts.app_footers import MainWindow as _AppFootersMixin
 from gui_qt.app_parts.app_game_switch import MainWindow as _AppGameSwitchMixin
 from gui_qt.app_parts.app_install import MainWindow as _AppInstallMixin
 from gui_qt.app_parts.app_log import MainWindow as _AppLogMixin
+from gui_qt.app_parts.app_modhold import MainWindow as _AppModholdMixin
 from gui_qt.app_parts.app_modlist import MainWindow as _AppModlistMixin
 from gui_qt.app_parts.app_modlist_actions import MainWindow as _AppModlistActionsMixin
 from gui_qt.app_parts.app_nexus import MainWindow as _AppNexusMixin
@@ -174,6 +175,7 @@ class MainWindow(
     _AppUpdateMixin,
     _AppLogMixin,
     _AppNexusMixin,
+    _AppModholdMixin,
     _AppCollectionsMixin,
     _AppPluginsMixin,
     _AppBsaMixin,
@@ -289,6 +291,10 @@ class MainWindow(
     _qu_dl_progress = Signal("qlonglong", "qlonglong")  # aggregate (cur_bytes, total_bytes; 64-bit: >2GB)
     # mod.io Quick Update — mirrors _qu_* above (Nexus), simpler (no premium gate).
     _qmu_resolved = Signal(object, object)        # (queue list, skipped list)
+    _modhold_update_ready = Signal(object, object)  # (queue list, skipped list)
+    _modhold_versions_ready = Signal(object, object, str)  # (mod name, detail|None, error)
+    _modhold_loadout_ready = Signal(object, str)           # (Loadout|None, error)
+    _modhold_nexus_ready = Signal(object, object, str)     # (Loadout, picks|None, note)
     _qmu_downloaded = Signal(object, object)      # (dl_items list, failed list)
     _qmu_dl_progress = Signal("qlonglong", "qlonglong")  # aggregate (cur_bytes, total_bytes; 64-bit: >2GB)
     _reinstall_downloaded = Signal(object, object)  # (dl_items list, failed list)
@@ -572,6 +578,10 @@ class MainWindow(
         # mod.io Quick Update — same shape, no premium gate.
         self._quick_updating_modio = False
         self._qmu_resolved.connect(self._on_qmu_resolved)
+        self._modhold_update_ready.connect(self._on_modhold_update_ready)
+        self._modhold_versions_ready.connect(self._on_modhold_versions_ready)
+        self._modhold_loadout_ready.connect(self._on_modhold_loadout_ready)
+        self._modhold_nexus_ready.connect(self._on_modhold_nexus_ready)
         self._qmu_downloaded.connect(self._on_qmu_downloaded)
         self._qmu_dl_progress.connect(self._on_qmu_dl_progress)
         self._reinstall_downloaded.connect(self._on_reinstall_downloaded)
@@ -1352,6 +1362,15 @@ class MainWindow(
         """Post-install reminder: the collection lists off-site mods that the
         installer can't download — the user must fetch + install them manually
         (links live in the detail view's yellow "Off-site mods" panel)."""
+        # A Modhold loadout has its own follow-up for the items hosted elsewhere: a guided
+        # browser download, or the list of links.
+        loadout = getattr(self, "_col_loadout", None)
+        if loadout:
+            self._col_loadout = None
+            unresolved = list(self._col_offsite)
+            self._col_offsite = []
+            self._modhold_after_install(loadout, unresolved)
+            return
         offsite = self._col_offsite
         self._col_offsite = []
         if not offsite:

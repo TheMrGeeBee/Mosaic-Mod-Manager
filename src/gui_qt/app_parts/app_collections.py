@@ -1389,7 +1389,8 @@ class MainWindow:
             ov.finish(self.tr("Done — {0}/{1} installed.").format(installed, total))
             QTimer.singleShot(1500, self._dismiss_col_overlay)
         self._select_installed_collection_profile(profile_name)
-        msg = self.tr("Collection installed — {0}/{1} mod(s)").format(installed, total)
+        msg = (self.tr("Loadout installed — {0}/{1} mod(s)") if getattr(self, "_col_loadout", None)
+               else self.tr("Collection installed — {0}/{1} mod(s)")).format(installed, total)
         self._notify(msg + (self.tr(" ({0} skipped)").format(skipped_n) if skipped_n else ""),
                      "warning" if (getattr(self, "_col_failed", None)
                                    or getattr(self, "_col_warnings", None)) else "success")

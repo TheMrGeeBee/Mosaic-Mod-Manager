@@ -730,6 +730,7 @@ class MainWindow:
         from gui_qt.modlist.modlist_data import (
             FLAG_BUNDLE,
             FLAG_MISSING_REQS,
+            FLAG_MODHOLD_UPDATE,
             FLAG_MODIO_UPDATE,
             FLAG_NOTE,
             FLAG_RERUN_FOMOD,
@@ -752,6 +753,8 @@ class MainWindow:
             # Quick Update (mod.io) — the old one-click behaviour — is still
             # available from the right-click menu.
             self._open_change_version_modio_tab(e.name)
+        elif flag == FLAG_MODHOLD_UPDATE:
+            self._update_modhold_mods([e.name])
         elif flag == FLAG_MISSING_REQS:
             self._open_missing_reqs_tab(e.name)
         elif flag == FLAG_NOTE:

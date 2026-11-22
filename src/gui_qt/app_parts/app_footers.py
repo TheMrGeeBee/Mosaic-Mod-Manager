@@ -600,6 +600,12 @@ class MainWindow:
                     (self.tr("Reset load order"), self._reset_collection_load_order),
                 ]),
             ]),
+            ("Modhold", self.tr("Modhold"), "modhold.png", [
+                (self.tr("Browse Modhold…"), self._open_modhold_browser_tab),
+                (self.tr("Browse loadouts…"), self._open_modhold_loadouts_tab),
+                None,
+                (self.tr("Account…"), self._open_modhold_account),
+            ]),
             ("Wabbajack", self.tr("Wabbajack"), "wabbajack.png", [
                 (self.tr("Browse modlists…"),
                  lambda: self._wabbajack_controller().open_browser()),
