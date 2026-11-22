@@ -445,6 +445,12 @@ def describe(game_root: "str | Path", state_dir: "str | Path", *, game_running: 
 # catalog written by the 1.7.104 first-run crashed 1.6.1170 at its 47th entry, the
 # first uuid starting with 'a'). The game rebuilds the file when it is missing, so
 # a catalog written by a newer runtime is set aside (backed up) after a switch.
+#
+# That holds however the game got onto 1.6.1170: Mosaic's runtime swap (patching the
+# exe) or the Game Version switch (Steam depots). The crash only ever depends on the
+# installed exe, so :func:`repair_content_catalog` looks at that, not at which feature
+# was used (it once checked only for a recorded runtime swap, and a game moved to
+# 1.6.1170 through Game Version died silently on the loading screen, 2026-11-22).
 
 CATALOG_NAME = "ContentCatalog.txt"
 CATALOG_BACKUP_DIRNAME = "catalog_backup"
@@ -500,7 +506,7 @@ def set_aside_content_catalog(prefix_path: "str | Path | None", state_dir: "str 
         backup.unlink(missing_ok=True)
         log_fn(f"Runtime swap: could not set aside {CATALOG_NAME}: {exc}")
         return None
-    log_fn(f"Runtime swap: set aside the {CATALOG_NAME} written by another Skyrim version "
+    log_fn(f"Skyrim version change: set aside the {CATALOG_NAME} written by another Skyrim version "
            f"(backup: {backup}); the game will create a fresh one.")
     return backup
 
@@ -534,14 +540,30 @@ def restore_content_catalog(prefix_path: "str | Path | None", state_dir: "str | 
     return True
 
 
+# The newest 1.6.x build that predates the ``CSV2_<uuid>`` catalog ids. Builds 1.6.1179
+# and later (and every 1.7.x) read them; this one and every 1.6.x before it do not.
+_LAST_PRE_CSV2_BUILD = (1, 6, 1170)
+
+
+def cannot_parse_newer_catalog(version: Version | None) -> bool:
+    """True for an installed 1.6.x exe up to 1.6.1170: the builds whose catalog parser
+    throws on the newer ``CSV2_<uuid>`` ids. False for an unreadable version, 1.5.x,
+    1.6.1179 and everything newer."""
+    if not version or len(version) < 3:
+        return False
+    return tuple(version[:2]) == (1, 6) and tuple(version[:3]) <= _LAST_PRE_CSV2_BUILD
+
+
 def repair_content_catalog(game_root: "str | Path", prefix_path: "str | Path | None",
                            state_dir: "str | Path", *,
                            log_fn: Callable[[str], None] = _noop) -> bool:
-    """Pre-launch check: while a Mosaic runtime switch is in place, set aside a
-    ContentCatalog.txt the switched-to runtime cannot parse. Returns True if it
-    moved one. Cheap: reads one small JSON file, and only when a switch is recorded."""
+    """Pre-launch check: when the installed exe is a build that cannot parse the newer
+    ``CSV2_`` catalog ids (see :func:`cannot_parse_newer_catalog`), or a Mosaic runtime
+    swap to another build is in place, set aside a ContentCatalog.txt that runtime
+    cannot parse. Returns True if it moved one. Cheap: reads the exe's version and
+    one small JSON file."""
     info = describe(game_root, state_dir, game_running=False)
-    if not info.swapped:
+    if not info.swapped and not cannot_parse_newer_catalog(info.version):
         return False
     return set_aside_content_catalog(prefix_path, state_dir, log_fn=log_fn) is not None
 

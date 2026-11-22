@@ -501,6 +501,19 @@ class GameVersionView(WizardViewBase):
         self._apply_btn.setEnabled(total > 0 and done == total)
 
     # ---- page 3: apply -----------------------------------------------------------------
+    def _repair_after_switch(self):
+        """Let the game clear what the build it was just switched to cannot read (Skyrim:
+        a ContentCatalog.txt written by 1.7.104 kills 1.6.1170 on the loading screen).
+        It also runs before every launch from Mosaic; doing it here covers a game
+        started some other way. Never raises: a failed repair must not fail the switch."""
+        repair = getattr(self._game, "pre_launch_repair", None)
+        if repair is None:
+            return
+        try:
+            repair(log_fn=self._log)
+        except Exception as exc:                      # noqa: BLE001
+            self._log(f"Repair after the switch skipped: {exc}")
+
     def _on_apply(self):
         self._watch_timer.stop()
         self._goto(_PG_APPLY)
@@ -516,6 +529,7 @@ class GameVersionView(WizardViewBase):
                 self._dv.apply_version(game_root, entry, dirs, state_dir, from_label=from_label,
                                        exe_file=exe, game_running=running, deploy_active=active,
                                        log_fn=self._log)
+                self._repair_after_switch()
                 safe_emit(self._run_status_sig, self.tr(
                     "Switched to {0}. Launch the game from Mosaic (for Fallout 4: the "
                     "f4se_loader.exe entry), not with Play in Steam: Steam may update it back. "

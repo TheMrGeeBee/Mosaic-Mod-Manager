@@ -645,3 +645,141 @@ def test_skyrimse_pre_launch_repair_never_raises(monkeypatch):
     monkeypatch.setattr(game, "get_game_path", lambda: (_ for _ in ()).throw(RuntimeError("boom")))
     logs = []
     assert game.pre_launch_repair(logs.append) is False and any("skipped" in m for m in logs)
+
+
+# ---- the same crash after the Game Version switch (no runtime swap recorded) -------
+#
+# 2026-11-22: a game moved to 1.6.1170 through the Game Version wizard (Steam depots,
+# nothing in runtime_state.json) died silently on the loading screen: the repair only
+# ran while a *runtime swap* was recorded, but the crash depends only on the exe.
+
+def _exe_as(game_root: Path, version: tuple[int, ...]) -> None:
+    exe = game_root / "SkyrimSE.exe"
+    exe.write_bytes(build_pe(version) + b"exe")
+
+
+@pytest.mark.parametrize("version,affected", [
+    ((1, 6, 1170, 0), True),            # the build that crashed
+    ((1, 6, 1130, 0), True),
+    ((1, 6, 317, 0), True),             # the first 1.6.x
+    ((1, 6, 1179, 0), False),           # first build that reads the newer ids
+    ((1, 7, 104, 0), False),            # current Steam build
+    ((1, 5, 97, 0), False),             # the pre-1.6 line is not what this guards
+    ((2, 6, 1170, 0), False),
+])
+def test_which_builds_cannot_parse_the_newer_catalog(version, affected):
+    assert sr.cannot_parse_newer_catalog(version) is affected
+
+
+@pytest.mark.parametrize("version", [None, (), (1,), (1, 6)])
+def test_an_unreadable_or_short_version_is_never_treated_as_affected(version):
+    assert sr.cannot_parse_newer_catalog(version) is False
+
+
+def test_a_1_6_1170_exe_without_any_swap_record_has_the_catalog_set_aside(game_root, state_dir, prefix):
+    f = _catalog(prefix, ["CSV2_016105c0-aaaa", "CSV2_a12aacea-74b0"])
+    _exe_as(game_root, (1, 6, 1170, 0))
+    assert not (state_dir / sr.STATE_FILENAME).exists()            # no runtime swap was ever made
+    logs = []
+    assert sr.repair_content_catalog(game_root, prefix, state_dir, log_fn=logs.append) is True
+    assert not f.exists()
+    backups = list((state_dir / sr.CATALOG_BACKUP_DIRNAME).glob(sr.CATALOG_NAME + ".*"))
+    assert len(backups) == 1 and "CSV2_a12aacea-74b0" in backups[0].read_text()
+    assert any("set aside" in m.lower() for m in logs) and not any("Runtime swap" in m for m in logs)
+    assert sr.repair_content_catalog(game_root, prefix, state_dir) is False      # idempotent
+
+
+def test_a_1_7_104_exe_without_a_swap_keeps_its_catalog(game_root, state_dir, prefix):
+    f = _catalog(prefix, ["CSV2_a12aacea-74b0"])
+    _exe_as(game_root, (1, 7, 104, 0))
+    assert sr.repair_content_catalog(game_root, prefix, state_dir) is False and f.exists()
+
+
+def test_a_1_6_1170_game_keeps_a_catalog_it_can_parse(game_root, state_dir, prefix):
+    f = _catalog(prefix, ["CSV2_016105c0-aaaa", "CSV2_9999aaaa-bbbb"])         # every id starts with a digit
+    _exe_as(game_root, (1, 6, 1170, 0))
+    assert sr.repair_content_catalog(game_root, prefix, state_dir) is False and f.exists()
+
+
+def test_a_1_6_1170_game_with_no_catalog_does_nothing(game_root, state_dir, prefix):
+    _exe_as(game_root, (1, 6, 1170, 0))
+    assert sr.repair_content_catalog(game_root, prefix, state_dir) is False
+
+
+def test_skyrimse_pre_launch_repair_covers_the_game_version_switch(game_root, state_dir, prefix,
+                                                                  monkeypatch, tmp_path):
+    """The hook the Play button calls, for a game on 1.6.1170 with no runtime swap."""
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
+    from Games.Bethesda.skyrim_se import SkyrimSE
+    game = SkyrimSE()
+    monkeypatch.setattr(game, "get_game_path", lambda: game_root)
+    monkeypatch.setattr(game, "get_prefix_path", lambda: prefix)
+    f = _catalog(prefix, ["CSV2_a12aacea-74b0"])
+    _exe_as(game_root, (1, 6, 1170, 0))
+    assert game.pre_launch_repair(lambda *_: None) is True and not f.exists()
+
+
+def test_the_game_version_wizard_repairs_right_after_a_switch(monkeypatch):
+    from types import SimpleNamespace
+
+    from wizards_qt.game_version_view import GameVersionView
+    calls = []
+    fake = SimpleNamespace(_game=SimpleNamespace(pre_launch_repair=lambda log_fn=None: calls.append("repaired")),
+                           _log=lambda m: calls.append(m))
+    GameVersionView._repair_after_switch(fake)
+    assert calls == ["repaired"]
+    boom = SimpleNamespace(_game=SimpleNamespace(
+        pre_launch_repair=lambda log_fn=None: (_ for _ in ()).throw(RuntimeError("boom"))),
+        _log=lambda m: calls.append(m))
+    GameVersionView._repair_after_switch(boom)                    # must not raise
+    assert any("skipped" in str(c) and "boom" in str(c) for c in calls)
+    GameVersionView._repair_after_switch(SimpleNamespace(_game=object(), _log=lambda m: None))   # no hook: fine
+
+
+def _run_switch(monkeypatch, *, apply_raises=None):
+    """Run the Game Version wizard's apply step with the switch itself stubbed out."""
+    import threading
+    from types import SimpleNamespace
+
+    from wizards_qt import game_version_view as gv
+
+    order = []
+
+    class _Dv:
+        VersionSwitchError = type("VersionSwitchError", (Exception,), {})
+
+        def apply_version(self, *a, **k):
+            order.append("switched")
+            if apply_raises:
+                raise self.VersionSwitchError(apply_raises)
+
+    class _Sync:                                       # run the worker thread inline
+        def __init__(self, target=None, **k):
+            self._t = target
+
+        def start(self):
+            self._t()
+
+    monkeypatch.setattr(gv.threading, "Thread", _Sync)
+    monkeypatch.setattr(gv, "safe_emit", lambda *a, **k: order.append("status"))
+    view = SimpleNamespace(
+        _watch_timer=SimpleNamespace(stop=lambda: None), _goto=lambda *_: None,
+        _set_status=lambda *_: None, _run_status=None, _entry=SimpleNamespace(label="1.6.1170"),
+        _plan=SimpleNamespace(download=[]), _found={}, _current=None, _game_root="/g",
+        _state_dir="/s", _exe_file="SkyrimSE.exe", _game_running=lambda: False,
+        _deploy_active=lambda: False, _dv=_Dv(), _log=lambda m: None,
+        _run_status_sig=None, _done_enable_sig=None, _ran=False, tr=lambda text: text,
+        _game=SimpleNamespace(pre_launch_repair=lambda log_fn=None: order.append("repaired")))
+    view._repair_after_switch = lambda: gv.GameVersionView._repair_after_switch(view)
+    gv.GameVersionView._on_apply(view)
+    return order
+
+
+def test_a_successful_switch_runs_the_repair_before_reporting_success(monkeypatch):
+    order = _run_switch(monkeypatch)
+    assert order[:3] == ["switched", "repaired", "status"]
+
+
+def test_a_failed_switch_does_not_run_the_repair(monkeypatch):
+    order = _run_switch(monkeypatch, apply_raises="not enough space")
+    assert "switched" in order and "repaired" not in order
