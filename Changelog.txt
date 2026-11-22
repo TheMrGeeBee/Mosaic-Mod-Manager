@@ -4,6 +4,22 @@ reset to v1.0.0; they keep Amethyst Mod Manager's original numbering, which
 overlaps the numbers above, and the prefix is what keeps the two apart (and
 keeps release tooling from matching the wrong section).
 
+- v1.15.0
+  ### Additions
+  - Modhold support. Modhold (modholdmods.com) is a mod site that works as an alternative to Nexus, and Mosaic now has a "Modhold" button in the header with Browse Modhold…, Browse loadouts… and Account…. It covers Skyrim Special Edition so far; more games follow as Modhold's game names are confirmed.
+  - Modhold account. Account… (also under Wizard ▸ Update tracking) opens Modhold in your browser, you approve once, and Mosaic receives a key on a one-time local address. Mosaic never sees your Modhold password. The key is kept in the system keyring (an encrypted file when there is no keyring), and you can disconnect at any time or paste a key instead. Browsing needs no account; downloading does.
+  - Browse Modhold. Search a game's mods, sort them (recently updated, newest, most downloaded, most vouched, rising, name), page through the results and see cover images, scores and download counts. Beta, paid, supporter-early-access and adult mods are labelled, and adult mods are hidden until you tick "Show adult mods". A mod with several files asks which to install, with the main file ticked. Every download is checked against the SHA-256 Modhold publishes, and a file that does not match is discarded rather than installed.
+  - Modhold updates. Check Updates now also looks at your Modhold mods, with no login needed. A mod with a newer file gets a gold update arrow in the Flags column. Click it, or use "Quick Update (Modhold)", to download the new file and install it over the old one in the same place in the modlist. Right-click a Modhold mod for "Modhold Actions": Change Version (Modhold) switches between the mod's current files, and Open on Modhold opens its page.
+  - Modhold loadouts. Browse loadouts… lists a game's loadouts (Modhold's version of Nexus Collections). Install one into a new profile, or continue an earlier run into the same profile. Before anything downloads you see the total size, can untick optional items, and see which items are on Modhold, which come from Nexus, and which are beta releases. Mods are installed in the author's order with FOMOD questions asked one at a time, and pause, cancel and continue work as for collections. Anything that could not be installed is listed with the reason Modhold gives, for example that a mod is still in beta testing for supporters.
+  - Loadout items hosted on Nexus. When a loadout links to a Nexus mod page and you have Nexus Premium, Mosaic downloads that mod from Nexus. It picks the file named in the link, otherwise the author's own primary main file, otherwise the newest main file, and shows each choice in the preflight with a tick box before anything downloads. Without Premium, or if you untick an item, it stays on your list. These mods keep their Nexus identity, so Nexus update checks work on them.
+  - Items a loadout hosts elsewhere (neither Modhold nor Nexus) are shown in a list with their links and the author's notes, with a reminder that the links come from the loadout's author and are not checked. The same list is saved in the profile as modhold_loadout.json.
+  - Skyrim Special Edition 1.7.104. The Game Version wizard now lists 1.7.104, Steam's current build, so you can switch back to it after using an older one. The SKSE installer offers SKSE 2.3.1 for 1.7.104 (it is only published on Nexus, so the wizard opens its Files page and picks up the download from your Downloads folder), and the 1.6.1170 entry is now called "older Steam build".
+
+  ### Changes
+  - The Build dropdown no longer lists the installed Steam build twice when the bundled version table also names it.
+
+---
+
 - v1.14.1
   ### Additions
   - OpenMW script load order. Mosaic now reads each .omwscripts file's Lua and, when a script uses another script's interface (for example I.SomeFramework) that the profile loads later, writes it to openmw.cfg just after the script that provides it. Everything else keeps its place, and each move is listed in the deploy log.
