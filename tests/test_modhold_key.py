@@ -1,0 +1,113 @@
+"""Modhold key storage: keyring path, encrypted-file fallback, clearing."""
+from __future__ import annotations
+
+import keyring.errors
+import pytest
+
+from Modhold import modhold_key
+from Modhold.game_slugs import MODHOLD_GAME_SLUGS, modhold_slug_for
+
+
+class _FakeKeyring:
+    errors = keyring.errors
+
+    def __init__(self):
+        self.store = {}
+
+    def get_password(self, service, user):
+        return self.store.get((service, user))
+
+    def set_password(self, service, user, value):
+        self.store[(service, user)] = value
+
+    def delete_password(self, service, user):
+        if (service, user) not in self.store:
+            raise keyring.errors.PasswordDeleteError("missing")
+        del self.store[(service, user)]
+
+
+@pytest.fixture
+def kr(monkeypatch, tmp_path):
+    fake = _FakeKeyring()
+    monkeypatch.setattr(modhold_key, "keyring", fake)
+    monkeypatch.setattr(modhold_key, "_keyring_ok", lambda: True)
+    monkeypatch.setattr(modhold_key, "get_config_dir", lambda: tmp_path)
+    return fake
+
+
+@pytest.fixture
+def no_kr(monkeypatch, tmp_path):
+    monkeypatch.setattr(modhold_key, "_keyring_ok", lambda: False)
+    monkeypatch.setattr(modhold_key, "get_config_dir", lambda: tmp_path)
+    return tmp_path
+
+
+def test_nothing_stored_reads_empty(kr):
+    assert modhold_key.load_modhold_key() == ""
+    assert modhold_key.load_modhold_user() == ""
+
+
+def test_keyring_round_trip_strips_whitespace(kr):
+    modhold_key.save_modhold_key("  mhm_abc \n", " Sunny ")
+    assert modhold_key.load_modhold_key() == "mhm_abc"
+    assert modhold_key.load_modhold_user() == "Sunny"
+
+
+def test_keyring_clear_removes_both(kr):
+    modhold_key.save_modhold_key("mhm_abc", "Sunny")
+    modhold_key.clear_modhold_key()
+    assert modhold_key.load_modhold_key() == ""
+    assert modhold_key.load_modhold_user() == ""
+    modhold_key.clear_modhold_key()   # clearing twice is fine
+
+
+def test_file_fallback_round_trip_and_is_not_plaintext(no_kr):
+    modhold_key.save_modhold_key("mhm_secret", "Sunny")
+    path = no_kr / "modhold_key.bin"
+    assert path.is_file()
+    assert b"mhm_secret" not in path.read_bytes()
+    assert (path.stat().st_mode & 0o777) == 0o600
+    assert modhold_key.load_modhold_key() == "mhm_secret"
+    assert modhold_key.load_modhold_user() == "Sunny"
+
+
+def test_file_fallback_clear_deletes_the_file(no_kr):
+    modhold_key.save_modhold_key("mhm_secret", "Sunny")
+    modhold_key.clear_modhold_key()
+    assert not (no_kr / "modhold_key.bin").exists()
+    assert modhold_key.load_modhold_key() == ""
+
+
+def test_corrupt_file_reads_as_empty(no_kr):
+    (no_kr / "modhold_key.bin").write_bytes(b"not a fernet token")
+    assert modhold_key.load_modhold_key() == ""
+
+
+def test_keyring_failure_falls_back_to_the_file(monkeypatch, tmp_path):
+    class _Broken(_FakeKeyring):
+        def set_password(self, *a):
+            raise keyring.errors.KeyringError("locked")
+
+        def get_password(self, *a):
+            raise keyring.errors.KeyringError("locked")
+
+    monkeypatch.setattr(modhold_key, "keyring", _Broken())
+    monkeypatch.setattr(modhold_key, "_keyring_ok", lambda: True)
+    monkeypatch.setattr(modhold_key, "get_config_dir", lambda: tmp_path)
+    modhold_key.save_modhold_key("mhm_k", "Sunny")
+    assert modhold_key.load_modhold_key() == "mhm_k"
+
+
+def test_slug_lookup():
+    assert modhold_slug_for("skyrim_se") == "skyrim-se"
+    assert modhold_slug_for("not_a_game") == ""
+    assert modhold_slug_for("") == ""
+
+
+def test_every_mapped_slug_has_a_real_mosaic_game_id():
+    from pathlib import Path
+    games = Path(__file__).resolve().parents[1] / "src" / "Games"
+    text = "\n".join(p.read_text(encoding="utf-8", errors="ignore")
+                     for p in games.rglob("*.py"))
+    for game_id in MODHOLD_GAME_SLUGS:
+        assert f'"{game_id}"' in text or f"'{game_id}'" in text, game_id
