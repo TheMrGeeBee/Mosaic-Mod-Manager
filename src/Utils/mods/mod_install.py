@@ -2940,6 +2940,13 @@ def _write_install_meta(dest_root: Path, archive: Path, game, log_fn: LogFn,
         if is_bain:
             meta.is_bain = True
         write_meta(meta_path, meta)
+        # A Modhold install knows its own ids, so the caller rides a ModholdMeta
+        # on the prebuilt meta (``modhold_info``) instead of the archive being
+        # sniffed for a Nexus id.
+        modhold_info = getattr(prebuilt_meta, "modhold_info", None)
+        if modhold_info is not None:
+            from Modhold.modhold_meta import write_modhold_meta
+            write_modhold_meta(meta_path, modhold_info)
         if is_fomod and not fomod_pending_deps:
             _clear_meta_key(meta_path, "fomodPendingDeps")
         if is_fomod and not fomod_active_deps:
