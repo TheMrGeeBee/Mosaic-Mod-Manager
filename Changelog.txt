@@ -18,6 +18,7 @@ keeps release tooling from matching the wrong section).
 
   ### Changes
   - The Build dropdown no longer lists the installed Steam build twice when the bundled version table also names it.
+  - The Build dropdown names the installed Steam build by its game version (for example 1.7.104) instead of its Steam build number, also while a runtime swap has patched the exe down to an older version.
 
   ### Bug Fixes
   - Skyrim on 1.6.1170 no longer dies silently on the loading screen after a Game Version switch. Skyrim 1.7.104 writes a Creation Club list (ContentCatalog.txt) that 1.6.1170 cannot read, and it quits with no message when it meets it. Mosaic already moved that file aside after a runtime swap, but not after switching builds in Wizard ▸ Game Version, which is the usual way. It now does it before every launch from Mosaic, and right after the switch, whenever the installed game is 1.6.1170 or an older 1.6 build. The file is backed up first in Mosaic's catalog_backup folder, and the game writes a fresh one.

@@ -165,7 +165,8 @@ class GameVersionPicker(QObject):
                 labels.append(label)
         # Reading one version resource per build, which is an mmap and a seek:
         # worth it here so the button never flashes a raw build id first.
-        return labels, current, dv.build_names(root, state_dir, table.exe_file, index)
+        return labels, current, dv.build_names(
+            root, state_dir, table.exe_file, index, base_label)
 
     # ---- picking one --------------------------------------------------------
     def _on_select(self, shown: str) -> None:

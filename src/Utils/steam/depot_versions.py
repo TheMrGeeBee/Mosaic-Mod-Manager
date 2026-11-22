@@ -988,6 +988,14 @@ def _exe_version_at(root, exe_file: str) -> str:
     return _short_version(format_version(version)) if version else ""
 
 
+def _swap_recorded_applied(state_dir) -> bool:
+    try:
+        from Utils.modding_tools.skyrim_runtime import load_state
+        return bool((load_state(state_dir) or {}).get("applied"))
+    except Exception:
+        return False
+
+
 def _installed_build_version(game_root, state_dir, exe_file: str) -> str:
     """The version of the build sitting in the game folder.
 
@@ -1003,7 +1011,13 @@ def _installed_build_version(game_root, state_dir, exe_file: str) -> str:
         info = describe(game_root, state_dir, game_running=False)
     except Exception:
         info = None
-    if info is not None and info.swapped and info.recorded_from is not None:
+    # Only a name is chosen here, so the record is trusted while the exe still
+    # reads as the version it produced, even when a few patched files have since
+    # changed (a mod or a repair rewrote them): it is still the older build's exe
+    # on the newer build's data, and "1.6.1170" would name it wrongly.
+    if (info is not None and info.recorded_from is not None
+            and info.recorded_to is not None and info.version == info.recorded_to
+            and _swap_recorded_applied(state_dir)):
         return _short_version(".".join(str(part) for part in info.recorded_from))
     return _exe_version_at(game_root, exe_file)
 
@@ -1017,7 +1031,7 @@ def installed_version(game_root, state_dir, exe_file: str) -> str:
 
 
 def build_names(game_root, state_dir, exe_file: str,
-                index: "dict | None" = None) -> "dict[str, str]":
+                index: "dict | None" = None, base_label: str = "") -> "dict[str, str]":
     """``{label: what to call it}`` for the installed build and every stored one.
 
     A build Steam installed is identified in the appmanifest only by its build
@@ -1030,7 +1044,9 @@ def build_names(game_root, state_dir, exe_file: str,
     if index is None:
         index = read_index(state_dir)
     names: "dict[str, str]" = {}
-    current = index.get("current") or ""
+    # With no switch recorded the installed build is the one Steam put there,
+    # so *base_label* is what is running and gets the exe's version too.
+    current = index.get("current") or base_label
     if current:
         names[current] = _installed_build_version(game_root, state_dir, exe_file) or current
     for label, slot in (index.get("slots") or {}).items():
@@ -1059,9 +1075,9 @@ def switch_options(game_root, app_id: str, state_dir, table: VersionTable, *,
     index = read_index(state_dir)
     slots = index.get("slots") or {}
     exe_file = exe_file or table.exe_file
-    names = build_names(game_root, state_dir, exe_file, index)
     base = capture_current(game_root, app_id, exe_file)
     base_label = index.get("base") or (base.label if base else "")
+    names = build_names(game_root, state_dir, exe_file, index, base_label)
     cur = index.get("current") or base_label
     if installed is None:
         installed = read_installed_depots(game_root, app_id)

@@ -808,3 +808,32 @@ def test_other_games_are_never_blocked_by_a_runtime_swap(tmp_path):
     assert dv.runtime_swap_blocker(game, state) == ""
     dv.apply_version(game, entry, dirs, state, from_label="1.11.240")
     assert dv.revert_version(game, state) == "1.11.240"
+
+
+def test_the_steam_installed_build_is_named_by_its_exe_before_any_switch(tmp_path):
+    """Nothing switched yet: the index has no "current", but the installed build
+    is still the one Steam put there and shows as "1.7.104", not its build id."""
+    from tests.test_pe_version import build_pe
+    game, _dirs, _entry, state = _setup(tmp_path)
+    (game / "SkyrimSE.exe").write_bytes(build_pe((1, 7, 104, 0)))
+    assert dv.build_names(game, state, "SkyrimSE.exe") == {}
+    assert dv.build_names(game, state, "SkyrimSE.exe", base_label="Steam build 24914197") == {
+        "Steam build 24914197": "1.7.104"}
+
+
+def test_a_patched_file_changed_since_does_not_stop_the_build_being_named(tmp_path):
+    """A mod or a repair rewrote one of the swap's patched files, so the swap is
+    no longer verifiably in place, but the exe still reads as its target: it is
+    1.7.104 data under a patched exe, not a genuine 1.6.1170."""
+    from tests.test_pe_version import build_pe
+    game, _dirs, _entry, state = _setup(tmp_path)
+    (game / "SkyrimSE.exe").write_bytes(build_pe((1, 6, 1170, 0)))
+    (game / "Data").mkdir(exist_ok=True)
+    pathlib.Path(state).mkdir(parents=True, exist_ok=True)
+    (game / "Data" / "Update.esm").write_bytes(b"rewritten later")
+    (pathlib.Path(state) / "runtime_state.json").write_text(json.dumps(
+        {"applied": True, "from": "1.7.104.0", "to": "1.6.1170.0",
+         "files": {"Data/Update.esm": {"original_sha256": "0" * 64,
+                                       "patched_sha256": "1" * 64}}}), encoding="utf-8")
+    names = dv.build_names(game, state, "SkyrimSE.exe", base_label="Steam build 24914197")
+    assert names["Steam build 24914197"] == "1.7.104"
