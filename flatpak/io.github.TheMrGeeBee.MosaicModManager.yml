@@ -122,7 +122,7 @@ modules:
     build-commands:
       - install -d /app/share/mosaic-mod-manager
       - cp -a src/run_qt.py src/cli.py src/app_bootstrap.py src/version.py src/gui_qt
-        src/wizards_qt src/Utils src/Games src/LOOT src/Nexus src/icons src/wrappers
+        src/wizards_qt src/Utils src/Games src/LOOT src/Nexus src/Modhold src/icons src/wrappers
         /app/share/mosaic-mod-manager/
       - cp Changelog.txt /app/share/mosaic-mod-manager/
 
