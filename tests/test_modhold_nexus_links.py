@@ -44,10 +44,11 @@ def test_everything_else_is_not_a_nexus_mod_link(url):
     assert parse_nexus_url(url) is None
 
 
-def _f(fid, cat="MAIN", primary=False, ts=0, name=None):
+def _f(fid, cat="MAIN", primary=False, ts=0, name=None, desc=""):
     return SimpleNamespace(file_id=fid, category_name=cat, is_primary=primary,
                            uploaded_timestamp=ts, file_name=name or f"f{fid}.7z",
-                           name=name or f"File {fid}", version="1", size_in_bytes=10)
+                           name=name or f"File {fid}", version="1", size_in_bytes=10,
+                           description=desc)
 
 
 def test_the_file_named_in_the_link_wins_even_if_it_is_not_a_main_file():
@@ -177,3 +178,71 @@ def test_unticking_a_nexus_item_leaves_it_on_the_manual_list():
 def test_modhold_hosted_items_are_unaffected_by_the_nexus_choice():
     lo = _loadout()
     assert [i.mod_id for i in plan_install(lo, nexus_items=set()).installable] == [10]
+
+
+# ------------------------------------------------- files that name the game version
+
+def _skse():
+    """Shaped like the real SKSE page: the primary main file is for the newest game, an
+    older build is kept under 'old versions' and says which game version it suits."""
+    return [_f(1, "MAIN", True, 900, "SKSE 2.3.1", desc="Skyrim Special Edition 1.7.104 build"),
+            _f(2, "OLD_VERSION", False, 500, "SKSE 2.2.8",
+               desc="Compatible with Skyrim Special Edition 1.6.1170 from Steam"),
+            _f(3, "OLD_VERSION", False, 300, "SKSE 2.2.6", desc="Compatible with 1.6.1130")]
+
+
+def test_an_older_file_that_names_the_game_version_beats_the_newest_main():
+    c = choose_file(_skse(), game_version="1.6.1170")
+    assert c.file.file_id == 2 and c.version_matched and not c.ambiguous
+
+
+def test_the_current_game_version_keeps_the_current_file():
+    c = choose_file(_skse(), game_version="1.7.104")
+    assert c.file.file_id == 1 and c.version_matched
+    assert choose_file(_skse(), game_version="1.7.104.0").file.file_id == 1   # trailing .0
+
+
+def test_without_a_matching_file_or_a_version_the_old_rule_applies():
+    for gv in ("1.5.97", ""):
+        c = choose_file(_skse(), game_version=gv)
+        assert c.file.file_id == 1 and not c.version_matched
+
+
+def test_the_file_named_in_the_link_still_wins_over_the_game_version():
+    assert choose_file(_skse(), wanted_file_id=3, game_version="1.6.1170").file.file_id == 3
+
+
+@pytest.mark.parametrize("desc", [
+    "for 11.6.11700", "built for 0.1.6.1170", "1.6.11705", "not compatible with 1.6.1170",
+    "No longer works with 1.6.1170", "does not support Skyrim 1.6.1170", "x1.6.11700.1",
+])
+def test_a_version_inside_another_number_or_a_negation_does_not_count(desc):
+    from Modhold.nexus_links import names_version
+    assert not names_version(_f(9, "MAIN", desc=desc), "1.6.1170")
+
+
+def test_the_version_is_found_in_the_file_name_too():
+    from Modhold.nexus_links import names_version
+    assert names_version(_f(9, "MAIN", name="AddressLibrary 1.6.1170 v12.7z"), "1.6.1170")
+
+
+def test_miscellaneous_files_are_never_picked_for_a_version():
+    files = [_f(1, "MAIN", True, 9), _f(2, "MISCELLANEOUS", False, 99, desc="tool for 1.6.1170")]
+    assert choose_file(files, game_version="1.6.1170").file.file_id == 1
+
+
+def test_among_several_matches_main_then_primary_then_newest_wins():
+    files = [_f(1, "OLD_VERSION", desc="1.6.1170", ts=900), _f(2, "OPTIONAL", True, 800, desc="1.6.1170"),
+             _f(3, "MAIN", False, 100, desc="1.6.1170"), _f(4, "MAIN", False, 200, desc="1.6.1170")]
+    assert choose_file(files, game_version="1.6.1170").file.file_id == 4
+    files = [f for f in files if f.file_id != 3 and f.file_id != 4]
+    assert choose_file(files, game_version="1.6.1170").file.file_id == 2      # primary over newest
+
+
+def test_picks_carry_the_version_and_say_why(monkeypatch):
+    api = _Api({1: _skse()})
+    items = [_item(0, "SKSE", NexusRef("skyrimspecialedition", 1))]
+    pick = resolve_nexus_picks(api, items, game_version="1.6.1170")[0]
+    assert pick.file.file_id == 2 and pick.version_matched
+    other = resolve_nexus_picks(api, items)[0]                       # no version: unchanged
+    assert other.file.file_id == 1 and not other.version_matched

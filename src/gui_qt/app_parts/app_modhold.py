@@ -290,6 +290,11 @@ class MainWindow:
 
         threading.Thread(target=_worker, daemon=True, name="modhold-loadout-fetch").start()
 
+    def _modhold_installed_version(self, game) -> str:
+        """The installed game version ("" when it can't be read), for loadout checks."""
+        from Modhold.game_versions import installed_game_version
+        return installed_game_version(game)
+
     def _on_modhold_loadout_ready(self, loadout, error):
         """UI thread: the full loadout arrived. Ask what to include and where to put it."""
         if loadout is None:
@@ -316,6 +321,9 @@ class MainWindow:
             return
         self._notify(self.tr("Checking the Nexus files for {0} item(s)…").format(len(nexus_items)),
                      "info")
+        # Pick files made for the version the game runs; the loadout's own target when that
+        # can't be read. Read on the UI thread (a small exe read), used by the worker below.
+        wanted_version = self._modhold_installed_version(game) or loadout.game_version
 
         def _worker():
             from Modhold.nexus_links import resolve_nexus_picks
@@ -346,7 +354,8 @@ class MainWindow:
                 return
             try:
                 picks = resolve_nexus_picks(
-                    api, nexus_items, log=lambda m: self._op_log.emit(f"[modhold] {m}"))
+                    api, nexus_items, log=lambda m: self._op_log.emit(f"[modhold] {m}"),
+                    game_version=wanted_version)
             except Exception as exc:
                 self._op_log.emit(f"[modhold] could not choose the Nexus files: {exc}")
                 self._modhold_nexus_ready.emit(loadout, None, self.tr(
@@ -366,10 +375,17 @@ class MainWindow:
         from PySide6.QtWidgets import QDialog
 
         from gui_qt.modhold.modhold_loadout_preflight import ModholdLoadoutPreflight
+        from Modhold.game_versions import check as check_game_version
         from Utils.exe_launch.game_helpers import _profiles_for_game
         game = self._gs.game
+        vcheck = check_game_version(self._modhold_installed_version(game),
+                                    loadout.game_version, loadout.works_on)
+        if vcheck.mismatch:
+            self._op_log.emit(f"[modhold] loadout targets game version {vcheck.target}, "
+                              f"installed is {vcheck.installed}")
         dlg = ModholdLoadoutPreflight(loadout, set(_profiles_for_game(game.name)), self,
-                                      nexus_picks=picks, nexus_note=note)
+                                      nexus_picks=picks, nexus_note=note,
+                                      version_check=vcheck)
         if dlg.exec() != QDialog.DialogCode.Accepted:
             return
         plan = dlg.plan()

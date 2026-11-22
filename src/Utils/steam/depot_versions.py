@@ -1008,6 +1008,14 @@ def _installed_build_version(game_root, state_dir, exe_file: str) -> str:
     return _exe_version_at(game_root, exe_file)
 
 
+def installed_version(game_root, state_dir, exe_file: str) -> str:
+    """The version of the build in the game folder, "" when it can't be read."""
+    try:
+        return _installed_build_version(game_root, state_dir, exe_file) or ""
+    except Exception:
+        return ""
+
+
 def build_names(game_root, state_dir, exe_file: str,
                 index: "dict | None" = None) -> "dict[str, str]":
     """``{label: what to call it}`` for the installed build and every stored one.

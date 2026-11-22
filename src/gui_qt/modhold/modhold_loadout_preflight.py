@@ -16,7 +16,9 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from gui_qt.theme.theme_qt import _c, active_palette
 from Modhold.browse_util import format_size
+from Modhold.game_versions import MISMATCH, WORKS_ON, VersionCheck
 from Modhold.loadout_manifest import Loadout, LoadoutPlan, plan_install
 from Modhold.nexus_links import NexusPick
 
@@ -46,15 +48,19 @@ class ModholdLoadoutPreflight(QDialog):
     def __init__(self, loadout: Loadout, existing_profiles: "set[str] | list[str]",
                  parent: QWidget | None = None,
                  nexus_picks: "dict[int, NexusPick] | None" = None,
-                 nexus_note: str = ""):
+                 nexus_note: str = "",
+                 version_check: "VersionCheck | None" = None):
         """*nexus_picks* is the file chosen for each Nexus-linked item (see
         Modhold/nexus_links.resolve_nexus_picks), or None when Nexus can't be used
-        (not connected, or no Premium); *nexus_note* then says why."""
+        (not connected, or no Premium); *nexus_note* then says why. *version_check* compares
+        the installed game version with the one the loadout targets (Modhold/game_versions):
+        a mismatch shows a warning, but never stops the install."""
         super().__init__(parent)
         self._loadout = loadout
         self._existing = set(existing_profiles)
         self._picks = nexus_picks
         self._nexus_note = nexus_note
+        self._version_check = version_check
         self.setWindowTitle(self.tr("Install loadout"))
         self.setMinimumWidth(520)
 
@@ -67,6 +73,16 @@ class ModholdLoadoutPreflight(QDialog):
             s = QLabel(loadout.summary)
             s.setWordWrap(True)
             lay.addWidget(s)
+
+        self._version_note: QLabel | None = None
+        note = self._version_text()
+        if note:
+            self._version_note = QLabel(note)
+            self._version_note.setWordWrap(True)
+            if version_check is not None and version_check.status == MISMATCH:
+                self._version_note.setStyleSheet(
+                    f"color:{_c(active_palette(), 'TEXT_WARN_BRIGHT')}; font-weight:bold;")
+            lay.addWidget(self._version_note)
 
         self._summary = QLabel("")
         self._summary.setWordWrap(True)
@@ -113,7 +129,10 @@ class ModholdLoadoutPreflight(QDialog):
                     version = getattr(f, "version", "")
                     if version:
                         text += f" ({version})"
-                    if pick.ambiguous:
+                    if pick.version_matched:
+                        text += self.tr(" — made for game version {0}").format(
+                            self._pick_version())
+                    elif pick.ambiguous:
                         text += self.tr(" — newest of several main files")
                     box = QCheckBox(text)
                     box.setChecked(True)
@@ -157,6 +176,29 @@ class ModholdLoadoutPreflight(QDialog):
         buttons.rejected.connect(self.reject)
         lay.addWidget(buttons)
         self._refresh()
+
+    # ---- game version ------------------------------------------------------
+    def _pick_version(self) -> str:
+        """The game version the Nexus files were matched against."""
+        vc = self._version_check
+        return (vc.installed if vc is not None and vc.installed else "") \
+            or self._loadout.game_version
+
+    def _version_text(self) -> str:
+        vc = self._version_check
+        if vc is None or vc.status not in (MISMATCH, WORKS_ON):
+            return ""
+        game = self._loadout.game_name or self.tr("this game")
+        if vc.status == WORKS_ON:
+            return self.tr("Made for {0} {1}; listed as working on your version ({2}).").format(
+                game, vc.target, vc.installed)
+        also = (self.tr(" (also tested on {0})").format(", ".join(vc.works_on))
+                if vc.works_on else "")
+        return self.tr(
+            "Version warning: this loadout was made for {0} {1}{2}, and your game reports {3}. "
+            "Mods built for another version can fail to load. If you can, switch the game "
+            "version first (Wizard ▸ Game Version). You can still install it as it is."
+        ).format(game, vc.target, also, vc.installed)
 
     # ---- state -------------------------------------------------------------
     def plan(self) -> LoadoutPlan:

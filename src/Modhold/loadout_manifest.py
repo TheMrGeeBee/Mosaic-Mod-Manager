@@ -76,6 +76,8 @@ class Loadout:
     page: str
     signed_in: bool
     items: list[LoadoutItem]
+    game_version: str = ""           # the game version it was built for ("" = not stated)
+    works_on: list[str] = field(default_factory=list)   # other versions known to work
 
 
 @dataclass
@@ -144,6 +146,18 @@ def _parse_item(index: int, raw: dict) -> LoadoutItem:
     )
 
 
+def _version_text(value) -> str:
+    """A game version as the author wrote it, or "" for null/missing/not a string."""
+    return value.strip() if isinstance(value, str) else ""
+
+
+def _version_list(value) -> list[str]:
+    """``works_on``: the strings in it, in order; anything that is not a list gives []."""
+    if not isinstance(value, list):
+        return []
+    return [v for v in (_version_text(x) for x in value) if v]
+
+
 def parse_loadout(payload: dict) -> Loadout:
     """Parse a ``modhold-loadout`` payload. Raises :class:`LoadoutFormatError` for
     anything that is not one, or is a newer format than this Mosaic understands."""
@@ -163,7 +177,9 @@ def parse_loadout(payload: dict) -> Loadout:
         summary=str(payload.get("summary") or ""), by=str(payload.get("by") or ""),
         game_slug=str(game.get("slug") or ""), game_name=str(game.get("name") or ""),
         updated=str(payload.get("updated") or ""), page=str(payload.get("page") or ""),
-        signed_in=bool(payload.get("signed_in")), items=items)
+        signed_in=bool(payload.get("signed_in")), items=items,
+        game_version=_version_text(payload.get("game_version")),
+        works_on=_version_list(payload.get("works_on")))
 
 
 def plan_install(loadout: Loadout,

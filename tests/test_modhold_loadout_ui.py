@@ -597,3 +597,93 @@ def test_starting_without_nexus_items_makes_no_nexus_connection(tmp_path, qapp, 
     w._start_modhold_loadout(_loadout(), plan_install(_loadout()), "Estates", False)
     assert pump(lambda: "profile_dir" in seen)
     assert seen["nexus_api"] is None and seen["nexus_downloader"] is None
+
+
+# ------------------------------------------------------------- game version in the flow
+
+def _with_version(loadout, target="1.6.1170", works_on=()):
+    import dataclasses
+    return dataclasses.replace(loadout, game_version=target, works_on=list(works_on))
+
+
+def test_the_installed_version_decides_which_nexus_files_are_chosen(tmp_path, qapp, monkeypatch):
+    from Modhold import nexus_links
+    _prefs(monkeypatch)
+    seen = {}
+    monkeypatch.setattr(nexus_links, "resolve_nexus_picks",
+                        lambda api, items, **kw: seen.update(kw) or {})
+    w = _window(tmp_path)
+    w._modhold_installed_version = lambda game: "1.7.104"
+    w._ensure_nexus_api = lambda: _NexusApiUser(premium=True)
+    w._on_modhold_loadout_ready(_with_version(_nexus_loadout()), "")
+    assert w._modhold_nexus_ready.event.wait(5)
+    assert seen["game_version"] == "1.7.104"           # the game's, not the loadout's
+
+
+def test_the_loadouts_own_version_is_used_when_the_game_cannot_be_read(tmp_path, qapp, monkeypatch):
+    from Modhold import nexus_links
+    _prefs(monkeypatch)
+    seen = {}
+    monkeypatch.setattr(nexus_links, "resolve_nexus_picks",
+                        lambda api, items, **kw: seen.update(kw) or {})
+    w = _window(tmp_path)
+    w._modhold_installed_version = lambda game: ""
+    w._ensure_nexus_api = lambda: _NexusApiUser(premium=True)
+    w._on_modhold_loadout_ready(_with_version(_nexus_loadout()), "")
+    assert w._modhold_nexus_ready.event.wait(5)
+    assert seen["game_version"] == "1.6.1170"
+
+
+def _capture_preflight(monkeypatch):
+    """Replace the dialog's exec so the dialog it built can be inspected."""
+    from PySide6.QtWidgets import QDialog
+
+    from gui_qt.modhold.modhold_loadout_preflight import ModholdLoadoutPreflight
+    built = []
+
+    def fake_exec(self):
+        built.append(self)
+        return QDialog.DialogCode.Rejected
+
+    monkeypatch.setattr(ModholdLoadoutPreflight, "exec", fake_exec)
+    from Utils.exe_launch import game_helpers
+    monkeypatch.setattr(game_helpers, "_profiles_for_game", lambda name: [])
+    return built
+
+
+@pytest.mark.parametrize("installed,warns", [("1.7.104", True), ("1.6.1170", False), ("", False)])
+def test_the_preflight_is_given_the_version_comparison(tmp_path, qapp, monkeypatch, installed, warns):
+    built = _capture_preflight(monkeypatch)
+    w = _window(tmp_path)
+    w._modhold_installed_version = lambda game: installed
+    w._on_modhold_loadout_ready(_with_version(_loadout()), "")
+    assert len(built) == 1
+    assert (built[0]._version_note is not None) == warns
+    logged = [a[0] for a in w._op_log.calls]
+    assert any("targets game version 1.6.1170, installed is 1.7.104" in m for m in logged) == warns
+
+
+def test_a_loadout_with_no_version_never_warns(tmp_path, qapp, monkeypatch):
+    built = _capture_preflight(monkeypatch)
+    w = _window(tmp_path)
+    w._modhold_installed_version = lambda game: "1.7.104"
+    w._on_modhold_loadout_ready(_loadout(), "")           # game_version == ""
+    assert built[0]._version_note is None
+
+
+def test_the_default_installed_version_reads_the_game(tmp_path, qapp, monkeypatch):
+    from Modhold import game_versions
+    monkeypatch.setattr(game_versions, "installed_game_version", lambda g: "1.2.3")
+    assert _window(tmp_path)._modhold_installed_version(object()) == "1.2.3"
+
+
+def test_a_loadout_card_shows_the_game_version_it_targets(qapp):
+    api = _Api([dict(_summary(3), game_version="1.6.1170"), dict(_summary(6), game_version=None),
+                dict(_summary(7), game_version="  ")])
+    v = _view(qapp, api)
+    assert pump(lambda: len(v._cards) == 3)
+    metas = [[lbl.text() for lbl in c.findChildren(type(v._status)) if "installs" in lbl.text()][0]
+             for c in v._cards]
+    assert metas[0].endswith(" · for game version 1.6.1170")
+    assert "for game version" not in metas[1] and "for game version" not in metas[2]
+    v._closing = True

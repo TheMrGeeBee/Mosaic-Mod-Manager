@@ -241,3 +241,82 @@ def test_nexus_picks_are_handed_back_for_the_installer(qapp):
     lo = _nexus_loadout()
     picks = _picks(lo)
     assert ModholdLoadoutPreflight(lo, set(), nexus_picks=picks).nexus_picks() == picks
+
+
+# ------------------------------------------------------------- game version warning
+
+def _targeted(target="1.6.1170", works_on=()):
+    import dataclasses
+    return dataclasses.replace(_loadout(), game_name="Skyrim SE", game_version=target,
+                               works_on=list(works_on))
+
+
+def _check(installed, target="1.6.1170", works_on=()):
+    from Modhold.game_versions import check
+    return check(installed, target, works_on)
+
+
+def test_a_different_game_version_shows_a_warning_but_install_stays_possible(qapp):
+    from PySide6.QtWidgets import QDialogButtonBox
+    dlg = ModholdLoadoutPreflight(_targeted(), set(), version_check=_check("1.7.104"))
+    note = dlg._version_note
+    assert note is not None
+    for part in ("Version warning", "Skyrim SE 1.6.1170", "reports 1.7.104", "Wizard ▸ Game Version"):
+        assert part in note.text()
+    assert dlg.findChild(QDialogButtonBox).button(QDialogButtonBox.Ok).isEnabled()
+    assert "font-weight:bold" in note.styleSheet()
+
+
+def test_the_warning_names_the_versions_it_is_also_tested_on(qapp):
+    dlg = ModholdLoadoutPreflight(_targeted(works_on=["1.6.1179"]), set(),
+                                  version_check=_check("1.7.104", works_on=["1.6.1179"]))
+    assert "also tested on 1.6.1179" in dlg._version_note.text()
+
+
+def test_a_listed_version_gets_a_neutral_note_not_a_warning(qapp):
+    dlg = ModholdLoadoutPreflight(_targeted(works_on=["1.7.104"]), set(),
+                                  version_check=_check("1.7.104", works_on=["1.7.104"]))
+    assert "listed as working on your version (1.7.104)" in dlg._version_note.text()
+    assert "Version warning" not in dlg._version_note.text()
+    assert "font-weight" not in dlg._version_note.styleSheet()
+
+
+@pytest.mark.parametrize("installed,target", [
+    ("1.6.1170", "1.6.1170"),            # the version it targets
+    ("", "1.6.1170"),                    # game version unreadable
+    ("1.7.104", ""),                     # loadout doesn't say
+])
+def test_no_note_when_it_matches_or_cannot_be_compared(qapp, installed, target):
+    dlg = ModholdLoadoutPreflight(_targeted(target), set(), version_check=_check(installed, target))
+    assert dlg._version_note is None
+
+
+def test_no_version_check_at_all_changes_nothing(qapp):
+    assert ModholdLoadoutPreflight(_loadout(), set())._version_note is None
+
+
+def test_a_nexus_file_chosen_for_the_game_version_says_so(qapp):
+    from types import SimpleNamespace
+
+    from Modhold.nexus_links import NexusPick, NexusRef
+    lo = _targeted()
+    ref = NexusRef("skyrimspecialedition", 30379)
+    f = SimpleNamespace(file_name="skse64_2_2_8.7z", name="SKSE 2.2.8", version="2.2.8")
+    picks = {0: NexusPick(0, "SKSE", ref, f, version_matched=True),
+             1: NexusPick(1, "Other", ref, f, ambiguous=True)}
+    boxes = ModholdLoadoutPreflight(lo, set(), nexus_picks=picks,
+                                    version_check=_check("1.6.1170"))._nexus
+    texts = [b.text() for b, _ in boxes]
+    assert any("SKSE" in t and "made for game version 1.6.1170" in t for t in texts)
+    assert any("Other" in t and "newest of several main files" in t for t in texts)
+
+
+def test_the_note_names_the_installed_version_when_picks_followed_it(qapp):
+    from types import SimpleNamespace
+
+    from Modhold.nexus_links import NexusPick, NexusRef
+    f = SimpleNamespace(file_name="a.7z", name="A", version="1")
+    picks = {0: NexusPick(0, "A", NexusRef("d", 1), f, version_matched=True)}
+    dlg = ModholdLoadoutPreflight(_targeted("1.6.1170"), set(), nexus_picks=picks,
+                                  version_check=_check("1.7.104", "1.6.1170"))
+    assert "made for game version 1.7.104" in dlg._nexus[0][0].text()      # what it was matched to

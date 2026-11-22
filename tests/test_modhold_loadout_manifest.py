@@ -151,3 +151,24 @@ def test_a_real_world_shape_with_a_null_nexus_hosted_item():
     """Items only on Modhold (e.g. Amber) have ``nexus: null`` and must stay hosted."""
     lo = parse_loadout(_payload([_hosted(48, 198, [_file(1154)], nexus=None)]))
     assert lo.items[0].hosted and lo.items[0].external_url == ""
+
+
+# ------------------------------------------------------- game_version / works_on
+
+def test_game_version_and_works_on_are_read():
+    lo = parse_loadout(_payload([], game_version=" 1.6.1170 ", works_on=["1.6.1179", " 1.7.104 "]))
+    assert lo.game_version == "1.6.1170" and lo.works_on == ["1.6.1179", "1.7.104"]
+
+
+@pytest.mark.parametrize("extra", [
+    {}, {"game_version": None, "works_on": None}, {"game_version": 1.6, "works_on": "1.7.104"},
+    {"game_version": ["1.6.1170"], "works_on": {"a": 1}}, {"game_version": "  ", "works_on": []},
+])
+def test_missing_or_wrongly_typed_version_fields_are_empty(extra):
+    lo = parse_loadout(_payload([], **extra))
+    assert lo.game_version == "" and lo.works_on == []
+
+
+def test_works_on_keeps_only_text_entries():
+    lo = parse_loadout(_payload([], works_on=["1.6.1179", None, 5, "", "  ", "1.7.104"]))
+    assert lo.works_on == ["1.6.1179", "1.7.104"]

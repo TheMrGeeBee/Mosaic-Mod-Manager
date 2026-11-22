@@ -48,6 +48,9 @@ class _LoadoutCard(QFrame):
             loadout.get("by") or loadout.get("by_handle") or "?",
             int(loadout.get("mods") or 0), int(loadout.get("installs") or 0),
             (loadout.get("updated") or "")[:10])
+        target = loadout.get("game_version")
+        if isinstance(target, str) and target.strip():
+            meta += self.tr(" · for game version {0}").format(target.strip())
         dim = QLabel(meta)
         dim.setStyleSheet(f"color:{_c(p, 'TEXT_DIM')};")
         col.addWidget(dim)
