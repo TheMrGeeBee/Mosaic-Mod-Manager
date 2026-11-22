@@ -104,6 +104,32 @@ def test_slug_lookup():
     assert modhold_slug_for("") == ""
 
 
+@pytest.mark.parametrize("game_id,slug", [
+    ("skyrim_se", "skyrim-se"), ("skyrim", "skyrim"), ("Fallout4", "fallout-4"),
+    ("FalloutNV", "fallout-new-vegas"), ("baldurs_gate_3", "baldurs-gate-3"),
+    ("kingdom_come_deliverance_2", "kcd2"), ("Mount___Blade_II__Bannerlord", "bannerlord"),
+    ("Fallout3GOTY", "fallout-3"), ("morrowind_openmw", "morrowind"),
+])
+def test_the_games_modhold_lists_are_mapped(game_id, slug):
+    assert modhold_slug_for(game_id) == slug
+
+
+@pytest.mark.parametrize("game_id", [
+    "Fallout4VR", "skyrimvr", "Subnautica_Below_Zero", "kingdom_come_deliverance",
+    "enderal", "enderalse", "resident_evil_village", "resident_evil_2", "Fallout76",
+    "witcher_ee", "Valheim", "the_sims_4",
+])
+def test_a_different_game_with_a_similar_name_is_not_mapped(game_id):
+    """Their mods would not fit, so they stay without a Modhold tab."""
+    assert modhold_slug_for(game_id) == ""
+
+
+def test_every_mapped_slug_is_a_plain_modhold_slug():
+    import re
+    for game_id, slug in MODHOLD_GAME_SLUGS.items():
+        assert re.fullmatch(r"[a-z0-9]+(?:-[a-z0-9]+)*", slug), (game_id, slug)
+
+
 def test_every_mapped_slug_has_a_real_mosaic_game_id():
     from pathlib import Path
     games = Path(__file__).resolve().parents[1] / "src" / "Games"
