@@ -299,8 +299,17 @@ class SkyrimSE(BethesdaGame):
                 extra={
                     "versions": [
                         {
-                            "label": "Skyrim SE 1.6.1170 (Steam, current)",
-                            "description": "Latest SKSE64 release from GitHub. Use this for up-to-date Steam installs.",
+                            "label": "Skyrim SE 1.7.104 (Steam, current)",
+                            "description": "SKSE64 2.3.1 for Steam's current build. It is only published on "
+                                           "Nexus Mods: the wizard opens its Files tab, you download the main "
+                                           "file there, and the wizard picks it up from your Downloads folder.",
+                            "download_url": "https://www.nexusmods.com/skyrimspecialedition/mods/30379?tab=files",
+                            "archive_keywords": ["skse64", "30379-2-3"],
+                        },
+                        {
+                            "label": "Skyrim SE 1.6.1170 (older Steam build)",
+                            "description": "Latest SKSE64 release from GitHub (2.2.6). Use this if you have "
+                                           "switched the game back to 1.6.1170.",
                             "github_api_url": "https://api.github.com/repos/ianpatt/skse64/releases/latest",
                             "archive_keywords": ["skse64"],
                         },

@@ -29,7 +29,7 @@
     },
     {
       "label": "1.6.1170",
-      "title": "The last build SKSE64 supports, before Steam's current 1.7.x",
+      "title": "The last 1.6.x build, the one SKSE64 2.2.x supports, before Steam's 1.7.x",
       "exe_version": "1.6.1170.0",
       "source": "Depot manifests from a community Steam downgrade shell script's per-game block for Skyrim Special Edition, contributed 2026-11-06. This is the same target Utils/modding_tools/skyrim_runtime.py patches to from 1.7.104, so a switch here and an SRS runtime swap should land on the same build. NOT yet verified against a download — confirm SkyrimSE.exe reports 1.6.1170.0 after switching and move this note.",
       "remove": [],
@@ -37,6 +37,18 @@
         "489831": "8442952117333549665",
         "489832": "8042843504692938467",
         "489833": "1914580699073641964"
+      }
+    },
+    {
+      "label": "1.7.104",
+      "title": "Anniversary Edition, Steam's current build (build 24914197), the one SKSE64 2.3.1 supports",
+      "exe_version": "1.7.104.0",
+      "source": "Depot manifests read from the appmanifest of a real Steam install of build 24914197 on the public branch, 2026-11-21. Checked against that install: SkyrimSE.exe reports 1.7.104.0 and its size (37,910,440 bytes) is depot 489833's size in the appmanifest. NOT yet verified by downloading these manifests through Steam.",
+      "remove": [],
+      "depots": {
+        "489831": "4940892828028256588",
+        "489832": "5728778377666085157",
+        "489833": "4886117324142477814"
       }
     }
   ]

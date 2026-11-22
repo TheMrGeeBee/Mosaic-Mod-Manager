@@ -342,7 +342,7 @@ def test_shipped_skyrim_se_table_covers_the_builds_people_downgrade_to():
     DLC depots."""
     table = dv.load_table("489830")
     assert table.exe_file == "SkyrimSE.exe"
-    assert [v.label for v in table.versions] == ["1.5.97", "1.6.640", "1.6.1170"]
+    assert [v.label for v in table.versions] == ["1.5.97", "1.6.640", "1.6.1170", "1.7.104"]
     for entry in table.versions:
         assert set(entry.depots) == {"489831", "489832", "489833"}, entry.label
         assert all(m.isdigit() for m in entry.depots.values()), entry.label
@@ -583,6 +583,24 @@ def test_switch_options_reads_the_installed_build_from_mosaic_not_steam(tmp_path
     # Current first, whatever order the table is in.
     assert dv.switch_options(game, "377160", state, table, log_text="",
                              roots=[tmp_path])[0].label == "1.10.163"
+
+
+def test_a_table_entry_that_is_the_installed_build_is_not_listed_twice(tmp_path):
+    """The bundled table can name the very build Steam installed (Skyrim's
+    1.7.104). It is already listed under the build's own label, so a second row
+    would show one build twice, the copy as "needs a download"."""
+    game = _library(tmp_path)
+    table = dv.VersionTable(app_id="377160", exe_file="Fallout4.exe", versions=[
+        dv.VersionEntry(label="1.11.221", depots={"377161": "5983086794954940044",
+                                                  "377162": "4737695048810094469"}),
+        dv.VersionEntry(label="1.10.163", depots={"377161": "1" * 19,
+                                                  "377162": "4737695048810094469"})])
+    labels = [o.label for o in dv.switch_options(game, "377160", tmp_path / "state", table,
+                                                 log_text="", roots=[tmp_path])]
+    assert "1.11.221" not in labels
+    assert "Steam build 24564252" in labels
+    # An entry that differs in even one depot is a different build and stays.
+    assert "1.10.163" in labels
 
 
 def test_switch_to_puts_the_installed_build_back_before_applying(tmp_path):

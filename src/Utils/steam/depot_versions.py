@@ -1068,6 +1068,14 @@ def switch_options(game_root, app_id: str, state_dir, table: VersionTable, *,
     for label, title, entry in ordered:
         if not label or label in seen:
             continue
+        # A table entry that is the very build Steam installed (every installed
+        # depot already at its manifest) is already listed under that build's own
+        # label, so listing it again would show one build twice, the second time
+        # as "needs a download" for something that is on disk.
+        if entry is not None and label != base_label:
+            same = plan_switch(entry, installed)
+            if not same.download and same.unchanged:
+                continue
         seen.add(label)
         name = names.get(label, label)
         if label == cur:
