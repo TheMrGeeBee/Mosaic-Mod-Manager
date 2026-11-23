@@ -6,7 +6,9 @@
 
 <h3 align="center">A mod manager for Linux.</h3>
 
-<center><a href="https://modholdmods.com/u/mrgeebee"><img src="https://modholdmods.com/badge/modhold-dark.png" width="264" height="88" alt="Download on Modhold"></a></center>
+<div class="center">
+<a href="https://modholdmods.com/u/mrgeebee"><img src="https://modholdmods.com/badge/modhold-dark.png" width="264" height="88" alt="Download on Modhold"></a>
+</div>
 
 <p align="center">
     New here? See the <a href="FAQ.md">FAQ</a> for how this project relates to Amethyst Mod Manager.
