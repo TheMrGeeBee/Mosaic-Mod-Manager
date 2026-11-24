@@ -15,7 +15,12 @@ import shutil
 from pathlib import Path
 
 from Games.base_game import MODERN_DIRECTX_DEPS, BaseGame, WizardTool
-from Games.Bethesda.bethesda_ini import _read_ini_key, _set_ini_key
+from Games.Bethesda.bethesda_ini import (
+    _read_ini_key,
+    _set_ini_key,
+    clear_installed_inis,
+    read_installed_inis,
+)
 from Utils.deploy.deploy import (
     LinkMode,
     cleanup_custom_deploy_dirs,
@@ -1063,12 +1068,21 @@ class BethesdaGame(BaseGame):
         if not ini_files:
             _log(f"  No *.ini files found in '{ini_dir.name}' folder — skipping.")
             return
+        # INIs an installer put here on purpose (a Wabbajack modlist's own)
+        # must not be replaced by the live copy on their first link, as an
+        # INI the user only ever edited in the game would be.
+        installed = read_installed_inis(ini_dir)
         for mygames in mygames_dirs:
             mygames.mkdir(parents=True, exist_ok=True)
             for src in ini_files:
                 target = mygames / src.name
                 if target.is_symlink():
                     target.unlink()
+                elif target.exists() and src.name.lower() in installed:
+                    backup = target.with_suffix(".bak")
+                    target.replace(backup)
+                    _log(f"  Kept the profile's installed {src.name}; "
+                         f"the live one was backed up → {backup.name}")
                 elif target.exists():
                     # A real file here means the game itself (or a native Steam
                     # launch, e.g. dismissing the "Download and activate?" AE
@@ -1085,6 +1099,8 @@ class BethesdaGame(BaseGame):
                     _log(f"  Backed up {target.name} → {backup.name}")
                 target.symlink_to(src)
                 _log(f"  Linked {src.name} → {target}")
+        if installed:
+            clear_installed_inis(ini_dir)
 
     def _remove_profile_ini_symlinks(self, profile: str, log_fn) -> None:
         """Remove profile INI symlinks from My Games and restore any backups."""

@@ -118,3 +118,37 @@ def _set_ini_key(ini_path: Path, section: str, key: str, value: "str | None") ->
         write_atomic_text(real, out)
     else:
         write_atomic_text(ini_path, out)
+
+
+# A profile's "ini files" folder can hold INIs an installer put there on
+# purpose (a Wabbajack modlist's own). The first deploy that links them must
+# not replace them with the live copy from My Games, as it does for an INI the
+# user may have changed in the game; this marker lists them until that link.
+INSTALLED_INIS_MARKER = ".installed_inis"
+
+
+def mark_installed_inis(ini_dir: Path, names) -> None:
+    names = sorted({n for n in names} | {n for n in _read_marker(ini_dir)})
+    (Path(ini_dir) / INSTALLED_INIS_MARKER).write_text(
+        "".join(f"{n}\n" for n in names), encoding="utf-8")
+
+
+def _read_marker(ini_dir: Path) -> "list[str]":
+    try:
+        text = (Path(ini_dir) / INSTALLED_INIS_MARKER).read_text(encoding="utf-8")
+    except OSError:
+        return []
+    return [line.strip() for line in text.splitlines() if line.strip()]
+
+
+def read_installed_inis(ini_dir: Path) -> "set[str]":
+    """Lower-cased names of the INIs in *ini_dir* still waiting for their
+    first link."""
+    return {n.lower() for n in _read_marker(ini_dir)}
+
+
+def clear_installed_inis(ini_dir: Path) -> None:
+    try:
+        (Path(ini_dir) / INSTALLED_INIS_MARKER).unlink()
+    except FileNotFoundError:
+        pass

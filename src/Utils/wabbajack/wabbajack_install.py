@@ -27,9 +27,12 @@ Steps:
    actually built) becomes the profile's -- and mods it doesn't list at all
    (another profile's variants) were never downloaded or built, and ``plugins.txt``/``loadorder.txt``
    are copied as-is. There's deliberately no LOOT sort: a Wabbajack load
-   order is hand-tuned and reproducing it exactly is the point. Other
-   profile files (INIs) are kept in ``<profile>/wabbajack_profile_files`` and
-   listed in the report rather than applied.
+   order is hand-tuned and reproducing it exactly is the point. The game's
+   own INIs (Skyrim.ini, SkyrimPrefs.ini, ...) go into the profile's
+   ``ini files`` folder, with MO2's ``__MO_Saves`` save path set back to the
+   game's, and the profile is switched to its own INIs. Other profile files
+   are kept in ``<profile>/wabbajack_profile_files`` and listed in the report
+   rather than applied.
 5. **Provenance**: the profile records which modlist it came from, each
    built mod's ``meta.ini`` gets a ``[Wabbajack]`` section, and the mod index
    is rebuilt so the app sees the new mods without a manual refresh.
@@ -90,6 +93,10 @@ PROFILE_FILES_DIR = "wabbajack_profile_files"
 # TEMP_BSA_FILES/<TempID>/ before its CreateBSA directive packs them.
 _BSA_TEMP_DIR = "temp_bsa_files"
 _LOAD_ORDER_FILES = ("plugins.txt", "loadorder.txt")
+# MO2 points the game's save folder at its own __MO_Saves\ when a profile keeps
+# its own saves; without MO2 that folder doesn't exist and the saves vanish.
+_MO2_SAVE_PATH = re.compile(
+    r"(?im)^([ \t]*sLocalSavePath[ \t]*=[ \t]*)__MO_Saves[\\/]?[ \t]*(\r?)$")
 # Games whose mods aren't laid out under Data/, so the Root Builder -> Data/
 # relocation (Bethesda layout) must not run.
 _NO_DATA_FOLDER_GAMES = frozenset({"Cyberpunk 2077",
@@ -137,6 +144,8 @@ class WabbajackInstallReport:
     failed_directives: "list[tuple[str, str]]" = field(default_factory=list)  # to, why
     unplaced_files: "list[str]" = field(default_factory=list)
     held_profile_files: "list[str]" = field(default_factory=list)
+    # The game's own INIs, put into the profile's "ini files" folder.
+    applied_profile_inis: "list[str]" = field(default_factory=list)
     # Mods only other profiles use: not downloaded or built.
     skipped_mods: "list[str]" = field(default_factory=list)
     # MO2 Root Builder mods converted to root-folder mods.
@@ -716,7 +725,9 @@ def _download_all(archives: "list[Archive]", download_dir: Path, *, nexus_downlo
 def _write_profile(profile_dir: Path, scratch: Path, built_mods: "set[str]",
                    report: WabbajackInstallReport, log,
                    root_parents: "dict[str, str] | None" = None,
-                   staging: "Path | None" = None) -> None:
+                   staging: "Path | None" = None,
+                   ini_targets: "list[str] | None" = None,
+                   ini_subdir: "str | None" = None) -> None:
     curated = scratch / "modlist.txt"
     entries: "list[ModEntry]" = []
     if curated.is_file():
@@ -780,6 +791,15 @@ def _write_profile(profile_dir: Path, scratch: Path, built_mods: "set[str]",
             shutil.copyfile(src, profile_dir / name)
             invalidate_plugins_cache(profile_dir / name)
 
+    if ini_targets and ini_subdir:
+        applied = _apply_profile_inis(scratch, profile_dir / ini_subdir, ini_targets, log)
+        if applied:
+            from Utils.profile.profile_state import merge_profile_settings
+            merge_profile_settings(profile_dir, {"profile_ini_files": True})
+            for name in applied:
+                if name not in report.applied_profile_inis:
+                    report.applied_profile_inis.append(name)
+
     held = [p for p in scratch.rglob("*") if p.is_file()
             and p.relative_to(scratch).as_posix().lower() not in ("modlist.txt", *_LOAD_ORDER_FILES)]
     if held:
@@ -790,6 +810,46 @@ def _write_profile(profile_dir: Path, scratch: Path, built_mods: "set[str]",
             shutil.move(str(p), str(dest / rel))
             report.held_profile_files.append(rel.as_posix())
         log(f"Wabbajack: kept {len(held)} profile file(s) in {dest} (not applied)")
+
+
+def _profile_ini_targets(game) -> "tuple[list[str] | None, str | None]":
+    """The game's own INI names and the profile subfolder they go in, for a
+    game that keeps per-profile INIs; (None, None) otherwise."""
+    subdir = getattr(game, "_PROFILE_INI_SUBDIR", None)
+    if not subdir or not hasattr(game, "set_profile_ini_files"):
+        return None, None
+    from Utils.collections.collection_ini_tweaks import GAME_INI_TARGETS
+    targets = GAME_INI_TARGETS.get(getattr(game, "name", "") or "")
+    return (list(targets), subdir) if targets else (None, None)
+
+
+def _apply_profile_inis(scratch: Path, ini_dir: Path, targets: "list[str]",
+                        log) -> "list[str]":
+    """Move the game's own INIs from an MO2 profile into the profile's
+    ``ini files`` folder, named as the game names them (MO2 lower-cases them;
+    the deploy step links them into My Games by name). ``__MO_Saves`` is set
+    back to the game's ``Saves\\``. Returns the names applied."""
+    from Games.Bethesda.bethesda_ini import mark_installed_inis
+
+    wanted = {t.lower(): t for t in targets}
+    applied: "list[str]" = []
+    for src in sorted(scratch.iterdir()):
+        name = wanted.get(src.name.lower())
+        if name is None or not src.is_file():
+            continue
+        # latin-1 maps every byte, so the file comes back byte for byte
+        text = src.read_bytes().decode("latin-1")
+        text, fixed = _MO2_SAVE_PATH.subn(lambda m: f"{m.group(1)}Saves\\{m.group(2)}", text)
+        ini_dir.mkdir(parents=True, exist_ok=True)
+        (ini_dir / name).write_bytes(text.encode("latin-1"))
+        src.unlink()
+        applied.append(name)
+        if fixed:
+            log(f"Wabbajack: {name}: save folder set back from MO2's __MO_Saves to Saves")
+    if applied:
+        mark_installed_inis(ini_dir, applied)
+        log(f"Wabbajack: applied the modlist's {', '.join(applied)} as the profile's own INIs")
+    return applied
 
 
 def _stamp_mod_meta(mod_dir: Path, modlist: ModList, *, root_folder: bool = False) -> None:
@@ -1108,9 +1168,11 @@ def run_wabbajack_install(*, wabbajack_path: "str | Path", modlist: ModList, gam
 
         cb.on_status("Writing profile…" if len(targets) == 1
                      else f"Writing {len(targets)} profiles…")
+        ini_targets, ini_subdir = _profile_ini_targets(game)
         for mo2_profile, dest in targets.items():
             _write_profile(dest, profile_scratch / mo2_profile, built_mods, report, log,
-                           root_parents=root_parents, staging=staging)
+                           root_parents=root_parents, staging=staging,
+                           ini_targets=ini_targets, ini_subdir=ini_subdir)
     finally:
         shutil.rmtree(work_root, ignore_errors=True)
         if stock_work is not None:

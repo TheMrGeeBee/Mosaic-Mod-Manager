@@ -51,9 +51,13 @@ def install_summary(report, profile_names) -> "tuple[str, bool]":
         parts.append(f"{len(report.root_builder_mods)} mod(s) use Root Builder and were "
                      "set up to install into the game folder: "
                      f"{', '.join(report.root_builder_mods)}.")
+    if report.applied_profile_inis:
+        parts.append(f"The modlist's {', '.join(report.applied_profile_inis)} "
+                     f"{'is' if len(report.applied_profile_inis) == 1 else 'are'} set up "
+                     "as the profile's own INI files.")
     if report.held_profile_files:
-        parts.append(f"{len(report.held_profile_files)} profile settings file(s), such as "
-                     "INIs, were saved in the profile's wabbajack_profile_files folder "
+        parts.append(f"{len(report.held_profile_files)} other profile file(s) from the "
+                     "modlist were saved in the profile's wabbajack_profile_files folder "
                      "but not applied.")
     if report.unplaced_files:
         groups = Counter(f.split("/", 1)[0] if "/" in f else "(top level)"
