@@ -1335,6 +1335,10 @@ class BaseGame(ABC):
     # then explains this under the folder field.
     game_folder_is_install_dir: bool = False
 
+    # True when Configure Game offers to make a profile its own game copy
+    # ("Stock Game", see Utils.game_copy). Enabled per game once proven.
+    supports_game_copy: bool = False
+
     # True when the engine has a separate groundcover (grass) plugin list the user can
     # fill from the Plugins panel (OpenMW's groundcover= entries).
     supports_groundcover: bool = False

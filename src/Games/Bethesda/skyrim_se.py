@@ -31,6 +31,10 @@ from Utils.mods.modlist import read_modlist
 
 class SkyrimSE(BethesdaGame):
 
+    # A profile can run on its own game copy, e.g. a 1.6.1170 one, so switching
+    # profiles never swaps Steam's exe (Utils.game_copy).
+    supports_game_copy = True
+
     # SSE auto-loads plugin-matched BSAs — it is NOT a FO3/FNV-style engine that
     # only reads archives listed in the INI. Override the BethesdaGame default.
     _archive_list_needs_mod_bsas = False
