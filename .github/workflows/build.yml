@@ -134,12 +134,35 @@ jobs:
           retention-days: 1
 
   # ────────────────────────────────────────────────────────────────────
+  # MosaicPathIndex.dll — the SKSE plugin Mosaic installs on deploy for fast
+  # file lookups under Wine (native/path_index). One Windows DLL, built with
+  # MinGW-w64; both packages bundle it from src/Utils/path_index/.
+  # ────────────────────────────────────────────────────────────────────
+  path-index:
+    name: MosaicPathIndex.dll
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install MinGW-w64
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends gcc-mingw-w64-x86-64
+
+      - name: Build
+        run: bash native/path_index/build.sh
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: path-index-dll
+          path: src/Utils/path_index/MosaicPathIndex.dll
+          if-no-files-found: error
+
+  # ────────────────────────────────────────────────────────────────────
   # AppImage build (quick-sharun in the Arch container).
   # ────────────────────────────────────────────────────────────────────
   appimage:
     name: AppImage
     if: ${{ inputs.build_appimage }}
-    needs: libloot-arch
+    needs: [libloot-arch, path-index]
     runs-on: ubuntu-latest
     container: ghcr.io/pkgforge-dev/archlinux:latest
     env:
@@ -303,6 +326,12 @@ jobs:
           name: libloot-cp314
           path: src/LOOT/
 
+      - name: Download MosaicPathIndex.dll
+        uses: actions/download-artifact@v4
+        with:
+          name: path-index-dll
+          path: src/Utils/path_index/
+
       - name: Disk space before build
         run: df -h && du -sh /tmp 2>/dev/null || true
 
@@ -356,7 +385,7 @@ jobs:
   flatpak:
     name: Flatpak
     if: ${{ inputs.build_flatpak }}
-    needs: libloot-flatpak
+    needs: [libloot-flatpak, path-index]
     runs-on: ubuntu-latest
     container:
       image: ghcr.io/flathub-infra/flatpak-github-actions:kde-6.9
@@ -373,6 +402,12 @@ jobs:
         with:
           name: libloot-cp312
           path: src/LOOT/
+
+      - name: Download MosaicPathIndex.dll
+        uses: actions/download-artifact@v4
+        with:
+          name: path-index-dll
+          path: src/Utils/path_index/
 
       # Sign the export commits at BUILD time (the action passes --gpg-sign to
       # flatpak-builder). Without this the bundle's commit is unsigned, and a

@@ -48,6 +48,8 @@ class SkyrimSE(BethesdaGame):
     _PLUGINS_TXT_FILENAME = "Plugins.txt"
     plugins_use_star_prefix = True
     plugins_include_vanilla = False
+    # SKSE64 loads MosaicPathIndex (SE and AE) from here.
+    path_index_plugin_dir = "SKSE/Plugins"
     # Vanilla incl. Skyrim.ccc content (and _ResourcePack.esl, which is listed
     # inside Skyrim.ccc since 1.6.1130) stays OUT of plugins.txt — the engine
     # force-loads it before reading the file and strips any such entries on
@@ -564,6 +566,10 @@ class SkyrimSE(BethesdaGame):
         _log("Step 7: Applying archive invalidation ...")
         self.apply_archive_invalidation(_log)
 
+        if self.path_index:
+            _log("Step 8: Fast file lookups (MosaicPathIndex) ...")
+            self._install_path_index(_log)
+
         _log(
             f"Deploy complete. "
             f"{linked_mod} mod + {linked_core} vanilla "
@@ -614,6 +620,9 @@ class SkyrimSE(BethesdaGame):
                 log_fn=_log,
                 prefix_root=self.get_prefix_path(),
             )
+
+        # Before Data/ is cleared, which would move them to overwrite.
+        self._remove_path_index(_log)
 
         _log("Restore: clearing Data/ and moving Data_Core/ back ...")
         try:

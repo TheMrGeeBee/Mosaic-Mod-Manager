@@ -64,10 +64,15 @@ class BethesdaGame(BaseGame):
     # sub-package picker that BaseGame disables by default.
     supports_bain = True
 
+    # Data/-relative folder the script extender loads plugins from, for
+    # MosaicPathIndex (Utils/path_index). None: the game can't load it.
+    path_index_plugin_dir: str | None = None
+
     def __init__(self):
         self._script_extender_swap: bool = True
         self._profile_ini_files: bool = False
         self._profile_saves: bool = False
+        self._path_index: bool = True
         # In-prefix plugins.txt filename casing. None = follow the game's
         # class default (_PLUGINS_TXT_FILENAME); the user can override it in
         # the Configure Game panel (plugins.txt vs Plugins.txt).
@@ -380,6 +385,7 @@ class BethesdaGame(BaseGame):
         self._script_extender_swap = data.get("script_extender_swap", True)
         self._profile_ini_files = data.get("profile_ini_files", False)
         self._profile_saves = data.get("profile_saves", False)
+        self._path_index = data.get("path_index", True)
         raw_pfname = data.get("plugins_txt_filename")
         # Only treat a stored value as an override when it differs from the
         # game's class default, so a value equal to the default (which we now
@@ -406,6 +412,7 @@ class BethesdaGame(BaseGame):
             "script_extender_swap": self._script_extender_swap,
             "profile_ini_files":    self._profile_ini_files,
             "profile_saves":        self._profile_saves,
+            "path_index":           self._path_index,
             "plugins_txt_filename": self.plugins_txt_filename,
         }
 
@@ -416,6 +423,30 @@ class BethesdaGame(BaseGame):
     def set_script_extender_swap(self, value: bool) -> None:
         self._script_extender_swap = value
         self.save_paths()
+
+    @property
+    def path_index(self) -> bool:
+        """Fast file lookups: install MosaicPathIndex on deploy."""
+        return self._path_index and self.path_index_plugin_dir is not None
+
+    def set_path_index(self, value: bool) -> None:
+        if not value and self._path_index:
+            # Off takes effect now, not at the next deploy.
+            self._remove_path_index(lambda *_a: None)
+        self._path_index = value
+        self.save_paths()
+
+    def _install_path_index(self, log_fn) -> None:
+        if not self.path_index or self._game_path is None:
+            return
+        from Utils import path_index
+        path_index.install(self._game_path, self.path_index_plugin_dir, log_fn)
+
+    def _remove_path_index(self, log_fn) -> None:
+        if self.path_index_plugin_dir is None or self._game_path is None:
+            return
+        from Utils import path_index
+        path_index.remove(self._game_path, self.path_index_plugin_dir, log_fn)
 
     @property
     def profile_ini_files(self) -> bool:
@@ -1801,6 +1832,10 @@ class BethesdaGame(BaseGame):
             _log("Step 8: Setting plugin mtimes to match load order ...")
             self.stamp_plugin_load_order(profile, _log)
 
+        if self.path_index:
+            _log("Step 9: Fast file lookups (MosaicPathIndex) ...")
+            self._install_path_index(_log)
+
         _log(
             f"Deploy complete. "
             f"{linked_mod} mod + {linked_core} vanilla "
@@ -1841,6 +1876,9 @@ class BethesdaGame(BaseGame):
                 log_fn=_log,
                 prefix_root=self.get_prefix_path(),
             )
+
+        # Before Data/ is cleared, which would move them to overwrite.
+        self._remove_path_index(_log)
 
         _log("Restore: clearing Data/ and moving Data_Core/ back ...")
         restored = restore_data_core(

@@ -35,3 +35,6 @@ stale-local-tags-backup.txt
 
 # Personal drafts (Nexus articles, notes, etc.) — not project docs, never committed
 /docs/
+
+# Built by native/path_index/build.sh (and CI)
+/src/Utils/path_index/MosaicPathIndex.dll

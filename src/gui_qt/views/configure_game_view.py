@@ -438,6 +438,11 @@ class ConfigureGameView(QWidget):
                   self.tr("Use profile-specific saves"),
                   hasattr(self._game, "profile_saves")
                   and getattr(self._game, "supports_profile_saves", True))
+        add_check("path_index",
+                  self.tr("Fast file lookups under Wine (indexes the game folder, "
+                          "like MO2's virtual file system; much faster loading "
+                          "with large modlists)"),
+                  getattr(self._game, "path_index_plugin_dir", None) is not None)
         add_check("prefix_numbering",
                   self.tr("Prepend load-order numbers to mod folders"),
                   hasattr(self._game, "prefix_numbering"))
@@ -522,6 +527,7 @@ class ConfigureGameView(QWidget):
                             getattr(g, "archive_invalidation", True))
             self._set_check("profile_ini_files", getattr(g, "profile_ini_files", False))
             self._set_check("profile_saves", getattr(g, "profile_saves", False))
+            self._set_check("path_index", getattr(g, "_path_index", True))
             self._set_check("prefix_numbering", getattr(g, "prefix_numbering", True))
             external = set(getattr(g, "externally_managed_frameworks", None) or [])
             for key, fw_label in self._framework_keys.items():
@@ -545,6 +551,7 @@ class ConfigureGameView(QWidget):
             self._set_check("archive_invalidation", True)
             self._set_check("profile_ini_files", False)
             self._set_check("profile_saves", False)
+            self._set_check("path_index", True)
             self._set_check("prefix_numbering", True)
             if self._patch_group is not None and hasattr(g, "get_patch_version"):
                 rb = self._patch_buttons.get(int(g.get_patch_version()))
@@ -1182,6 +1189,8 @@ class ConfigureGameView(QWidget):
             g.set_profile_ini_files(self._opt_checks["profile_ini_files"].isChecked())
         if hasattr(g, "set_profile_saves") and "profile_saves" in self._opt_checks:
             g.set_profile_saves(self._opt_checks["profile_saves"].isChecked())
+        if hasattr(g, "set_path_index") and "path_index" in self._opt_checks:
+            g.set_path_index(self._opt_checks["path_index"].isChecked())
         if hasattr(g, "prefix_numbering") and "prefix_numbering" in self._opt_checks:
             g.prefix_numbering = self._opt_checks["prefix_numbering"].isChecked()
         if self._framework_keys:
