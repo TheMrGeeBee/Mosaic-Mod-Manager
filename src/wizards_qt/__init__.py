@@ -37,6 +37,10 @@ class QtWizardSpec:
     # (game, log_fn=..., on_close=..., ctx=QtWizardContext, **extra) -> QWidget
     view_factory: Callable[..., "QWidget"]
     panel: str = "plugins"                  # "plugins" | "modlist"
+    # Patches the game folder and records it per game (runtime swap, Steam
+    # build store, downgrades), so it may only act on the Steam install: a
+    # profile running on its own game copy can't use it yet.
+    steam_install_only: bool = False
 
 
 @dataclass(frozen=True)
@@ -183,15 +187,19 @@ REGISTRY: dict[str, QtWizardSpec] = {
     "wizards.fnv_4gb_patch.Fnv4GbPatchWizard":
         QtWizardSpec(_simple("wizards_qt.fnv_4gb_view", "Fnv4GbView")),
     "wizards.fallout_downgrade.FalloutDowngradeWizard":
-        QtWizardSpec(_simple("wizards_qt.fallout_downgrade_view", "FalloutDowngradeView")),
+        QtWizardSpec(_simple("wizards_qt.fallout_downgrade_view", "FalloutDowngradeView"),
+                     steam_install_only=True),
     "wizards.fallout4_downgrade.Fallout4DowngradeWizard":
-        QtWizardSpec(_simple("wizards_qt.fallout4_downgrade_view", "Fallout4DowngradeView")),
+        QtWizardSpec(_simple("wizards_qt.fallout4_downgrade_view", "Fallout4DowngradeView"),
+                     steam_install_only=True),
     "wizards.vtmb_patch.VtmbPatchWizard":
         QtWizardSpec(_simple("wizards_qt.vtmb_patch_view", "VtmbPatchView")),
     "wizards.game_version.GameVersionWizard":
-        QtWizardSpec(_simple("wizards_qt.game_version_view", "GameVersionView")),
+        QtWizardSpec(_simple("wizards_qt.game_version_view", "GameVersionView"),
+                     steam_install_only=True),
     "wizards.skyrim_runtime.SkyrimRuntimeWizard":
-        QtWizardSpec(_simple("wizards_qt.skyrim_runtime_view", "SkyrimRuntimeView")),
+        QtWizardSpec(_simple("wizards_qt.skyrim_runtime_view", "SkyrimRuntimeView"),
+                     steam_install_only=True),
     "wizards.wrye_bash.WryeBashWizard":
         QtWizardSpec(_simple("wizards_qt.wrye_bash_view", "WryeBashView")),
     "wizards.bethini.BethINIWizard":

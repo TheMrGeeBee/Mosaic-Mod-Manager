@@ -498,6 +498,14 @@ class MainWindow:
         from Utils.config_paths import get_game_config_dir
         from Utils.modding_tools import skyrim_runtime as sr
         game = ctx["info"]["game"]
+        if getattr(game, "uses_game_copy", lambda: False)():
+            # The swap state is recorded per game for the Steam install; patching
+            # a copy with it would leave both the copy and that record wrong.
+            self._preflight_ev.emit("fix-failed", (ctx, self.tr(
+                "This profile runs on its own game copy ({0}). Mosaic can't switch a "
+                "game copy's version yet; make the copy from a game of the version "
+                "this collection needs.").format(game.get_game_path())))
+            return
         try:
             self._preflight_ev.emit("busy", (ctx, self.tr("Switching the game version…")))
             sr.apply_transition(

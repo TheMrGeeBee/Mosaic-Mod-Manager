@@ -98,6 +98,10 @@ class _ScanSignals(QObject):
     # Staging migration (old root scan + move) → GUI thread.
     staging_scanned = Signal(object, object, object, object)  # (old, new, files, size)
     staging_progress = Signal(int, int, str)                  # (done, total, message)
+    # Game copy ("Stock Game") workers -> GUI thread.
+    copy_progress = Signal(int, int)                          # (bytes done, total)
+    copy_done = Signal(object)                                # (dest, info, error, request, choices)
+    copy_deleted = Signal(object, object)                     # (folder, error|None)
     staging_move_done = Signal(int, int, int)                 # (moved, skipped, failed)
 
 
@@ -128,6 +132,11 @@ class ConfigureGameView(QWidget):
         self._sig.staging_scanned.connect(self._on_staging_scanned)
         self._sig.staging_progress.connect(self._on_staging_progress)
         self._sig.staging_move_done.connect(self._on_staging_move_done)
+        self._sig.copy_progress.connect(self._on_copy_progress)
+        self._sig.copy_done.connect(self._on_copy_done)
+        self._sig.copy_deleted.connect(self._on_copy_deleted)
+        self._copy_box = None
+        self._copy_busy = False
         self._staging_popup = None
         self._destructive_busy = False
 
@@ -313,6 +322,28 @@ class ConfigureGameView(QWidget):
         row.addWidget(self._scan_btn)
         row.addStretch(1)
         v.addLayout(row)
+
+        # --- Game copy (Stock Game) ---
+        if getattr(g, "supports_game_copy", False) and g.is_configured():
+            self._copy_box = QWidget()
+            cv = QVBoxLayout(self._copy_box)
+            cv.setContentsMargins(0, 6, 0, 0)
+            cv.setSpacing(4)
+            cv.addWidget(self._section_header(self.tr("Game Copy (Stock Game)")))
+            self._copy_status = self._status("", "TEXT_DIM")
+            cv.addWidget(self._copy_status)
+            crow = QHBoxLayout()
+            self._copy_make_btn = self._small_btn(self.tr("Make a game copy…"),
+                                                  self._on_make_copy)
+            self._copy_steam_btn = self._small_btn(self.tr("Use the Steam install"),
+                                                   self._on_use_steam_install)
+            self._copy_delete_btn = self._small_btn(self.tr("Delete this copy…"),
+                                                    self._on_delete_copy)
+            for b in (self._copy_make_btn, self._copy_steam_btn, self._copy_delete_btn):
+                crow.addWidget(b)
+            crow.addStretch(1)
+            cv.addLayout(crow)
+            v.addWidget(self._copy_box)
 
         # Passive detected-version label — only for games that declare it
         # (currently just TW3, Next-Gen vs. Remastered; see
@@ -653,6 +684,7 @@ class ConfigureGameView(QWidget):
         self._found_prefix = None
         self._prepopulate()
         self._refresh_scope_header()
+        self._refresh_copy_section()
 
     def notify_saved(self):
         """Called by the app after a Save that keeps the tab open (Reconfigure).
@@ -754,6 +786,7 @@ class ConfigureGameView(QWidget):
         self._game_status.setStyleSheet(f"color:{self._c(tone)};")
         self._update_version_label(path)
         self._save_btn.setEnabled(True)
+        self._refresh_copy_section()
 
     def _update_version_label(self, path: Path):
         if self._version_lbl is None:
@@ -1060,7 +1093,8 @@ class ConfigureGameView(QWidget):
             sid = getattr(g, "steam_id", None)
             ids = [sid] + [str(s) for s in getattr(g, "alt_steam_ids", []) or [] if s]
             for s in [x for x in ids if x]:
-                found = find_prefix(s, g.get_game_path())
+                # Steam install, not a game copy (see BaseGame.get_steam_install_path).
+                found = find_prefix(s, g.get_steam_install_path())
                 if found:
                     break
             if not found and _heroic_app_names(g):
@@ -1237,6 +1271,215 @@ class ConfigureGameView(QWidget):
         self._install_prefix_deps()
 
         self._on_done(True, False)
+
+    # ---- game copy (Stock Game) ----------------------------------------------
+    def _field_game_path(self) -> "Path | None":
+        raw = self._game_edit.text().strip()
+        return Path(raw) if raw else self._found_path
+
+    def _refresh_copy_section(self):
+        """Show what the game folder in the form is, and the buttons that fit."""
+        if self._copy_box is None:
+            return
+        from Utils import game_copy as gc
+        from Utils.wine_proton.steam_finder import library_steamapps_for
+        make = steam = delete = False
+        if getattr(self, "_profile_dir", None) is None:
+            text = self.tr("Game copies are per profile: switch to the profile that should run "
+                           "on one. The default profile always uses the Steam install.")
+        else:
+            folder = self._field_game_path()
+            info = gc.read_marker(folder)
+            if info is not None:
+                text = self.tr("This profile runs on its own game copy: {0}, made {1} from the "
+                               "Steam install.").format(info.version or info.build,
+                                                        info.created_at[:10])
+                steam = delete = True
+            elif folder is not None and library_steamapps_for(folder) is None:
+                text = self.tr("This profile runs on its own game folder, not one Mosaic made.")
+                steam = True
+            else:
+                text = self.tr("This profile uses the Steam install. Make a game copy to give it "
+                               "its own, at the version it needs.")
+                make = True
+        self._copy_status.setText(text)
+        self._copy_status.setStyleSheet(f"color:{self._c('TEXT_DIM')};")
+        self._copy_make_btn.setVisible(make)
+        self._copy_steam_btn.setVisible(steam)
+        self._copy_delete_btn.setVisible(delete)
+        for b in (self._copy_make_btn, self._copy_steam_btn, self._copy_delete_btn):
+            b.setEnabled(not self._copy_busy)
+
+    def _copy_message(self, text: str, tone: str = "TEXT_DIM"):
+        self._copy_status.setText(text)
+        self._copy_status.setStyleSheet(f"color:{self._c(tone)};")
+
+    def _default_copy_parent(self) -> Path:
+        """Where the modlist folder goes the first time: ``Modlists`` next to the
+        Steam library (same filesystem, so the clone is free), else ~/Games."""
+        from Utils.wine_proton.steam_finder import library_steamapps_for
+        lib = library_steamapps_for(self._game.get_steam_install_path())
+        return (lib.parent / "Modlists") if lib is not None else Path.home() / "Games" / "Modlists"
+
+    def _on_make_copy(self):
+        from Utils import game_copy as gc
+        g = self._game
+        try:
+            choices = gc.build_choices(g)
+        except Exception as exc:                           # noqa: BLE001
+            self._copy_message(self.tr("Couldn't list the game versions: {0}").format(exc),
+                               "TEXT_ERR")
+            return
+        parent = gc.last_parent(g.name) or self._default_copy_parent()
+        profile = self._profile_dir.name
+        from gui_qt.overlays.game_copy_overlay import GameCopyOverlay
+        GameCopyOverlay(
+            self.window(), profile=profile, default_folder=parent / profile,
+            builds=[(lbl, choices.names[lbl]) for lbl in choices.labels],
+            current=choices.current,
+            on_done=lambda req: self._start_copy(req, choices, False) if req else None)
+
+    def _start_copy(self, request, choices, allow_full_copy: bool):
+        from Utils import game_copy as gc
+        g = self._game
+        dest, build = request
+        existing = gc.read_marker(dest)
+        if existing is not None:
+            # Mosaic already made a copy there (e.g. the form was reset before
+            # Save): use it rather than refusing a folder that isn't empty.
+            self._set_game(Path(dest), source="manual")
+            have = existing.version or existing.build
+            if existing.build != build:
+                self._copy_message(self.tr(
+                    "Mosaic already made a {0} copy there, not {1}. Press Save to use it, or "
+                    "delete it and make a new one.").format(have, choices.names.get(build, build)),
+                    "TEXT_WARN")
+            else:
+                self._copy_message(self.tr("Mosaic already made this copy ({0}). Press Save to "
+                                           "make this profile use it.").format(have), "TEXT_OK")
+            return
+        steam_root = g.get_steam_install_path()
+        self._copy_busy = True
+        self._refresh_copy_section()
+        self._copy_message(self.tr("Making the game copy…"), "TEXT_WARN")
+        last = [-1]
+
+        def progress(done, total):
+            pct = int(done * 100 / total) if total else 100
+            if pct != last[0]:
+                last[0] = pct
+                safe_emit(self._sig.copy_progress, done, total)
+
+        def worker():
+            info = err = None
+            try:
+                info = gc.create_copy(
+                    game_name=g.name, steam_root=steam_root, dest=dest, build=build,
+                    current_build=choices.current, state_dir=choices.state_dir,
+                    exe_file=choices.exe_file, allow_full_copy=allow_full_copy,
+                    progress=progress, log_fn=print)
+            except Exception as exc:                       # noqa: BLE001
+                err = exc
+            safe_emit(self._sig.copy_done, (dest, info, err, request, choices))
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _on_copy_progress(self, done, total):
+        pct = int(done * 100 / total) if total else 100
+        self._copy_message(self.tr("Making the game copy… {0}%").format(pct), "TEXT_WARN")
+
+    def _on_copy_done(self, payload):
+        from Utils import game_copy as gc
+        dest, info, err, request, choices = payload
+        self._copy_busy = False
+        if isinstance(err, gc.ReflinkUnavailable):
+            self._refresh_copy_section()
+            from gui_qt.overlays.confirm_overlay import ConfirmOverlay
+            ConfirmOverlay.show_over(
+                self, self.tr("Make a full copy?"),
+                self.tr("{0}\n\nMake a full copy anyway? A folder on the same drive as the "
+                        "Steam library avoids this.").format(err),
+                lambda ok: self._start_copy(request, choices, True) if ok else None,
+                confirm_label=self.tr("Copy {0:.1f} GB").format(err.size / 1e9),
+                cancel_label=self.tr("Cancel"), danger=False)
+            return
+        if err is not None:
+            self._refresh_copy_section()
+            self._copy_message(str(err), "TEXT_ERR")
+            return
+        gc.remember_parent(self._game.name, Path(dest).parent.parent)
+        self._set_game(Path(dest), source="manual")
+        self._copy_message(self.tr("Game copy ready ({0}). Press Save to make this profile "
+                                   "use it.").format(info.version or info.build), "TEXT_OK")
+
+    def _on_use_steam_install(self):
+        steam = self._game.get_steam_install_path()
+        if steam is None:
+            return
+        self._set_game(Path(steam), source="steam")
+        self._copy_message(self.tr("Press Save to make this profile use the Steam install "
+                                   "again. The game copy stays where it is."), "TEXT_OK")
+
+    def _on_delete_copy(self):
+        from Utils import game_copy as gc
+        folder = self._field_game_path()
+        if gc.read_marker(folder) is None:
+            return
+        g = self._game
+        profiles_dir = g.get_profile_root() / "profiles"
+        users = gc.profiles_using(profiles_dir, folder)
+        mine = self._profile_dir.name if self._profile_dir is not None else None
+        others = [u for u in users if u != mine]
+        if others:
+            self._copy_message(self.tr(
+                "Still used by: {0}. Use the Steam install (or another folder) for those "
+                "profiles first.").format(", ".join(others)), "TEXT_ERR")
+            return
+        switch_back = mine in users
+        if switch_back and g.get_deploy_active() and g.get_last_deployed_profile() == mine:
+            self._copy_message(self.tr("Mods are deployed in this copy. Restore first."),
+                               "TEXT_ERR")
+            return
+
+        def _go():
+            if switch_back:
+                # Only this profile uses the copy: point it back at the Steam
+                # install (saved now, so nothing refers to the deleted folder).
+                from Utils.profile.profile_state import merge_profile_settings
+                merge_profile_settings(self._profile_dir, {"game_path": None})
+                g.load_paths()
+                self._refresh_scope_header()
+            self._copy_busy = True
+            self._refresh_copy_section()
+            self._copy_message(self.tr("Deleting the game copy…"), "TEXT_WARN")
+
+            def worker():
+                err = None
+                try:
+                    gc.delete_copy(folder, profiles_dir)
+                except Exception as exc:                   # noqa: BLE001
+                    err = exc
+                safe_emit(self._sig.copy_deleted, folder, err)
+            threading.Thread(target=worker, daemon=True).start()
+
+        from gui_qt.overlays.confirm_overlay import ConfirmOverlay
+        ConfirmOverlay.show_over(
+            self, self.tr("Delete the game copy?"),
+            (self.tr("Delete {0}?\n\nThis profile goes back to the Steam install. The Steam "
+                     "install is not affected.") if switch_back else
+             self.tr("Delete {0}?\n\nNo profile uses it. The Steam install is not affected."))
+            .format(folder), lambda ok: _go() if ok else None,
+            confirm_label=self.tr("Delete"), cancel_label=self.tr("Cancel"))
+
+    def _on_copy_deleted(self, folder, err):
+        self._copy_busy = False
+        if err is not None:
+            self._refresh_copy_section()
+            self._copy_message(str(err), "TEXT_ERR")
+            return
+        steam = self._game.get_steam_install_path()
+        if steam is not None:
+            self._set_game(Path(steam), source="steam")
+        self._copy_message(self.tr("Deleted {0}.").format(folder), "TEXT_OK")
 
     # ---- staging migration --------------------------------------------------
     def _start_staging_scan(self, old_root: Path, new_root: Path):

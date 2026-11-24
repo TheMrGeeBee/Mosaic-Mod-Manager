@@ -36,6 +36,10 @@ def install_summary(report, profile_names) -> "tuple[str, bool]":
                 f"{it} from the profile menu if you don't want {it}."), False
     parts = [f"Installed {len(report.installed_mods)} mod"
              f"{'' if len(report.installed_mods) == 1 else 's'} into {where}."]
+    if getattr(report, "stock_game", ""):
+        parts.append(f"The modlist's own game folder was built as a game copy at "
+                     f"{report.stock_game}, and {'its profile runs' if one else 'its profiles run'} "
+                     "on it. Your Steam install wasn't changed.")
     if report.failed_archives:
         parts.append(f"{len(report.failed_archives)} download(s) couldn't be completed.")
     if report.failed_directives:
@@ -248,11 +252,16 @@ class WabbajackController(QObject):
         game = self._win._gs.game
         nexus_ok = self._win._ensure_nexus_api() is not None and bool(load_nexus_last_premium())
         try:
-            game_root = game.get_game_path()
+            # The list's game files come from the Steam install, not a game copy.
+            game_root = game.get_steam_install_path()
         except Exception:
             game_root = None
+        from Utils.wabbajack.wabbajack_stock_game import game_stock_dir
+        stock_dest = self._stock_game_dest(game, modlist)
         return run_preflight(
             modlist, active_game_name=game.name,
+            stock_dir=game_stock_dir(modlist, game),
+            stock_game_dest=stock_dest,
             staging_root=game.get_effective_mod_staging_path(),
             cache_dir=get_download_cache_dir_for_game(game.name),
             nexus_premium=nexus_ok, game_root=game_root,
@@ -408,6 +417,24 @@ class WabbajackController(QObject):
                          args=(game, api, targets, callbacks, self._control, bool(repair)),
                          daemon=True, name="wabbajack-install").start()
 
+    def _stock_game_dest(self, game, modlist=None) -> "Path | None":
+        """Where this list's own game folder (Stock Game) is built as a game
+        copy, or None when the list has none or the game can't use copies."""
+        if not getattr(game, "supports_game_copy", False):
+            return None
+        from Utils.wabbajack.wabbajack_stock_game import (
+            game_stock_dir,
+            stock_game_destination,
+        )
+        modlist = modlist if modlist is not None else self._modlist
+        if game_stock_dir(modlist, game) is None:
+            return None
+        try:
+            return stock_game_destination(game, modlist)
+        except Exception as exc:                          # noqa: BLE001
+            self._win._append_log(f"[wabbajack] can't place the modlist's game copy: {exc}")
+            return None
+
     def _install_worker(self, game, api, targets, callbacks, control, resume=False) -> None:
         from Nexus.nexus_download import NexusDownloader
         from Utils.config_paths import get_download_cache_dir_for_game
@@ -434,7 +461,10 @@ class WabbajackController(QObject):
                     ask = self._blocking(self._ask_resume, ("present", "total"))
                     resume = bool(ask(present, total))
 
-            game_path = game.get_game_path()
+            # A list with its own game folder (Stock Game) gets it built as a
+            # game copy its profiles run on; its files' GAME_PATH points there.
+            stock_dest = self._stock_game_dest(game)
+            game_path = stock_dest or game.get_game_path()
             substitutions = path_substitutions(
                 game_path=to_wine_path(game_path) if game_path else None,
                 install_path=to_wine_path(Path(game.get_effective_mod_staging_path()).parent),
@@ -445,7 +475,8 @@ class WabbajackController(QObject):
                 nexus_downloader=(NexusDownloader(api, download_dir=download_dir)
                                   if api is not None else None),
                 substitutions=substitutions, callbacks=callbacks, control=control,
-                manual_resolved=dict(self._manual_found), resume=resume)
+                manual_resolved=dict(self._manual_found), resume=resume,
+                stock_game_dest=stock_dest)
             safe_emit(self._finished, report, None)
         except Exception as exc:
             import traceback

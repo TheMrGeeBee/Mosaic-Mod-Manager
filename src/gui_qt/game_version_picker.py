@@ -82,6 +82,11 @@ class GameVersionPicker(QObject):
         if game is None:
             self.button.hide()
             return
+        # Builds are switched in the Steam install; a profile on its own game
+        # copy keeps the version the copy was made with.
+        if getattr(game, "uses_game_copy", lambda: False)():
+            self.button.hide()
+            return
         try:
             labels, current, names = self._list_builds(game)
         except Exception as exc:                 # never break the play bar

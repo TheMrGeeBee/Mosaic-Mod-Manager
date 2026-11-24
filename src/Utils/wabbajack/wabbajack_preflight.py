@@ -205,17 +205,19 @@ def check_sources(modlist: ModList, *, nexus_premium: bool,
     return checks
 
 
-def _game_files_mosaic_builds_from(modlist: ModList) -> "set[str]":
+def _game_files_mosaic_builds_from(modlist: ModList,
+                                   stock_dir: "str | None" = None) -> "set[str]":
     """Hashes of game-file archives that feed files Mosaic actually installs
     (``mods/`` and ``profiles/``). Real case (Wasteland Genesis AE): all 21
     game files that differed on the user's install only fed the list's
     ``Game Root\\`` folder (the curator's own game files copied over the game,
     which Mosaic skips), so they must not block."""
     used: "set[str]" = set()
+    tops = {"mods", "profiles"} | ({stock_dir.lower()} if stock_dir else set())
     for d in modlist.directives:
         ahp = getattr(d, "archive_hash_path", None) or []
         top = (getattr(d, "to", "") or "").replace("\\", "/").split("/", 1)[0].lower()
-        if ahp and top in ("mods", "profiles"):
+        if ahp and top in tops:
             used.add(ahp[0])
     return used
 
@@ -240,11 +242,23 @@ def _extender_runtime(modlist: ModList) -> "str | None":
     return found.pop() if len(found) == 1 else None
 
 
-def check_game_version(modlist: ModList, game_root: "str | Path | None") -> "list[Check]":
+def check_game_version(modlist: ModList, game_root: "str | Path | None", *,
+                       stock_game_dest: "str | Path | None" = None) -> "list[Check]":
     """A warning (never a block) when the game's exe reports a different
     version than the game files the modlist was built from: Mosaic can still
     build it, but its plugins may need that version to run. Switch with
-    Wizard ▸ Game version (Steam)."""
+    Wizard ▸ Game version (Steam).
+
+    With ``stock_game_dest`` Mosaic builds the list's own game folder, patched
+    exe included, as a game copy there, so the Steam install's exe version no
+    longer matters."""
+    if stock_game_dest is not None:
+        runs_on = _extender_runtime(modlist)
+        return [Check("game-runtime", True, "Mosaic builds the modlist's own game copy",
+                      "The modlist ships its own game folder"
+                      + (f" ({runs_on})" if runs_on else "")
+                      + f", the way MO2 runs it. Mosaic builds it at {stock_game_dest} and the "
+                      "profiles run on it. Your Steam install isn't changed.")]
     if not game_root:
         return []
     exes = [a for a in modlist.archives if isinstance(a.state, GameFileSourceState)
@@ -286,14 +300,16 @@ def check_game_version(modlist: ModList, game_root: "str | Path | None") -> "lis
 
 
 def check_game_files(modlist: ModList, game_root: "str | Path | None",
-                     originals: "list[Path] | None" = None) -> "list[Check]":
+                     originals: "list[Path] | None" = None, *,
+                     stock_dir: "str | None" = None) -> "list[Check]":
     """Game files that files Mosaic installs are built from must be there and
     be the build the modlist was made from (sizes compared here, instantly;
     hashes during the install). Real case (2026-10-08): Wasteland Genesis AE,
     built from 1.11.221 game files -- a mismatch must show before a 168 GB
     download, not after. Game files that only feed parts Mosaic skips (e.g.
-    ``Game Root\\``) are left out."""
-    used = _game_files_mosaic_builds_from(modlist)
+    ``Game Root\\``) are left out, unless Mosaic builds that folder as a game
+    copy (``stock_dir``)."""
+    used = _game_files_mosaic_builds_from(modlist, stock_dir)
     wanted = [a for a in modlist.archives
               if isinstance(a.state, GameFileSourceState) and a.hash in used]
     if not wanted or not game_root:
@@ -340,12 +356,18 @@ def run_preflight(modlist: ModList, *, active_game_name: str,
                   manual_resolved: int = 0, manual_skipped: int = 0,
                   game_root: "str | Path | None" = None,
                   originals: "list[Path] | None" = None,
-                  free_fn: "Callable[[Path], int] | None" = None) -> "list[Check]":
-    """Every preflight check for ``modlist``, in display order."""
+                  free_fn: "Callable[[Path], int] | None" = None,
+                  stock_dir: "str | None" = None,
+                  stock_game_dest: "str | Path | None" = None) -> "list[Check]":
+    """Every preflight check for ``modlist``, in display order. ``stock_dir``
+    and ``stock_game_dest``: the list's own game folder and where Mosaic builds
+    it as a game copy (None when it isn't built)."""
+    building = stock_game_dest is not None
     return [
         *check_game(modlist, active_game_name),
-        *check_game_files(modlist, game_root, originals),
-        *check_game_version(modlist, game_root),
+        *check_game_files(modlist, game_root, originals,
+                          stock_dir=stock_dir if building else None),
+        *check_game_version(modlist, game_root, stock_game_dest=stock_game_dest),
         *check_directives(modlist),
         *check_inno_tool(modlist),
         *check_sources(modlist, nexus_premium=nexus_premium,

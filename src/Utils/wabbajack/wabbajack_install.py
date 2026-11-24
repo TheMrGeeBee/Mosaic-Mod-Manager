@@ -43,6 +43,7 @@ import tempfile
 import threading
 from collections import Counter
 from dataclasses import dataclass, field, replace
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable, Sequence
 
@@ -143,6 +144,8 @@ class WabbajackInstallReport:
     # The modlist's MO2 profiles this run installed, one Mosaic profile each.
     profiles_used: "list[str]" = field(default_factory=list)
     cancelled: bool = False
+    # The list's own game folder Mosaic built (or reused) for these profiles.
+    stock_game: str = ""
 
     @property
     def profile_used(self) -> str:
@@ -163,6 +166,8 @@ class InstallPlan:
     mod_directives: "list[Directive]" = field(default_factory=list)      # to = <Name>/<rel>
     profile_directives: "list[Directive]" = field(default_factory=list)  # to = <Profile>/<rel>
     bsa_inputs: "list[Directive]" = field(default_factory=list)          # to = <TempID>/<rel>
+    # The list's own game folder (Stock Game), when it's being built: to = <rel>.
+    stock_directives: "list[Directive]" = field(default_factory=list)
     profile_names: "list[str]" = field(default_factory=list)
     unplaced: "list[str]" = field(default_factory=list)
 
@@ -172,7 +177,8 @@ class InstallPlan:
 
     def archive_hashes(self) -> "set[str]":
         return {d.archive_hash_path[0]
-                for d in self.mod_directives + self.profile_directives + self.bsa_inputs
+                for d in (self.mod_directives + self.profile_directives + self.bsa_inputs
+                          + self.stock_directives)
                 if isinstance(d, (FromArchiveDirective, PatchedFromArchiveDirective))
                 and d.archive_hash_path}
 
@@ -214,7 +220,8 @@ _PROFILE_BACKUP_RE = re.compile(r"\.\d{4}_\d{2}_\d{2}_\d{2}_\d{2}_\d{2}$")
 
 
 def classify_directives(modlist: ModList,
-                        profiles: "str | Sequence[str] | None" = None) -> InstallPlan:
+                        profiles: "str | Sequence[str] | None" = None, *,
+                        stock_dir: "str | None" = None) -> InstallPlan:
     """Split the modlist's directives by where they land (see module doc).
     Wabbajack writes ``To`` with Windows separators; they're normalised.
     ``profiles`` names the MO2 profile(s) to install -- one name, or several
@@ -223,7 +230,12 @@ def classify_directives(modlist: ModList,
     may be omitted only when :func:`profile_choices` offers at most one,
     otherwise :class:`ProfileChoiceRequired` is raised. A kept profile
     directive's ``to`` starts with its profile name, so one run can build
-    several profiles' files into separate scratch folders."""
+    several profiles' files into separate scratch folders.
+
+    ``stock_dir`` names the list's own game folder (see
+    ``wabbajack_stock_game.stock_game_dir``) when it is to be built as a game
+    copy; its directives then go to ``stock_directives`` instead of
+    ``unplaced``."""
     choices = profile_choices(modlist)
     if profiles is None:
         if len(choices) > 1:
@@ -238,6 +250,7 @@ def classify_directives(modlist: ModList,
 
     plan = InstallPlan(profile_names=wanted)
     keep = set(wanted)
+    stock = stock_dir.lower() if stock_dir else None
     for d in modlist.directives:
         parts = _norm_to(d)
         to = "/".join(parts)
@@ -251,6 +264,8 @@ def classify_directives(modlist: ModList,
             plan.profile_directives.append(replace(d, to="/".join(parts[1:])))
         elif head == _BSA_TEMP_DIR and len(parts) >= 3:
             plan.bsa_inputs.append(replace(d, to="/".join(parts[1:])))
+        elif stock is not None and head == stock and len(parts) >= 2:
+            plan.stock_directives.append(replace(d, to="/".join(parts[1:])))
         else:
             plan.unplaced.append(to)
     return plan
@@ -286,7 +301,8 @@ def limit_to_profile_mods(plan: InstallPlan, listed: "set[str]") -> "list[str]":
             # not reported as skipped, since it isn't a mod.
             skipped.add(mod)
     plan.mod_directives = kept
-    temp_ids = {d.temp_id.lower() for d in kept if isinstance(d, CreateBSADirective)}
+    temp_ids = {d.temp_id.lower() for d in kept + plan.stock_directives
+                if isinstance(d, CreateBSADirective)}
     plan.bsa_inputs = [d for d in plan.bsa_inputs
                        if d.to.split("/", 1)[0].lower() in temp_ids]
     return sorted(skipped)
@@ -472,7 +488,7 @@ def drop_built_directives(plan: InstallPlan, staging: Path) -> "list[Directive]"
     gone = {id(d) for d in built}
     plan.mod_directives = [d for d in plan.mod_directives if id(d) not in gone]
     done_temp = {d.temp_id.lower() for d in built if isinstance(d, CreateBSADirective)}
-    pending_temp = {d.temp_id.lower() for d in plan.mod_directives
+    pending_temp = {d.temp_id.lower() for d in plan.mod_directives + plan.stock_directives
                     if isinstance(d, CreateBSADirective)}
     plan.bsa_inputs = [d for d in plan.bsa_inputs
                        if d.to.split("/", 1)[0].lower() not in done_temp - pending_temp]
@@ -848,6 +864,29 @@ def _rebuild_index(game, profile_dirs: "Path | list[Path]", log) -> None:
 # ---------------------------------------------------------------------------
 
 
+def _install_stock_game(work: Path, dest: Path, modlist: ModList, game,
+                        report: WabbajackInstallReport, log) -> None:
+    """Move the finished game folder into place as a game copy."""
+    from Utils import game_copy as gc
+
+    from .wabbajack_stock_game import copy_label
+    info = gc.CopyInfo(
+        game=getattr(game, "name", ""), build=copy_label(modlist),
+        version=gc._exe_version(work, gc.version_exe(game)),
+        source=f"Wabbajack modlist {modlist.name} {modlist.version}".strip(),
+        method="wabbajack",
+        created_at=datetime.now(timezone.utc).isoformat(timespec="seconds"))
+    try:
+        gc.install_built_copy(work, dest, info)
+    except (gc.GameCopyError, OSError) as exc:
+        report.failed_directives.append((str(dest), str(exc)))
+        log(f"Wabbajack: couldn't install the modlist's game copy: {exc}")
+        return
+    report.stock_game = str(dest)
+    log(f"Wabbajack: the modlist's game copy is ready at {dest}"
+        + (f" (game version {info.version})" if info.version else ""))
+
+
 def run_wabbajack_install(*, wabbajack_path: "str | Path", modlist: ModList, game,
                           profile_dir: "Path | None" = None,
                           download_dir: Path, nexus_downloader=None,
@@ -860,6 +899,7 @@ def run_wabbajack_install(*, wabbajack_path: "str | Path", modlist: ModList, gam
                           manual_folders: "list[Path] | None" = None,
                           manual_resolved: "dict[str, Path] | None" = None,
                           resume: bool = False,
+                          stock_game_dest: "Path | None" = None,
                           ) -> WabbajackInstallReport:
     """Install ``modlist`` into one or more Mosaic profiles (see the module doc).
 
@@ -879,7 +919,11 @@ def run_wabbajack_install(*, wabbajack_path: "str | Path", modlist: ModList, gam
 
     ``resume`` installs into a profile that already holds an earlier run:
     files that are already built are kept, and only what's missing is
-    downloaded and built."""
+    downloaded and built.
+
+    ``stock_game_dest``: build the list's own game folder (its ``Stock Game``)
+    there as a game copy and make every installed profile use it (see
+    ``wabbajack_stock_game``). ``None`` skips that folder, as before."""
     cb = callbacks or WabbajackInstallCallbacks()
     cancel = (control or WabbajackInstallControl()).cancel
     log = cb.on_log
@@ -895,7 +939,10 @@ def run_wabbajack_install(*, wabbajack_path: "str | Path", modlist: ModList, gam
     # A single unnamed target means "whatever profile this list has" -- a
     # modlist with no profiles folder, or one the caller didn't name.
     unnamed = len(pairs) == 1 and not pairs[0][0]
-    plan = classify_directives(modlist, None if unnamed else [k for k, _ in pairs])
+    from .wabbajack_stock_game import copy_label, game_stock_dir
+    stock_dir = game_stock_dir(modlist, game)
+    plan = classify_directives(modlist, None if unnamed else [k for k, _ in pairs],
+                               stock_dir=stock_dir if stock_game_dest is not None else None)
     # MO2 profile -> the Mosaic profile that gets its modlist.txt.
     targets: "dict[str, Path]" = ({plan.profile_name: Path(pairs[0][1])} if unnamed
                                   else {k: Path(v) for k, v in pairs})
@@ -904,7 +951,10 @@ def run_wabbajack_install(*, wabbajack_path: "str | Path", modlist: ModList, gam
     game.set_active_profile_dir(profile_dir)
     game.load_paths()
     staging = Path(game.get_effective_mod_staging_path())
-    game_root = game.get_game_path() if hasattr(game, "get_game_path") else None
+    # Game-file archives are read from the Steam install, never from a game copy
+    # (a "Stock Game" folder the list may itself be building).
+    game_root = (game.get_steam_install_path() if hasattr(game, "get_steam_install_path")
+                 else game.get_game_path() if hasattr(game, "get_game_path") else None)
 
     report.unplaced_files = list(plan.unplaced)
     report.profiles_used = list(plan.profile_names)
@@ -914,8 +964,8 @@ def run_wabbajack_install(*, wabbajack_path: "str | Path", modlist: ModList, gam
         log(f"Wabbajack: {len(plan.unplaced)} file(s) outside mods/ and the chosen "
             "profile are not installed: "
             + ", ".join(f"{name} ({n})" for name, n in groups.most_common()))
-        if groups.get(_STOCK_GAME_DIR):
-            log(f"Wabbajack: {_STOCK_GAME_DIR}/ is the modlist's own copy of the game "
+        if stock_dir and groups.get(stock_dir):
+            log(f"Wabbajack: {stock_dir}/ is the modlist's own copy of the game "
                 "files; Mosaic deploys over your real install instead, so those are "
                 "skipped on purpose")
     profile_mods = _profile_mod_names(plan, wabbajack_path)
@@ -949,6 +999,20 @@ def run_wabbajack_install(*, wabbajack_path: "str | Path", modlist: ModList, gam
             log(f"Wabbajack: {name} uses Root Builder; installing it as a root-folder mod "
                 "(Root/ files go to the game folder, the rest to Data/)")
 
+    stock_reused = False
+    if plan.stock_directives:
+        from Utils import game_copy as gc
+        existing = gc.read_marker(stock_game_dest)
+        if existing is not None and existing.build == copy_label(modlist):
+            # Built by an earlier run of this list version: keep it.
+            stock_reused = True
+            plan.stock_directives = []
+            log(f"Wabbajack: the modlist's game copy is already built at {stock_game_dest}")
+        else:
+            log(f"Wabbajack: building the modlist's own game folder ({stock_dir}/, "
+                f"{len(plan.stock_directives)} file(s)) as a game copy at {stock_game_dest}; "
+                "your Steam install is not changed")
+
     prebuilt = drop_built_directives(plan, staging) if resume else []
     if prebuilt:
         log(f"Wabbajack: {len(prebuilt)} file(s) are already built; keeping them")
@@ -972,12 +1036,23 @@ def run_wabbajack_install(*, wabbajack_path: "str | Path", modlist: ModList, gam
         index.add_archive(h, path)
 
     bsa_root = work_root / "bsa"
+    stock_work = None
+    if plan.stock_directives:
+        from Utils import game_copy as gc
+        stock_work = gc.partial_dir(stock_game_dest)
+        shutil.rmtree(stock_work, ignore_errors=True)      # a stale, interrupted attempt
+        stock_work.mkdir(parents=True)
     # Archives are packed last, once every file that goes into them exists.
     archives = [d for d in plan.mod_directives if isinstance(d, CreateBSADirective)]
+    stock_archives = [d for d in plan.stock_directives if isinstance(d, CreateBSADirective)]
     jobs = ([(d, staging) for d in plan.mod_directives if not isinstance(d, CreateBSADirective)]
+            + [(d, stock_work) for d in plan.stock_directives
+               if not isinstance(d, CreateBSADirective)]
             + [(d, profile_scratch) for d in plan.profile_directives]
             + [(d, bsa_root) for d in plan.bsa_inputs]
-            + [(d, staging) for d in archives])
+            + [(d, staging) for d in archives]
+            + [(d, stock_work) for d in stock_archives])
+    stock_failed = 0
     built_mods: "set[str]" = {n for n in (d.to.split("/", 1)[0] for d in prebuilt)
                               if not _is_separator_folder(n)}
     cb.on_status("Building files…")
@@ -1008,8 +1083,28 @@ def run_wabbajack_install(*, wabbajack_path: "str | Path", modlist: ModList, gam
                     if not _is_separator_folder(name):
                         built_mods.add(name)
             else:
-                report.failed_directives.append((directive.to, result.error))
+                to = (f"{stock_dir}/{directive.to}" if dest_root is stock_work
+                      else directive.to)
+                report.failed_directives.append((to, result.error))
+                if dest_root is stock_work:
+                    stock_failed += 1
             cb.on_build_progress(done, len(jobs))
+
+        if stock_work is not None:
+            if stock_failed:
+                log(f"Wabbajack: {stock_failed} file(s) of the modlist's game folder failed, "
+                    "so its game copy wasn't installed")
+            else:
+                _install_stock_game(stock_work, Path(stock_game_dest), modlist, game,
+                                    report, log)
+        elif stock_reused:
+            report.stock_game = str(stock_game_dest)
+        if report.stock_game:
+            from Utils.profile.profile_state import merge_profile_settings
+            for dest in targets.values():
+                merge_profile_settings(dest, {"game_path": report.stock_game})
+            log(f"Wabbajack: {len(targets)} profile(s) will run on the game copy at "
+                f"{report.stock_game}")
 
         cb.on_status("Writing profile…" if len(targets) == 1
                      else f"Writing {len(targets)} profiles…")
@@ -1018,6 +1113,8 @@ def run_wabbajack_install(*, wabbajack_path: "str | Path", modlist: ModList, gam
                            root_parents=root_parents, staging=staging)
     finally:
         shutil.rmtree(work_root, ignore_errors=True)
+        if stock_work is not None:
+            shutil.rmtree(stock_work, ignore_errors=True)   # gone if it was installed
 
     report.installed_mods = sorted(built_mods)
     for name in report.installed_mods:

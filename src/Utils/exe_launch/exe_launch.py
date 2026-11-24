@@ -2036,6 +2036,16 @@ def launch_game(game, log_fn=_noop_log) -> None:
            f"heroic={','.join(heroic_app_names) if heroic_app_names else 'none'}, "
            f"pkg={pkg}")
 
+    # A game copy (a "Stock Game" folder) must be launched from its own exe:
+    # Steam, Heroic and Lutris always start the install THEY know about.
+    uses_copy = getattr(game, "uses_game_copy", lambda: False)()
+    if uses_copy:
+        if mode in ("steam", "heroic", "lutris"):
+            log_fn(f"Play: launch mode is {mode}, but this profile runs on its own game "
+                   f"copy ({game.get_game_path()}); {mode} would start its own install "
+                   "instead, so the exe is launched directly.")
+        mode = "none"
+
     if mode == "steam":
         if steam_id:
             launch_via_steam(steam_id, log_fn)
@@ -2089,6 +2099,18 @@ def launch_game(game, log_fn=_noop_log) -> None:
         return
 
     launch_exe_via_proton(exe_path, game, log_fn)
+
+
+def _runs_from_game_copy(game, exe_path: Path) -> bool:
+    """True when *exe_path* is inside the game copy the active profile runs on
+    (the game exe, or a script-extender loader that starts it)."""
+    try:
+        if not getattr(game, "uses_game_copy", lambda: False)():
+            return False
+        root = game.get_game_path()
+        return root is not None and Path(exe_path).resolve().is_relative_to(Path(root).resolve())
+    except Exception:
+        return False
 
 
 def launch_exe_via_proton(exe_path: Path, game, log_fn=_noop_log) -> None:
@@ -2314,8 +2336,18 @@ def launch_exe_via_proton(exe_path: Path, game, log_fn=_noop_log) -> None:
         # prefix) still needs "run" — it performs Proton's initial prefix
         # setup, and its env carries no SteamAppId so nothing registers with
         # Steam anyway.
-        verb = ("runinprefix"
-                if (compat_data / "pfx" / "user.reg").is_file() else "run")
+        #
+        # A game run from its own game copy (a "Stock Game" folder) is the game
+        # itself, launched the way Steam would: "runinprefix" also skips
+        # Proton's session setup, including the DXVK/VKD3D DLL overrides, so
+        # the game would render through WineD3D (slow, often broken).
+        game_copy = (not proton_override_name and _runs_from_game_copy(game, exe_path))
+        verb = ("run" if game_copy
+                or not (compat_data / "pfx" / "user.reg").is_file()
+                else "runinprefix")
+        if game_copy:
+            log_fn("Run EXE: game copy, so it's started with Proton's full setup "
+                   "(DXVK), as Steam would.")
         base_cmd = proton_run_command(proton_script, verb, str(exe_path),
                                       env=env) + extra_args
     if not launch_opts:

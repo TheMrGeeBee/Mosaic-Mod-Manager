@@ -95,6 +95,9 @@ def installed_game_version(game) -> str:
         table = dv.load_table(app_id, state_dir / dv.USER_VERSIONS_FILENAME)
         if not table.exe_file:
             return ""
+        if getattr(game, "uses_game_copy", lambda: False)():
+            # A game copy has no Steam build or swap record: its exe is the truth.
+            return dv._exe_version_at(root, table.exe_file)
         return dv.installed_version(root, state_dir, table.exe_file)
     except Exception:
         return ""
