@@ -14,6 +14,13 @@
     <img width="800" src="src/icons/ui.png" alt="ui">
 </p>
 
+<h2 align="center">Available on</h2>
+
+<p align="center">
+    <a href="https://modholdmods.com/u/mrgeebee"><img src="https://modholdmods.com/badge/modhold-dark.png" width="264" height="88" alt="Download on Modhold"></a>
+    <a href="https://www.nexusmods.com/site/mods/2139"><img src="src/icons/badges/nexus-dark.png" width="264" height="88" alt="Download on Nexus Mods"></a>
+</p>
+
 ## Key Features
 
 - **Mo2 style interface** - If it's not broke, don't fix it
