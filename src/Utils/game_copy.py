@@ -120,15 +120,32 @@ class BuildChoices:
     state_dir: Path
 
 
-def build_choices(game) -> BuildChoices:
-    """The Steam install's build plus every build in Mosaic's build store."""
+def _version_table(game):
     from Utils.config_paths import get_game_config_dir
     from Utils.steam import depot_versions as dv
     from Utils.wine_proton.steam_finder import game_steam_id
-    steam_root = game.get_steam_install_path()
     app_id = str(game_steam_id(game) or getattr(game, "steam_id", "") or "")
     state_dir = get_game_config_dir(game.name)
     table = dv.load_table(app_id, state_dir / dv.USER_VERSIONS_FILENAME) if app_id else None
+    return app_id, state_dir, table
+
+
+def version_exe(game) -> str:
+    """The exe whose version names the game's build: the version table's
+    (``SkyrimSE.exe``), not ``exe_name`` -- for Skyrim that is the launcher,
+    which modlists replace with SKSE's loader."""
+    try:
+        _app_id, _state_dir, table = _version_table(game)
+    except Exception:
+        table = None
+    return (table.exe_file if table else "") or getattr(game, "exe_name", "") or ""
+
+
+def build_choices(game) -> BuildChoices:
+    """The Steam install's build plus every build in Mosaic's build store."""
+    from Utils.steam import depot_versions as dv
+    steam_root = game.get_steam_install_path()
+    app_id, state_dir, table = _version_table(game)
     exe_file = (table.exe_file if table else "") or getattr(game, "exe_name", "") or ""
     index = dv.read_index(state_dir)
     base = dv.capture_current(steam_root, app_id, "") if app_id and steam_root else None
@@ -258,7 +275,7 @@ def create_copy(*, game_name: str, steam_root: "str | Path", dest: "str | Path",
     if not reflink and free_bytes(dest.parent) < total * 1.05:
         raise GameCopyError(f"Not enough free space: the copy needs about {total / 1e9:.1f} GB.")
 
-    work = dest.with_name(dest.name + _PARTIAL_SUFFIX)
+    work = partial_dir(dest)
     shutil.rmtree(work, ignore_errors=True)            # a stale, interrupted attempt
     try:
         log_fn(f"Game copy: {'cloning' if reflink else 'copying'} {steam_root} "
@@ -282,6 +299,46 @@ def create_copy(*, game_name: str, steam_root: "str | Path", dest: "str | Path",
         raise GameCopyError(f"Couldn't make the game copy: {exc}") from exc
     log_fn(f"Game copy: ready at {dest} ({info.version or build}, {method}).")
     return info
+
+
+def partial_dir(dest: "str | Path") -> Path:
+    """Where a copy is built before it's moved into place."""
+    dest = Path(dest)
+    return dest.with_name(dest.name + _PARTIAL_SUFFIX)
+
+
+def install_built_copy(work: "str | Path", dest: "str | Path", info: CopyInfo) -> None:
+    """Record *info* in a finished build at *work* and move it to *dest*.
+
+    An older copy Mosaic made at *dest* (e.g. the previous version of a
+    Wabbajack list) is replaced, but only while nothing is deployed in it; a
+    folder Mosaic didn't make is never replaced. Raises GameCopyError."""
+    from Utils.steam.depot_versions import deployment_traces
+    work, dest = Path(work), Path(dest)
+    (work / MARKER_NAME).write_text(json.dumps(asdict(info), indent=2), encoding="utf-8")
+    old = None
+    if dest.exists():
+        if dest.is_dir() and not any(dest.iterdir()):
+            dest.rmdir()
+        elif read_marker(dest) is None:
+            raise GameCopyError(f"{dest} already exists and isn't a game copy Mosaic made, "
+                                "so it won't be replaced.")
+        elif deployment_traces(dest):
+            raise GameCopyError(f"Mods are deployed in the old copy at {dest}. Restore "
+                                "first, then install again.")
+        else:
+            old = dest.with_name(dest.name + ".mosaic-old")
+            shutil.rmtree(old, ignore_errors=True)
+            os.replace(dest, old)
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        os.replace(work, dest)
+    except OSError:
+        if old is not None:
+            os.replace(old, dest)                       # put the old copy back
+        raise
+    if old is not None:
+        shutil.rmtree(old, ignore_errors=True)
 
 
 def delete_copy(folder: "str | Path", profiles_dir: "str | Path") -> None:
