@@ -94,10 +94,13 @@ def test_a_copy_is_launched_from_its_own_exe(env, monkeypatch, mode):
     monkeypatch.setattr(exe_launch, "lutris_slugs_for_launch", lambda _g: ["x"])
     monkeypatch.setattr(exe_launch, "resolve_game_exe", lambda _g: exe)
     monkeypatch.setattr(exe_launch, "launch_exe_via_proton",
-                        lambda p, _g, _l=None: calls.append(("proton", p)))
+                        lambda p, _g, _l=None, **kw: calls.append(("proton", p, kw)))
     logs = []
     exe_launch.launch_game(g, log_fn=logs.append)
-    assert calls == [("proton", exe)]
+    # Steam's launch options for the game go along wherever Steam would have
+    # been the launcher (Steam mode, or auto with the game in a Steam library).
+    app = "489830" if mode in ("steam", "auto") else None
+    assert calls == [("proton", exe, {"steam_options_app": app})]
     if mode != "auto":
         assert any("own game copy" in m for m in logs)
 

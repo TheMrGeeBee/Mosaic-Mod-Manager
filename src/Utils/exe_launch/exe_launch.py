@@ -2039,6 +2039,17 @@ def launch_game(game, log_fn=_noop_log) -> None:
     # A game copy (a "Stock Game" folder) must be launched from its own exe:
     # Steam, Heroic and Lutris always start the install THEY know about.
     uses_copy = getattr(game, "uses_game_copy", lambda: False)()
+    # Steam's launch options for the game still apply when Mosaic starts the
+    # copy itself, wherever Steam would otherwise have been the launcher.
+    steam_opts_app = None
+    if uses_copy and steam_id:
+        if mode == "steam":
+            steam_opts_app = steam_id
+        elif mode not in ("heroic", "lutris", "none"):        # auto: Steam if it owns it
+            from Utils.wine_proton.steam_finder import library_steamapps_for
+            steam_install = getattr(game, "get_steam_install_path", lambda: None)()
+            if library_steamapps_for(steam_install) is not None:
+                steam_opts_app = steam_id
     if uses_copy:
         if mode in ("steam", "heroic", "lutris"):
             log_fn(f"Play: launch mode is {mode}, but this profile runs on its own game "
@@ -2098,7 +2109,27 @@ def launch_game(game, log_fn=_noop_log) -> None:
                               label="Play (native)", log_fn=log_fn)
         return
 
-    launch_exe_via_proton(exe_path, game, log_fn)
+    launch_exe_via_proton(exe_path, game, log_fn, steam_options_app=steam_opts_app)
+
+
+def _steam_options_for_copy(app_id: str, mosaic_opts: str, log_fn) -> str:
+    """The launch options for a game copy started in place of Steam: the ones
+    set in Steam for the game, as Steam would have used them. Mosaic's own
+    value for the exe only applies when Steam's config can't be read -- in
+    Steam launch mode it isn't even shown, so it mustn't win silently."""
+    from Utils.steam.launch_options import steam_launch_options
+    try:
+        opts = steam_launch_options(app_id)
+    except Exception as exc:  # never block a launch on reading Steam's config
+        log_fn(f"Run EXE: couldn't read Steam's launch options ({exc}).")
+        opts = None
+    if opts is None:
+        if mosaic_opts:
+            log_fn(f"Run EXE: no Steam launch options found for app {app_id}; "
+                   f"using Mosaic's: {mosaic_opts}")
+        return mosaic_opts
+    log_fn(f"Run EXE: launch options from Steam for app {app_id}: {opts or '(none)'}")
+    return opts
 
 
 def _runs_from_game_copy(game, exe_path: Path) -> bool:
@@ -2113,7 +2144,8 @@ def _runs_from_game_copy(game, exe_path: Path) -> bool:
         return False
 
 
-def launch_exe_via_proton(exe_path: Path, game, log_fn=_noop_log) -> None:
+def launch_exe_via_proton(exe_path: Path, game, log_fn=_noop_log, *,
+                          steam_options_app: "str | None" = None) -> None:
     """Standard Proton launch path for .exe files. Call from a worker thread.
 
     Uses the game's prefix by default; a saved per-exe Proton override runs in
@@ -2317,6 +2349,8 @@ def launch_exe_via_proton(exe_path: Path, game, log_fn=_noop_log) -> None:
     # command gets wrapped in flatpak-spawn --host, proton_run_command
     # forwards the env diff via --env= flags, so env must be final here.
     launch_opts = load_launch_options(game, exe_path.name)
+    if steam_options_app:
+        launch_opts = _steam_options_for_copy(steam_options_app, launch_opts, log_fn)
     env_updates, _ = parse_launch_options(launch_opts, [])
     if env_updates:
         env.update(env_updates)
