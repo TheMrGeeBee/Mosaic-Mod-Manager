@@ -55,12 +55,13 @@ def source_breakdown(modlist: ModList) -> str:
 class WabbajackImportView(QWidget):
     def __init__(self, modlist: ModList, checks, *, on_install, on_login,
                  profiles=(), repair_profiles=(), preselect=(), on_repair=None,
-                 on_manual=None, on_manual_changed=None, parent=None):
+                 on_verify=None, on_manual=None, on_manual_changed=None, parent=None):
         """``on_install(profiles)`` gets the ticked profile names, or ``[]``
         when the modlist has at most one profile (``profiles``).
         ``repair_profiles`` names existing Mosaic profiles installed from this
         same modlist and ``preselect`` the MO2 profiles they came from;
-        ``on_repair()`` then builds only their missing files."""
+        ``on_repair()`` then builds only their missing files, and
+        ``on_verify()`` checks their files against the modlist."""
         super().__init__(parent)
         self._blocked = False
         self._installing = False
@@ -72,6 +73,7 @@ class WabbajackImportView(QWidget):
         self._manual_pane = None
         self._on_repair = on_repair
         self._repair_btn = None
+        self._verify_btn = None
         self._profile_list = None
         self._modlist = modlist
         self._on_install = on_install
@@ -183,6 +185,15 @@ class WabbajackImportView(QWidget):
             self._repair_btn.clicked.connect(
                 lambda: self._on_repair())
             bar.addWidget(self._repair_btn)
+        if repair_profiles and on_verify is not None:
+            self._verify_btn = QPushButton(self.tr("Check files"))
+            self._verify_btn.setObjectName("FormButton")
+            self._verify_btn.setCursor(Qt.PointingHandCursor)
+            self._verify_btn.setToolTip(self.tr(
+                "Check every mod file of the installed profile against the modlist "
+                "(size and contents), and list the ones that don't match."))
+            self._verify_btn.clicked.connect(lambda: on_verify())
+            bar.insertWidget(bar.indexOf(self._repair_btn), self._verify_btn)
         self._install_btn = QPushButton(self.tr("Install as new profile"))
         self._install_btn.setObjectName("PrimaryButton")
         self._install_btn.setCursor(Qt.PointingHandCursor)
@@ -273,6 +284,8 @@ class WabbajackImportView(QWidget):
         self._install_btn.setEnabled(enabled)
         if self._repair_btn is not None:
             self._repair_btn.setEnabled(not (self._blocked or self._installing))
+        if self._verify_btn is not None:
+            self._verify_btn.setEnabled(not self._installing)
         if self._blocked:
             tip = self.tr("Resolve the problems above first.")
         elif needs_profile:

@@ -415,6 +415,31 @@ def split_root_builder_mods(plan: InstallPlan, *, overlay_dirs: "set[str]"
     return roots, [parent_of[r] for r in roots], dropped
 
 
+@dataclass
+class RootBuilderLayout:
+    kind: str                       # "split" | "no_data" | "data"
+    converted: "list[str]"          # split: the generated root mods; else the converted mods
+    root_parents: "dict[str, str]"  # split only: root mod -> the mod it came from
+    folded: int = 0                 # split only: overlay files the mod's own copy replaced
+
+
+def layout_root_builder_mods(plan: InstallPlan, modlist: ModList, game) -> RootBuilderLayout:
+    """Lay the plan's MO2 Root Builder mods out the way Mosaic installs them,
+    for the modlist's game. Shared by the install and the install check, which
+    must agree on where every file went."""
+    target_game = mosaic_game_for(modlist.game_type)
+    if target_game in _SPLIT_ROOT_BUILDER_GAMES:
+        # Root/ holds two destinations here, so the mods are split in two.
+        overlay_dirs = set(getattr(game, "mod_folder_strip_prefixes", None) or ())
+        roots, parents, folded = split_root_builder_mods(plan, overlay_dirs=overlay_dirs)
+        return RootBuilderLayout("split", roots, dict(zip(roots, parents)), folded)
+    if target_game in _NO_DATA_FOLDER_GAMES:
+        # Everything deploys to the game folder already, so these mods need no
+        # root-folder flag; only their Root/ files must move up a level.
+        return RootBuilderLayout("no_data", apply_root_builder_layout(plan, data_folder=False), {})
+    return RootBuilderLayout("data", apply_root_builder_layout(plan), {})
+
+
 def _profile_mod_names(plan: InstallPlan, wabbajack_path) -> "set[str] | None":
     """The union of the chosen profiles' ``modlist.txt`` entry names, read
     straight from the ``.wabbajack`` before anything is downloaded. ``None``
@@ -1034,28 +1059,22 @@ def run_wabbajack_install(*, wabbajack_path: "str | Path", modlist: ModList, gam
         if report.skipped_mods:
             log(f"Wabbajack: skipping {len(report.skipped_mods)} mod(s) the "
                 f"{plan.profile_name!r} profile doesn't use: {', '.join(report.skipped_mods)}")
-    target_game = mosaic_game_for(modlist.game_type)
-    root_parents: "dict[str, str]" = {}
-    if target_game in _SPLIT_ROOT_BUILDER_GAMES:
-        # Root/ holds two destinations here, so the mods are split in two.
-        overlay_dirs = set(getattr(game, "mod_folder_strip_prefixes", None) or ())
-        roots, parents, folded = split_root_builder_mods(plan, overlay_dirs=overlay_dirs)
-        report.root_builder_mods = roots
-        root_parents = dict(zip(roots, parents))
-        for name in roots:
+    layout = layout_root_builder_mods(plan, modlist, game)
+    root_parents = layout.root_parents
+    if layout.kind == "split":
+        report.root_builder_mods = layout.converted
+        for name in layout.converted:
             log(f"Wabbajack: {root_parents[name]} uses Root Builder; its game-root files "
                 f"are installed as {name!r}, a root-folder mod")
-        if folded:
-            log(f"Wabbajack: {folded} Root/ file(s) the mod also ships itself were "
+        if layout.folded:
+            log(f"Wabbajack: {layout.folded} Root/ file(s) the mod also ships itself were "
                 "dropped; the mod's own copy is the one the game loads")
-    elif target_game in _NO_DATA_FOLDER_GAMES:
-        # Everything deploys to the game folder already, so these mods need no
-        # root-folder flag; only their Root/ files must move up a level.
-        for name in apply_root_builder_layout(plan, data_folder=False):
+    elif layout.kind == "no_data":
+        for name in layout.converted:
             log(f"Wabbajack: {name} uses Root Builder; moved its Root/ files to the mod's top level")
     else:
-        report.root_builder_mods = apply_root_builder_layout(plan)
-        for name in report.root_builder_mods:
+        report.root_builder_mods = layout.converted
+        for name in layout.converted:
             log(f"Wabbajack: {name} uses Root Builder; installing it as a root-folder mod "
                 "(Root/ files go to the game folder, the rest to Data/)")
 

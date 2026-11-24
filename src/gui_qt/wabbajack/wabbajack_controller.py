@@ -129,6 +129,8 @@ class WabbajackController(QObject):
     _ask_manual = Signal(object)             # {"archive", "reason", "holder", "event"}
     _ask_login = Signal(object)              # {"holder", "event"}
     _ask_resume = Signal(object)             # {"present", "total", "holder", "event"}
+    _vprogress = Signal(int, int, object, object)  # files, total files, bytes, total bytes
+    _vfinished = Signal(object, object)      # [(staging, VerifyReport)] | None, error | None
 
     def __init__(self, window):
         super().__init__(window)
@@ -157,6 +159,11 @@ class WabbajackController(QObject):
         self._ask_manual.connect(self._on_ask_manual)
         self._ask_login.connect(self._on_ask_login)
         self._ask_resume.connect(self._on_ask_resume)
+        self._verify_overlay = None
+        self._verify_results: "list" = []
+        self._vprogress.connect(
+            lambda f, tf, b, tb: self._verify_overlay and self._verify_overlay.progress(f, tf, b, tb))
+        self._vfinished.connect(self._on_verify_finished)
 
     def tr(self, text):
         return self._win.tr(text)
@@ -294,6 +301,7 @@ class WabbajackController(QObject):
             repair_profiles=sorted(repairable.values()),
             preselect=sorted(p for p in repairable if p),
             on_repair=lambda _p=None: self._start_install(repair=self._repair_targets()),
+            on_verify=self._start_verify,
             on_install=self._start_install, on_login=self._login_from_view,
             on_manual=self._manual_from_view,
             on_manual_changed=self._manual_changed_from_view)
@@ -420,6 +428,137 @@ class WabbajackController(QObject):
         threading.Thread(target=self._install_worker,
                          args=(game, api, targets, callbacks, self._control, bool(repair)),
                          daemon=True, name="wabbajack-install").start()
+
+    # -- check installed files --------------------------------------------------
+    def verify_active_profile(self) -> None:
+        """Wabbajack menu: check the active profile's files against the
+        modlist it was installed from, without opening the modlist first."""
+        from Utils.profile.profile_state import read_wabbajack_modlist_info
+        game = self._win._gs.game
+        if game is None or not game.is_configured():
+            self._win._notify(self.tr("No configured game selected."), "warning")
+            return
+        if self._running:
+            self._win._notify(self.tr("A Wabbajack install is already running."), "warning")
+            return
+        name = self._win._gs.profile
+        profile_dir = Path(game.get_profile_root()) / "profiles" / name
+        info = read_wabbajack_modlist_info(profile_dir)
+        if not info:
+            self._win._notify(self.tr("Profile '{0}' wasn't installed from a Wabbajack "
+                                      "modlist.").format(name), "warning")
+            return
+        source = Path(info.get("source_file") or "")
+        if not source.is_file():
+            self._win._notify(self.tr("The modlist file this profile was installed from is "
+                                      "gone: {0}. Import it again to check the profile.")
+                              .format(source), "warning")
+            return
+        self._begin_verify(game, [(info.get("mo2_profile") or "", profile_dir)],
+                           name, source=source)
+
+    def _start_verify(self) -> None:
+        """Import view: check every profile installed from this modlist."""
+        game, modlist = self._win._gs.game, self._modlist
+        repair = self._repair_targets()
+        if self._running or game is None or modlist is None or not repair:
+            return
+        root = Path(game.get_profile_root()) / "profiles"
+        self._begin_verify(game, [(mo2, root / nm) for mo2, nm in repair.items()],
+                           ", ".join(sorted(repair.values())))
+
+    def _begin_verify(self, game, targets, names: str, source: "Path | None" = None) -> None:
+        """Check ``targets`` -- ``(MO2 profile, profile dir)`` -- against the
+        modlist (see ``wabbajack_verify``) in the background. ``source`` is a
+        ``.wabbajack`` to read first, when none is open."""
+        from gui_qt.wabbajack.wabbajack_verify_overlay import WabbajackVerifyOverlay
+        from Utils.wabbajack.wabbajack_install import WabbajackInstallControl
+        self._running = True
+        if self._view is not None:
+            self._view.set_installing(True)
+        self._control = WabbajackInstallControl()
+        self._verify_overlay = WabbajackVerifyOverlay.show_over(
+            self._win, self.tr("Checking the files of {0}").format(names),
+            on_cancel=self._control.cancel.set, on_repair=self._repair_after_verify,
+            on_close=self._on_verify_overlay_closed)
+        threading.Thread(target=self._verify_worker,
+                         args=(game, targets, self._control, source),
+                         daemon=True, name="wabbajack-verify").start()
+
+    def _verify_worker(self, game, targets, control, source=None) -> None:
+        from Utils.wabbajack.wabbajack_verify import verify_install
+        try:
+            if source is not None:
+                from Utils.wabbajack.wabbajack_file import read_modlist
+                self._modlist, self._path = read_modlist(source), source
+            # A Wabbajack profile keeps its own mods folder, or a link to the
+            # one its modlist's profiles share: those are checked together.
+            groups: "dict[Path, list]" = {}
+            for mo2, profile_dir in targets:
+                staging = profile_dir / "mods"
+                groups.setdefault(staging.resolve(), []).append((profile_dir, mo2 or None))
+            results = []
+            for staging, profiles in groups.items():
+                if control.cancel.is_set():
+                    break
+                report = verify_install(
+                    self._modlist, self._path, game, profiles, staging,
+                    cancel=control.cancel,
+                    progress=lambda f, tf, b, tb: safe_emit(self._vprogress, f, tf, b, tb))
+                results.append((staging, report))
+            safe_emit(self._vfinished, results, None)
+        except Exception as exc:
+            import traceback
+            safe_emit(self._log, f"[wabbajack] file check error: {exc}\n{traceback.format_exc()}")
+            safe_emit(self._vfinished, None, str(exc))
+
+    def _on_verify_finished(self, results, error) -> None:
+        from Utils.wabbajack.wabbajack_verify import verify_summary
+        self._running = False
+        if self._view is not None:
+            self._view.set_installing(False)
+        if error is not None:
+            if self._verify_overlay is not None:
+                self._verify_overlay.finish(
+                    self.tr("The check stopped with an error: {0}. "
+                            "See the log for details.").format(error), False)
+            return
+        self._verify_results = results
+        texts, bad, ok = [], 0, True
+        for staging, report in results:
+            log = self._win._append_log
+            log(f"[wabbajack] checked {report.checked} file(s) in {staging}: "
+                f"{len(report.repairable)} missing or damaged, "
+                f"{len(report.problems) - len(report.repairable)} changed since the install")
+            for mod, problems in report.by_mod().items():
+                log(f"[wabbajack]   {mod}: {len(problems)} file(s)")
+                for p in problems:
+                    note = f" (same as {p.note})" if p.note else ""
+                    log(f"[wabbajack]     {p.reason}: {p.path}{note}")
+            texts.append(verify_summary(report))
+            bad += len(report.repairable)
+            ok = ok and report.ok
+        if any(r.problems for _, r in results):
+            texts.append(self.tr("Every file is listed in the log."))
+        if self._verify_overlay is not None:
+            self._verify_overlay.finish(" ".join(texts), ok,
+                                        repairable=0 if any(r.cancelled for _, r in results)
+                                        else bad)
+
+    def _repair_after_verify(self) -> None:
+        """Delete what the check rejected, then run a Repair: it rebuilds what
+        is missing, which now includes those files."""
+        from Utils.wabbajack.wabbajack_verify import remove_bad_files
+        removed = 0
+        for staging, report in self._verify_results:
+            removed += remove_bad_files(report, staging, self._win._append_log)
+        self._win._append_log(f"[wabbajack] deleted {removed} file(s) that didn't match; "
+                              "repairing")
+        self._verify_results = []
+        self._start_install(repair=self._repair_targets())
+
+    def _on_verify_overlay_closed(self) -> None:
+        self._verify_overlay = None
 
     def _stock_game_dest(self, game, modlist=None) -> "Path | None":
         """Where this list's own game folder (Stock Game) is built as a game

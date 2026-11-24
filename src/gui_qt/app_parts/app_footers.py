@@ -611,6 +611,8 @@ class MainWindow:
                  lambda: self._wabbajack_controller().open_browser()),
                 (self.tr("Import .wabbajack file…"),
                  lambda: self._wabbajack_controller().start_import()),
+                (self.tr("Check this profile's files…"),
+                 lambda: self._wabbajack_controller().verify_active_profile()),
                 None,
                 (self.tr("LoversLab"), [
                     (self.tr("Log in…"),
