@@ -80,7 +80,7 @@ jobs:
     name: Check version
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Tag matches version.py and Changelog.txt
         if: startsWith(github.ref, 'refs/tags/v')
         run: ./check-release.sh --ci "$GITHUB_REF_NAME"
@@ -118,15 +118,15 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Download AppImage
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: MosaicModManager-AppImage
           path: artifacts/
       - name: Download Flatpak
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: MosaicModManager-flatpak
           path: artifacts/
@@ -202,7 +202,7 @@ jobs:
             done
 
       - name: Publish release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           files: artifacts/*
           prerelease: ${{ contains(github.ref_name, '-') }}
@@ -242,15 +242,15 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Download AppImage
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: MosaicModManager-AppImage
           path: artifacts/
       - name: Download Flatpak
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: MosaicModManager-flatpak
           path: artifacts/
@@ -445,7 +445,7 @@ jobs:
       HAVE_APPIMAGE_GPG: ${{ secrets.APPIMAGE_GPG_PRIVATE_KEY != '' }}
     steps:
       - name: Checkout source (for wiki site content)
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Install flatpak + ostree
         run: |
@@ -481,7 +481,7 @@ jobs:
           fi
 
       - name: Checkout Pages branch (live repo)
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           ref: ${{ steps.mode.outputs.git_branch }}
           path: site
@@ -512,7 +512,7 @@ jobs:
           cp -r wiki-site/. site/wiki/
 
       - name: Download this build's repo
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: MosaicModManager-flatpak-repo
           path: newrepo

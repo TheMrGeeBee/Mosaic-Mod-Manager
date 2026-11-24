@@ -46,7 +46,7 @@ jobs:
     outputs:
       so-name: ${{ steps.detect.outputs.so-name }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Install build dependencies
         run: |
@@ -74,7 +74,7 @@ jobs:
 
       - name: Cache built extension
         id: cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: src/LOOT/${{ steps.detect.outputs.so-name }}
           key: libloot-${{ steps.detect.outputs.libloot-rev }}-${{ steps.detect.outputs.py-tag }}
@@ -83,7 +83,7 @@ jobs:
         if: steps.cache.outputs.cache-hit != 'true'
         run: bash src/LOOT/rebuild_libloot.sh
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: libloot-cp314
           path: src/LOOT/loot.cpython-*-x86_64-linux-gnu.so
@@ -99,9 +99,9 @@ jobs:
     if: ${{ inputs.build_flatpak }}
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: '3.12'
 
@@ -117,7 +117,7 @@ jobs:
 
       - name: Cache built extension
         id: cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: src/LOOT/${{ steps.detect.outputs.so-name }}
           key: libloot-${{ steps.detect.outputs.libloot-rev }}-${{ steps.detect.outputs.py-tag }}
@@ -126,7 +126,7 @@ jobs:
         if: steps.cache.outputs.cache-hit != 'true'
         run: bash src/LOOT/rebuild_libloot.sh
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: libloot-cp312
           path: src/LOOT/loot.cpython-*-x86_64-linux-gnu.so
@@ -142,7 +142,7 @@ jobs:
     name: MosaicPathIndex.dll
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Install MinGW-w64
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends gcc-mingw-w64-x86-64
@@ -150,7 +150,7 @@ jobs:
       - name: Build
         run: bash native/path_index/build.sh
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: path-index-dll
           path: src/Utils/path_index/MosaicPathIndex.dll
@@ -170,7 +170,7 @@ jobs:
       # job-level env. Surface a plain flag here so steps can gate on env.HAVE_APPIMAGE_GPG.
       HAVE_APPIMAGE_GPG: ${{ secrets.APPIMAGE_GPG_PRIVATE_KEY != '' }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # anylinux-setup-action downloads three helper scripts from
       # raw.githubusercontent.com using `wget --retry-connrefused`, which does
@@ -321,13 +321,13 @@ jobs:
           fi
 
       - name: Download libloot extension
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: libloot-cp314
           path: src/LOOT/
 
       - name: Download MosaicPathIndex.dll
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: path-index-dll
           path: src/Utils/path_index/
@@ -368,7 +368,7 @@ jobs:
             echo "Unsigned build — no .asc signature will be produced."
           fi
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: MosaicModManager-AppImage
           path: src/appimage/dist/*
@@ -395,16 +395,16 @@ jobs:
       # secrets.* is not allowed in step-level `if:`, so surface a flag here.
       HAVE_GPG: ${{ secrets.FLATPAK_GPG_PRIVATE_KEY != '' }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Download libloot extension
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: libloot-cp312
           path: src/LOOT/
 
       - name: Download MosaicPathIndex.dll
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: path-index-dll
           path: src/Utils/path_index/
@@ -450,6 +450,9 @@ jobs:
       # repo/ dir — so we no longer hand-roll flatpak-builder and re-introduce
       # the "No remote refs found for flathub" failure. The bundle is built in
       # the next step instead (the action doesn't expose --repo-url).
+      # Its action.yml still declares node20 (unchanged upstream since 2024),
+      # so it is the one "Node.js 20 is deprecated" warning left; GitHub runs
+      # it on Node 24 regardless. Drop this note once upstream moves.
       - name: Build Flatpak (repo)
         uses: flathub-infra/flatpak-github-actions/flatpak-builder@master
         with:
@@ -493,7 +496,7 @@ jobs:
             --repo-url=https://themrgeebee.github.io/Mosaic-Mod-Manager/repo/ \
             $GPGOPT
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: MosaicModManager-flatpak
           path: MosaicModManager.flatpak
@@ -501,7 +504,7 @@ jobs:
 
       # The raw OSTree repo for this build — consumed by release.yml's
       # publish-pages job, which merges it into the accumulated gh-pages repo.
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: MosaicModManager-flatpak-repo
           path: repo/
