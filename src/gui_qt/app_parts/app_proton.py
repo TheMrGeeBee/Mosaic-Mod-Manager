@@ -507,6 +507,17 @@ class MainWindow:
         spec = get_spec(tool.dialog_class_path)
         if spec is None:
             return
+        if spec.steam_install_only and getattr(game, "uses_game_copy", lambda: False)():
+            from gui_qt.overlays.confirm_overlay import ConfirmOverlay
+            self._append_log(f"[wizard] {tool.label}: not available, this profile runs on "
+                             f"its own game copy ({game.get_game_path()})")
+            ConfirmOverlay.show_message(
+                self, self.tr("Not available for a game copy"),
+                self.tr("This profile runs on its own game copy:\n{0}\n\n{1} changes the "
+                        "Steam install's game files, so it can't be used here. The game "
+                        "copy keeps the version it was made with.").format(
+                    game.get_game_path(), tool.label))
+            return
         key = f"wizard:{tool.id}"
         if self._tabs.has_key(key):
             self._tabs.focus_key(key)

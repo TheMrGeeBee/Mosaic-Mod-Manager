@@ -248,7 +248,8 @@ class WabbajackController(QObject):
         game = self._win._gs.game
         nexus_ok = self._win._ensure_nexus_api() is not None and bool(load_nexus_last_premium())
         try:
-            game_root = game.get_game_path()
+            # The list's game files come from the Steam install, not a game copy.
+            game_root = game.get_steam_install_path()
         except Exception:
             game_root = None
         return run_preflight(

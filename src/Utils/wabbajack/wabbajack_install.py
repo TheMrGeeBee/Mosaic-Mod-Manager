@@ -904,7 +904,10 @@ def run_wabbajack_install(*, wabbajack_path: "str | Path", modlist: ModList, gam
     game.set_active_profile_dir(profile_dir)
     game.load_paths()
     staging = Path(game.get_effective_mod_staging_path())
-    game_root = game.get_game_path() if hasattr(game, "get_game_path") else None
+    # Game-file archives are read from the Steam install, never from a game copy
+    # (a "Stock Game" folder the list may itself be building).
+    game_root = (game.get_steam_install_path() if hasattr(game, "get_steam_install_path")
+                 else game.get_game_path() if hasattr(game, "get_game_path") else None)
 
     report.unplaced_files = list(plan.unplaced)
     report.profiles_used = list(plan.profile_names)

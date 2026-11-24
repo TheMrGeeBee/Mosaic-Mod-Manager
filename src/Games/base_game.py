@@ -1302,6 +1302,30 @@ class BaseGame(ABC):
         """
         return self._game_path
 
+    def get_steam_install_path(self) -> Path | None:
+        """The game folder Steam owns. Usually the same as the profile's game
+        folder; differs when the active profile runs on its own game copy (a
+        "Stock Game" folder next to a modlist, like MO2's). Steam-specific code
+        (Proton prefix lookup, Steam build store, Wabbajack game-file sources,
+        runtime swaps) must use this one.
+
+        A profile folder inside a Steam library is a Steam install itself. Any
+        other profile folder falls back to the shared (default profile) path.
+        """
+        own = self._game_path
+        from Utils.wine_proton.steam_finder import library_steamapps_for
+        if own is None or library_steamapps_for(own) is not None:
+            return own
+        raw = self._read_global_paths().get("game_path", "")
+        return Path(raw) if raw else own
+
+    def uses_game_copy(self) -> bool:
+        """True when the active profile runs on a game folder other than the
+        Steam install (see :meth:`get_steam_install_path`)."""
+        own = self._game_path
+        steam = self.get_steam_install_path()
+        return own is not None and steam is not None and own != steam
+
     # Mod-install subfolder inside the game directory ("" = the game root).
     mods_dir: str = ""
 
@@ -1852,7 +1876,10 @@ class BaseGame(ABC):
         for sid in [self.steam_id, *self.alt_steam_ids]:
             if not sid:
                 continue
-            found = _find_steam_prefix(sid, self._game_path)
+            # The Steam install, not a game copy: a copy sits in no Steam
+            # library, so the lookup would fall back to the first Steam root's
+            # compatdata, a prefix the game may never use.
+            found = _find_steam_prefix(sid, self.get_steam_install_path())
             if found:
                 return found
         try:

@@ -1053,7 +1053,8 @@ class ConfigureGameView(QWidget):
             sid = getattr(g, "steam_id", None)
             ids = [sid] + [str(s) for s in getattr(g, "alt_steam_ids", []) or [] if s]
             for s in [x for x in ids if x]:
-                found = find_prefix(s, g.get_game_path())
+                # Steam install, not a game copy (see BaseGame.get_steam_install_path).
+                found = find_prefix(s, g.get_steam_install_path())
                 if found:
                     break
             if not found and _heroic_app_names(g):
