@@ -334,7 +334,14 @@ class MainWindow:
                         target(run_path, game, log_fn=self._append_log)
                     except Exception as exc:
                         self._append_log(f"Run EXE error: {exc!r}")
-                threading.Thread(target=_run, daemon=True).start()
+
+                def _start():
+                    threading.Thread(target=_run, daemon=True).start()
+                # Only the script extender loads SKSE plugins; tools don't.
+                if run_path.name.lower().startswith("skse"):
+                    self._guard_bsa_memory_map(game, _start)
+                else:
+                    _start()
 
             # Auto-detected script extenders must run against the CURRENT
             # profile's files: deploy first when the exe is only staged (not
@@ -378,8 +385,10 @@ class MainWindow:
                     self._append_log(f"Play error: {exc!r}")
             # Enabled plugins with no file in Data/ (a deploy that is out of date)
             # crash on the loading screen with nothing to explain why — ask first.
+            # BSA Memory Map under Proton breaks every SKSE hook after it.
             self._guard_missing_plugins(
-                game, lambda: threading.Thread(target=_run, daemon=True).start())
+                game, lambda: self._guard_bsa_memory_map(
+                    game, lambda: threading.Thread(target=_run, daemon=True).start()))
 
         if exe_launch.load_deploy_before_launch(game) and hasattr(game, "deploy"):
             self._post_deploy_action = _launch

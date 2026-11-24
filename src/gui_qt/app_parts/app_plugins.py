@@ -171,6 +171,63 @@ class MainWindow:
             confirm_label=self.tr("Launch anyway"), cancel_label=self.tr("Cancel"),
             danger=False, card_h=min(300 + 18 * min(len(missing), 8), 520))
 
+    def _guard_bsa_memory_map(self, game, proceed):
+        """UI thread: call *proceed()* unless BSA Memory Map is deployed and
+        switched on. Under Proton it fills the memory SKSE plugins need for
+        their hooks, so they fail with "Failed to hook …" while the game loads.
+        Offers to switch it off (only on request: it edits the mod's ini),
+        launch anyway, or cancel. Never blocks on an internal error."""
+        try:
+            finding = (game.find_bsa_memory_map(self._gs.profile)
+                       if hasattr(game, "find_bsa_memory_map") else None)
+        except Exception as exc:                          # noqa: BLE001
+            self._append_log(f"[play] BSA Memory Map check skipped: {exc}")
+            finding = None
+        if finding is None:
+            proceed()
+            return
+        self._append_log(f"[play] BSA Memory Map is enabled ({finding.dll}); under "
+                         "Proton it makes SKSE plugins fail to hook.")
+        can_fix = finding.can_disable
+
+        def _done(choice):
+            if choice is True and can_fix:
+                from Utils.modding_tools import bsa_memory_map as bmm
+                try:
+                    for p in bmm.disable(finding):
+                        self._append_log(f"[play] BSA Memory Map: set bEnabled=0 in {p}")
+                except OSError as exc:
+                    self._append_log(f"[play] BSA Memory Map: could not edit the ini: {exc}")
+                    self._notify(self.tr("Couldn't switch BSA Memory Map off — see log."),
+                                 "error")
+                    return
+                proceed()
+            elif choice == "alt" or (choice is True and not can_fix):
+                proceed()
+
+        body = self.tr(
+            "BSA Memory Map (BSAMemoryMap.dll, \"Faster File Copy\" in LoreRim) is "
+            "switched on. Under Proton it fills the memory next to the game that "
+            "other SKSE plugins need for their hooks, so they fail while the game "
+            "loads with errors like \"Failed to hook …\" or \"no trampoline "
+            "available\". Windows isn't affected.\n\n"
+            "Switching it off (bEnabled=0 in BSAMemoryMap.ini) fixes this. The only "
+            "cost is slightly slower BSA reads.")
+        if can_fix:
+            overlay_kw = dict(
+                confirm_label=self.tr("Switch off and launch"),
+                alt_label=self.tr("Launch anyway"))
+        else:
+            body += "\n\n" + self.tr(
+                "Mosaic couldn't find a bEnabled line to change. Add bEnabled=0 to "
+                "the plugin's BSAMemoryMap.ini yourself.")
+            overlay_kw = dict(confirm_label=self.tr("Launch anyway"))
+        from gui_qt.overlays.confirm_overlay import ConfirmOverlay
+        ConfirmOverlay.show_over(
+            self, self.tr("BSA Memory Map will break SKSE hooks"), body, _done,
+            cancel_label=self.tr("Cancel"), danger=False, card_h=330,
+            **overlay_kw)
+
     def _build_plugin_filter_panel(self):
         from gui_qt.filter_panel import FilterSidePanel
         from gui_qt.modlist.modlist_filter import PLUGIN_STATUS_FILTERS

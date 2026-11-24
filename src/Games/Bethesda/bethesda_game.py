@@ -736,6 +736,40 @@ class BethesdaGame(BaseGame):
         self._symlink_plugins_txt(profile, _log)
         return True
 
+    def find_bsa_memory_map(self, profile: str):
+        """BSA Memory Map deployed and switched on: under Proton it fills the
+        address space SKSE hooks need ("Failed to hook …"). See
+        Utils.modding_tools.bsa_memory_map. Returns a finding or None; never
+        raises. The mod's staged copy of the ini is included (via the profile's
+        filemap) so switching it off survives the next deploy."""
+        try:
+            from Utils.modding_tools import bsa_memory_map as bmm
+            game_path = self.get_game_path()
+            if game_path is None or not self.get_deploy_active():
+                return None
+            data_dir = Path(game_path) / "Data"
+            if bmm.resolve_file_ci(data_dir, bmm.PLUGINS_REL / bmm.DLL_NAME) is None:
+                return None                     # cheap exit for nearly every setup
+            staged: list[Path] = []
+            prof_dir = self.get_profile_root() / "profiles" / profile
+            ini_rel = (bmm.PLUGINS_REL / bmm.INI_NAME).as_posix().lower()
+            staging = self.get_mod_staging_path()
+            for fname in ("deployed_filemap.txt", "filemap.txt"):
+                try:
+                    with open(prof_dir / fname, encoding="utf-8",
+                              errors="surrogateescape") as fh:
+                        for row in fh:
+                            rel, _, mod = row.rstrip("\n").partition("\t")
+                            if mod and rel.replace("\\", "/").lower() == ini_rel:
+                                p = bmm.resolve_file_ci(staging / mod, Path(rel))
+                                if p is not None:
+                                    staged.append(p)
+                except OSError:
+                    continue
+            return bmm.find_enabled(data_dir, staged)
+        except Exception:                                 # noqa: BLE001 — never block a launch
+            return None
+
     def find_missing_plugin_files(self, profile: str) -> list[str]:
         """Enabled plugins of the deployed profile that have no readable file in
         the game's Data folder — dangling symlinks count as missing.

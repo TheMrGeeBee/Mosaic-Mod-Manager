@@ -6,6 +6,7 @@ title, body text, and Confirm / Cancel buttons. ``on_done(True)`` on confirm,
 
 Pass ``cancel_label=None`` for a single-button message card (OK-only) — the
 in-app replacement for ``QMessageBox.warning``/``critical``/``information``.
+Pass ``alt_label`` for a third button between them; it sends ``on_done("alt")``.
 """
 
 from __future__ import annotations
@@ -29,7 +30,8 @@ class ConfirmOverlay(OverlayBase):
                  confirm_label: str | None = None,
                  cancel_label=_NO_CANCEL,
                  danger: bool = True,
-                 card_h: int | None = None):
+                 card_h: int | None = None,
+                 alt_label: str | None = None):
         super().__init__(host, on_done=on_done, card_h=card_h)
         p = active_palette()
 
@@ -67,6 +69,14 @@ class ConfirmOverlay(OverlayBase):
             cancel.clicked.connect(lambda: self._finish(False))
             bar.addWidget(cancel)
             self._buttons.append(cancel)
+        if alt_label is not None:
+            # Optional middle choice: on_done receives the string "alt".
+            alt = QPushButton(alt_label)
+            alt.setObjectName("FormButton")
+            alt.setCursor(Qt.PointingHandCursor)
+            alt.clicked.connect(lambda: self._finish("alt"))
+            bar.addWidget(alt)
+            self._buttons.append(alt)
         confirm = QPushButton(
             confirm_label if confirm_label is not None else self.tr("Remove"))
         confirm.setObjectName("DangerButton" if danger else "PrimaryButton")
