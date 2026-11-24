@@ -1,5 +1,7 @@
 *.cpython-313.pyc
-.claude/settings.local.json
+# Local tool folders: Claude Code (notes, plans, skills, settings) and PyCharm
+/.claude/
+/.idea/
 .vscode/settings.json
 .venv
 .venv-flatpak
@@ -16,7 +18,6 @@ src/LOOT/loot.cpython-*.so
 release.sh
 release/
 decky/
-.claude/settings.json
 .mcp.json
 **/__pycache__/
 /tools
