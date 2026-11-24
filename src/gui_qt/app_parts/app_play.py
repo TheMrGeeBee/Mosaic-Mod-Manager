@@ -363,7 +363,8 @@ class MainWindow:
             # Deploy exactly like the Deploy button, then launch once the
             # (final, non-coalesced) deploy succeeds.
             if can_deploy and (force_deploy
-                               or exe_launch.load_deploy_on_run(game, exe_path.name)):
+                               or exe_launch.load_deploy_on_run(
+                                   game, exe_launch.exe_settings_key(game, exe_path))):
                 self._post_deploy_action = _launch_exe
                 self._on_deploy()
             else:

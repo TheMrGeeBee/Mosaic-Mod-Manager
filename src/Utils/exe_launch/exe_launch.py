@@ -699,6 +699,68 @@ def game_exe_key(game) -> str:
     return Path(exe_name).name if exe_name else ""
 
 
+def _is_within(path: Path, root: Path) -> bool:
+    try:
+        return Path(path).resolve().is_relative_to(Path(root).resolve())
+    except (OSError, ValueError):
+        return False
+
+
+def exe_settings_key(game, exe_path: Path) -> str:
+    """The key an exe's own settings (Proton version, launch options, args,
+    execution mode, ...) are saved under.
+
+    The exe's file name, as it always was -- except for an exe outside the
+    game folder that has the same name as one of the game's own exes (a custom
+    exe pointing at Steam's copy of SkyrimSELauncher.exe while the profile
+    runs on a game copy, say). Keyed by name alone, its settings would also be
+    the game's, so Play would pick up its Proton version; it's keyed by its
+    full path instead.
+    """
+    exe_path = Path(exe_path)
+    name = exe_path.name
+    try:
+        root = game.get_game_path() if hasattr(game, "get_game_path") else None
+    except Exception:
+        root = None
+    if root is None or _is_within(exe_path, root):
+        return name
+    lower = name.lower()
+    game_names = {game_exe_key(game).lower()}
+    try:
+        game_names.update(p.name.lower() for p in Path(root).iterdir())
+    except OSError:
+        pass
+    if lower in game_names:
+        return f"{name}@{exe_path}"
+    return name
+
+
+def _in_steam_library(path: Path) -> bool:
+    """True for a path inside a Steam library's steamapps/common (an install
+    Steam owns and may verify, update or wipe)."""
+    parts = [p.lower() for p in Path(path).parts]
+    return any(parts[i] == "common" and parts[i - 1] == "steamapps"
+               for i in range(1, len(parts)))
+
+
+def isolated_prefix_dir(exe_path: Path, proton_dir_name: str) -> Path:
+    """Where an exe's own Proton prefix (a per-exe Proton override) lives.
+
+    Next to the exe, as it always was -- unless the exe is inside a Steam
+    install: a Wine prefix doesn't belong in a folder Steam owns, so those go
+    to Mosaic's wine_prefixes/ folder, named after the exe and its folder.
+    """
+    exe_path = Path(exe_path)
+    if not _in_steam_library(exe_path):
+        return exe_path.parent / f"prefix_{proton_dir_name}"
+    import hashlib
+
+    from Utils.config_paths import get_wine_prefixes_dir
+    tag = hashlib.sha1(str(exe_path.parent).encode("utf-8")).hexdigest()[:8]
+    return get_wine_prefixes_dir() / f"{exe_path.stem}-{tag}_{proton_dir_name}"
+
+
 def effective_steam_id(game) -> str:
     from Utils.wine_proton.steam_finder import game_steam_id
     return game_steam_id(game)
@@ -1159,7 +1221,7 @@ def get_tool_prefix_env(
         return None
 
     if prefix_dir is None:
-        prefix_dir = exe_path.parent / f"prefix_{proton_script.parent.name}"
+        prefix_dir = isolated_prefix_dir(exe_path, proton_script.parent.name)
     is_new = not (prefix_dir / "pfx").is_dir()
     prefix_dir.mkdir(parents=True, exist_ok=True)
 
@@ -2168,7 +2230,8 @@ def launch_exe_via_proton(exe_path: Path, game, log_fn=_noop_log, *,
         proton_run_command,
     )
 
-    proton_override_name = load_proton_override(game, exe_path.name)
+    settings_key = exe_settings_key(game, exe_path)
+    proton_override_name = load_proton_override(game, settings_key)
     lutris_env_extra = None  # set for classic lutris-wine prefixes only
     umu_bin = None  # set for Lutris umu/Proton prefixes when umu-run exists
     if proton_override_name:
@@ -2183,8 +2246,8 @@ def launch_exe_via_proton(exe_path: Path, game, log_fn=_noop_log, *,
         if proton_script is None:
             log_fn(f"Run EXE: Proton override '{proton_override_name}' not found.")
             return
-        # Dedicated prefix next to the exe so it's isolated from the game prefix
-        compat_data = exe_path.parent / f"prefix_{proton_script.parent.name}"
+        # Dedicated prefix, isolated from the game prefix
+        compat_data = isolated_prefix_dir(exe_path, proton_script.parent.name)
         compat_data.mkdir(parents=True, exist_ok=True)
         log_fn(f"Run EXE: using {proton_script.parent.name} with isolated prefix.")
     else:
@@ -2334,7 +2397,7 @@ def launch_exe_via_proton(exe_path: Path, game, log_fn=_noop_log, *,
         link_mygames(game, pfx, lambda m: log_fn(f"Run EXE: {m}"))
 
     try:
-        extra_args = shlex.split(load_exe_args(game, exe_path.name))
+        extra_args = shlex.split(load_exe_args(game, settings_key))
     except ValueError as e:
         log_fn(f"Run EXE: invalid arguments — {e}")
         return
@@ -2348,7 +2411,7 @@ def launch_exe_via_proton(exe_path: Path, game, log_fn=_noop_log, *,
     # Apply launch-option env vars before building the command: when the
     # command gets wrapped in flatpak-spawn --host, proton_run_command
     # forwards the env diff via --env= flags, so env must be final here.
-    launch_opts = load_launch_options(game, exe_path.name)
+    launch_opts = load_launch_options(game, settings_key)
     if steam_options_app:
         launch_opts = _steam_options_for_copy(steam_options_app, launch_opts, log_fn)
     env_updates, _ = parse_launch_options(launch_opts, [])
@@ -2415,17 +2478,18 @@ def launch_custom_exe(exe_path: Path, game, log_fn=_noop_log) -> None:
     don't follow that convention (e.g. an extensionless native tool the user
     renamed, or a .exe that's actually a wrapper script).
     """
-    mode = load_exec_mode(game, exe_path.name)
+    settings_key = exe_settings_key(game, exe_path)
+    mode = load_exec_mode(game, settings_key)
     if mode == EXEC_MODE_NATIVE or (mode == EXEC_MODE_AUTO and _is_native_binary(exe_path)):
         from Utils.xdg import host_env
         try:
-            extra_args = shlex.split(load_exe_args(game, exe_path.name))
+            extra_args = shlex.split(load_exe_args(game, settings_key))
         except ValueError as e:
             log_fn(f"Run EXE: invalid arguments — {e}")
             return
         env = host_env()
         base_cmd = [str(exe_path)] + extra_args
-        launch_opts = load_launch_options(game, exe_path.name)
+        launch_opts = load_launch_options(game, settings_key)
         if launch_opts:
             env_updates, final_cmd = parse_launch_options(launch_opts, base_cmd)
             if env_updates:
@@ -2453,7 +2517,7 @@ def resolve_jar_prefix_env(jar_path: Path, game, log_fn=_noop_log):
         find_any_installed_proton,
         list_installed_proton,
     )
-    override = load_proton_override(game, jar_path.name)
+    override = load_proton_override(game, exe_settings_key(game, jar_path))
     if not override:
         # Game prefix (no wineboot; already initialised by the game).
         return get_game_prefix_env(
@@ -2471,7 +2535,7 @@ def resolve_jar_prefix_env(jar_path: Path, game, log_fn=_noop_log):
     if proton_script is None:
         log_fn(f"Run JAR: Proton override '{override}' not found.")
         return None
-    prefix_dir = jar_path.parent / f"prefix_{proton_script.parent.name}"
+    prefix_dir = isolated_prefix_dir(jar_path, proton_script.parent.name)
     result = get_tool_prefix_env(
         jar_path, override, prefix_dir=prefix_dir,
         steam_id=effective_steam_id(game))
@@ -2495,9 +2559,10 @@ def launch_jar(jar_path: Path, game, log_fn=_noop_log) -> None:
                  override: none → the game's prefix; a specific version → an
                  isolated ``prefix_<Proton>/`` next to the jar.
     """
-    runtime = load_jar_runtime(game, jar_path.name)
-    launch_opts = load_launch_options(game, jar_path.name)
-    args_str = load_exe_args(game, jar_path.name)
+    settings_key = exe_settings_key(game, jar_path)
+    runtime = load_jar_runtime(game, settings_key)
+    launch_opts = load_launch_options(game, settings_key)
+    args_str = load_exe_args(game, settings_key)
 
     if runtime == JAR_RUNTIME_PROTON:
         result = resolve_jar_prefix_env(jar_path, game, log_fn=log_fn)

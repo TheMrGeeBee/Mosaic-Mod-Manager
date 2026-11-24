@@ -298,7 +298,8 @@ class ExeSettingsView(QWidget):
 
     # ---- saved state --------------------------------------------------------
     def _load_saved(self):
-        game, name = self._game, self._exe_path.name
+        game = self._game
+        name = exe_launch.exe_settings_key(game, self._exe_path)
         self._args_box.setPlainText(exe_launch.load_exe_args(game, name))
         self._options_edit.setText(exe_launch.load_launch_options(game, name))
         saved = exe_launch.load_proton_override(game, name) or ""
@@ -343,7 +344,8 @@ class ExeSettingsView(QWidget):
         return "Game default"
 
     def _on_save(self):
-        game, name = self._game, self._exe_path.name
+        game = self._game
+        name = exe_launch.exe_settings_key(game, self._exe_path)
         exe_launch.save_exe_args(game, name, self._args_box.toPlainText().strip())
         selected = self._proton_combo.currentText()
         exe_launch.save_proton_override(
@@ -517,7 +519,7 @@ class ExeSettingsView(QWidget):
         # prefix the launch will use (Game default → game prefix).
         selected = self._proton_combo.currentText()
         exe_launch.save_proton_override(
-            game, jar_path.name, "" if selected == "Game default" else selected)
+            game, exe_launch.exe_settings_key(game, jar_path), "" if selected == "Game default" else selected)
         self._install_java_btn.setEnabled(False)
         self._install_java_btn.setText(self.tr("Installing Java …"))
 
@@ -546,7 +548,8 @@ class ExeSettingsView(QWidget):
         if proton_script is None:
             self._log(f"Prefix tools: could not find Proton '{selected}'.")
             return
-        prefix_dir = self._exe_path.parent / f"prefix_{proton_script.parent.name}"
+        prefix_dir = exe_launch.isolated_prefix_dir(
+            self._exe_path, proton_script.parent.name)
         if not prefix_dir.is_dir():
             self._log("Prefix tools: no prefix exists yet for this version — "
                       "run the exe once first.")

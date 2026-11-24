@@ -37,6 +37,7 @@ from Utils.exe_launch.exe_launch import (
     PREFIX_MODE_GAME,
     PREFIX_MODE_ISOLATED,
     PREFIX_MODE_SHARED,
+    isolated_prefix_dir,
     load_prefix_mode,
     load_proton_override,
     load_skip_proton_step,
@@ -99,7 +100,7 @@ class ProtonStepWidget(QWidget):
         # button must target the same dir (mirrors Tk _isolated_prefix_dir).
         self._isolated_prefix_dir_fn = (
             isolated_prefix_dir_fn
-            or (lambda name: self._exe.parent / f"prefix_{name}"))
+            or (lambda name: isolated_prefix_dir(self._exe, name)))
         self._confirm_delete = False
         self._auto_started = False          # the auto-continue countdown runs once per step
         self._auto_left = 0
