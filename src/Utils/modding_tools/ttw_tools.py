@@ -215,16 +215,52 @@ def fnv_required_esms(game: "BaseGame") -> list[str]:
     return [p for p in plugins if p.lower().endswith(".esm")]
 
 
-def ttw_mod_dir(game: "BaseGame") -> "Path | None":
-    """Path to the already-installed TTW mod in staging, or None (only when the
-    key merged plugin is present, so a stray empty folder doesn't trip skip)."""
+def _staging(game: "BaseGame") -> "Path | None":
     try:
         staging = game.get_effective_mod_staging_path()
     except Exception:
-        staging = None
+        return None
+    return Path(staging) if staging else None
+
+
+def list_slot_name(staging: "Path | None") -> "str | None":
+    """The folder a modlist keeps for TTW in its load order, for the user to
+    install TTW into -- or None. Wabbajack lists can't ship TTW (it is built
+    from the user's own Fallout 3 and New Vegas), so they leave an empty mod in
+    its place. Real case: Nuclear Sunset's ``[NoDelete] [INF] [DB] - Tale of
+    Two Wastelands (TTW)``. Only a folder that is empty but for meta.ini, or
+    already holds TTW, counts -- not a patch named after TTW."""
+    if staging is None or not staging.is_dir():
+        return None
+    for d in sorted(staging.iterdir()):
+        name = d.name
+        if (not d.is_dir() or name == OUTPUT_NAME
+                or "tale of two wastelands" not in name.lower()):
+            continue
+        if (d / "TaleOfTwoWastelands.esm").is_file():
+            return name
+        try:
+            rest = [p for p in d.iterdir() if p.name.lower() != "meta.ini"]
+        except OSError:
+            continue
+        if not rest:
+            return name
+    return None
+
+
+def output_name(game: "BaseGame") -> str:
+    """The mod the TTW installer writes into: a modlist's own TTW slot (see
+    :func:`list_slot_name`), else ``OUTPUT_NAME``."""
+    return list_slot_name(_staging(game)) or OUTPUT_NAME
+
+
+def ttw_mod_dir(game: "BaseGame") -> "Path | None":
+    """Path to the already-installed TTW mod in staging, or None (only when the
+    key merged plugin is present, so a stray empty folder doesn't trip skip)."""
+    staging = _staging(game)
     if staging is None:
         return None
-    mod_dir = staging / OUTPUT_NAME
+    mod_dir = staging / output_name(game)
     if (mod_dir / "TaleOfTwoWastelands.esm").is_file():
         return mod_dir
     return None
@@ -298,8 +334,18 @@ def restore_to_vanilla(game: "BaseGame", current_profile: str,
 def register_output(game: "BaseGame", dest: Path,
                     log_fn: Callable[[str], None] = _noop) -> None:
     """Register the installer's Data/-rooted output as the TTW mod (normal
-    Data-relative mod, not rootFolder) and index it."""
+    Data-relative mod, not rootFolder) and index it. A modlist's own TTW slot
+    keeps its meta.ini and its place in the load order."""
     from Utils.mods.install_as_mod import index_installed_mod, register_as_mod_neutral
+    if dest.name != OUTPUT_NAME:
+        from Utils.mods.modlist import ensure_mod_preserving_position
+        prof_dir = getattr(game, "_active_profile_dir", None)
+        if prof_dir is not None:
+            ensure_mod_preserving_position(Path(prof_dir) / "modlist.txt", dest.name,
+                                           enabled=True, preserve_existing_state=False)
+        log_fn(f"installed into the modlist's own '{dest.name}' mod.")
+        index_installed_mod(game, dest.name, log_fn=log_fn)
+        return
     register_as_mod_neutral(
         game, OUTPUT_NAME, archive=None, log_fn=log_fn, root_folder=False)
     index_installed_mod(game, OUTPUT_NAME, log_fn=log_fn)

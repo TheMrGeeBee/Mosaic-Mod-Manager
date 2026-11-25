@@ -100,6 +100,10 @@ _LOAD_ORDER_FILES = ("plugins.txt", "loadorder.txt")
 _MANUAL_ROOT_FOLDERS = {
     "__files requiring manual install": "Files Requiring Manual Install",
 }
+# Never installed from those folders: Proton brings its own DXVK, and a list's
+# d3d9.dll in the game folder overrides it (Nuclear Sunset's Linux guide: "you
+# will crash any time you leave an interior").
+_PROTON_SUPPLIED = frozenset({"d3d9.dll", "dxvk.conf"})
 # MO2 points the game's save folder at its own __MO_Saves\ when a profile keeps
 # its own saves; without MO2 that folder doesn't exist and the saves vanish.
 _MO2_SAVE_PATH = re.compile(
@@ -247,7 +251,8 @@ _PROFILE_BACKUP_RE = re.compile(r"\.\d{4}_\d{2}_\d{2}_\d{2}_\d{2}_\d{2}$")
 
 def classify_directives(modlist: ModList,
                         profiles: "str | Sequence[str] | None" = None, *,
-                        stock_dir: "str | None" = None) -> InstallPlan:
+                        stock_dir: "str | None" = None,
+                        root_dirs: "dict[str, str] | None" = None) -> InstallPlan:
     """Split the modlist's directives by where they land (see module doc).
     Wabbajack writes ``To`` with Windows separators; they're normalised.
     ``profiles`` names the MO2 profile(s) to install -- one name, or several
@@ -261,7 +266,9 @@ def classify_directives(modlist: ModList,
     ``stock_dir`` names the list's own game folder (see
     ``wabbajack_stock_game.stock_game_dir``) when it is to be built as a game
     copy; its directives then go to ``stock_directives`` instead of
-    ``unplaced``."""
+    ``unplaced``. ``root_dirs`` maps more top-level folders holding game-folder
+    files (see ``wabbajack_stock_game.partial_stock_dir``) to the name of the
+    root-folder mod they become, like ``_MANUAL_ROOT_FOLDERS``."""
     choices = profile_choices(modlist)
     if profiles is None:
         if len(choices) > 1:
@@ -277,6 +284,8 @@ def classify_directives(modlist: ModList,
     plan = InstallPlan(profile_names=wanted)
     keep = set(wanted)
     stock = stock_dir.lower() if stock_dir else None
+    root_folders = {**_MANUAL_ROOT_FOLDERS,
+                    **{k.lower(): v for k, v in (root_dirs or {}).items()}}
     for d in modlist.directives:
         parts = _norm_to(d)
         to = "/".join(parts)
@@ -292,8 +301,11 @@ def classify_directives(modlist: ModList,
             plan.bsa_inputs.append(replace(d, to="/".join(parts[1:])))
         elif stock is not None and head == stock and len(parts) >= 2:
             plan.stock_directives.append(replace(d, to="/".join(parts[1:])))
-        elif head in _MANUAL_ROOT_FOLDERS and len(parts) >= 2:
-            name = _MANUAL_ROOT_FOLDERS[head]
+        elif (head in root_folders and len(parts) == 2
+              and parts[1].lower() in _PROTON_SUPPLIED):
+            plan.unplaced.append(to)
+        elif head in root_folders and len(parts) >= 2:
+            name = root_folders[head]
             plan.mod_directives.append(replace(d, to=f"{name}/" + "/".join(parts[1:])))
             if name not in plan.extra_root_mods:
                 plan.extra_root_mods.append(name)
@@ -1144,10 +1156,11 @@ def run_wabbajack_install(*, wabbajack_path: "str | Path", modlist: ModList, gam
     # A single unnamed target means "whatever profile this list has" -- a
     # modlist with no profiles folder, or one the caller didn't name.
     unnamed = len(pairs) == 1 and not pairs[0][0]
-    from .wabbajack_stock_game import copy_label, game_stock_dir
+    from .wabbajack_stock_game import copy_label, game_stock_dir, partial_stock_dirs
     stock_dir = game_stock_dir(modlist, game)
     plan = classify_directives(modlist, None if unnamed else [k for k, _ in pairs],
-                               stock_dir=stock_dir if stock_game_dest is not None else None)
+                               stock_dir=stock_dir if stock_game_dest is not None else None,
+                               root_dirs=partial_stock_dirs(modlist, game))
     # MO2 profile -> the Mosaic profile that gets its modlist.txt.
     targets: "dict[str, Path]" = ({plan.profile_name: Path(pairs[0][1])} if unnamed
                                   else {k: Path(v) for k, v in pairs})
@@ -1200,8 +1213,12 @@ def run_wabbajack_install(*, wabbajack_path: "str | Path", modlist: ModList, gam
     for name in plan.extra_root_mods:
         if name not in report.root_builder_mods:
             report.root_builder_mods = [*report.root_builder_mods, name]
-        log(f"Wabbajack: the list's files to copy into the game folder by hand are "
-            f"installed as {name!r}, a root-folder mod")
+        log(f"Wabbajack: the list's files for the game folder are installed as "
+            f"{name!r}, a root-folder mod")
+    dxvk = [u for u in plan.unplaced
+            if "/" in u and u.rsplit("/", 1)[1].lower() in _PROTON_SUPPLIED]
+    if dxvk:
+        log(f"Wabbajack: not installing {', '.join(dxvk)} -- Proton brings its own DXVK")
 
     stock_reused = False
     if plan.stock_directives:

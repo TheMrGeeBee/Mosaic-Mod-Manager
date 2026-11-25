@@ -13,6 +13,7 @@ Game``), and points every profile the install creates at it (see
 """
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 from .wabbajack_manifest import ModList
@@ -41,6 +42,36 @@ def game_stock_dir(modlist: ModList, game) -> "str | None":
         if found:
             return found
     return None
+
+
+def partial_stock_dirs(modlist: ModList, game) -> "dict[str, str]":
+    """A list's game folder that ships only the files the list adds to the
+    game -- no game exe, the user copies their game in by hand -- mapped to the
+    name of the root-folder mod Mosaic installs it as. Found by the game's
+    script extender loader directly in it. Real case: Nuclear Sunset's
+    ``[NoDelete] Stock New Vegas`` (xNVSE, 4GB patchers, DXVK).
+    Empty when the list has none, or a full game copy :func:`game_stock_dir`
+    finds."""
+    loader = getattr(game, "_script_extender_exe", None)
+    if not isinstance(loader, str) or not loader or game_stock_dir(modlist, game):
+        return {}
+    loader = loader.lower()
+    # A full copy has the game's own master (Data/FalloutNV.esm); a list may
+    # name the copy by an exe Mosaic doesn't look for (New Vegas: Mosaic
+    # launches FalloutNVLauncher.exe, the copy holds FalloutNV.exe).
+    masters = [m.lower() for m in getattr(game, "vanilla_plugins", None) or []][:1]
+    found: "dict[str, str]" = {}
+    full: "set[str]" = set()
+    for d in modlist.directives:
+        parts = [p for p in (getattr(d, "to", "") or "").replace("\\", "/").split("/") if p]
+        if (len(parts) == 3 and masters and parts[1].lower() == "data"
+                and parts[2].lower() == masters[0]):
+            full.add(parts[0])
+        if (len(parts) == 2 and parts[1].lower() == loader
+                and parts[0].lower() not in ("mods", "profiles")):
+            name = re.sub(r"^(\s*\[[^\]]*\])+\s*", "", parts[0]).strip() or parts[0]
+            found[parts[0]] = name
+    return {k: v for k, v in found.items() if k not in full}
 
 
 def copy_label(modlist: ModList) -> str:

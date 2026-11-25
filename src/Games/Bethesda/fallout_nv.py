@@ -181,6 +181,19 @@ class Fallout_NV(BethesdaGame):
     def _script_extender_exe(self) -> str:
         return "nvse_loader.exe"
 
+    def _script_extender_loads_itself(self):
+        """Mosaic's 4GB patch (the FNV 4GB Patcher's bytes) also makes
+        FalloutNV.exe load NVSE itself; it keeps the original as
+        FalloutNV_backup.exe. Swapping nvse_loader in for the launcher would
+        then start the patched exe through the loader as well."""
+        from Games.Bethesda.bethesda_ini import existing_case
+        from Utils.modding_tools.fnv4gb_tools import BACKUP_NAME
+        if self._game_path is None:
+            return None
+        if existing_case(self._game_path, BACKUP_NAME).is_file():
+            return "FalloutNV.exe has the 4GB patch, which loads NVSE itself"
+        return None
+
     # FalloutCustom.ini key/value set the TTW NVSE plugin expects (section, key,
     # value). Applied via _set_ini_key so existing keys are updated and missing
     # ones appended, leaving any other user keys untouched. Comments are omitted.

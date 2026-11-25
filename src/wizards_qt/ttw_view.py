@@ -31,9 +31,9 @@ from gui_qt.theme.theme_qt import _c, active_palette
 from Utils.modding_tools.ttw_tools import (
     GITHUB_REPO_URL,
     MODPUB_URL,
-    OUTPUT_NAME,
     find_fo3_install,
     find_ttw_installer,
+    output_name,
     ttw_mod_dir,
 )
 from wizards_qt._view_base import GREEN, RED, WizardViewBase
@@ -149,7 +149,7 @@ class TTWView(WizardViewBase):
     def _build_already_page(self) -> QWidget:
         page, lay = self._step_page(self.tr("Tale of Two Wastelands is already installed"))
         note = QLabel(
-            self.tr("The '{0}' mod is already in your mod list, so the ~18 GB build can be skipped.\n\n• Re-apply setup only — re-runs the profile INI + FalloutCustom.ini setup without rebuilding (fast).\n\n• Rebuild from scratch — restores to vanilla and runs the full installer again (needs the .mpi + both games).").format(OUTPUT_NAME))
+            self.tr("The '{0}' mod is already in your mod list, so the ~18 GB build can be skipped.\n\n• Re-apply setup only — re-runs the profile INI + FalloutCustom.ini setup without rebuilding (fast).\n\n• Rebuild from scratch — restores to vanilla and runs the full installer again (needs the .mpi + both games).").format(output_name(self._game)))
         note.setWordWrap(True)
         note.setStyleSheet(self._dim)
         lay.addWidget(note)
@@ -279,7 +279,7 @@ class TTWView(WizardViewBase):
     def _build_ttw_run_page(self) -> QWidget:
         page, lay = self._step_page(self.tr("Step 3: Building Tale of Two Wastelands"))
         self._make_note(lay, (
-            self.tr("The game is first restored to a vanilla state, then the installer\nmerges Fallout 3 and Fallout New Vegas assets. This produces ~18 GB of output and can take a long while — please leave it running.\nOutput is written directly into your mod list as the '{0}' mod.").format(OUTPUT_NAME)))
+            self.tr("The game is first restored to a vanilla state, then the installer\nmerges Fallout 3 and Fallout New Vegas assets. This produces ~18 GB of output and can take a long while — please leave it running.\nOutput is written directly into your mod list as the '{0}' mod.").format(output_name(self._game))))
         self._run_status = self._make_status(lay)
         p = active_palette()
         self._run_output = QPlainTextEdit()
@@ -304,9 +304,6 @@ class TTWView(WizardViewBase):
             missing_vanilla_esms,
             register_output,
             restore_to_vanilla,
-        )
-        from Utils.modding_tools.ttw_tools import (
-            OUTPUT_NAME as _ON,
         )
         game = self._game
         exe = self._exe
@@ -342,7 +339,8 @@ class TTWView(WizardViewBase):
                       self.tr("Mod staging path is not configured."), RED)
             safe_emit(self._run_done_sig)
             return
-        dest = staging / _ON
+        from Utils.modding_tools.ttw_tools import output_name
+        dest = Path(staging) / output_name(game)
 
         fnv_missing = missing_vanilla_esms(self._fnv_path,
                                            fnv_required_esms(game))
@@ -438,6 +436,21 @@ class TTWView(WizardViewBase):
         )
         game = self._game
         sync_active_profile(game, self._profile)
+        from Utils.modding_tools.ttw_tools import output_name
+        name = output_name(game)
+        if name != _ON:
+            # A modlist's own TTW slot: the list ships its INIs and every mod
+            # TTW needs, so neither the TTW INI setup nor the requirement list
+            # applies -- they would override the list's tuned settings.
+            safe_emit(self._run_log_sig,
+                      self.tr("Installed into the modlist's own '{0}' mod; its "
+                              "INIs and supporting mods come from the modlist.").format(name))
+            self._ran = True
+            safe_emit(self._run_status_sig2,
+                      self.tr("Done! '{0}' is ready, in the modlist's own place "
+                              "in the load order. Deploy, then play.").format(name), GREEN)
+            safe_emit(self._run_done_sig)
+            return
 
         def _ilog(m):
             self._log(f"TTW Wizard: {m}")
