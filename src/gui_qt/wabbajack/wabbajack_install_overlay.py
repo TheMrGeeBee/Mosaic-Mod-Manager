@@ -13,7 +13,8 @@ them to its signals, never calls them from the worker.
 from __future__ import annotations
 
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QHBoxLayout, QLabel, QProgressBar, QPushButton, QWidget
+from PySide6.QtWidgets import (QFrame, QHBoxLayout, QLabel, QProgressBar, QPushButton,
+                               QScrollArea, QWidget)
 
 from gui_qt.overlay_base import OverlayBase
 from gui_qt.theme.theme_qt import _c, active_palette
@@ -25,6 +26,9 @@ _MAX_ACTIVE_SHOWN = 4
 class WabbajackInstallOverlay(OverlayBase):
     CARD_W = 560
     CARD_H = 380
+    # Once the install ends the card grows (within the window) so the
+    # summary has room before it has to scroll.
+    FINISHED_CARD_H = 560
 
     def __init__(self, host: QWidget, title: str, total_archives: int, total_bytes: int,
                  on_cancel, on_close=None):
@@ -77,10 +81,22 @@ class WabbajackInstallOverlay(OverlayBase):
         self._workers_label.setStyleSheet(f"color:{_c(p,'TEXT_DIM')}; font-size:12px;")
         v.addWidget(self._workers_label)
 
+        # A big list's summary (every Root Builder mod, skipped files...) runs
+        # far past the card's fixed height, so it scrolls; it also takes the
+        # card's spare height once it's shown.
         self._summary = QLabel("")
         self._summary.setWordWrap(True)
-        self._summary.hide()
-        v.addWidget(self._summary)
+        self._summary.setAlignment(Qt.AlignTop | Qt.AlignLeft)
+        self._summary.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        self._summary_scroll = QScrollArea()
+        self._summary_scroll.setWidgetResizable(True)
+        self._summary_scroll.setFrameShape(QFrame.NoFrame)
+        self._summary_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self._summary_scroll.setStyleSheet("QScrollArea { background: transparent; }")
+        self._summary_scroll.viewport().setAutoFillBackground(False)
+        self._summary_scroll.setWidget(self._summary)
+        self._summary_scroll.hide()
+        v.addWidget(self._summary_scroll, 100)
         v.addStretch(1)
 
         bar = QHBoxLayout()
@@ -144,12 +160,20 @@ class WabbajackInstallOverlay(OverlayBase):
         self._workers_label.setText(
             self.tr("{0} archive(s) at once ({1})").format(count, self.tr(reason)))
 
+    def set_packing(self, done: int, total: int, name: str) -> None:
+        """The last phase: mod archives are packed one at a time, so the
+        "archives at once" line no longer applies -- show which one instead."""
+        self._workers_label.setText(
+            self.tr("Archive {0} of {1}: {2}").format(done + 1, total, name))
+
     def finish(self, summary: str, ok: bool) -> None:
         self._running = False
         color = _c(self._p, "TEXT_OK_BRIGHT" if ok else "TEXT_WARN_BRIGHT")
         self._summary.setStyleSheet(f"color:{color}; font-size:13px;")
         self._summary.setText(summary)
-        self._summary.show()
+        self._summary_scroll.show()
+        self._card_h = self.FINISHED_CARD_H
+        self._reposition()
         self._cancel.hide()
         self._close.show()
         self._close.setFocus()

@@ -139,6 +139,8 @@ class WabbajackInstallCallbacks:
     on_build_progress: Callable[[int, int], None] = _noop          # done, total
     # How many archives are being built at once, and why (wabbajack_workers).
     on_workers: Callable[[int, str], None] = _noop                 # count, reason
+    # The last phase packs the mod archives (.bsa/.ba2) one at a time.
+    on_packing: Callable[[int, int, str], None] = _noop            # done, total, name
     # Once known: how many archives (and bytes) this run actually needs --
     # fewer than the modlist's when resuming an install.
     on_archives_needed: Callable[[int, int], None] = _noop         # count, bytes
@@ -873,6 +875,12 @@ def _run_batches(batches, work, controller, index, cancel, cb, log) -> None:
             raise
 
 
+def _packing_kinds(packing) -> str:
+    """'BSA', 'BA2' or 'BSA/BA2': which archive formats the last phase packs."""
+    kinds = sorted({Path(d.to).suffix.lstrip(".").upper() or "BSA" for d, _ in packing})
+    return "/".join(kinds)
+
+
 def _root_archive(directive) -> str:
     """The downloaded archive a directive reads from, or "" for one that
     reads none (inline files, archives being packed)."""
@@ -1349,9 +1357,12 @@ def run_wabbajack_install(*, wabbajack_path: "str | Path", modlist: ModList, gam
 
     try:
         _run_batches(batches, build_batch, controller, index, cancel, cb, log)
-        for directive, dest_root in packing:
+        if packing and not cancel.is_set():
+            cb.on_status(f"Building {_packing_kinds(packing)} archives…")
+        for i, (directive, dest_root) in enumerate(packing):
             if cancel.is_set():
                 break
+            cb.on_packing(i, len(packing), Path(directive.to).name)
             build_one(directive, dest_root)
         if cancel.is_set():
             report.cancelled = True

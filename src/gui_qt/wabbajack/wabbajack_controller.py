@@ -125,6 +125,7 @@ class WabbajackController(QObject):
     _dl = Signal(str, object)                # "start"|"progress"|"finish", payload
     _build = Signal(int, int)
     _workers = Signal(int, str)              # archives built at once, why
+    _packing = Signal(int, int, str)         # archive packing: done, total, name
     _needed = Signal(int, object)             # archives, bytes this run needs
     _finished = Signal(object, object)       # report | None, error | None
     _ask_manual = Signal(object)             # {"archive", "reason", "holder", "event"}
@@ -155,6 +156,8 @@ class WabbajackController(QObject):
         self._dl.connect(self._on_dl)
         self._build.connect(lambda d, t: self._overlay and self._overlay.build_progress(d, t))
         self._workers.connect(lambda n, r: self._overlay and self._overlay.set_workers(n, r))
+        self._packing.connect(
+            lambda d, t, nm: self._overlay and self._overlay.set_packing(d, t, nm))
         self._needed.connect(
             lambda n, b: self._overlay and self._overlay.set_download_totals(n, b))
         self._finished.connect(self._on_finished)
@@ -424,6 +427,7 @@ class WabbajackController(QObject):
             on_download_finish=lambda h, ok: safe_emit(self._dl, "finish", (h, ok)),
             on_build_progress=lambda d, t: safe_emit(self._build, int(d), int(t)),
             on_workers=lambda n, r: safe_emit(self._workers, int(n), str(r)),
+            on_packing=lambda d, t, nm: safe_emit(self._packing, int(d), int(t), str(nm)),
             on_archives_needed=lambda n, b: safe_emit(self._needed, int(n), int(b)),
             request_manual_download=self._blocking(self._ask_manual, ("archive", "reason")),
         )
