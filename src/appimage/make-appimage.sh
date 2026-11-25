@@ -35,9 +35,12 @@ for tool in quick-sharun cc awk find ldd strings wget makepkg pacman; do
     }
 done
 
-if ! /usr/bin/python3 -c 'import PySide6.QtCore' 2>/dev/null; then
-    echo "ERROR: /usr/bin/python3 cannot import PySide6." >&2
-    echo "Install the system 'pyside6' package (Arch: pacman -S pyside6)." >&2
+if ! pyside_err=$(/usr/bin/python3 -c 'import PySide6.QtCore' 2>&1); then
+    echo "ERROR: /usr/bin/python3 cannot import PySide6:" >&2
+    echo "$pyside_err" | tail -n 5 >&2
+    echo "If PySide6 is installed, check that it was built for the installed Qt" >&2
+    echo "(pacman -Q pyside6 qt6-base); a Qt missing one of its symbols means" >&2
+    echo "the two don't match." >&2
     exit 1
 fi
 

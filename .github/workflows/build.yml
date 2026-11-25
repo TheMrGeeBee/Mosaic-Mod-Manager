@@ -312,11 +312,22 @@ jobs:
           # links libLLVM (+100 MiB, only for the llvmpipe software renderer)
           # and quick-sharun now refuses to build with it. Same package
           # `get-debloated-pkgs --add-opengl` installs.
+          qt_before=$(pacman -Q qt6-base | awk '{print $2}')
           get-debloated-pkgs \
               icu-mini \
               libxml2-mini \
               qt6-base-mini \
               mesa-mini
+          # qt6-base-mini is rebuilt by pkgforge every 5 days; Arch moves Qt
+          # (and rebuilds pyside6 against it) whenever it likes. In between,
+          # the mini package downgrades Qt under a pyside6 built for the newer
+          # one, which then can't load (2026-11-25: 6.12.1 -> 6.12.0). Stop
+          # here with the reason, rather than in make-appimage.sh's import check.
+          qt_after=$(pacman -Q qt6-base | awk '{print $2}')
+          if [ "$(vercmp "${qt_after%-*}" "${qt_before%-*}")" -lt 0 ]; then
+              echo "::error::pkgforge's qt6-base-mini (${qt_after}) is older than Arch's Qt (${qt_before}), which pyside6 is built for. Re-run once pkgforge has rebuilt it: https://github.com/pkgforge-dev/archlinux-pkgs-debloated/releases/tag/continuous (scheduled every 5 days at 03:00 UTC)."
+              exit 1
+          fi
 
       - name: Create makepkg build user
         run: |
