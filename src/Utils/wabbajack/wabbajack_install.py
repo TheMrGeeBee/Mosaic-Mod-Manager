@@ -126,6 +126,8 @@ class WabbajackInstallCallbacks:
     on_download_progress: Callable[[str, int, int], None] = _noop  # hash, cur, total
     on_download_finish: Callable[[str, bool], None] = _noop        # hash, ok
     on_build_progress: Callable[[int, int], None] = _noop          # done, total
+    # How many archives are being built at once, and why (wabbajack_workers).
+    on_workers: Callable[[int, str], None] = _noop                 # count, reason
     # Once known: how many archives (and bytes) this run actually needs --
     # fewer than the modlist's when resuming an install.
     on_archives_needed: Callable[[int, int], None] = _noop         # count, bytes
@@ -796,6 +798,50 @@ def _download_all(archives: "list[Archive]", download_dir: Path, *, nexus_downlo
 # ---------------------------------------------------------------------------
 
 
+def _install_workers_setting() -> str:
+    """Settings > Extraction > Install workers: "auto", "light" or a count."""
+    try:
+        from Utils.ui_config import load_extraction_settings
+        return str(load_extraction_settings().get("install_workers", "auto"))
+    except Exception:
+        return "auto"
+
+
+def _run_batches(batches, work, controller, index, cancel, cb, log) -> None:
+    """Run ``work(root, batch)`` for every batch, at most ``controller.limit``
+    at a time, re-reading the limit as the build goes. A worker that raises
+    stops new batches and re-raises once the running ones have finished."""
+    from collections import deque
+    from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
+
+    pending = deque(batches)
+    running: set = set()
+    shown = None
+    with ThreadPoolExecutor(max_workers=controller.max_limit,
+                            thread_name_prefix="wabbajack-build") as pool:
+        try:
+            while pending or running:
+                if (controller.limit, controller.reason) != shown:
+                    shown = (controller.limit, controller.reason)
+                    log(f"Wabbajack: building {controller.limit} archive(s) at once "
+                        f"({controller.reason})")
+                    cb.on_workers(controller.limit, controller.reason)
+                index.concurrency = max(1, controller.limit)
+                while pending and len(running) < controller.limit and not cancel.is_set():
+                    root, batch = pending.popleft()
+                    running.add(pool.submit(work, root, batch))
+                if not running:
+                    break
+                finished, _ = wait(running, timeout=1.0, return_when=FIRST_COMPLETED)
+                for f in finished:
+                    running.discard(f)
+                    f.result()
+                controller.tick()
+        except BaseException:
+            pending.clear()
+            raise
+
+
 def _root_archive(directive) -> str:
     """The downloaded archive a directive reads from, or "" for one that
     reads none (inline files, archives being packed)."""
@@ -1186,39 +1232,48 @@ def run_wabbajack_install(*, wabbajack_path: "str | Path", modlist: ModList, gam
                 if not isinstance(d, CreateBSADirective)]
              + [(d, profile_scratch) for d in plan.profile_directives]
              + [(d, bsa_root) for d in plan.bsa_inputs])
-    # One downloaded archive at a time: every file from it is built together,
-    # each 7z/rar extracts only the members the install uses, and its scratch
-    # files are deleted as soon as its last file is in place (release_after).
-    # Directives that read no archive keep their order, first.
-    files.sort(key=lambda job: _root_archive(job[0]))
+    # Downloaded archives are built in parallel, each by one worker: every file
+    # from one archive is built together, its 7z/rar extracts only the members
+    # the install uses, and its scratch files are deleted once its last file is
+    # in place. How many run at once is up to the Install workers setting
+    # (wabbajack_workers). Directives that read no archive go in batches, first;
+    # archives are packed last, once every file that goes into them exists.
     index.plan(getattr(d, "archive_hash_path", None) for d, _ in files)
-    release_after: "dict[int, str]" = {}
-    for i, (d, _) in enumerate(files):
-        root = _root_archive(d)
-        if root:
-            release_after = {k: v for k, v in release_after.items() if v != root}
-            release_after[i] = root
-    jobs = (files + [(d, staging) for d in archives]
-            + [(d, stock_work) for d in stock_archives])
+    by_root: "dict[str, list]" = {}
+    loose: list = []
+    for job in files:
+        root = _root_archive(job[0])
+        (by_root.setdefault(root, []) if root else loose).append(job)
+    # Biggest archives first, so no long one is left running alone at the end.
+    batches = ([("", loose[i:i + 500]) for i in range(0, len(loose), 500)]
+               + sorted(by_root.items(),
+                        key=lambda kv: -sum(getattr(d, "size", 0) or 0 for d, _ in kv[1])))
+    packing = ([(d, staging) for d in archives]
+               + [(d, stock_work) for d in stock_archives])
+    total = len(files) + len(packing)
+    from .wabbajack_workers import WorkerController
+    controller = WorkerController(_install_workers_setting(), disk_paths=(staging, work_root))
+    index.low_priority = controller.low_priority
     stock_failed = 0
     built_mods: "set[str]" = {n for n in (d.to.split("/", 1)[0] for d in prebuilt)
                               if not _is_separator_folder(n)}
+    state_lock = threading.Lock()
+    finished = [0]
     cb.on_status("Building files…")
-    try:
-        for done, (directive, dest_root) in enumerate(jobs, start=1):
-            if cancel.is_set():
-                report.cancelled = True
-                return report
-            # Wabbajack rewrites a profile's modlist.txt when it compiles the
-            # list but keeps the original file's Size/Hash (real case: both
-            # Horizon 1.4.4 profiles, while all 51 other inline files match),
-            # so that one file can't be hash-checked.
-            stale_hash = (dest_root is profile_scratch
-                          and Path(directive.to).name.lower() == "modlist.txt")
-            result = apply_directive(directive, dest_root=dest_root,
-                                     wabbajack_path=wabbajack_path, archive_index=index,
-                                     substitutions=substitutions, bsa_temp_root=bsa_root,
-                                     verify_hash=not stale_hash)
+
+    def build_one(directive, dest_root) -> None:
+        nonlocal stock_failed
+        # Wabbajack rewrites a profile's modlist.txt when it compiles the
+        # list but keeps the original file's Size/Hash (real case: both
+        # Horizon 1.4.4 profiles, while all 51 other inline files match),
+        # so that one file can't be hash-checked.
+        stale_hash = (dest_root is profile_scratch
+                      and Path(directive.to).name.lower() == "modlist.txt")
+        result = apply_directive(directive, dest_root=dest_root,
+                                 wabbajack_path=wabbajack_path, archive_index=index,
+                                 substitutions=substitutions, bsa_temp_root=bsa_root,
+                                 verify_hash=not stale_hash)
+        with state_lock:
             if result.note:
                 log(f"Wabbajack: {result.note}")
             if result.success:
@@ -1236,10 +1291,29 @@ def run_wabbajack_install(*, wabbajack_path: "str | Path", modlist: ModList, gam
                 report.failed_directives.append((to, result.error))
                 if dest_root is stock_work:
                     stock_failed += 1
-            root_done = release_after.get(done - 1)
-            if root_done:
-                index.release(root_done)
-            cb.on_build_progress(done, len(jobs))
+            finished[0] += 1
+            n = finished[0]
+        if result.success:
+            controller.record(getattr(directive, "size", 0) or 0)
+        cb.on_build_progress(n, total)
+
+    def build_batch(root: str, batch: list) -> None:
+        for directive, dest_root in batch:
+            if cancel.is_set():
+                return
+            build_one(directive, dest_root)
+        if root:
+            index.release(root)
+
+    try:
+        _run_batches(batches, build_batch, controller, index, cancel, cb, log)
+        for directive, dest_root in packing:
+            if cancel.is_set():
+                break
+            build_one(directive, dest_root)
+        if cancel.is_set():
+            report.cancelled = True
+            return report
 
         if stock_work is not None:
             if stock_failed:

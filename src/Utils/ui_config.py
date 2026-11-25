@@ -907,9 +907,11 @@ def load_extraction_settings() -> dict:
       (0 = use all cores).
     * ``low_priority`` — bool; run extractor processes at low CPU + disk
       priority so foreground applications stay responsive.
+    * ``install_workers`` — str; how many archives a Wabbajack build works on
+      at once: ``"auto"``, ``"light"`` or a count (see wabbajack_workers).
     """
     path = get_ui_config_path()
-    defaults = {"cpu_threads": 0, "low_priority": False}
+    defaults = {"cpu_threads": 0, "low_priority": False, "install_workers": "auto"}
     if not path.is_file():
         return defaults
     try:
@@ -920,7 +922,9 @@ def load_extraction_settings() -> dict:
         cpu_threads = int(s.get("cpu_threads", "0"))
         cpu_threads = max(0, min(_EXTRACTION_THREADS_CEILING, cpu_threads))
         low_priority = s.getboolean("low_priority", False)
-        return {"cpu_threads": cpu_threads, "low_priority": low_priority}
+        workers = s.get("install_workers", "auto").strip().lower() or "auto"
+        return {"cpu_threads": cpu_threads, "low_priority": low_priority,
+                "install_workers": workers}
     except Exception:
         return defaults
 
@@ -942,6 +946,13 @@ def save_extraction_cpu_threads(threads: int) -> None:
     """Persist the per-extraction CPU thread cap (0 = use all cores)."""
     threads = max(0, min(_EXTRACTION_THREADS_CEILING, int(threads)))
     _save_extraction_option("cpu_threads", str(threads))
+
+
+def save_install_workers(value: str) -> None:
+    """Persist the Wabbajack build's worker mode: "auto", "light" or a count."""
+    from Utils.wabbajack.wabbajack_workers import parse_mode
+    kind, n = parse_mode(value)
+    _save_extraction_option("install_workers", str(n) if kind == "fixed" else kind)
 
 
 def save_extraction_low_priority(value: bool) -> None:

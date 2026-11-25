@@ -691,6 +691,20 @@ class SettingsView(QWidget):
             help=self.tr("Run extractions at low CPU and disk priority so they yield "
                  "to other applications instead of slowing them down. Extraction "
                  "speed is unaffected while the system is otherwise idle."))
+        from Utils.wabbajack.wabbajack_workers import MAX_WORKERS, cpu_count
+        top = min(MAX_WORKERS, cpu_count())
+        self._combo(
+            g, self.tr("Install workers"),
+            [(self.tr("Auto (finds the fastest while installing)"), "auto"),
+             (self.tr("Light (up to a quarter of the CPU, low priority)"), "light")]
+            + [(str(n), str(n)) for n in range(1, top + 1)],
+            str(ext.get("install_workers", "auto")), uc.save_install_workers)
+        self._add_help(
+            g, self.tr("How many archives a Wabbajack modlist install builds at once. "
+               "Auto measures how fast files finish and adds workers while that "
+               "helps, so it suits a hard drive as well as a fast SSD; it also "
+               "backs off when memory or disk space runs low. Light keeps the "
+               "computer usable while it installs."))
 
         # Manage Caches action.
         row = self._next_row(g)

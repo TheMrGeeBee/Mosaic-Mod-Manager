@@ -73,6 +73,9 @@ class WabbajackInstallOverlay(OverlayBase):
         self._build_bar.setValue(0)
         self._build_bar.setTextVisible(False)
         v.addWidget(self._build_bar)
+        self._workers_label = QLabel("")
+        self._workers_label.setStyleSheet(f"color:{_c(p,'TEXT_DIM')}; font-size:12px;")
+        v.addWidget(self._workers_label)
 
         self._summary = QLabel("")
         self._summary.setWordWrap(True)
@@ -135,6 +138,11 @@ class WabbajackInstallOverlay(OverlayBase):
         self._build_bar.setRange(0, max(1, total))
         self._build_bar.setValue(done)
         self._build_label.setText(self.tr("Building files: {0} of {1}").format(done, total))
+
+    def set_workers(self, count: int, reason: str) -> None:
+        """How many archives the build works on at once, and why."""
+        self._workers_label.setText(
+            self.tr("{0} archive(s) at once ({1})").format(count, self.tr(reason)))
 
     def finish(self, summary: str, ok: bool) -> None:
         self._running = False

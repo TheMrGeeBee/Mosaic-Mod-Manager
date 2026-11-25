@@ -102,7 +102,8 @@ def _extract_inno(container: Path, out: Path) -> None:
             f"({detail[-1] if detail else f'exit {proc.returncode}'})")
 
 
-def _extract_7z_members(container: Path, out: Path, wanted: "set[str]") -> bool:
+def _extract_7z_members(container: Path, out: Path, wanted: "set[str]", *,
+                        threads: int = 0, low_priority: bool = False) -> bool:
     """Extract only the members in *wanted* (normalised paths) from a 7z/rar
     with native 7z. True when every wanted member was found and extracted;
     False -- leaving the caller to extract the whole archive, as before --
@@ -138,16 +139,16 @@ def _extract_7z_members(container: Path, out: Path, wanted: "set[str]") -> bool:
     listfile = out.parent / (out.name + ".list")
     listfile.write_text("".join(f"{n}\n" for n in pick), encoding="utf-8",
                         errors="surrogateescape")
+    cmd = [exe, "x", str(container), f"-o{out}", "-y", "-spd", "-scsUTF-8",
+           f"-mmt={threads}" if threads > 0 else "-mmt=on", f"@{listfile}"]
     try:
-        run = subprocess.run(
-            [exe, "x", str(container), f"-o{out}", "-y", "-spd", "-scsUTF-8",
-             f"@{listfile}"],
-            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=7200)
+        from Utils.mods.mod_install import _run_extractor_cancellable
+        rc, _err, _killed = _run_extractor_cancellable(cmd, None, low_priority=low_priority)
     except (OSError, subprocess.SubprocessError):
         return False
     finally:
         listfile.unlink(missing_ok=True)
-    return run.returncode == 0
+    return rc == 0
 
 
 class ArchiveIndex:
@@ -188,7 +189,18 @@ class ArchiveIndex:
         self._zips: "dict[str, tuple[zipfile.ZipFile, dict[str, str]]]" = {}
         self._bsas: "dict[str, object]" = {}
         self._next_id = 0
-        self._lock = threading.RLock()
+        self._lock = threading.RLock()                 # the index's own tables
+        self._container_locks: "dict[str, threading.Lock]" = {}
+        # Set by a parallel build: how many archives extract at once (7z's
+        # threads are shared out), and whether extractors run at low priority.
+        self.concurrency = 1
+        self.low_priority = False
+
+    def _lock_for(self, container: Path) -> "threading.Lock":
+        """One lock per container: different archives extract in parallel,
+        two jobs on the same archive wait for each other."""
+        with self._lock:
+            return self._container_locks.setdefault(str(container), threading.Lock())
 
     def add_archive(self, content_hash: str, path: "str | Path") -> None:
         """Register a downloaded Archive's on-disk location by its content
@@ -368,6 +380,11 @@ class ArchiveIndex:
         key = str(container)
         with self._lock:
             got = self._zips.get(key)
+        if got is not None:
+            return got
+        with self._lock_for(container):
+            with self._lock:
+                got = self._zips.get(key)
             if got is None:
                 try:
                     zf = zipfile.ZipFile(container, "r")
@@ -378,7 +395,9 @@ class ArchiveIndex:
                     names.setdefault(n.replace("\\", "/").strip("/"), n)
                 for n in zf.namelist():
                     names.setdefault("\0" + _norm_member(n), n)
-                got = self._zips[key] = (zf, names)
+                got = (zf, names)
+                with self._lock:
+                    self._zips[key] = got
             return got
 
     def _extract_from_zip(self, container: Path, member_path: str, dest: Path) -> None:
@@ -389,7 +408,7 @@ class ArchiveIndex:
             raise VfsResolutionError(f"{member_path!r} not found in {container.name}")
         dest.parent.mkdir(parents=True, exist_ok=True)
         try:
-            with self._lock:                    # one ZipFile, one reader at a time
+            with self._lock_for(container):     # one ZipFile, one reader at a time
                 with zf.open(target) as src, open(dest, "wb") as out:
                     shutil.copyfileobj(src, out, 1 << 20)
         except zipfile.BadZipFile as exc:
@@ -402,25 +421,30 @@ class ArchiveIndex:
         install's own filesystem, never /tmp). With *wanted* -- the members
         the install will use -- only those are extracted."""
         key = str(container)
-        with self._lock:
-            members = self._extracted.get(key)
+        with self._lock_for(container):
+            with self._lock:
+                members = self._extracted.get(key)
             if members is None:
                 out = self._new_dest(root_hash, container.stem + ".d")
                 out.mkdir(parents=True, exist_ok=True)
                 if container.suffix.lower() in _INNO_EXTS:
                     _extract_inno(container, out)
-                elif not (wanted and _extract_7z_members(container, out, wanted)):
+                elif not (wanted and _extract_7z_members(
+                        container, out, wanted, threads=self._threads(),
+                        low_priority=self.low_priority)):
                     from Utils.mods.mod_install import _extract_archive
                     errors: "list[str]" = []
                     if not _extract_archive(str(container), str(out), lambda _m: None,
-                                            error_sink=errors):
+                                            error_sink=errors,
+                                            concurrent_workers=self.concurrency):
                         detail = (errors[-1].strip() if errors
                                   else "no extractor could read it")
                         raise VfsResolutionError(
                             f"{container}: extraction failed ({detail})")
                 members = {_norm_member(p.relative_to(out).as_posix()): p
                            for p in out.rglob("*") if p.is_file()}
-                self._extracted[key] = members
+                with self._lock:
+                    self._extracted[key] = members
         found = members.get(_norm_member(member_path))
         if found is None:
             raise VfsResolutionError(f"{member_path!r} not found in {container.name}")
@@ -435,10 +459,22 @@ class ArchiveIndex:
                 got = self._bsas[key] = BsaFile(container).__enter__()
             return got
 
+    def _threads(self) -> int:
+        """7z threads per extraction: the user's setting, else the cores
+        shared between the archives extracting at once."""
+        try:
+            from Utils.ui_config import load_extraction_settings
+            chosen = int(load_extraction_settings().get("cpu_threads", 0) or 0)
+        except Exception:
+            chosen = 0
+        if chosen > 0:
+            return chosen
+        return max(1, (os.cpu_count() or 2) // max(1, self.concurrency))
+
     def _extract_from_bethesda(self, container: Path, member_path: str, dest: Path) -> None:
         from Utils.archives.bsa_file_reader import BsaReadError
         try:
-            with self._lock:                    # one open archive, one reader at a time
+            with self._lock_for(container):     # one open archive, one reader at a time
                 archive = self._bsa(container)
                 if member_path not in archive:
                     raise VfsResolutionError(f"{member_path!r} not found in {container.name}")
