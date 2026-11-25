@@ -1727,6 +1727,12 @@ class BethesdaGame(BaseGame):
                     return name
         return self.exe_name
 
+    def _script_extender_loads_itself(self) -> "str | None":
+        """Why the game starts its script extender on its own, so the launcher
+        must not be replaced by the extender's loader -- or None. Overridden
+        by games a patcher can make do that (Fallout 3)."""
+        return None
+
     def swap_launcher(self, log_fn) -> None:
         """Replace the game launcher with the script extender if present."""
         _log = log_fn
@@ -1734,6 +1740,10 @@ class BethesdaGame(BaseGame):
             return
         if not self._script_extender_swap:
             _log("  Script extender / launcher swap disabled — skipping.")
+            return
+        loads_itself = self._script_extender_loads_itself()
+        if loads_itself:
+            _log(f"  {loads_itself} — no launcher swap needed.")
             return
         se = self._game_path / self._script_extender_exe
         if not se.is_file():

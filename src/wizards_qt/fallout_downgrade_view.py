@@ -29,6 +29,55 @@ _ARCHIVE_KEYWORDS = ["fallout", "anniversary", "patcher"]
 _PG_DOWNLOAD, _PG_LOCATE, _PG_RUN = range(3)
 
 
+# The original exe the patcher keeps when it has patched the game.
+_PATCHED_MARK = "Fallout3_backup.exe"
+# How long the patcher may linger once its patch is in place, and how long it
+# may run at all.
+_LINGER_S = 20
+_TIMEOUT_S = 30 * 60
+
+
+def _wait_for_patcher(proc, game_root: Path, log, *, poll=2.0, linger=_LINGER_S,
+                      timeout=_TIMEOUT_S, clock=None) -> None:
+    """Wait for the patcher to exit. Once the patch is done (its backup of
+    the original exe exists) and it is still running after *linger*
+    seconds -- sitting at a prompt -- end it and whatever it started."""
+    import time
+    clock = clock or time.monotonic
+    start, done_at = clock(), None
+    mark = Path(game_root) / _PATCHED_MARK
+    while proc.poll() is None:
+        now = clock()
+        if done_at is None and mark.is_file():
+            done_at = now
+        if (done_at is not None and now - done_at > linger) or now - start > timeout:
+            log("the patcher was still waiting after patching; ending it"
+                if done_at is not None else "the patcher took too long; ending it")
+            _end_session(proc)
+            return
+        try:
+            proc.wait(timeout=poll)
+        except subprocess.TimeoutExpired:
+            pass
+
+
+def _end_session(proc) -> None:
+    """End *proc* and every process in its session (the Wine processes the
+    patcher started)."""
+    import os
+    import signal
+    for sig in (signal.SIGTERM, signal.SIGKILL):
+        try:
+            os.killpg(proc.pid, sig)
+        except (ProcessLookupError, PermissionError, OSError):
+            return
+        try:
+            proc.wait(timeout=5)
+            return
+        except subprocess.TimeoutExpired:
+            continue
+
+
 class FalloutDowngradeView(WizardViewBase):
     """Downgrade Fallout 3 for script extender compatibility."""
 
@@ -140,14 +189,24 @@ class FalloutDowngradeView(WizardViewBase):
                                env=env),
             env=env,
             cwd=str(game_root),
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
+            # The patcher's script ends with "pause". Nothing could answer it,
+            # so it never exited and kept the game's prefix busy -- Steam then
+            # waited on it and the game never started (real case 2026-11-25).
+            # Input answers the prompt; a session of its own lets the watchdog
+            # end everything it started.
+            stdin=subprocess.PIPE,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True,
         )
-        proc.wait()
-        if proc.returncode != 0:
-            stderr = (proc.stderr.read() or b"").decode(errors="replace").strip()
-            self._log(f"Downgrade Wizard: Patcher exited with code "
-                      f"{proc.returncode}: {stderr}")
+        try:
+            proc.stdin.write(b"\r\n" * 8)
+            proc.stdin.close()
+        except OSError:
+            pass
+        _wait_for_patcher(proc, game_root, lambda m: self._log(f"Downgrade Wizard: {m}"))
+        if proc.returncode not in (0, None):
+            self._log(f"Downgrade Wizard: Patcher exited with code {proc.returncode}")
 
         safe_emit(self._run_status_sig,
                   self.tr("Patcher has finished.\n\n"

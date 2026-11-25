@@ -58,6 +58,20 @@ class Fallout_3(BethesdaGame):
             self._saves_routing_rule([".fos"]),
                 ]
 
+    def _script_extender_loads_itself(self) -> "str | None":
+        """The Fallout Anniversary Patcher (Mosaic's Downgrade wizard, or a
+        list's manual-install files) rewrites Fallout3.exe to load FOSE itself
+        and keeps the original as Fallout3_backup.exe. An older fose_loader
+        put in the launcher's place rejects that exe ("unknown version", CRC
+        6E3D50D1) -- real case: Fallout Rebirth's FOSE, 2026-11-25."""
+        from Games.Bethesda.bethesda_ini import existing_case
+        if self._game_path is None:
+            return None
+        if existing_case(self._game_path, "Fallout3_backup.exe").is_file():
+            return ("Fallout3.exe is patched by the Fallout Anniversary Patcher "
+                    "and loads FOSE itself")
+        return None
+
     @property
     def wizard_tools(self) -> list[WizardTool]:
         return self._base_wizard_tools() + [

@@ -93,6 +93,13 @@ PROFILE_FILES_DIR = "wabbajack_profile_files"
 # TEMP_BSA_FILES/<TempID>/ before its CreateBSA directive packs them.
 _BSA_TEMP_DIR = "temp_bsa_files"
 _LOAD_ORDER_FILES = ("plugins.txt", "loadorder.txt")
+# Folders a list ships next to mods/ for the user to copy into the game folder
+# by hand, per its README -- installed as a root-folder mod of this name
+# instead. Waters of Life's holds FOSE, updated Ogg Vorbis libraries and the
+# Fallout Anniversary Patcher. Keyed by the folder name, lower-cased.
+_MANUAL_ROOT_FOLDERS = {
+    "__files requiring manual install": "Files Requiring Manual Install",
+}
 # MO2 points the game's save folder at its own __MO_Saves\ when a profile keeps
 # its own saves; without MO2 that folder doesn't exist and the saves vanish.
 _MO2_SAVE_PATH = re.compile(
@@ -186,6 +193,9 @@ class InstallPlan:
     stock_directives: "list[Directive]" = field(default_factory=list)
     profile_names: "list[str]" = field(default_factory=list)
     unplaced: "list[str]" = field(default_factory=list)
+    # Mods made from a list's game-folder files (_MANUAL_ROOT_FOLDERS):
+    # installed as root-folder mods, enabled, whatever the profile lists.
+    extra_root_mods: "list[str]" = field(default_factory=list)
 
     @property
     def profile_name(self) -> str:
@@ -282,6 +292,11 @@ def classify_directives(modlist: ModList,
             plan.bsa_inputs.append(replace(d, to="/".join(parts[1:])))
         elif stock is not None and head == stock and len(parts) >= 2:
             plan.stock_directives.append(replace(d, to="/".join(parts[1:])))
+        elif head in _MANUAL_ROOT_FOLDERS and len(parts) >= 2:
+            name = _MANUAL_ROOT_FOLDERS[head]
+            plan.mod_directives.append(replace(d, to=f"{name}/" + "/".join(parts[1:])))
+            if name not in plan.extra_root_mods:
+                plan.extra_root_mods.append(name)
         else:
             plan.unplaced.append(to)
     return plan
@@ -306,7 +321,7 @@ def limit_to_profile_mods(plan: InstallPlan, listed: "set[str]") -> "list[str]":
     ``_profile_mod_names``) because their ``meta.ini`` holds the separator's
     colour, and an unlisted one belongs to another profile, so neither kind
     is a mod the user asked for and left out."""
-    wanted = {n.lower() for n in listed}
+    wanted = {n.lower() for n in listed} | {n.lower() for n in plan.extra_root_mods}
     kept, skipped = [], set()
     for d in plan.mod_directives:
         mod = d.to.split("/", 1)[0]
@@ -481,7 +496,8 @@ def _prefix_mo2_data_subdir(plan: InstallPlan, target_game: "str | None") -> Non
 
     def moved(to: str) -> str:
         mod, _, rest = to.partition("/")
-        if rest.lower() == "meta.ini" or rest.lower().startswith(sub.lower() + "/"):
+        if (mod in plan.extra_root_mods or rest.lower() == "meta.ini"
+                or rest.lower().startswith(sub.lower() + "/")):
             return to
         return f"{mod}/{sub}/{rest}"
 
@@ -854,7 +870,8 @@ def _write_profile(profile_dir: Path, scratch: Path, built_mods: "set[str]",
                    root_parents: "dict[str, str] | None" = None,
                    staging: "Path | None" = None,
                    ini_targets: "list[str] | None" = None,
-                   ini_subdir: "str | None" = None) -> None:
+                   ini_subdir: "str | None" = None,
+                   enabled_extra: "set[str] | None" = None) -> None:
     curated = scratch / "modlist.txt"
     entries: "list[ModEntry]" = []
     if curated.is_file():
@@ -881,7 +898,8 @@ def _write_profile(profile_dir: Path, scratch: Path, built_mods: "set[str]",
     # Without a curated modlist every built mod is part of the setup; with
     # one, a built mod it doesn't list (not expected after
     # limit_to_profile_mods) is added disabled, as MO2 would show it.
-    entries += [ModEntry(name=n, enabled=not curated.is_file(), locked=False)
+    entries += [ModEntry(name=n, enabled=(not curated.is_file()
+                                          or n in (enabled_extra or ())), locked=False)
                 for n in sorted(built_mods - listed)]
     write_modlist(profile_dir / "modlist.txt", entries)
 
@@ -1179,6 +1197,11 @@ def run_wabbajack_install(*, wabbajack_path: "str | Path", modlist: ModList, gam
         for name in layout.converted:
             log(f"Wabbajack: {name} uses Root Builder; installing it as a root-folder mod "
                 "(Root/ files go to the game folder, the rest to Data/)")
+    for name in plan.extra_root_mods:
+        if name not in report.root_builder_mods:
+            report.root_builder_mods = [*report.root_builder_mods, name]
+        log(f"Wabbajack: the list's files to copy into the game folder by hand are "
+            f"installed as {name!r}, a root-folder mod")
 
     stock_reused = False
     if plan.stock_directives:
@@ -1337,7 +1360,8 @@ def run_wabbajack_install(*, wabbajack_path: "str | Path", modlist: ModList, gam
         for mo2_profile, dest in targets.items():
             _write_profile(dest, profile_scratch / mo2_profile, built_mods, report, log,
                            root_parents=root_parents, staging=staging,
-                           ini_targets=ini_targets, ini_subdir=ini_subdir)
+                           ini_targets=ini_targets, ini_subdir=ini_subdir,
+                           enabled_extra=set(plan.extra_root_mods))
     finally:
         index.close()
         wabbajack_file.close_open_containers()
