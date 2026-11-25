@@ -205,3 +205,44 @@ def forget_restored_inis(mygames: Path) -> None:
         (Path(mygames) / RESTORED_INIS_NOTE).unlink()
     except FileNotFoundError:
         pass
+
+
+def existing_case(folder: Path, name: str) -> Path:
+    """*name* in *folder*, spelled as an existing file is (Fallout.ini or
+    FALLOUT.INI): on Linux both can exist side by side, and Wine then opens
+    either one. *folder* / *name* when there is none yet."""
+    try:
+        low = name.lower()
+        for entry in Path(folder).iterdir():
+            if entry.name.lower() == low and entry.is_file():
+                return entry
+    except OSError:
+        pass
+    return Path(folder) / name
+
+
+def default_ini(game_root: "Path | None", ini_name: str) -> "Path | None":
+    """The game's own starting copy of *ini_name*: ``<Stem>_default.ini`` in
+    the game folder (Fallout_default.ini for Fallout.ini), which the launcher
+    copies to My Games on first run. None when the game has none (the Prefs
+    INIs are written by the launcher from scratch)."""
+    if game_root is None:
+        return None
+    p = existing_case(Path(game_root), f"{Path(ini_name).stem}_default.ini")
+    return p if p.is_file() else None
+
+
+def seed_ini_from_default(path: Path, game_root: "Path | None") -> bool:
+    """Create the missing INI *path* from the game's default copy. A game
+    never started has no Fallout.ini yet, and one made from nothing -- only
+    the keys Mosaic or a collection set -- lacks everything else the engine
+    reads from it: Fallout 3 drew its menus without text, having no [Fonts]."""
+    if path.exists():
+        return False
+    src = default_ini(game_root, path.name)
+    if src is None:
+        return False
+    import shutil
+    path.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(src, path)
+    return True

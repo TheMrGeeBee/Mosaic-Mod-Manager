@@ -19,10 +19,13 @@ from Games.Bethesda.bethesda_ini import (
     _read_ini_key,
     _set_ini_key,
     clear_installed_inis,
+    default_ini,
+    existing_case,
     forget_restored_inis,
     is_restored_original,
     note_restored_ini,
     read_installed_inis,
+    seed_ini_from_default,
 )
 from Utils.deploy.deploy import (
     LinkMode,
@@ -40,20 +43,6 @@ from Utils.deploy.deploy import (
     restore_data_core,
 )
 from Utils.mods.modlist import read_modlist
-
-
-def _existing_case(folder: Path, name: str) -> Path:
-    """*name* in *folder*, spelled as an existing file is (Fallout.ini or
-    FALLOUT.INI): on Linux both can exist side by side, and Wine then opens
-    either one. *folder* / *name* when there is none yet."""
-    try:
-        low = name.lower()
-        for entry in folder.iterdir():
-            if entry.name.lower() == low and entry.is_file():
-                return entry
-    except OSError:
-        pass
-    return folder / name
 
 
 class BethesdaGame(BaseGame):
@@ -963,9 +952,9 @@ class BethesdaGame(BaseGame):
         mygames = self._mygames_path()
         if mygames is None:
             return []
-        paths = [_existing_case(mygames, self._ARCHIVE_INI_FILENAME)]
+        paths = [existing_case(mygames, self._ARCHIVE_INI_FILENAME)]
         if self._ARCHIVE_PREFS_INI_FILENAME:
-            paths.append(_existing_case(mygames, self._ARCHIVE_PREFS_INI_FILENAME))
+            paths.append(existing_case(mygames, self._ARCHIVE_PREFS_INI_FILENAME))
         return paths
 
     def _default_archive_list(self, key: str) -> str:
@@ -974,9 +963,8 @@ class BethesdaGame(BaseGame):
         launcher copies to My Games on first run. "" when there is none."""
         if self._game_path is None:
             return ""
-        stem = Path(self._ARCHIVE_INI_FILENAME).stem
-        default = _existing_case(Path(self._game_path), f"{stem}_default.ini")
-        if not default.is_file():
+        default = default_ini(self._game_path, self._ARCHIVE_INI_FILENAME)
+        if default is None:
             return ""
         return _read_ini_key(default, "Archive", key) or ""
 
@@ -1098,6 +1086,13 @@ class BethesdaGame(BaseGame):
                     _log(f"  Seeded '{live.name}' into the profile from the live copy.")
                 except OSError as exc:
                     _log(f"  WARN: could not seed '{live.name}': {exc}")
+        # Still no main INI (a game never started): the game's own defaults,
+        # never a file built from only the keys Mosaic sets.
+        main_ini = getattr(self, "_ARCHIVE_INI_FILENAME", None)
+        if main_ini and main_ini.lower() not in {n.lower() for n in existing_names}:
+            if seed_ini_from_default(ini_dir / main_ini, getattr(self, "_game_path", None)):
+                existing_names.add(main_ini)
+                _log(f"  Seeded '{main_ini}' into the profile from the game's defaults.")
         ini_files = list(ini_dir.glob("*.ini"))
         if not ini_files:
             _log(f"  No *.ini files found in '{ini_dir.name}' folder — skipping.")
@@ -1305,6 +1300,9 @@ class BethesdaGame(BaseGame):
 
         self._write_dummy_bsa_file(_log)
         primary_ini = ini_paths[0]
+        if seed_ini_from_default(primary_ini, self._game_path):
+            _log(f"  Created {primary_ini.name} from the game's defaults "
+                 "(the game hasn't made one yet).")
         # The list an INI without one starts from. Writing the key at all
         # replaces the game's built-in list, so a list built from nothing --
         # the dummy BSA plus the mods' BSAs -- drops every vanilla archive:

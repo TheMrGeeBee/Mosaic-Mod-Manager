@@ -128,6 +128,7 @@ def apply_collection_ini_tweaks(
     read_ini_key: Callable[[Path, str, str], "str | None"],
     log_fn: Callable[[str], None] | None = None,
     allowed_targets: list[str] | None = None,
+    game_root: Path | None = None,
 ) -> IniTweakResult:
     """Apply every ``.ini`` under ``<archive_root>/INI Tweaks/`` to profile copies.
 
@@ -145,7 +146,11 @@ def apply_collection_ini_tweaks(
     set_ini_key, read_ini_key
         Re-uses the byte-preserving helpers in ``Bethesda.py`` so we don't
         duplicate INI parsing.
+    game_root
+        The game folder. With no INI to start from (a game never started),
+        the game's own ``<Stem>_default.ini`` there is the starting copy.
     """
+    from Games.Bethesda.bethesda_ini import existing_case, seed_ini_from_default
     log = log_fn or (lambda *_a: None)
     result = IniTweakResult()
 
@@ -171,13 +176,13 @@ def apply_collection_ini_tweaks(
             result.skipped += 1
             continue
 
-        profile_ini = profile_dir / target_name
+        profile_ini = existing_case(profile_dir, target_name)
 
         # Seed the profile INI from the user's live prefix INI on first apply.
         if not profile_ini.exists():
             seeded = False
             if prefix_ini_dir is not None:
-                src = prefix_ini_dir / target_name
+                src = existing_case(prefix_ini_dir, target_name)
                 if src.is_file():
                     try:
                         profile_dir.mkdir(parents=True, exist_ok=True)
@@ -189,6 +194,10 @@ def apply_collection_ini_tweaks(
                     except Exception as exc:
                         log(f"Collection INI tweaks: failed to seed "
                             f"'{target_name}' from prefix: {exc}")
+            if not seeded and seed_ini_from_default(profile_ini, game_root):
+                seeded = True
+                log(f"Collection INI tweaks: started '{target_name}' from the game's "
+                    "defaults (the game hasn't made one yet)")
             if not seeded:
                 # Create an empty file so set_ini_key has something to write to.
                 profile_dir.mkdir(parents=True, exist_ok=True)
