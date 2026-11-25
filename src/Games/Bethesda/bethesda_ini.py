@@ -152,3 +152,56 @@ def clear_installed_inis(ini_dir: Path) -> None:
         (Path(ini_dir) / INSTALLED_INIS_MARKER).unlink()
     except FileNotFoundError:
         pass
+
+
+# Restore puts My Games' original INIs back (from <name>.bak). The next deploy
+# must not take those for settings the game wrote and copy them over the
+# profile's own INIs. This note in My Games records what restore put back, and
+# its exact contents: an INI still identical to it is the original, not news.
+RESTORED_INIS_NOTE = ".mosaic_restored_inis"
+
+
+def _ini_digest(path: Path) -> "str | None":
+    import hashlib
+    try:
+        return hashlib.sha256(Path(path).read_bytes()).hexdigest()
+    except OSError:
+        return None
+
+
+def _read_restored(mygames: Path) -> "dict[str, str]":
+    try:
+        text = (Path(mygames) / RESTORED_INIS_NOTE).read_text(encoding="utf-8")
+    except OSError:
+        return {}
+    out = {}
+    for line in text.splitlines():
+        name, _, digest = line.partition("\t")
+        if name and digest:
+            out[name.lower()] = digest
+    return out
+
+
+def note_restored_ini(mygames: Path, path: Path) -> None:
+    """Record that restore just put *path* (in *mygames*) back from its backup."""
+    digest = _ini_digest(path)
+    if digest is None:
+        return
+    entries = _read_restored(mygames)
+    entries[Path(path).name.lower()] = digest
+    (Path(mygames) / RESTORED_INIS_NOTE).write_text(
+        "".join(f"{n}\t{d}\n" for n, d in sorted(entries.items())), encoding="utf-8")
+
+
+def is_restored_original(mygames: Path, path: Path) -> bool:
+    """True while *path* is exactly what restore put back: the original from
+    before the profile's INIs were linked, which nothing has changed since."""
+    want = _read_restored(mygames).get(Path(path).name.lower())
+    return want is not None and _ini_digest(path) == want
+
+
+def forget_restored_inis(mygames: Path) -> None:
+    try:
+        (Path(mygames) / RESTORED_INIS_NOTE).unlink()
+    except FileNotFoundError:
+        pass

@@ -19,6 +19,9 @@ from Games.Bethesda.bethesda_ini import (
     _read_ini_key,
     _set_ini_key,
     clear_installed_inis,
+    forget_restored_inis,
+    is_restored_original,
+    note_restored_ini,
     read_installed_inis,
 )
 from Utils.deploy.deploy import (
@@ -1086,6 +1089,13 @@ class BethesdaGame(BaseGame):
                     target.replace(backup)
                     _log(f"  Kept the profile's installed {src.name}; "
                          f"the live one was backed up → {backup.name}")
+                elif target.exists() and is_restored_original(mygames, target):
+                    # The original a restore put back, unchanged since: not
+                    # settings the game wrote, so the profile keeps its own.
+                    backup = target.with_suffix(".bak")
+                    target.replace(backup)
+                    _log(f"  Kept the profile's own {src.name}; the original a restore "
+                         f"put back was backed up again → {backup.name}")
                 elif target.exists():
                     # A real file here means the game itself (or a native Steam
                     # launch, e.g. dismissing the "Download and activate?" AE
@@ -1102,6 +1112,7 @@ class BethesdaGame(BaseGame):
                     _log(f"  Backed up {target.name} → {backup.name}")
                 target.symlink_to(src)
                 _log(f"  Linked {src.name} → {target}")
+            forget_restored_inis(mygames)
         if installed:
             clear_installed_inis(ini_dir)
 
@@ -1143,6 +1154,7 @@ class BethesdaGame(BaseGame):
                 backup = target.with_suffix(".bak")
                 if backup.exists():
                     backup.rename(target)
+                    note_restored_ini(mygames, target)
                     _log(f"  Restored {target.name} from .bak")
 
     # -----------------------------------------------------------------------
