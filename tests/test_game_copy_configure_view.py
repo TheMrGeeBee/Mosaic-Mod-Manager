@@ -159,3 +159,20 @@ def test_making_a_copy_that_already_exists_offers_it(app, env):
     assert not v._copy_busy
     v._start_copy((dest, "Steam build 1"), choices, False)
     assert "not 1.7.104" in v._copy_status.text()
+
+
+def test_steam_cloud_note_follows_the_profile_saves_box(app, env, monkeypatch):
+    from PySide6.QtWidgets import QLabel
+
+    from Utils.steam import steam_cloud
+    g, _steam, profiles, _tmp = env
+    monkeypatch.setattr(steam_cloud, "cloud_saves_warning",
+                        lambda game: "Steam Cloud syncs this game's saves (17 in the cloud)")
+    v = _view(g, profiles / "default")
+    note = next(lbl for lbl in v.findChildren(QLabel) if "Steam Cloud syncs" in lbl.text())
+    box = v._opt_checks["profile_saves"]
+    box.setChecked(True)
+    assert note.isVisible()
+    box.setChecked(False)
+    assert not note.isVisible()
+    v.close()

@@ -1240,6 +1240,10 @@ class BethesdaGame(BaseGame):
                 _log(f"  Backed up existing {link.name} → {backup.name}")
             link.symlink_to(profile_saves)
             _log(f"  Linked {link} → {profile_saves}")
+        from Utils.steam.steam_cloud import cloud_saves_warning
+        warning = cloud_saves_warning(self)
+        if warning:
+            _log(f"  WARN: {warning}")
 
     def _remove_profile_saves_symlinks(self, profile: str, log_fn) -> None:
         """Remove profile saves symlinks and restore any backed-up Saves folder."""

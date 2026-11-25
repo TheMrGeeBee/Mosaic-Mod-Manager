@@ -452,6 +452,7 @@ class ConfigureGameView(QWidget):
             rl.addWidget(lbl, 1)
             ov.addWidget(roww)
             self._opt_checks[key] = cb
+            return cb
 
         add_check("script_extender_swap",
                   self.tr("Swap launcher with script extender on deploy"),
@@ -465,10 +466,22 @@ class ConfigureGameView(QWidget):
         add_check("profile_ini_files",
                   self.tr("Use profile-specific INI files"),
                   hasattr(self._game, "profile_ini_files"))
-        add_check("profile_saves",
-                  self.tr("Use profile-specific saves"),
-                  hasattr(self._game, "profile_saves")
-                  and getattr(self._game, "supports_profile_saves", True))
+        saves_cb = add_check("profile_saves",
+                             self.tr("Use profile-specific saves"),
+                             hasattr(self._game, "profile_saves")
+                             and getattr(self._game, "supports_profile_saves", True))
+        if saves_cb is not None:
+            # Steam Cloud copies every save into each profile (steam_cloud.py).
+            from Utils.steam.steam_cloud import cloud_saves_warning
+            cloud = cloud_saves_warning(self._game)
+            if cloud:
+                note = QLabel(self.tr("⚠ {0}").format(cloud))
+                note.setWordWrap(True)
+                note.setContentsMargins(26, 0, 0, 4)
+                note.setStyleSheet(f"color: {_c(self._p, 'TEXT_WARN_BRIGHT')};")
+                note.setVisible(saves_cb.isChecked())
+                saves_cb.toggled.connect(note.setVisible)
+                ov.addWidget(note)
         add_check("path_index",
                   self.tr("Fast file lookups under Wine (indexes the game folder, "
                           "like MO2's virtual file system; much faster loading "
