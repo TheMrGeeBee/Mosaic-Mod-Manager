@@ -78,7 +78,7 @@ def filter_entries(entries, *, game_name: str, query: str = "", show_adult: bool
     want = {t.lower() for t in tags}
     out = []
     for e in entries:
-        if e.mosaic_game != game_name:
+        if not e.for_game(game_name):
             continue
         if (e.force_down and hide_unavailable) or (e.nsfw and not show_adult):
             continue
@@ -313,7 +313,7 @@ class WabbajackBrowserView(QWidget):
     def _rebuild_tags(self):
         name = getattr(self._game, "name", "") or ""
         selected = {i.text() for i in self._tags.selectedItems()}
-        tags = sorted({t for e in self._all if e.mosaic_game == name for t in e.tags},
+        tags = sorted({t for e in self._all if e.for_game(name) for t in e.tags},
                       key=str.lower)
         self._tags.blockSignals(True)
         self._tags.clear()
@@ -335,7 +335,7 @@ class WabbajackBrowserView(QWidget):
         if not self._all:
             return
         if not self._shown:
-            if not any(e.mosaic_game == name for e in self._all):
+            if not any(e.for_game(name) for e in self._all):
                 msg = self.tr("The Wabbajack gallery has no modlists for {0} that Mosaic "
                               "can install.").format(name or self.tr("this game"))
             else:

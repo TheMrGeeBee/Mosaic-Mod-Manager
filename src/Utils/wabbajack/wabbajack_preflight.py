@@ -37,6 +37,7 @@ from .wabbajack_manifest import (
     UnknownDirective,
     UnknownState,
     mosaic_game_for,
+    mosaic_games_for,
 )
 
 FIX_LOVERSLAB_LOGIN = "loverslab-login"
@@ -68,11 +69,13 @@ def check_game(modlist: ModList, active_game_name: str) -> "list[Check]":
         return [Check("game", False, "Game not supported yet",
                       f"This modlist is for {modlist.game_type or 'an unknown game'}, and "
                       "Mosaic can't install Wabbajack modlists for that game yet.")]
-    if active_game_name != target:
+    games = mosaic_games_for(modlist.game_type)
+    if active_game_name not in games:
+        which = " or ".join(games)
         return [Check("game", False, "Modlist is for a different game",
-                      f"This modlist is for {target}. Switch to {target} in Mosaic, "
+                      f"This modlist is for {which}. Switch to {target} in Mosaic, "
                       "then import it again.")]
-    return [Check("game", True, f"Modlist is for {target}")]
+    return [Check("game", True, f"Modlist is for {active_game_name}")]
 
 
 def check_directives(modlist: ModList) -> "list[Check]":

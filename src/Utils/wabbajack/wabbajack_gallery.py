@@ -31,6 +31,7 @@ from Utils.atomic_write import write_atomic_text
 
 from .wabbajack_hash import hash_file, hashes_match
 from .wabbajack_manifest import (
+    WABBAJACK_GAME_ALSO,
     WABBAJACK_GAME_MAP,
     GoogleDriveState,
     HttpState,
@@ -45,6 +46,8 @@ _FETCH_WORKERS = 16
 _TIMEOUT = 20
 
 _GAME_BY_KEY = {k.lower(): v for k, v in WABBAJACK_GAME_MAP.items()}
+_GAMES_BY_KEY = {k.lower(): (v, *WABBAJACK_GAME_ALSO.get(k, ()))
+                 for k, v in WABBAJACK_GAME_MAP.items()}
 
 
 class GalleryError(Exception):
@@ -87,6 +90,11 @@ class GalleryModlist:
     def mosaic_game(self) -> "str | None":
         """Mosaic's name for this list's game, or None if unsupported."""
         return mosaic_game_for_gallery(self.game)
+
+    def for_game(self, name: str) -> bool:
+        """True if this list can be installed into Mosaic's game *name*
+        (Fallout 3 lists into Fallout 3 GOTY too)."""
+        return name in _GAMES_BY_KEY.get((self.game or "").strip().lower(), ())
 
 
 def mosaic_game_for_gallery(game: str) -> "str | None":

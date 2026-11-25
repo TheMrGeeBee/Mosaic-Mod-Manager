@@ -324,10 +324,26 @@ WABBAJACK_GAME_MAP: "dict[str, str]" = {
 }
 
 
+# Other Mosaic handlers a Wabbajack game also covers. Wabbajack's Fallout3
+# is both Steam editions (SteamIDs 22300 and 22370, GotY); Mosaic has a
+# handler for each, identical but for name, IDs and wizard tools.
+WABBAJACK_GAME_ALSO: "dict[str, tuple[str, ...]]" = {
+    "Fallout3": ("Fallout 3 GOTY",),
+}
+
+
 def mosaic_game_for(game_type: str) -> "str | None":
     """Map a Wabbajack ``GameType`` string to Mosaic's internal game name, or
     ``None`` if this GameType isn't supported yet."""
     return WABBAJACK_GAME_MAP.get((game_type or "").strip())
+
+
+def mosaic_games_for(game_type: str) -> "tuple[str, ...]":
+    """Every Mosaic game a Wabbajack ``GameType`` can be installed into, the
+    main one first; empty when it isn't supported."""
+    key = (game_type or "").strip()
+    main = WABBAJACK_GAME_MAP.get(key)
+    return (main, *WABBAJACK_GAME_ALSO.get(key, ())) if main else ()
 
 
 # ---------------------------------------------------------------------------
