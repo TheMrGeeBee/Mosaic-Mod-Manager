@@ -108,10 +108,10 @@ def _read_bsa_v104_v105(f) -> list[str]:
         file_flags,
     ) = struct.unpack_from("<IIIIIIII", header, 0)
 
-    if version == 103:
-        return []  # Morrowind — not yet implemented
-
-    if version not in (104, 105):
+    # v103 is Oblivion's format, also used by older Fallout 3/NV mods (Niv's
+    # Spice of Life); same layout as v104. (Morrowind's BSAs have no version
+    # field at all -- a different magic -- and never reach here.)
+    if version not in (103, 104, 105):
         return []
 
     has_dir_names = bool(archive_flags & 0x1)

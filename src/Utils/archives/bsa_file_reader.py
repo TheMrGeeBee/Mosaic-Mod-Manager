@@ -1,4 +1,4 @@
-"""Random access to single files inside a Bethesda BSA (v104 / v105) or BA2
+"""Random access to single files inside a Bethesda BSA (v103 / v104 / v105) or BA2
 (Fallout 4 / FO4 VR / Fallout 76).
 
 ``extract_bsa``/``extract_ba2`` unpack a whole archive; the asset viewers only
@@ -7,8 +7,11 @@ thousands of files. ``BsaFile`` reads the table of contents once (dispatching
 on the archive's magic bytes) and then decompresses individual files on
 demand, whichever format the archive turns out to be.
 
-BSA v104 (Oblivion, Skyrim LE, Fallout 3/NV) stores files zlib-compressed;
-v105 (Skyrim SE) uses LZ4 frames. BA2 (Fallout 4+) has two record shapes —
+BSA v103 (Oblivion, and older Fallout 3/NV mods packed with Oblivion-era
+tools -- Niv's Spice of Life, JIP Companions Command and Control) and v104
+(Skyrim LE, Fallout 3/NV) store files zlib-compressed and share one layout;
+only v104 can embed file names in the data (flag 0x100 means something else in
+v103). v105 (Skyrim SE) uses LZ4 frames. BA2 (Fallout 4+) has two record shapes —
 GNRL (general files, zlib) and DX10 (textures, one zlib chunk per mip,
 reassembled into a standalone .dds by _read_dx10). Paths are lowercase with
 forward slashes in both formats.
@@ -93,7 +96,7 @@ class BsaFile:
         f = self._f
         (self.version, folder_off, self._flags, folder_count, file_count,
          _folder_names_len, file_names_len, _file_flags) = struct.unpack("<8I", f.read(32))
-        if self.version not in (104, 105):
+        if self.version not in (103, 104, 105):
             raise BsaReadError(f"unsupported BSA version {self.version}")
         if not (self._flags & _AF_HAS_DIR_NAMES and self._flags & _AF_HAS_FILE_NAMES):
             raise BsaReadError("archive has no folder/file names")
@@ -230,7 +233,7 @@ class BsaFile:
                 block = self._f.read(size)
             if len(block) < size:
                 raise BsaReadError(f"short read for {path}")
-            if self._flags & _AF_EMBED_FILE_NAMES and block:
+            if self._flags & _AF_EMBED_FILE_NAMES and self.version >= 104 and block:
                 block = block[1 + block[0]:]
             if not compressed:
                 return block if limit is None else block[:limit]

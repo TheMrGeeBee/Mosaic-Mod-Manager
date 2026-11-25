@@ -132,13 +132,14 @@ def _extract(
         _file_flags,
     ) = struct.unpack("<IIIIIIII", header)
 
-    if version not in (104, 105):
+    if version not in (103, 104, 105):         # 103: Oblivion's, v104's layout
         raise BsaExtractError(f"unsupported BSA version {version}")
 
     has_dir_names = bool(archive_flags & _AF_HAS_DIR_NAMES)
     has_file_names = bool(archive_flags & _AF_HAS_FILE_NAMES)
     archive_compressed = bool(archive_flags & _AF_COMPRESSED_DEF)
-    embed_filenames = bool(archive_flags & _AF_EMBED_FILE_NAMES)
+    # Only v104+ can embed names; 0x100 means something else in v103.
+    embed_filenames = bool(archive_flags & _AF_EMBED_FILE_NAMES) and version >= 104
 
     if not has_dir_names or not has_file_names:
         raise BsaExtractError("archive lacks folder or file names — cannot extract")

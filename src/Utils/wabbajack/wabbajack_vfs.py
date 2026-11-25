@@ -37,7 +37,9 @@ import zipfile
 from pathlib import Path
 
 _ZIP_EXTS = (".zip",)
-_EXTRACT_WHOLE_EXTS = (".7z", ".rar")
+# .fomod: an old FOMM package, really a 7z or a zip (native 7z sniffs which).
+# Real case: Nuclear Sunset's The Mod Configuration Menu.fomod.
+_EXTRACT_WHOLE_EXTS = (".7z", ".rar", ".fomod")
 _BETHESDA_EXTS = (".bsa", ".ba2")
 # Inno Setup installers. Wabbajack extracts these with innoextract and records
 # the member paths innoextract produces, so Mosaic has to use it too -- see
