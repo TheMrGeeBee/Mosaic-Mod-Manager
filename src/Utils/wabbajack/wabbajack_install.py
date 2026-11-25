@@ -104,6 +104,11 @@ _NO_DATA_FOLDER_GAMES = frozenset({"Cyberpunk 2077",
 # Games where a Root Builder mod's Root/ folder holds two different
 # destinations, so the mod has to be split (see split_root_builder_mods).
 _SPLIT_ROOT_BUILDER_GAMES = frozenset({"Vampire: The Masquerade - Bloodlines"})
+# Games whose MO2 plugin puts a mod's files deeper than Mosaic's handler
+# does: the folder MO2 uses, relative to the one Mosaic deploys into. Dragon
+# Age's MO2 data folder is packages/core/override; Mosaic deploys into the
+# Dragon Age Documents folder (it also places AddIns/ and Offers/).
+_MO2_DATA_SUBDIR = {"Dragon Age Origins": "packages/core/override"}
 # Suffix for the sibling mod that carries a split mod's game-root files.
 ROOT_MOD_SUFFIX = " - Root"
 # Wabbajack keeps a private copy of the game under this folder so its own
@@ -317,7 +322,8 @@ def limit_to_profile_mods(plan: InstallPlan, listed: "set[str]") -> "list[str]":
     return sorted(skipped)
 
 
-def apply_root_builder_layout(plan: InstallPlan, *, data_folder: bool = True) -> "list[str]":
+def apply_root_builder_layout(plan: InstallPlan, *,
+                              data_folder: "bool | str" = True) -> "list[str]":
     """Convert MO2 Root Builder mods into Mosaic root-folder mods.
 
     Root Builder puts files that belong in the game's install folder under
@@ -327,9 +333,12 @@ def apply_root_builder_layout(plan: InstallPlan, *, data_folder: bool = True) ->
     so in such a mod ``Root/x`` becomes ``x`` and every other file moves
     under ``Data/`` (``meta.ini`` stays put; a path already under ``Data/``
     is kept). Returns the converted mod names, sorted; the caller flags
-    them in ``meta.ini``. With ``data_folder=False`` (games whose mods have
-    no ``Data/``, like Cyberpunk 2077, where every file already deploys to the
-    game folder) only ``Root/x`` -> ``x`` happens and other files stay put."""
+    them in ``meta.ini``. ``data_folder`` names that folder -- ``True`` is
+    ``Data`` -- for a game whose mods deploy into a subfolder of the game
+    (Stardew's ``Mods``); ``False`` (games whose mods deploy to the game
+    folder itself, like Cyberpunk 2077) means only ``Root/x`` -> ``x`` happens
+    and other files stay put."""
+    data_dir = "Data" if data_folder is True else (data_folder or "")
     by_mod: "dict[str, list[str]]" = {}
     for d in plan.mod_directives:
         mod, _, rest = d.to.partition("/")
@@ -346,9 +355,10 @@ def apply_root_builder_layout(plan: InstallPlan, *, data_folder: bool = True) ->
         head, _, tail = rest.partition("/")
         if head.lower() == "root" and tail:
             return f"{mod}/{tail}"
-        if rest.lower() == "meta.ini" or head.lower() == "data" or not data_folder:
+        if (not data_dir or rest.lower() == "meta.ini"
+                or rest.lower().startswith(data_dir.lower() + "/")):
             return to
-        return f"{mod}/Data/{rest}"
+        return f"{mod}/{data_dir}/{rest}"
 
     plan.mod_directives = [replace(d, to=relocate(d.to)) for d in plan.mod_directives]
     return sorted(root_mods)
@@ -433,11 +443,47 @@ def layout_root_builder_mods(plan: InstallPlan, modlist: ModList, game) -> RootB
         overlay_dirs = set(getattr(game, "mod_folder_strip_prefixes", None) or ())
         roots, parents, folded = split_root_builder_mods(plan, overlay_dirs=overlay_dirs)
         return RootBuilderLayout("split", roots, dict(zip(roots, parents)), folded)
-    if target_game in _NO_DATA_FOLDER_GAMES:
+    _prefix_mo2_data_subdir(plan, target_game)
+    data_dir = "" if target_game in _NO_DATA_FOLDER_GAMES else _mod_data_subdir(game)
+    if not data_dir:
         # Everything deploys to the game folder already, so these mods need no
         # root-folder flag; only their Root/ files must move up a level.
         return RootBuilderLayout("no_data", apply_root_builder_layout(plan, data_folder=False), {})
-    return RootBuilderLayout("data", apply_root_builder_layout(plan), {})
+    return RootBuilderLayout("data", apply_root_builder_layout(plan, data_folder=data_dir), {})
+
+
+def _mod_data_subdir(game) -> str:
+    """The folder, relative to the game folder, Mosaic deploys this game's
+    mods into ("Data" for Bethesda games, "Mods" for Stardew); "" when that is
+    the game folder itself or lies outside it (a Documents folder). A Root
+    Builder mod's other files go under it. Defaults to "Data"."""
+    try:
+        data, root = game.get_mod_data_path(), game.get_game_path()
+    except Exception:
+        return "Data"
+    if data is None or root is None:
+        return "Data"
+    try:
+        rel = Path(data).resolve().relative_to(Path(root).resolve())
+    except ValueError:
+        return ""                       # outside the game folder
+    return rel.as_posix() if str(rel) != "." else ""
+
+
+def _prefix_mo2_data_subdir(plan: InstallPlan, target_game: "str | None") -> None:
+    """Move every mod file under the game's ``_MO2_DATA_SUBDIR`` folder, so it
+    lands where MO2 would have put it. ``meta.ini`` stays put."""
+    sub = _MO2_DATA_SUBDIR.get(target_game or "")
+    if not sub:
+        return
+
+    def moved(to: str) -> str:
+        mod, _, rest = to.partition("/")
+        if rest.lower() == "meta.ini" or rest.lower().startswith(sub.lower() + "/"):
+            return to
+        return f"{mod}/{sub}/{rest}"
+
+    plan.mod_directives = [replace(d, to=moved(d.to)) for d in plan.mod_directives]
 
 
 def _profile_mod_names(plan: InstallPlan, wabbajack_path) -> "set[str] | None":

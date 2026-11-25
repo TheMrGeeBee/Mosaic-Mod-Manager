@@ -183,7 +183,12 @@ def test_every_mapped_game_is_a_real_mosaic_game_name():
     for py in games_dir.rglob("*.py"):
         handler_names.update(pattern.findall(py.read_text(encoding="utf-8", errors="replace")))
     assert handler_names, "found no game handler names -- scan pattern is stale"
-    missing = {k: v for k, v in WABBAJACK_GAME_MAP.items() if v not in handler_names}
+    # Custom games every user downloads from the Resources branch
+    # (Utils/gh_sync.py, "Custom Handlers/NieR__Automata.json" and
+    # "Stalker_2.json"), so no Python handler declares them.
+    resources_custom_games = {"NieR: Automata", "Stalker 2"}
+    missing = {k: v for k, v in WABBAJACK_GAME_MAP.items()
+               if v not in handler_names | resources_custom_games}
     assert not missing
 
 
@@ -283,3 +288,20 @@ def test_every_mapped_game_resolves_to_its_handlers_nexus_domain():
                for g in browses_another_games_section
                if WABBAJACK_GAME_MAP.get(g) in domain_by_game), \
         "a VR exemption is stale -- handler now agrees, remove it from the set"
+
+
+def test_newly_mapped_games_and_their_nexus_sections():
+    """Real gallery lists exist for these (2026-11-25: Starfield 7, Dragon Age
+    Origins 2, Stardew 2, Bannerlord, 7 Days to Die, NieR, Stalker 2 1 each).
+    The Nexus sections come from Wabbajack's GameRegistry NexusName."""
+    from Utils.wabbajack.downloaders.nexus_source import nexus_domain_for
+    assert mosaic_game_for("Starfield") == "Starfield"
+    assert mosaic_game_for("DragonAgeOrigins") == "Dragon Age Origins"
+    assert mosaic_game_for("SevenDaysToDie") == "7 Days to Die"
+    assert mosaic_game_for("BaldursGate3") is None          # layouts differ
+    assert mosaic_game_for("OblivionRemastered") is None    # layouts differ
+    assert nexus_domain_for("SevenDaysToDie") == "7daystodie"
+    assert nexus_domain_for("Sims4") == "thesims4"
+    assert nexus_domain_for("Stalker2") == "stalker2heartofchornobyl"
+    assert nexus_domain_for("DragonAgeOrigins") == "dragonage"
+    assert nexus_domain_for("Starfield") == "starfield"

@@ -36,6 +36,12 @@ _NEXUS_DOMAIN_OVERRIDES = {
     # the API answers "No Game Found: vtmb". Real case: unPause's Fashionista,
     # where all 182 Nexus archives carry GameName "VtMB".
     "vtmb": "vampirebloodlines",
+    # From Wabbajack's own GameRegistry (NexusName), for the games whose
+    # GameType isn't their Nexus section's name.
+    "sevendaystodie": "7daystodie",
+    "sims4": "thesims4",
+    "stalker2": "stalker2heartofchornobyl",
+    "dragonageorigins": "dragonage",
 }
 
 

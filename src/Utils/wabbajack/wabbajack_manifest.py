@@ -301,6 +301,26 @@ WABBAJACK_GAME_MAP: "dict[str, str]" = {
     "Morrowind": "Morrowind",
     "Cyberpunk2077": "Cyberpunk 2077",
     "VtMB": "Vampire: The Masquerade - Bloodlines",
+    # Matched to Wabbajack's GameRegistry by Steam ID / Nexus name, and only
+    # where Mosaic's handler puts a mod's files where MO2's plugin for the game
+    # does (or, for Dragon Age, one folder up: see wabbajack_install
+    # _MO2_DATA_SUBDIR). Not mapped: Baldur's Gate 3 and Oblivion Remastered
+    # (MO2 lays their mods out differently from Mosaic's handlers), games
+    # Mosaic has no handler for, and No Man's Sky (only a user-made custom
+    # game so far). NieR: Automata and Stalker 2 are custom games every user
+    # gets from the Resources branch (Utils/gh_sync.py).
+    "Starfield": "Starfield",
+    "Fallout76": "Fallout 76",
+    "StardewValley": "Stardew Valley",
+    "KingdomComeDeliverance": "Kingdom Come: Deliverance",
+    "KingdomComeDeliverance2": "Kingdom Come: Deliverance II",
+    "MountAndBlade2Bannerlord": "Mount & Blade II: Bannerlord",
+    "SevenDaysToDie": "7 Days to Die",
+    "Sims4": "The Sims 4",
+    "NieRAutomata": "NieR: Automata",
+    "Witcher3": "The Witcher 3",
+    "Stalker2": "Stalker 2",
+    "DragonAgeOrigins": "Dragon Age Origins",
 }
 
 
