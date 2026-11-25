@@ -16,6 +16,10 @@ plan's "key open risks" list.
 from __future__ import annotations
 
 import base64
+import json
+import os
+import threading
+import time
 from pathlib import Path
 
 import xxhash
@@ -62,3 +66,69 @@ class StreamingHash:
 def hashes_match(expected: str, actual: str) -> bool:
     """Whitespace-tolerant comparison of two base64 Wabbajack hash strings."""
     return (expected or "").strip() == (actual or "").strip()
+
+
+# Hashes of downloaded archives, kept next to them so a re-run (a Repair, a
+# resumed install, another list sharing downloads) doesn't read every archive
+# again: LoreRim's 280 GB were re-hashed in full before each build. Keyed by
+# file name; a file whose size or modification time changed is hashed again.
+HASH_CACHE_NAME = ".mosaic_hashes.json"
+_hash_cache_lock = threading.Lock()
+_hash_caches: "dict[str, dict]" = {}
+
+
+def _load_cache(folder: Path) -> dict:
+    key = str(folder)
+    cache = _hash_caches.get(key)
+    if cache is None:
+        try:
+            cache = json.loads((folder / HASH_CACHE_NAME).read_text(encoding="utf-8"))
+            if not isinstance(cache, dict):
+                cache = {}
+        except (OSError, ValueError):
+            cache = {}
+        _hash_caches[key] = cache
+    return cache
+
+
+def cached_hash_file(path: "str | Path") -> str:
+    """:func:`hash_file`, remembered in the file's folder by name, size and
+    modification time (see ``HASH_CACHE_NAME``)."""
+    path = Path(path)
+    st = path.stat()
+    stamp = [st.st_size, st.st_mtime_ns]
+    folder = path.parent
+    with _hash_cache_lock:
+        entry = _load_cache(folder).get(path.name)
+    if isinstance(entry, list) and len(entry) == 3 and entry[:2] == stamp:
+        return entry[2]
+    digest = hash_file(path)
+    with _hash_cache_lock:
+        _load_cache(folder)[path.name] = stamp + [digest]
+        _dirty.add(str(folder))
+        if time.monotonic() - _last_save.get(str(folder), 0.0) > 5:
+            _save(folder)
+    return digest
+
+
+_dirty: "set[str]" = set()
+_last_save: "dict[str, float]" = {}
+
+
+def _save(folder: Path) -> None:
+    key = str(folder)
+    tmp = folder / (HASH_CACHE_NAME + ".tmp")
+    try:
+        tmp.write_text(json.dumps(_hash_caches.get(key, {})), encoding="utf-8")
+        os.replace(tmp, folder / HASH_CACHE_NAME)
+    except OSError:
+        pass                                    # a read-only folder: just don't remember
+    _dirty.discard(key)
+    _last_save[key] = time.monotonic()
+
+
+def flush_hash_cache() -> None:
+    """Save every folder's remembered hashes not yet written."""
+    with _hash_cache_lock:
+        for key in list(_dirty):
+            _save(Path(key))

@@ -127,11 +127,11 @@ def test_resolve_caches_hop_and_does_not_re_extract(tmp_path, monkeypatch):
     calls = []
     orig = ArchiveIndex._extract_from_zip
 
-    def counting_extract(container, member_path, dest):
+    def counting_extract(self, container, member_path, dest):
         calls.append(member_path)
-        return orig(container, member_path, dest)
+        return orig(self, container, member_path, dest)
 
-    monkeypatch.setattr(ArchiveIndex, "_extract_from_zip", staticmethod(counting_extract))
+    monkeypatch.setattr(ArchiveIndex, "_extract_from_zip", counting_extract)
 
     # Resolving the same one-hop path twice should only extract once.
     first = idx.resolve(["hash1", "inner.7z"])

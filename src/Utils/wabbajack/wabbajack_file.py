@@ -15,6 +15,8 @@ instead of a stack trace.
 from __future__ import annotations
 
 import json
+import shutil
+import threading
 import zipfile
 from pathlib import Path
 
@@ -69,8 +71,8 @@ def extract_inline_file(path: "str | Path", data_id: str, dest: "str | Path") ->
     if not data_id:
         return False
     try:
-        with zipfile.ZipFile(path, "r") as zf:
-            names = set(zf.namelist())
+        with _open_lock:
+            zf, names = _opened(Path(path))
             candidates = (data_id, data_id.lstrip("/"), f"/{data_id}")
             target = next((n for n in candidates if n in names), None)
             if target is None:
@@ -78,11 +80,36 @@ def extract_inline_file(path: "str | Path", data_id: str, dest: "str | Path") ->
             dest_path = Path(dest)
             dest_path.parent.mkdir(parents=True, exist_ok=True)
             with zf.open(target) as src, open(dest_path, "wb") as out:
-                while True:
-                    chunk = src.read(1 << 20)
-                    if not chunk:
-                        break
-                    out.write(chunk)
+                shutil.copyfileobj(src, out, 1 << 20)
             return True
     except (zipfile.BadZipFile, FileNotFoundError, OSError):
         return False
+
+
+# The .wabbajack open for the whole install. Every inline file and every patch
+# is a member of it, and opening it parses its whole table: LoreRim's has
+# ~48,000 entries, so reopening it per file cost a quarter of a second each --
+# 123 of 150 seconds in a measured build. Reopened if the file changes.
+_open_lock = threading.Lock()
+_open: "dict[str, tuple[tuple[int, int], zipfile.ZipFile, set[str]]]" = {}
+
+
+def _opened(path: Path) -> "tuple[zipfile.ZipFile, set[str]]":
+    st = path.stat()
+    stamp = (st.st_size, st.st_mtime_ns)
+    key = str(path)
+    got = _open.get(key)
+    if got is None or got[0] != stamp:
+        if got is not None:
+            got[1].close()
+        zf = zipfile.ZipFile(path, "r")
+        got = _open[key] = (stamp, zf, set(zf.namelist()))
+    return got[1], got[2]
+
+
+def close_open_containers() -> None:
+    """Close the .wabbajack files kept open by :func:`extract_inline_file`."""
+    with _open_lock:
+        for _stamp, zf, _names in _open.values():
+            zf.close()
+        _open.clear()

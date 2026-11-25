@@ -72,7 +72,7 @@ from .downloaders import resolve_downloader
 from .downloaders.game_file_source import fetch_game_file, runtime_swap_originals
 from .downloaders.nexus_source import download_nexus
 from .wabbajack_directives import apply_directive
-from .wabbajack_hash import hash_file, hashes_match
+from .wabbajack_hash import cached_hash_file, flush_hash_cache, hashes_match
 from .wabbajack_manifest import (
     Archive,
     CreateBSADirective,
@@ -581,7 +581,10 @@ def drop_built_directives(plan: InstallPlan, staging: Path) -> "list[Directive]"
 
 
 def _verified(path: "Path | None", archive: Archive) -> bool:
-    return path is not None and path.is_file() and hashes_match(archive.hash, hash_file(path))
+    # cached_hash_file: a download already checked on an earlier run isn't
+    # read again unless it changed (size or modification time).
+    return (path is not None and path.is_file()
+            and hashes_match(archive.hash, cached_hash_file(path)))
 
 
 def _download_name(archive: Archive) -> str:
@@ -791,6 +794,13 @@ def _download_all(archives: "list[Archive]", download_dir: Path, *, nexus_downlo
 # ---------------------------------------------------------------------------
 # Steps 4-5: profile + provenance
 # ---------------------------------------------------------------------------
+
+
+def _root_archive(directive) -> str:
+    """The downloaded archive a directive reads from, or "" for one that
+    reads none (inline files, archives being packed)."""
+    chain = getattr(directive, "archive_hash_path", None)
+    return chain[0] if chain else ""
 
 
 def _write_profile(profile_dir: Path, scratch: Path, built_mods: "set[str]",
@@ -1150,6 +1160,7 @@ def run_wabbajack_install(*, wabbajack_path: "str | Path", modlist: ModList, gam
                          originals=runtime_swap_originals(getattr(game, "name", "")),
                          max_workers=max_downloads, cb=cb, cancel=cancel, report=report,
                          manual_folders=manual_folders, pre_resolved=manual_resolved)
+    flush_hash_cache()
     if cancel.is_set():
         report.cancelled = True
         return report
@@ -1170,12 +1181,24 @@ def run_wabbajack_install(*, wabbajack_path: "str | Path", modlist: ModList, gam
     # Archives are packed last, once every file that goes into them exists.
     archives = [d for d in plan.mod_directives if isinstance(d, CreateBSADirective)]
     stock_archives = [d for d in plan.stock_directives if isinstance(d, CreateBSADirective)]
-    jobs = ([(d, staging) for d in plan.mod_directives if not isinstance(d, CreateBSADirective)]
-            + [(d, stock_work) for d in plan.stock_directives
-               if not isinstance(d, CreateBSADirective)]
-            + [(d, profile_scratch) for d in plan.profile_directives]
-            + [(d, bsa_root) for d in plan.bsa_inputs]
-            + [(d, staging) for d in archives]
+    files = ([(d, staging) for d in plan.mod_directives if not isinstance(d, CreateBSADirective)]
+             + [(d, stock_work) for d in plan.stock_directives
+                if not isinstance(d, CreateBSADirective)]
+             + [(d, profile_scratch) for d in plan.profile_directives]
+             + [(d, bsa_root) for d in plan.bsa_inputs])
+    # One downloaded archive at a time: every file from it is built together,
+    # each 7z/rar extracts only the members the install uses, and its scratch
+    # files are deleted as soon as its last file is in place (release_after).
+    # Directives that read no archive keep their order, first.
+    files.sort(key=lambda job: _root_archive(job[0]))
+    index.plan(getattr(d, "archive_hash_path", None) for d, _ in files)
+    release_after: "dict[int, str]" = {}
+    for i, (d, _) in enumerate(files):
+        root = _root_archive(d)
+        if root:
+            release_after = {k: v for k, v in release_after.items() if v != root}
+            release_after[i] = root
+    jobs = (files + [(d, staging) for d in archives]
             + [(d, stock_work) for d in stock_archives])
     stock_failed = 0
     built_mods: "set[str]" = {n for n in (d.to.split("/", 1)[0] for d in prebuilt)
@@ -1213,6 +1236,9 @@ def run_wabbajack_install(*, wabbajack_path: "str | Path", modlist: ModList, gam
                 report.failed_directives.append((to, result.error))
                 if dest_root is stock_work:
                     stock_failed += 1
+            root_done = release_after.get(done - 1)
+            if root_done:
+                index.release(root_done)
             cb.on_build_progress(done, len(jobs))
 
         if stock_work is not None:
@@ -1239,6 +1265,8 @@ def run_wabbajack_install(*, wabbajack_path: "str | Path", modlist: ModList, gam
                            root_parents=root_parents, staging=staging,
                            ini_targets=ini_targets, ini_subdir=ini_subdir)
     finally:
+        index.close()
+        wabbajack_file.close_open_containers()
         shutil.rmtree(work_root, ignore_errors=True)
         if stock_work is not None:
             shutil.rmtree(stock_work, ignore_errors=True)   # gone if it was installed

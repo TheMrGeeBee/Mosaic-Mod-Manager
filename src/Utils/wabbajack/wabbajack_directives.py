@@ -31,7 +31,6 @@ confirmed in real modlists.
 """
 from __future__ import annotations
 
-import shutil
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -169,10 +168,10 @@ def apply_directive(directive: Directive, *, dest_root: Path, wabbajack_path: "s
 
     if isinstance(directive, FromArchiveDirective):
         try:
-            source = archive_index.resolve(directive.archive_hash_path)
+            # moved out of the scratch space on its last use, else copied
+            archive_index.take(directive.archive_hash_path, dest)
         except VfsResolutionError as exc:
             return DirectiveResult(success=False, error=str(exc))
-        shutil.copyfile(source, dest)
         return _verify(directive, dest, verify_hash)
 
     if isinstance(directive, PatchedFromArchiveDirective):

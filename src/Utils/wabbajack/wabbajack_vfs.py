@@ -29,12 +29,12 @@ Wabbajack hashed and built its patches against that exact file. Any other contai
 """
 from __future__ import annotations
 
+import os
 import shutil
 import subprocess
+import threading
 import zipfile
 from pathlib import Path
-
-from .wabbajack_hash import hash_file
 
 _ZIP_EXTS = (".zip",)
 _EXTRACT_WHOLE_EXTS = (".7z", ".rar")
@@ -50,6 +50,12 @@ _MOSAIC_DDS_HEADER_LEN = 4 + 124 + 20
 def _norm_member(path: str) -> str:
     return path.replace("\\", "/").strip("/").lower()
 
+
+
+def _chain_key(chain) -> "tuple[str, ...]":
+    """An ArchiveHashPath as Windows matches it: separators and casing of the
+    member paths don't matter (the root is a content hash)."""
+    return (chain[0], *(_norm_member(m) for m in chain[1:]))
 
 
 class VfsResolutionError(Exception):
@@ -96,25 +102,120 @@ def _extract_inno(container: Path, out: Path) -> None:
             f"({detail[-1] if detail else f'exit {proc.returncode}'})")
 
 
+def _extract_7z_members(container: Path, out: Path, wanted: "set[str]") -> bool:
+    """Extract only the members in *wanted* (normalised paths) from a 7z/rar
+    with native 7z. True when every wanted member was found and extracted;
+    False -- leaving the caller to extract the whole archive, as before --
+    when 7z is missing, the listing fails, or a member isn't matched."""
+    from Utils.archive_tools import find_7z
+    exe = find_7z()
+    if not exe:
+        return False
+    try:
+        listing = subprocess.run(
+            [exe, "l", "-slt", "-ba", "-scsUTF-8", str(container)],
+            stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, timeout=600)
+    except (OSError, subprocess.SubprocessError):
+        return False
+    if listing.returncode != 0:
+        return False
+    # One block per entry. A folder is "Folder = +" (rar, zip) or has D in
+    # its Attributes (7z, which has no Folder line).
+    names: "dict[str, str]" = {}
+    text = listing.stdout.decode("utf-8", "surrogateescape")
+    for block in text.replace("\r\n", "\n").split("\n\n"):
+        fields = dict(line.split(" = ", 1) for line in block.splitlines() if " = " in line)
+        path = fields.get("Path")
+        if not path:
+            continue
+        attrs = fields.get("Attributes", "").split(" ", 1)[0]
+        if fields.get("Folder", "-").strip() == "+" or "D" in attrs:
+            continue
+        names.setdefault(_norm_member(path), path)
+    pick = [names[w] for w in wanted if w in names]
+    if not pick or len(pick) != len(wanted):
+        return False
+    listfile = out.parent / (out.name + ".list")
+    listfile.write_text("".join(f"{n}\n" for n in pick), encoding="utf-8",
+                        errors="surrogateescape")
+    try:
+        run = subprocess.run(
+            [exe, "x", str(container), f"-o{out}", "-y", "-spd", "-scsUTF-8",
+             f"@{listfile}"],
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=7200)
+    except (OSError, subprocess.SubprocessError):
+        return False
+    finally:
+        listfile.unlink(missing_ok=True)
+    return run.returncode == 0
+
+
 class ArchiveIndex:
-    """Maps a top-level Archive's content hash to its on-disk path, and
-    caches each resolved nested-path hop so repeated directives referencing
-    the same nested file only extract it once."""
+    """Maps a top-level Archive's content hash to its on-disk path and
+    resolves ``ArchiveHashPath`` chains to files, extracting what's needed.
+
+    Built for a build that works through the modlist one archive at a time:
+
+    * :meth:`plan` says, before anything is extracted, which members of each
+      downloaded archive the install uses, so a 7z/rar archive gets only those
+      extracted -- a mod archive often ships several variants, of which a list
+      uses one (on LoreRim, 35 GB of whole extractions served 2.9 GB of files);
+    * each nested hop is cached by its path chain -- never by hashing the
+      intermediate file, which for a BSA inside a 7z meant re-reading the
+      whole BSA for every file taken out of it;
+    * a zip or BSA is opened once and its member table kept;
+    * :meth:`take` puts a file in place, moving the extracted copy on its last
+      use rather than copying it;
+    * :meth:`release` deletes an archive's scratch files once the build is
+      done with it, so the install never holds every extraction at once.
+    """
 
     def __init__(self, scratch_dir: "str | Path"):
         self.scratch_dir = Path(scratch_dir)
         self.scratch_dir.mkdir(parents=True, exist_ok=True)
         self._roots: "dict[str, Path]" = {}
-        self._hop_cache: "dict[tuple[str, str], Path]" = {}
-        # Whole-extracted 7z/rar containers: container path -> {normalised
-        # member path -> extracted file}.
+        # path chain (root hash, member, ...) -> extracted file
+        self._hop_cache: "dict[tuple[str, ...], Path]" = {}
+        # Extracted 7z/rar containers: container path -> {normalised member
+        # path -> extracted file}.
         self._extracted: "dict[str, dict[str, Path]]" = {}
+        # Members the install will ask for, per root archive hash (normalised).
+        self._wanted: "dict[str, set[str]]" = {}
+        # Uses left per (normalised) path chain, for move-on-last-use, and
+        # chains that are containers of others, which are never moved.
+        self._uses: "dict[tuple[str, ...], int]" = {}
+        self._pinned: "set[tuple[str, ...]]" = set()
+        self._zips: "dict[str, tuple[zipfile.ZipFile, dict[str, str]]]" = {}
+        self._bsas: "dict[str, object]" = {}
         self._next_id = 0
+        self._lock = threading.RLock()
 
     def add_archive(self, content_hash: str, path: "str | Path") -> None:
         """Register a downloaded Archive's on-disk location by its content
         hash (``Archive.hash`` from the modlist)."""
         self._roots[content_hash] = Path(path)
+
+    def plan(self, hash_paths) -> None:
+        """Declare every ``ArchiveHashPath`` the build will resolve, so each
+        downloaded archive extracts only what's used and an extracted file can
+        be moved into place on its last use. Optional: without it every
+        archive is extracted whole and every file copied, as before."""
+        for chain in hash_paths:
+            chain = tuple(chain or ())
+            if len(chain) < 2:
+                continue
+            self._wanted.setdefault(chain[0], set()).add(_norm_member(chain[1]))
+            key = _chain_key(chain)
+            self._uses[key] = self._uses.get(key, 0) + 1
+            # A container the build reads from (Requiem.bsa inside its 7z)
+            # can also be installed as a file itself: never move it then.
+            for n in range(2, len(chain)):
+                self._pinned.add(_chain_key(chain[:n]))
+
+    def _root_dir(self, root_hash: str) -> Path:
+        """Scratch space for one downloaded archive and everything inside it."""
+        safe = "".join(c if c.isalnum() else "_" for c in root_hash)
+        return self.scratch_dir / safe
 
     def resolve(self, archive_hash_path: "list[str]") -> Path:
         """Resolve a directive's ``ArchiveHashPath`` to a real file on disk,
@@ -131,25 +232,95 @@ class ArchiveIndex:
         if current is None:
             raise VfsResolutionError(
                 f"archive {root_hash!r} was not downloaded/registered")
-
-        current_hash = root_hash
+        chain = (root_hash,)
         for member_path in archive_hash_path[1:]:
-            cache_key = (current_hash, member_path)
-            cached = self._hop_cache.get(cache_key)
+            chain = chain + (member_path,)
+            with self._lock:
+                cached = self._hop_cache.get(chain)
             if cached is not None and cached.exists():
                 current = cached
-            else:
-                current = self._extract_member(current, member_path)
-                self._hop_cache[cache_key] = current
-            current_hash = hash_file(current)
+                continue
+            wanted = self._wanted.get(root_hash) if len(chain) == 2 else None
+            current = self._extract_member(current, member_path, root_hash, wanted)
+            with self._lock:
+                self._hop_cache[chain] = current
         return current
 
-    def _extract_member(self, container: Path, member_path: str) -> Path:
+    def take(self, archive_hash_path: "list[str]", dest: Path) -> None:
+        """Put the file ``archive_hash_path`` names at *dest*: moved out of
+        the scratch space on its last planned use, copied otherwise."""
+        source = self.resolve(archive_hash_path)
+        chain = tuple(archive_hash_path)
+        key = _chain_key(chain)
+        with self._lock:
+            left = self._uses.get(key, 0) - 1
+            if left > 0:
+                self._uses[key] = left
+            else:
+                self._uses.pop(key, None)
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        if (left <= 0 and len(chain) >= 2 and key not in self._pinned
+                and source.is_relative_to(self.scratch_dir)):
+            try:
+                os.replace(source, dest)
+                with self._lock:
+                    self._hop_cache.pop(chain, None)
+                    self._forget_extracted(source)
+                return
+            except OSError:
+                pass                       # another filesystem: copy instead
+        shutil.copyfile(source, dest)
+
+    def _forget_extracted(self, path: Path) -> None:
+        for members in self._extracted.values():
+            for k, v in list(members.items()):
+                if v == path:
+                    del members[k]
+
+    def release(self, root_hash: str) -> None:
+        """The build is done with this downloaded archive: close it and
+        delete everything extracted from it."""
+        root_dir = self._root_dir(root_hash)
+        root_path = self._roots.get(root_hash)
+        with self._lock:
+            for chain in [c for c in self._hop_cache if c[0] == root_hash]:
+                del self._hop_cache[chain]
+            for key in [k for k in self._extracted
+                        if Path(k).is_relative_to(root_dir) or Path(k) == root_path]:
+                del self._extracted[key]
+            for key in [k for k in self._zips
+                        if Path(k).is_relative_to(root_dir) or Path(k) == root_path]:
+                self._zips.pop(key)[0].close()
+            for key in [k for k in self._bsas
+                        if Path(k).is_relative_to(root_dir) or Path(k) == root_path]:
+                self._bsas.pop(key).close()
+            self._wanted.pop(root_hash, None)
+            self._pinned = {c for c in self._pinned if c[0] != root_hash}
+        shutil.rmtree(root_dir, ignore_errors=True)
+
+    def close(self) -> None:
+        with self._lock:
+            for zf, _names in self._zips.values():
+                zf.close()
+            for bsa in self._bsas.values():
+                bsa.close()
+            self._zips.clear()
+            self._bsas.clear()
+
+    def _new_dest(self, root_hash: str, member_path: str) -> Path:
+        with self._lock:
+            self._next_id += 1
+            n = self._next_id
+        d = self._root_dir(root_hash)
+        d.mkdir(parents=True, exist_ok=True)
+        return d / f"{n}_{Path(member_path.replace(chr(92), '/')).name}"
+
+    def _extract_member(self, container: Path, member_path: str, root_hash: str,
+                        wanted: "set[str] | None" = None) -> Path:
         ext = container.suffix.lower()
         if ext in _EXTRACT_WHOLE_EXTS or ext in _INNO_EXTS:
-            return self._member_of_whole_extract(container, member_path)
-        self._next_id += 1
-        dest = self.scratch_dir / f"{self._next_id}_{Path(member_path).name}"
+            return self._member_of_whole_extract(container, member_path, root_hash, wanted)
+        dest = self._new_dest(root_hash, member_path)
         if ext in _ZIP_EXTS:
             try:
                 self._extract_from_zip(container, member_path, dest)
@@ -157,7 +328,7 @@ class ArchiveIndex:
                 # zipfile can't decompress PPMd (98) or Deflate64 (9) members
                 # (real cases: VRAMr, Goodneighbor View); native 7z can.
                 dest.unlink(missing_ok=True)
-                return self._member_of_whole_extract(container, member_path)
+                return self._member_of_whole_extract(container, member_path, root_hash, wanted)
             except _BadZipContainer as bad:
                 # Not a readable zip to Python, but the hash matched: a RAR/7z
                 # saved as ".zip" (KittyVFX), or a zip with a broken central
@@ -165,7 +336,8 @@ class ArchiveIndex:
                 # tolerates both, as Wabbajack's own extractor does.
                 dest.unlink(missing_ok=True)
                 try:
-                    return self._member_of_whole_extract(container, member_path)
+                    return self._member_of_whole_extract(container, member_path,
+                                                         root_hash, wanted)
                 except VfsResolutionError:
                     raise bad
         elif ext in _BETHESDA_EXTS:
@@ -190,55 +362,84 @@ class ArchiveIndex:
             raise VfsResolutionError(f"{member_path!r} not found in {container.name}")
         return found
 
-    @staticmethod
-    def _extract_from_zip(container: Path, member_path: str, dest: Path) -> None:
+    def _zip(self, container: Path) -> "tuple[zipfile.ZipFile, dict[str, str]]":
+        """The container opened once, with an index from exact and Windows-
+        normalised member names to the zip's own spelling."""
+        key = str(container)
+        with self._lock:
+            got = self._zips.get(key)
+            if got is None:
+                try:
+                    zf = zipfile.ZipFile(container, "r")
+                except zipfile.BadZipFile as exc:
+                    raise _BadZipContainer(f"{container}: not a valid zip ({exc})") from exc
+                names: "dict[str, str]" = {}
+                for n in zf.namelist():
+                    names.setdefault(n.replace("\\", "/").strip("/"), n)
+                for n in zf.namelist():
+                    names.setdefault("\0" + _norm_member(n), n)
+                got = self._zips[key] = (zf, names)
+            return got
+
+    def _extract_from_zip(self, container: Path, member_path: str, dest: Path) -> None:
+        zf, names = self._zip(container)
+        target = (names.get(member_path.replace("\\", "/").strip("/"))
+                  or names.get("\0" + _norm_member(member_path)))
+        if target is None:
+            raise VfsResolutionError(f"{member_path!r} not found in {container.name}")
+        dest.parent.mkdir(parents=True, exist_ok=True)
         try:
-            with zipfile.ZipFile(container, "r") as zf:
-                target = ArchiveIndex._find_member(zf.namelist(), member_path, container)
-                dest.parent.mkdir(parents=True, exist_ok=True)
+            with self._lock:                    # one ZipFile, one reader at a time
                 with zf.open(target) as src, open(dest, "wb") as out:
-                    while True:
-                        chunk = src.read(1 << 20)
-                        if not chunk:
-                            break
-                        out.write(chunk)
+                    shutil.copyfileobj(src, out, 1 << 20)
         except zipfile.BadZipFile as exc:
             raise _BadZipContainer(f"{container}: not a valid zip ({exc})") from exc
 
-    def _member_of_whole_extract(self, container: Path, member_path: str) -> Path:
+    def _member_of_whole_extract(self, container: Path, member_path: str,
+                                 root_hash: str, wanted: "set[str] | None" = None) -> Path:
         """``member_path`` from a 7z/rar/Inno-installer (or PPMd/Deflate64
-        zip) container extracted whole, once, into
-        the scratch dir (so on the install's own filesystem, never /tmp)."""
+        zip) container, extracted once into the scratch dir (so on the
+        install's own filesystem, never /tmp). With *wanted* -- the members
+        the install will use -- only those are extracted."""
         key = str(container)
-        members = self._extracted.get(key)
-        if members is None:
-            self._next_id += 1
-            out = self.scratch_dir / f"{self._next_id}_{container.stem}.d"
-            out.mkdir(parents=True, exist_ok=True)
-            if container.suffix.lower() in _INNO_EXTS:
-                _extract_inno(container, out)
-            else:
-                from Utils.mods.mod_install import _extract_archive
-                errors: "list[str]" = []
-                if not _extract_archive(str(container), str(out), lambda _m: None,
-                                        error_sink=errors):
-                    detail = (errors[-1].strip() if errors
-                              else "no extractor could read it")
-                    raise VfsResolutionError(
-                        f"{container}: extraction failed ({detail})")
-            members = {_norm_member(p.relative_to(out).as_posix()): p
-                       for p in out.rglob("*") if p.is_file()}
-            self._extracted[key] = members
+        with self._lock:
+            members = self._extracted.get(key)
+            if members is None:
+                out = self._new_dest(root_hash, container.stem + ".d")
+                out.mkdir(parents=True, exist_ok=True)
+                if container.suffix.lower() in _INNO_EXTS:
+                    _extract_inno(container, out)
+                elif not (wanted and _extract_7z_members(container, out, wanted)):
+                    from Utils.mods.mod_install import _extract_archive
+                    errors: "list[str]" = []
+                    if not _extract_archive(str(container), str(out), lambda _m: None,
+                                            error_sink=errors):
+                        detail = (errors[-1].strip() if errors
+                                  else "no extractor could read it")
+                        raise VfsResolutionError(
+                            f"{container}: extraction failed ({detail})")
+                members = {_norm_member(p.relative_to(out).as_posix()): p
+                           for p in out.rglob("*") if p.is_file()}
+                self._extracted[key] = members
         found = members.get(_norm_member(member_path))
         if found is None:
             raise VfsResolutionError(f"{member_path!r} not found in {container.name}")
         return found
 
-    @staticmethod
-    def _extract_from_bethesda(container: Path, member_path: str, dest: Path) -> None:
-        from Utils.archives.bsa_file_reader import BsaFile, BsaReadError
+    def _bsa(self, container: Path):
+        from Utils.archives.bsa_file_reader import BsaFile
+        key = str(container)
+        with self._lock:
+            got = self._bsas.get(key)
+            if got is None:
+                got = self._bsas[key] = BsaFile(container).__enter__()
+            return got
+
+    def _extract_from_bethesda(self, container: Path, member_path: str, dest: Path) -> None:
+        from Utils.archives.bsa_file_reader import BsaReadError
         try:
-            with BsaFile(container) as archive:
+            with self._lock:                    # one open archive, one reader at a time
+                archive = self._bsa(container)
                 if member_path not in archive:
                     raise VfsResolutionError(f"{member_path!r} not found in {container.name}")
                 data = archive.read(member_path)
