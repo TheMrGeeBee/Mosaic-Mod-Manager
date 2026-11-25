@@ -73,6 +73,16 @@ class Fallout_3(BethesdaGame):
         return None
 
     @property
+    def restore_whitelist(self) -> list:
+        """Keep the Anniversary Patcher's Fallout3_backup.exe in the game
+        folder on restore -- it is both Steam's original exe and how Mosaic
+        knows the game is patched (see _script_extender_loads_itself). Made
+        while a profile is deployed, restore read it as a runtime file and
+        moved it into the profile's Root_Folder."""
+        from Utils.deploy.deploy import RestoreWhitelistRule
+        return [RestoreWhitelistRule(path="", filenames=["Fallout3_backup.exe"])]
+
+    @property
     def wizard_tools(self) -> list[WizardTool]:
         return self._base_wizard_tools() + [
             WizardTool(

@@ -185,14 +185,28 @@ class Fallout_NV(BethesdaGame):
         """Mosaic's 4GB patch (the FNV 4GB Patcher's bytes) also makes
         FalloutNV.exe load NVSE itself; it keeps the original as
         FalloutNV_backup.exe. Swapping nvse_loader in for the launcher would
-        then start the patched exe through the loader as well."""
+        then start the patched exe through the loader as well. Known by the
+        exe's own hash, so a backup moved away (or patched elsewhere) doesn't
+        matter."""
         from Games.Bethesda.bethesda_ini import existing_case
-        from Utils.modding_tools.fnv4gb_tools import BACKUP_NAME
+        from Utils.modding_tools.fnv4gb_tools import BACKUP_NAME, inspect_exe
         if self._game_path is None:
             return None
-        if existing_case(self._game_path, BACKUP_NAME).is_file():
+        if (existing_case(self._game_path, BACKUP_NAME).is_file()
+                or inspect_exe(self._game_path)["state"] == "patched"):
             return "FalloutNV.exe has the 4GB patch, which loads NVSE itself"
         return None
+
+    @property
+    def restore_whitelist(self) -> list:
+        """Keep the 4GB patch's FalloutNV_backup.exe in the game folder on
+        restore. Made while a profile is deployed, it read as a runtime file
+        and was moved into the profile's Root_Folder -- real case: the TTW
+        wizard's restore to vanilla, 2026-11-25 -- where the 4GB wizard's
+        "restore the original" no longer finds it."""
+        from Utils.deploy.deploy import RestoreWhitelistRule
+        from Utils.modding_tools.fnv4gb_tools import BACKUP_NAME
+        return [RestoreWhitelistRule(path="", filenames=[BACKUP_NAME])]
 
     # FalloutCustom.ini key/value set the TTW NVSE plugin expects (section, key,
     # value). Applied via _set_ini_key so existing keys are updated and missing
