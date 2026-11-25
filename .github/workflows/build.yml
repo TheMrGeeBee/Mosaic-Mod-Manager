@@ -409,7 +409,7 @@ jobs:
           name: path-index-dll
           path: src/Utils/path_index/
 
-      # Sign the export commits at BUILD time (the action passes --gpg-sign to
+      # Sign the export commits at BUILD time (the build step passes --gpg-sign to
       # flatpak-builder). Without this the bundle's commit is unsigned, and a
       # bundle that embeds --gpg-keys then FAILS to install ("GPG verification
       # enabled, but no signatures found") — verification is all-or-nothing.
@@ -444,31 +444,47 @@ jobs:
             echo "name=stable" >> "$GITHUB_OUTPUT"
           fi
 
-      # Build via the flathub action (it registers the flathub remote, handles
-      # the container quirks, and caches the builder). We use its native inputs
-      # to (a) stamp the OSTree branch (stable/beta) and (b) keep the exported
-      # repo/ dir — so we no longer hand-roll flatpak-builder and re-introduce
-      # the "No remote refs found for flathub" failure. The bundle is built in
-      # the next step instead (the action doesn't expose --repo-url).
-      # Its action.yml still declares node20 (unchanged upstream since 2024),
-      # so it is the one "Node.js 20 is deprecated" warning left; GitHub runs
-      # it on Node 24 regardless. Drop this note once upstream moves.
-      - name: Build Flatpak (repo)
-        uses: flathub-infra/flatpak-github-actions/flatpak-builder@master
+      # flatpak-builder's own cache (downloads + finished modules). A new
+      # commit restores the newest earlier cache, so unchanged modules aren't
+      # rebuilt; flatpak-builder re-checks every module's sources itself.
+      - name: Restore flatpak-builder cache
+        uses: actions/cache@v6
         with:
-          manifest-path: flatpak/io.github.TheMrGeeBee.MosaicModManager.yml
-          branch: ${{ steps.branch.outputs.name }}
-          build-bundle: false
-          # No repo-dir input anymore (removed upstream at some point since
-          # this workflow was written — passing it now hard-fails the step
-          # with "Unexpected input(s) 'repo-dir'"). Not needed anyway: the
-          # action hardcodes its local repo name to 'repo' internally
-          # (this.localRepoName = 'repo' in its bundled dist/index.js),
-          # which already matches what the steps below expect.
-          cache-key: flatpak-builder-${{ github.sha }}
-          upload-artifact: false
-          # Empty when secrets aren't inherited → the action skips signing.
-          gpg-sign: ${{ secrets.FLATPAK_GPG_KEY_ID }}
+          path: .flatpak-builder
+          key: flatpak-builder-x86_64-${{ github.sha }}
+          restore-keys: flatpak-builder-x86_64-
+
+      # flatpak-builder run directly, with the arguments the flathub
+      # flatpak-builder action used (that action still declares Node 20 and
+      # is unmaintained since 2024). It builds into the container's SYSTEM
+      # installation: an earlier hand-rolled version passed --user, a per-user
+      # installation with no flathub remote, and failed with "No remote refs
+      # found for flathub". The remote is added here too, so it never depends
+      # on what the container image ships. The exported repo/ is what the
+      # bundle step and release.yml's publish-pages job use.
+      - name: Build Flatpak (repo)
+        env:
+          GPG_KEY_ID: ${{ secrets.FLATPAK_GPG_KEY_ID }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          flatpak --version
+          flatpak-builder --version
+          flatpak remote-add --if-not-exists flathub \
+            https://dl.flathub.org/repo/flathub.flatpakrepo
+          SIGN=()
+          # Empty when secrets aren't inherited → an unsigned build.
+          if [ -n "${GPG_KEY_ID:-}" ]; then SIGN=("--gpg-sign=$GPG_KEY_ID"); fi
+          xvfb-run --auto-servernum flatpak-builder \
+            --repo=repo \
+            --disable-rofiles-fuse \
+            --install-deps-from=flathub \
+            --force-clean \
+            --default-branch='${{ steps.branch.outputs.name }}' \
+            --arch=x86_64 \
+            --ccache \
+            "${SIGN[@]}" \
+            flatpak_app flatpak/io.github.TheMrGeeBee.MosaicModManager.yml
 
       # Bundle with --repo-url: installing the .flatpak then auto-configures
       # the hosted remote as the app's origin, so bundle users get native
