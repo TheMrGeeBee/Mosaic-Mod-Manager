@@ -38,6 +38,12 @@ GAME_INI_TARGETS: dict[str, list[str]] = {
     "Enderal": ["Enderal.ini", "EnderalPrefs.ini"],
     "Enderal Special Edition": ["Enderal.ini", "EnderalPrefs.ini"],
     "Fallout 3": ["Fallout.ini", "FalloutPrefs.ini", "FalloutCustom.ini"],
+    # Mosaic's own handler names where they differ from Vortex's (the table's
+    # source): same game, same INIs. Without these a GOTY profile, say, never
+    # gets a collection's INI tweaks or a Wabbajack list's INIs.
+    "Fallout 3 GOTY": ["Fallout.ini", "FalloutPrefs.ini", "FalloutCustom.ini"],
+    "Enderal SE": ["Enderal.ini", "EnderalPrefs.ini"],
+    "Fallout 76": ["Fallout76.ini", "Fallout76Prefs.ini", "Fallout76Custom.ini"],
     "Fallout New Vegas": ["Fallout.ini", "FalloutPrefs.ini"],
     "Fallout 4": ["Fallout4.ini", "Fallout4Prefs.ini", "Fallout4Custom.ini"],
     "Fallout 4 VR": ["Fallout4Custom.ini", "Fallout4Prefs.ini"],

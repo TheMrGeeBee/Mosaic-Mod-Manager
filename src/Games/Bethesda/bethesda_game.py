@@ -42,6 +42,20 @@ from Utils.deploy.deploy import (
 from Utils.mods.modlist import read_modlist
 
 
+def _existing_case(folder: Path, name: str) -> Path:
+    """*name* in *folder*, spelled as an existing file is (Fallout.ini or
+    FALLOUT.INI): on Linux both can exist side by side, and Wine then opens
+    either one. *folder* / *name* when there is none yet."""
+    try:
+        low = name.lower()
+        for entry in folder.iterdir():
+            if entry.name.lower() == low and entry.is_file():
+                return entry
+    except OSError:
+        pass
+    return folder / name
+
+
 class BethesdaGame(BaseGame):
 
     # Opt in to the incremental redeploy fast path (deploy_incremental.py):
@@ -560,7 +574,9 @@ class BethesdaGame(BaseGame):
     _APPDATA_SUBPATH_GOG: "Path | None" = Path("drive_c/users/steamuser/AppData/Local/Fallout3 GOG")
     _MYGAMES_SUBPATH = Path("Fallout3")
     _MYGAMES_SUBPATH_GOG: "Path | None" = Path("Fallout3 GOG")
-    _ARCHIVE_INI_FILENAME = "FALLOUT.INI"
+    # The name the game and its launcher create. An existing file of any case
+    # is used instead (see _get_archive_ini_paths).
+    _ARCHIVE_INI_FILENAME = "Fallout.ini"
     # Per-game Prefs INI. When set, archive invalidation writes the same keys
     # to both the primary INI and the Prefs INI so the Prefs file can't silently
     # override what we wrote — the engine reads both and the Prefs value wins
@@ -947,10 +963,22 @@ class BethesdaGame(BaseGame):
         mygames = self._mygames_path()
         if mygames is None:
             return []
-        paths = [mygames / self._ARCHIVE_INI_FILENAME]
+        paths = [_existing_case(mygames, self._ARCHIVE_INI_FILENAME)]
         if self._ARCHIVE_PREFS_INI_FILENAME:
-            paths.append(mygames / self._ARCHIVE_PREFS_INI_FILENAME)
+            paths.append(_existing_case(mygames, self._ARCHIVE_PREFS_INI_FILENAME))
         return paths
+
+    def _default_archive_list(self, key: str) -> str:
+        """The archive list the game itself starts from: *key* in
+        ``<game>/<Primary>_default.ini`` (Fallout_default.ini), which the
+        launcher copies to My Games on first run. "" when there is none."""
+        if self._game_path is None:
+            return ""
+        stem = Path(self._ARCHIVE_INI_FILENAME).stem
+        default = _existing_case(Path(self._game_path), f"{stem}_default.ini")
+        if not default.is_file():
+            return ""
+        return _read_ini_key(default, "Archive", key) or ""
 
     def _mygames_paths(self) -> list[Path]:
         """Return every My Games folder for this game inside the prefix.
@@ -1277,6 +1305,14 @@ class BethesdaGame(BaseGame):
 
         self._write_dummy_bsa_file(_log)
         primary_ini = ini_paths[0]
+        # The list an INI without one starts from. Writing the key at all
+        # replaces the game's built-in list, so a list built from nothing --
+        # the dummy BSA plus the mods' BSAs -- drops every vanilla archive:
+        # a fresh Fallout 3 (no Fallout.ini yet, FalloutPrefs.ini never has
+        # the key) rendered magenta, its base textures and meshes unloaded.
+        list_key = self._invalidation_archive_list_key
+        base_list = (_read_ini_key(primary_ini, "Archive", list_key)
+                     or self._default_archive_list(list_key))
         longest_list = ""
         for ini_path in ini_paths:
             ini_path.parent.mkdir(parents=True, exist_ok=True)
@@ -1294,7 +1330,7 @@ class BethesdaGame(BaseGame):
                 self._strip_archive_list_keys(ini_path)
                 continue
             written = self._apply_dummy_bsa_invalidation_ini(
-                ini_path, prev_mod_bsas, new_mod_bsas)
+                ini_path, prev_mod_bsas, new_mod_bsas, base_list=base_list)
             if len(written) > len(longest_list):
                 longest_list = written
 
@@ -1466,8 +1502,10 @@ class BethesdaGame(BaseGame):
         self, ini_path: Path,
         prev_mod_bsas: "list[str] | None" = None,
         new_mod_bsas: "list[str] | None" = None,
+        base_list: str = "",
     ) -> str:
         """MO2-style INI edits for one INI: SArchiveList[0] + SInvalidationFile=''.
+        An INI without the key starts from *base_list* (the vanilla archives).
         Returns the archive list as written (for length checks)."""
         bsa_name = self._invalidation_bsa_name
         if bsa_name is None:
@@ -1479,7 +1517,7 @@ class BethesdaGame(BaseGame):
         )
         key = self._invalidation_archive_list_key
         current = _read_ini_key(ini_path, "Archive", key) or ""
-        updated = ensure_in_archive_list(current, bsa_name)
+        updated = ensure_in_archive_list(current or base_list, bsa_name)
         if self._archive_list_needs_mod_bsas:
             # FO3/FNV: only BSAs listed here have their assets read. Drop the
             # mod BSAs we previously appended, then re-append what's currently
