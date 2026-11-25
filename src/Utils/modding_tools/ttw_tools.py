@@ -59,17 +59,22 @@ def find_ttw_installer(game: "BaseGame") -> Path | None:
     return p if p.is_file() else None
 
 
-def download_installer(game: "BaseGame",
-                       status_fn: Callable[[str], None] = _noop,
-                       log_fn: Callable[[str], None] = _noop) -> Path:
-    """Download the latest MPI-installer release from GitHub into
-    Applications/TTW and return the executable path. Raises on failure.
-    Shared by the TTW and BSA-Decompressor wizards (same binary)."""
+# Where the installer is published. Its GitHub releases have had no files since
+# 2026 (the README: "Downloads are on nexus or via the github actions now they
+# expire every day so please use nexus"), so Nexus is the fallback.
+NEXUS_DOMAIN = "site"
+NEXUS_MOD_ID = 1657
+NEXUS_URL = f"https://www.nexusmods.com/{NEXUS_DOMAIN}/mods/{NEXUS_MOD_ID}?tab=files"
+
+_ARCHIVE_MAGIC = ((b"7z\xbc\xaf\x27\x1c", ".7z"), (b"PK\x03\x04", ".zip"),
+                  (b"\x1f\x8b", ".tar.gz"))
+
+
+def _github_installer_url(log_fn) -> "tuple[str, str] | None":
+    """(tag, URL) of the latest GitHub release's Linux build, or None."""
     import urllib.request
 
-    from Utils.ca_bundle import download_file, get_ssl_context
-    from Utils.wizard_support.wizard_archives import extract_archive
-
+    from Utils.ca_bundle import get_ssl_context
     req = urllib.request.Request(
         GITHUB_API_URL,
         headers={"Accept": "application/vnd.github+json",
@@ -78,34 +83,100 @@ def download_installer(game: "BaseGame",
                                 context=get_ssl_context()) as resp:
         data = json.loads(resp.read().decode())
     tag = data.get("tag_name", "unknown")
-    url = None
     for asset in data.get("assets", []):
         name = asset.get("name", "").lower()
-        if "linux" in name and name.endswith((".zip", ".tar.gz")):
-            url = asset["browser_download_url"]
-            break
-    if not url:
-        raise RuntimeError(
-            f"No Linux installer asset found in the latest TTW release ({tag}).")
+        if "linux" in name and name.endswith((".zip", ".tar.gz", ".7z")):
+            return tag, asset["browser_download_url"]
+    log_fn(f"GitHub release {tag} has no Linux build; trying Nexus")
+    return None
 
-    log_fn(f"downloading TTW installer {tag} from {url}")
+
+def nexus_main_file(files) -> "object | None":
+    """The newest MAIN file of the installer's Nexus page, or None."""
+    main = [f for f in files if (f.category_name or "").upper() == "MAIN"]
+    return max(main, key=lambda f: (f.uploaded_timestamp, f.file_id), default=None)
+
+
+def _nexus_installer_url(log_fn) -> "tuple[str, str]":
+    """(version, URL) of the installer's newest main file on Nexus, using the
+    app's Nexus login. Raises with what to do when that isn't possible."""
+    from Utils.mods.mod_install import _build_nexus_api
+    api = _build_nexus_api()
+    if api is None:
+        raise RuntimeError(
+            "The TTW installer is published on Nexus now. Log in to Nexus in "
+            f"Mosaic (Nexus menu), then try again. Page: {NEXUS_URL}")
+    f = nexus_main_file(api.get_mod_files(NEXUS_DOMAIN, NEXUS_MOD_ID).files)
+    if f is None:
+        raise RuntimeError(f"No main file on the TTW installer's Nexus page: {NEXUS_URL}")
+    try:
+        links = api.get_download_links(NEXUS_DOMAIN, NEXUS_MOD_ID, f.file_id)
+    except Exception as exc:
+        raise RuntimeError(
+            "Nexus wouldn't give a direct download link for the TTW installer "
+            f"(a Premium account is needed for that): {exc}. Download it from "
+            f"{NEXUS_URL} and extract mpi_installer into Mosaic's TTW "
+            "Applications folder.") from exc
+    if not links:
+        raise RuntimeError(f"Nexus returned no download link for the TTW installer: {NEXUS_URL}")
+    log_fn(f"TTW installer {f.version} is Nexus file {f.file_id}")
+    return f.version or str(f.file_id), links[0].URI
+
+
+def _archive_name(path: Path) -> str:
+    """A name the extractor recognises, from the archive's own bytes -- Nexus's
+    new file names have no extension (bb/ab/33/<uuid>)."""
+    with open(path, "rb") as fh:
+        head = fh.read(8)
+    for magic, ext in _ARCHIVE_MAGIC:
+        if head.startswith(magic):
+            return "installer" + ext
+    return path.name
+
+
+def download_installer(game: "BaseGame",
+                       status_fn: Callable[[str], None] = _noop,
+                       log_fn: Callable[[str], None] = _noop) -> Path:
+    """Download the MPI installer into Applications/TTW and return the
+    executable path: the latest GitHub release's Linux build, else the newest
+    main file on Nexus. Raises on failure. Shared by the TTW, BSA-Decompressor
+    and ESM-Fixes wizards (same binary)."""
+    from Utils.ca_bundle import download_file
+    from Utils.wizard_support.wizard_archives import extract_archive
+
+    try:
+        found = _github_installer_url(log_fn)
+    except Exception as exc:                      # GitHub down or rate-limited
+        log_fn(f"GitHub lookup failed ({exc}); trying Nexus")
+        found = None
+    tag, url = found or _nexus_installer_url(log_fn)
+
+    log_fn(f"downloading TTW installer {tag}")
     status_fn(f"Downloading TTW installer {tag}…")
     tmp_dir = Path(tempfile.mkdtemp())
-    archive = tmp_dir / Path(url).name
     try:
-        download_file(url, archive)
+        raw = tmp_dir / "download"
+        download_file(url, raw)
+        archive = raw.rename(tmp_dir / _archive_name(raw))
+        unpacked = tmp_dir / "unpacked"
+        status_fn("Extracting installer…")
+        paths = extract_archive(archive, unpacked)
+        log_fn(f"extracted {len([p for p in paths if p.is_file()])} file(s).")
+        # The Nexus build keeps it in mpi-installer-linux-x86_64/, next to the
+        # Windows one.
+        found_exe = next((p for p in sorted(unpacked.rglob(EXE_NAME)) if p.is_file()), None)
+        if found_exe is None:
+            raise RuntimeError(f"{EXE_NAME} isn't in the downloaded installer ({tag}).")
         dest = applications_dir(game)
         dest.mkdir(parents=True, exist_ok=True)
-        status_fn("Extracting installer…")
-        log_fn(f"extracting {archive.name} → {dest}")
-        paths = extract_archive(archive, dest)
-        log_fn(f"extracted {len([p for p in paths if p.is_file()])} file(s).")
+        log_fn(f"installing {found_exe.parent.name}/ → {dest}")
+        for p in found_exe.parent.iterdir():
+            if p.is_file():
+                shutil.copy2(p, dest / p.name)
     finally:
         shutil.rmtree(tmp_dir, ignore_errors=True)
 
     exe = dest / EXE_NAME
-    if not exe.is_file():
-        raise RuntimeError(f"{EXE_NAME} not found after extraction at {dest}.")
     try:
         os.chmod(exe, 0o755)
     except OSError:

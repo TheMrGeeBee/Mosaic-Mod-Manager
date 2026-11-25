@@ -133,7 +133,7 @@ class ESMFixesView(WizardViewBase):
         page, lay = self._step_page(self.tr("Step 1: Install the MPI Installer"))
         self._make_note(lay, (
             self.tr("The native Linux MPI installer (also used for Tale of Two "
-            "Wastelands) will be downloaded from GitHub\n"
+            "Wastelands) will be downloaded from GitHub or Nexus\n"
             "and placed in this game's Applications folder.\n\n"
             "Click Install to begin.")))
         self._make_note(lay, self.tr("Installer by SulfurNitride (TTW_Linux_Installer)"))

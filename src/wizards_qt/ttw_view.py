@@ -100,7 +100,7 @@ class TTWView(WizardViewBase):
     def _build_download_page(self) -> QWidget:
         page, lay = self._step_page(self.tr("Step 1: Install the TTW MPI Installer"))
         self._make_note(lay, (
-            self.tr("The native Linux TTW installer will be downloaded from GitHub\n"
+            self.tr("The native Linux TTW installer will be downloaded from GitHub or Nexus\n"
             "and placed in this game's Applications folder.\n\n"
             "Click Install to begin.")))
         self._make_note(lay, self.tr("Installer by SulfurNitride (TTW_Linux_Installer)"))

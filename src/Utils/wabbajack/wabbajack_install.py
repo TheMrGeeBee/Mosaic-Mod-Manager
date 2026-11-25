@@ -200,6 +200,8 @@ class InstallPlan:
     # Mods made from a list's game-folder files (_MANUAL_ROOT_FOLDERS):
     # installed as root-folder mods, enabled, whatever the profile lists.
     extra_root_mods: "list[str]" = field(default_factory=list)
+    # Files those folders hold that Proton supplies itself (_PROTON_SUPPLIED).
+    proton_skipped: "list[str]" = field(default_factory=list)
 
     @property
     def profile_name(self) -> str:
@@ -304,6 +306,7 @@ def classify_directives(modlist: ModList,
         elif (head in root_folders and len(parts) == 2
               and parts[1].lower() in _PROTON_SUPPLIED):
             plan.unplaced.append(to)
+            plan.proton_skipped.append(to)
         elif head in root_folders and len(parts) >= 2:
             name = root_folders[head]
             plan.mod_directives.append(replace(d, to=f"{name}/" + "/".join(parts[1:])))
@@ -1215,10 +1218,9 @@ def run_wabbajack_install(*, wabbajack_path: "str | Path", modlist: ModList, gam
             report.root_builder_mods = [*report.root_builder_mods, name]
         log(f"Wabbajack: the list's files for the game folder are installed as "
             f"{name!r}, a root-folder mod")
-    dxvk = [u for u in plan.unplaced
-            if "/" in u and u.rsplit("/", 1)[1].lower() in _PROTON_SUPPLIED]
-    if dxvk:
-        log(f"Wabbajack: not installing {', '.join(dxvk)} -- Proton brings its own DXVK")
+    if plan.proton_skipped:
+        log(f"Wabbajack: not installing {', '.join(plan.proton_skipped)} -- "
+            "Proton brings its own DXVK")
 
     stock_reused = False
     if plan.stock_directives:

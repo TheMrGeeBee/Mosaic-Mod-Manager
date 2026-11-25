@@ -138,3 +138,11 @@ def test_registering_keeps_the_slots_place_and_meta(tmp_path, monkeypatch):
     assert next(e for e in entries if e.name == _SLOT).enabled
     assert "Nuclear Sunset" in (staging / _SLOT / "meta.ini").read_text()
     assert indexed == [_SLOT]
+
+
+def test_only_the_installed_folders_dxvk_is_reported():
+    ml = _list(*(d.to.replace("\\", "/") for d in _ns().directives),
+               "xDXVK/DXVK 2.6.1/d3d9.dll")
+    plan = wi.classify_directives(ml, root_dirs=partial_stock_dirs(ml, Fallout_NV()))
+    assert plan.proton_skipped == [f"{_STOCK}/d3d9.dll", f"{_STOCK}/dxvk.conf"]
+    assert "xDXVK/DXVK 2.6.1/d3d9.dll" in plan.unplaced
