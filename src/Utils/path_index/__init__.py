@@ -8,9 +8,11 @@ about 150 s of a 360 s load on it (MO2 avoids it through its USVFS).
 
 MosaicPathIndex.dll is a small script-extender plugin (source:
 native/path_index/) that indexes the game folder once and answers those
-lookups itself. Mosaic puts it into the game on deploy, together with a list
-of every file and folder so the DLL needn't list ~250K entries through Wine,
-and takes both away again on restore.
+lookups itself. One source is built twice: 64-bit for SKSE64, SKSE VR, F4SE,
+F4SE VR and SFSE, and 32-bit (MosaicPathIndex32.dll, installed under the
+same name) for SKSE, NVSE, FOSE and OBSE. Mosaic puts it into the game on
+deploy, together with a list of every file and folder so the DLL needn't list
+~250K entries through Wine, and takes both away again on restore.
 
 The DLL is built by CI (and by native/path_index/build.sh for a source
 checkout) into this folder. Without it nothing is installed.
@@ -22,6 +24,7 @@ from pathlib import Path
 from typing import Callable
 
 DLL_NAME = "MosaicPathIndex.dll"
+DLL32_NAME = "MosaicPathIndex32.dll"     # shipped name of the 32-bit build
 LIST_NAME = "MosaicPathIndex.idx"
 LOG_NAME = "MosaicPathIndex.log"
 LIST_MAGIC = "MOSAIC-PATHINDEX 1\n"
@@ -34,10 +37,10 @@ _TICKS_1601_TO_1970 = 116444736000000000
 LogFn = Callable[[str], None]
 
 
-def bundled_dll() -> Path | None:
-    """The built DLL shipped with Mosaic, or None (a source checkout that
-    hasn't run native/path_index/build.sh)."""
-    p = Path(__file__).with_name(DLL_NAME)
+def bundled_dll(bits: int = 64) -> Path | None:
+    """The built DLL shipped with Mosaic for a *bits*-bit game, or None (a
+    source checkout that hasn't run native/path_index/build.sh)."""
+    p = Path(__file__).with_name(DLL32_NAME if bits == 32 else DLL_NAME)
     return p if p.is_file() else None
 
 
@@ -98,16 +101,17 @@ def write_file_list(game_root: Path, out: Path) -> tuple[int, int]:
     return files, folders
 
 
-def install(game_root: Path, plugin_dir: str, log_fn: LogFn) -> bool:
-    """Put the DLL and a fresh file list into ``<game_root>/Data/<plugin_dir>``.
+def install(game_root: Path, plugin_dir: str, log_fn: LogFn, bits: int = 64) -> bool:
+    """Put the DLL for a *bits*-bit game and a fresh file list into
+    ``<game_root>/Data/<plugin_dir>``.
 
     Run after deploy, once every file is in place. Returns False (and logs
     why) when nothing was installed.
     """
-    dll = bundled_dll()
+    dll = bundled_dll(bits)
     if dll is None:
-        log_fn("  Fast file lookups: MosaicPathIndex.dll isn't built in this copy of "
-               "Mosaic (run native/path_index/build.sh); skipped.")
+        log_fn(f"  Fast file lookups: {DLL32_NAME if bits == 32 else DLL_NAME} isn't built "
+               "in this copy of Mosaic (run native/path_index/build.sh); skipped.")
         return False
     dest = Path(game_root) / "Data" / plugin_dir
     try:

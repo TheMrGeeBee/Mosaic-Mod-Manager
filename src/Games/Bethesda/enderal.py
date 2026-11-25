@@ -10,6 +10,9 @@ from Games.Bethesda.bethesda_game import BethesdaGame
 
 
 class Enderal(BethesdaGame):
+    # SKSE (32-bit) loads MosaicPathIndex (Utils/path_index) from here.
+    path_index_plugin_dir = "SKSE/Plugins"
+    path_index_bits = 32
 
     _archive_list_needs_mod_bsas = False
     # Skyrim LE engine — plugins.txt-ordered, not file mtimes.

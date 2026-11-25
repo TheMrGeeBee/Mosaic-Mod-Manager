@@ -15,8 +15,11 @@
  * Calls that may create a file pass through and add it to the index; a rename
  * anywhere switches the "not found" answers off for the rest of the session.
  *
- * Loaded as an SKSE plugin (SKSE loads plugins before the slow part of the
- * load). Environment switches: MOSAIC_PATHINDEX=0 disables it entirely,
+ * Loaded as a script-extender plugin: one source, built 64-bit (SKSE64,
+ * SKSE VR, F4SE, F4SE VR, SFSE) and 32-bit (SKSE, NVSE, FOSE, OBSE), with
+ * every extender's entry points exported. Extenders load plugins before the
+ * slow part of the load. The DLL's log and Mosaic's file list sit next to the
+ * DLL, in whichever <Extender>\Plugins folder Mosaic put it. Environment switches: MOSAIC_PATHINDEX=0 disables it entirely,
  * MOSAIC_PATHINDEX_NOFAIL=1 keeps the case fixing but never answers misses.
  *
  * Copyright (C) 2026 Mosaic Mod Manager contributors. GPL-3.0-or-later.
@@ -697,11 +700,21 @@ static void start(void) {
     size_t rl = wcslen(root);
     while (rl > 3 && root[rl - 1] == '\\') root[--rl] = 0;     /* "Stock Game\\" */
 
+    /* The log and the file list sit next to this DLL: Data\<Extender>\Plugins. */
+    static WCHAR self[32768];
+    HMODULE me = NULL;
+    GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS |
+                       GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+                       (LPCWSTR)(void *)start, &me);
+    DWORD sn = GetModuleFileNameW(me, self, 32000);
+    WCHAR *sslash = sn && sn < 32000 ? wcsrchr(self, '\\') : NULL;
+    if (!sslash) return;
+    *sslash = 0;
     WCHAR logpath[32768];
-    _snwprintf(logpath, 32768, L"%ls\\Data\\SKSE\\Plugins\\MosaicPathIndex.log", root);
+    _snwprintf(logpath, 32768, L"%ls\\MosaicPathIndex.log", self);
     g_log = CreateFileW(logpath, GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL,
                         CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
-    plog("MosaicPathIndex 1 -- game folder %ls\n", root);
+    plog("MosaicPathIndex 1 (%d-bit) -- game folder %ls\n", (int)(sizeof(void *) * 8), root);
     if (env_is("MOSAIC_PATHINDEX", "0")) { plog("disabled by MOSAIC_PATHINDEX=0\n"); return; }
     if (env_is("MOSAIC_PATHINDEX_NOFAIL", "1")) {
         g_no_fail = 1;
@@ -730,7 +743,7 @@ static void start(void) {
     g_root = dir_new(64);
     static WCHAR path[32768];
     WCHAR listpath[32768];
-    _snwprintf(listpath, 32768, L"%ls\\Data\\SKSE\\Plugins\\MosaicPathIndex.idx", root);
+    _snwprintf(listpath, 32768, L"%ls\\MosaicPathIndex.idx", self);
     if (load_list(listpath)) {
         LARGE_INTEGER tl;
         QueryPerformanceCounter(&tl);
@@ -776,22 +789,69 @@ static void start(void) {
     CloseHandle(CreateThread(NULL, 0, pending_thread, NULL, 0, NULL));
 }
 
-/* Skyrim SE before 1.6 (1.5.97) asks plugins through SKSEPlugin_Query. */
-typedef struct { uint32_t infoVersion; const char *name; uint32_t version; } SKSEPluginInfo;
+/* --------------------------------------------------- script extenders
+ * Each extender looks up only its own names, so one DLL can carry them all.
+ *
+ * Newer ones read a version block before loading anything: SKSE64 for Skyrim
+ * 1.6+ its own (above), F4SE for Fallout 4 NG and SFSE the same layout as
+ * each other (below). "No hardcoded addresses" plus "no game structures"
+ * makes a plugin load on every game version -- true here: it only patches
+ * Windows' own DLLs.
+ *
+ * The rest -- Skyrim SE 1.5.97, Skyrim VR, Fallout 4 before NG and VR, and
+ * every 32-bit extender (SKSE, NVSE, FOSE, OBSE) -- call <X>Plugin_Query
+ * with a PluginInfo to fill in, then <X>Plugin_Load. */
 
-__declspec(dllexport) _Bool SKSEPlugin_Query(const void *skse, SKSEPluginInfo *info) {
-    (void)skse;
+typedef struct {
+    uint32_t dataVersion;
+    uint32_t pluginVersion;
+    char name[256];
+    char author[256];
+    uint32_t addressIndependence;   /* 1 = signatures only: no hardcoded addresses */
+    uint32_t structureIndependence; /* 1 = uses no game structures */
+    uint32_t compatibleVersions[16];
+    uint32_t seVersionRequired;
+    uint32_t reservedNonBreaking;
+    uint32_t reservedBreaking;
+} XSEPluginVersionData;
+
+__declspec(dllexport) XSEPluginVersionData F4SEPlugin_Version = {
+    1, 1, "MosaicPathIndex", "Mosaic Mod Manager", 1, 1, {0}, 0, 0, 0,
+};
+__declspec(dllexport) XSEPluginVersionData SFSEPlugin_Version = {
+    1, 1, "MosaicPathIndex", "Mosaic Mod Manager", 1, 1, {0}, 0, 0, 0,
+};
+
+typedef struct { uint32_t infoVersion; const char *name; uint32_t version; } XSEPluginInfo;
+
+static _Bool query(XSEPluginInfo *info) {
     if (info) { info->infoVersion = 1; info->name = "MosaicPathIndex"; info->version = 1; }
     return 1;
 }
 
-__declspec(dllexport) _Bool SKSEPlugin_Load(const void *skse) {
-    (void)skse;
+static _Bool load(void) {
     static LONG once;
     if (InterlockedExchange(&once, 1)) return 1;
     start();
     return 1;
 }
+
+#define XSE_PLUGIN(X)                                                              \
+    __declspec(dllexport) _Bool X##Plugin_Query(const void *xse, XSEPluginInfo *info) { \
+        (void)xse;                                                                 \
+        return query(info);                                                        \
+    }                                                                              \
+    __declspec(dllexport) _Bool X##Plugin_Load(const void *xse) {                  \
+        (void)xse;                                                                 \
+        return load();                                                             \
+    }
+
+XSE_PLUGIN(SKSE)
+XSE_PLUGIN(F4SE)
+XSE_PLUGIN(SFSE)
+XSE_PLUGIN(NVSE)
+XSE_PLUGIN(FOSE)
+XSE_PLUGIN(OBSE)
 
 BOOL WINAPI DllMain(HINSTANCE inst, DWORD reason, LPVOID reserved) {
     (void)reserved;

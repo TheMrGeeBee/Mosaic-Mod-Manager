@@ -12,6 +12,8 @@ from Games.Bethesda.bethesda_ini import _read_ini_key, _set_ini_key
 
 
 class Starfield(BethesdaGame):
+    # SFSE loads MosaicPathIndex (Utils/path_index) from here.
+    path_index_plugin_dir = "SFSE/Plugins"
 
     plugins_use_star_prefix = True
     plugins_include_vanilla = False

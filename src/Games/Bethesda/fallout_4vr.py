@@ -10,6 +10,8 @@ from Games.Bethesda.bethesda_game import BethesdaGame
 
 
 class Fallout_4VR(BethesdaGame):
+    # F4SE VR loads MosaicPathIndex (Utils/path_index) from here.
+    path_index_plugin_dir = "F4SE/Plugins"
 
     _archive_list_needs_mod_bsas = False
     plugins_use_star_prefix = True

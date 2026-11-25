@@ -38,3 +38,4 @@ stale-local-tags-backup.txt
 
 # Built by native/path_index/build.sh (and CI)
 /src/Utils/path_index/MosaicPathIndex.dll
+/src/Utils/path_index/MosaicPathIndex32.dll

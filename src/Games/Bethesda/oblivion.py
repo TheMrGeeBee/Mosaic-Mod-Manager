@@ -10,6 +10,9 @@ from Games.Bethesda.bethesda_game import BethesdaGame
 
 
 class Oblivion(BethesdaGame):
+    # OBSE (32-bit) loads MosaicPathIndex (Utils/path_index) from here.
+    path_index_plugin_dir = "OBSE/Plugins"
+    path_index_bits = 32
 
     # Don't force/reorder mod BSAs in SArchiveList (inherits False). Oblivion
     # auto-loads a mod's BSA via plugin-name association (the ESP loads it),

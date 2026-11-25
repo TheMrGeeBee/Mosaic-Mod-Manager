@@ -7,6 +7,9 @@ from Games.Bethesda.bethesda_game import BethesdaGame
 
 
 class Fallout_3(BethesdaGame):
+    # FOSE (32-bit) loads MosaicPathIndex (Utils/path_index) from here.
+    path_index_plugin_dir = "FOSE/Plugins"
+    path_index_bits = 32
 
     vanilla_plugins = ["Fallout3.esm"]
 

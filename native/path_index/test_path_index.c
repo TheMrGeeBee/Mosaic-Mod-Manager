@@ -1,6 +1,8 @@
 /* Test for MosaicPathIndex, run under Wine. The exe sits in a fake game folder
  * (its folder is the game folder the index covers) next to the DLL:
- *   <root>/test_path_index.exe, <root>/Data/SKSE/Plugins/MosaicPathIndex.dll
+ *   <root>/test_path_index.exe, <root>/Data/<X>SE/Plugins/MosaicPathIndex.dll
+ * MOSAIC_TEST_XSE names the extender to load it as (default SKSE): its
+ * plugin folder and its <X>SEPlugin_Load entry point.
  * It builds a Data/ with many entries, times lookups that miss, loads the
  * plugin, checks every behaviour and times the same lookups again. */
 #define WIN32_LEAN_AND_MEAN
@@ -52,13 +54,24 @@ int main(void) {
     double before = time_lookups(300);
     printf("without index: 900 lookups in %.3f s\n", before);
 
-    p(path, L"Data\\SKSE\\Plugins\\MosaicPathIndex.dll");
+    WCHAR xse[16] = L"SKSE";
+    char xse_a[16] = "SKSE";
+    if (GetEnvironmentVariableW(L"MOSAIC_TEST_XSE", xse, 16) && wcslen(xse) < 8)
+        for (int i = 0; i < 16; i++) xse_a[i] = (char)xse[i];
+    WCHAR rel[64];
+    swprintf(rel, 64, L"Data\\%ls\\Plugins\\MosaicPathIndex.dll", xse);
+    p(path, rel);
     HMODULE m = LoadLibraryW(path);
     CHECK(m != NULL, "plugin loads");
     if (!m) return 1;
     typedef BOOLEAN (*load_t)(const void *);
-    load_t load = (load_t)(void *)GetProcAddress(m, "SKSEPlugin_Load");
-    CHECK(load && GetProcAddress(m, "SKSEPlugin_Version"), "SKSE exports present");
+    char entry[64];
+    snprintf(entry, sizeof entry, "%sPlugin_Load", xse_a);
+    load_t load = (load_t)(void *)GetProcAddress(m, entry);
+    char query[64];
+    snprintf(query, sizeof query, "%sPlugin_Query", xse_a);
+    CHECK(load && GetProcAddress(m, query), "extender exports present");
+    printf("loaded as %s plugin, %d-bit\n", xse_a, (int)(sizeof(void *) * 8));
     load(NULL);
 
     double after = time_lookups(300);

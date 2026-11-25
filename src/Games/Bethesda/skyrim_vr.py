@@ -10,6 +10,8 @@ from Games.Bethesda.bethesda_game import BethesdaGame
 
 
 class SkyrimVR(BethesdaGame):
+    # SKSE VR loads MosaicPathIndex (Utils/path_index) from here.
+    path_index_plugin_dir = "SKSE/Plugins"
 
     _archive_list_needs_mod_bsas = False
     plugins_use_star_prefix = True

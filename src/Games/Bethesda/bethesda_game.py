@@ -72,6 +72,8 @@ class BethesdaGame(BaseGame):
     # Data/-relative folder the script extender loads plugins from, for
     # MosaicPathIndex (Utils/path_index). None: the game can't load it.
     path_index_plugin_dir: str | None = None
+    # The game's bitness, which picks the DLL build.
+    path_index_bits: int = 64
 
     def __init__(self):
         self._script_extender_swap: bool = True
@@ -445,7 +447,8 @@ class BethesdaGame(BaseGame):
         if not self.path_index or self._game_path is None:
             return
         from Utils import path_index
-        path_index.install(self._game_path, self.path_index_plugin_dir, log_fn)
+        path_index.install(self._game_path, self.path_index_plugin_dir, log_fn,
+                           bits=self.path_index_bits)
 
     def _remove_path_index(self, log_fn) -> None:
         if self.path_index_plugin_dir is None or self._game_path is None:

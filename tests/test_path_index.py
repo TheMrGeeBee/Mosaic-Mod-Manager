@@ -85,7 +85,7 @@ def _dll(tmp_path, monkeypatch) -> bytes:
     dll = tmp_path / "built" / pi.DLL_NAME
     dll.parent.mkdir()
     dll.write_bytes(b"MZ fake plugin")
-    monkeypatch.setattr(pi, "bundled_dll", lambda: dll)
+    monkeypatch.setattr(pi, "bundled_dll", lambda bits=64: dll)
     return dll.read_bytes()
 
 
@@ -103,7 +103,7 @@ def test_install_puts_the_dll_and_a_list_into_the_plugin_folder(tmp_path, monkey
 
 def test_install_without_a_built_dll_does_nothing(tmp_path, monkeypatch):
     g = _game(tmp_path)
-    monkeypatch.setattr(pi, "bundled_dll", lambda: None)
+    monkeypatch.setattr(pi, "bundled_dll", lambda bits=64: None)
     logs = []
     assert not pi.install(g, "SKSE/Plugins", logs.append)
     assert not (g / "Data" / "SKSE" / "Plugins" / pi.DLL_NAME).exists()
@@ -119,6 +119,62 @@ def test_remove_takes_the_dll_list_and_log_away(tmp_path, monkeypatch):
     (plugins / "SomeoneElses.dll").write_bytes(b"x")
     assert pi.remove(g, "SKSE/Plugins", lambda _m: None) == 3
     assert sorted(p.name for p in plugins.iterdir()) == ["SomeoneElses.dll"]
+
+
+def test_a_32_bit_game_gets_the_32_bit_build_under_the_same_name(tmp_path, monkeypatch):
+    monkeypatch.setattr(pi, "__file__", str(tmp_path / "built" / "__init__.py"))
+    (tmp_path / "built").mkdir()
+    (tmp_path / "built" / pi.DLL_NAME).write_bytes(b"MZ 64")
+    (tmp_path / "built" / pi.DLL32_NAME).write_bytes(b"MZ 32")
+    g = _game(tmp_path)
+    assert pi.install(g, "NVSE/Plugins", lambda _m: None, bits=32)
+    plugins = g / "Data" / "NVSE" / "Plugins"
+    assert (plugins / pi.DLL_NAME).read_bytes() == b"MZ 32"
+    assert not (plugins / pi.DLL32_NAME).exists()
+    assert pi.install(g, "F4SE/Plugins", lambda _m: None)
+    assert (g / "Data" / "F4SE" / "Plugins" / pi.DLL_NAME).read_bytes() == b"MZ 64"
+
+
+def test_a_missing_32_bit_build_is_named_in_the_log(tmp_path, monkeypatch):
+    monkeypatch.setattr(pi, "__file__", str(tmp_path / "nothing" / "__init__.py"))
+    logs = []
+    assert not pi.install(_game(tmp_path), "OBSE/Plugins", logs.append, bits=32)
+    assert any(pi.DLL32_NAME in m for m in logs)
+
+
+@pytest.mark.parametrize("module, cls, folder, bits", [
+    ("skyrim_se", "SkyrimSE", "SKSE/Plugins", 64),
+    ("enderal_se", "EnderalSE", "SKSE/Plugins", 64),
+    ("skyrim_vr", "SkyrimVR", "SKSE/Plugins", 64),
+    ("fallout_4", "Fallout_4", "F4SE/Plugins", 64),
+    ("fallout_4vr", "Fallout_4VR", "F4SE/Plugins", 64),
+    ("starfield", "Starfield", "SFSE/Plugins", 64),
+    ("skyrim", "Skyrim", "SKSE/Plugins", 32),
+    ("enderal", "Enderal", "SKSE/Plugins", 32),
+    ("fallout_3", "Fallout_3", "FOSE/Plugins", 32),
+    ("fallout_3_goty", "Fallout3_GOTY", "FOSE/Plugins", 32),
+    ("fallout_nv", "Fallout_NV", "NVSE/Plugins", 32),
+    ("oblivion", "Oblivion", "OBSE/Plugins", 32),
+])
+def test_every_script_extender_game_gets_its_folder_and_build(module, cls, folder, bits):
+    import importlib
+    game = getattr(importlib.import_module(f"Games.Bethesda.{module}"), cls)
+    assert game.path_index_plugin_dir == folder
+    assert game.path_index_bits == bits
+
+
+def test_fallout_76_has_no_script_extender_so_no_index():
+    from Games.Bethesda.fallout_76 import Fallout_76
+    assert Fallout_76.path_index_plugin_dir is None
+
+
+def test_the_dll_exports_every_extenders_entry_points():
+    src = (Path(__file__).resolve().parents[1] / "native" / "path_index"
+           / "path_index.c").read_text()
+    for x in ("SKSE", "F4SE", "SFSE", "NVSE", "FOSE", "OBSE"):
+        assert f"XSE_PLUGIN({x})" in src
+    for block in ("SKSEPlugin_Version", "F4SEPlugin_Version", "SFSEPlugin_Version"):
+        assert f"{block} = {{" in src
 
 
 @pytest.fixture

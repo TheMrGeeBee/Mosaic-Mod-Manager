@@ -12,6 +12,9 @@ from Games.Bethesda.bethesda_ini import _set_ini_key
 
 
 class Fallout_NV(BethesdaGame):
+    # NVSE (32-bit) loads MosaicPathIndex (Utils/path_index) from here.
+    path_index_plugin_dir = "NVSE/Plugins"
+    path_index_bits = 32
 
     synthesis_registry_name = "FalloutNV"
 
