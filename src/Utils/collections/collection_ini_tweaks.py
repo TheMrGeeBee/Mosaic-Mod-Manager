@@ -44,7 +44,10 @@ GAME_INI_TARGETS: dict[str, list[str]] = {
     "Fallout 3 GOTY": ["Fallout.ini", "FalloutPrefs.ini", "FalloutCustom.ini"],
     "Enderal SE": ["Enderal.ini", "EnderalPrefs.ini"],
     "Fallout 76": ["Fallout76.ini", "Fallout76Prefs.ini", "Fallout76Custom.ini"],
-    "Fallout New Vegas": ["Fallout.ini", "FalloutPrefs.ini"],
+    # Vortex leaves FalloutCustom.ini out for New Vegas, but the game reads it
+    # like Fallout 3 does, and TTW checks it: Nuclear Sunset's copy was left
+    # aside and TTW warned "misconfigured INI settings" (2026-11-26).
+    "Fallout New Vegas": ["Fallout.ini", "FalloutPrefs.ini", "FalloutCustom.ini"],
     "Fallout 4": ["Fallout4.ini", "Fallout4Prefs.ini", "Fallout4Custom.ini"],
     "Fallout 4 VR": ["Fallout4Custom.ini", "Fallout4Prefs.ini"],
     "Starfield": ["StarfieldCustom.ini", "StarfieldPrefs.ini"],

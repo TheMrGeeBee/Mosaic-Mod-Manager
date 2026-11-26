@@ -140,3 +140,18 @@ def test_without_the_marker_the_live_ini_still_wins(tmp_path):
     g._symlink_profile_ini_files("Mine", lambda m: None)
 
     assert (ini_dir / "Skyrim.ini").read_text() == "changed in game\n"
+
+
+def test_new_vegas_takes_the_lists_falloutcustom_ini():
+    """Real case (2026-11-26): Nuclear Sunset's falloutcustom.ini (TTW's
+    SCharGenQuest and the rest) was kept aside, so TTW warned of misconfigured
+    INI settings at the main menu."""
+    class NewVegas:
+        name = "Fallout New Vegas"
+        _PROFILE_INI_SUBDIR = "ini files"
+
+        def set_profile_ini_files(self, _on): ...
+
+    targets, subdir = wi._profile_ini_targets(NewVegas())
+    assert subdir == "ini files"
+    assert "FalloutCustom.ini" in targets
