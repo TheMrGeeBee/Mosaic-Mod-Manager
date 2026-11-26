@@ -5,6 +5,9 @@ A Repair only rebuilds missing or wrong-size files, so a right-size file with
 the wrong contents needs this check to find it and remove it first."""
 from __future__ import annotations
 
+import os
+import time
+
 from test_wabbajack_install_pipeline import FakeGame, _build, _fake_http, _run
 
 from Utils.wabbajack import wabbajack_install as wi
@@ -17,6 +20,14 @@ def _installed(tmp_path, monkeypatch):
                                        downloader=_fake_http(src))
     assert report.ok
     return wj, modlist, src, staging, profile
+
+
+def _damage(path, data: bytes) -> None:
+    """Write ``data`` as the install would have: an hour back, before the
+    install finished. A file written later is the game's (see below)."""
+    path.write_bytes(data)
+    old = time.time() - 3600
+    os.utime(path, (old, old))
 
 
 def _check(wj, modlist, staging, profile, **kw):
@@ -34,9 +45,9 @@ def test_a_clean_install_passes(tmp_path, monkeypatch):
 
 def test_missing_wrong_size_and_changed_files_are_reported_per_mod(tmp_path, monkeypatch):
     wj, modlist, _, staging, profile = _installed(tmp_path, monkeypatch)
-    (staging / "ModA" / "ModA.esp").write_bytes(b"ESP BYTEZ")          # same size
+    _damage(staging / "ModA" / "ModA.esp", b"ESP BYTEZ")              # same size
     (staging / "ModA" / "textures" / "a.dds").unlink()
-    (staging / "ModB" / "config.json").write_bytes(b"{}")
+    _damage(staging / "ModB" / "config.json", b"{}")
 
     r = _check(wj, modlist, staging, profile)
     got = {p.path: p.reason for p in r.problems}
@@ -90,7 +101,7 @@ def test_profiles_sharing_a_mods_folder_check_each_file_once(tmp_path, monkeypat
 
 def test_removing_bad_files_lets_a_repair_rebuild_them(tmp_path, monkeypatch):
     wj, modlist, src, staging, profile = _installed(tmp_path, monkeypatch)
-    (staging / "ModA" / "ModA.esp").write_bytes(b"ESP BYTEZ")   # Repair alone keeps this
+    _damage(staging / "ModA" / "ModA.esp", b"ESP BYTEZ")        # Repair alone keeps this
     r = _check(wj, modlist, staging, profile)
     assert wv.remove_bad_files(r, staging) == 1
     assert not (staging / "ModA" / "ModA.esp").exists()
@@ -131,3 +142,55 @@ def test_cancel_stops_the_check(tmp_path, monkeypatch):
 
 def test_layout_is_shared_with_the_installer():
     assert wi.layout_root_builder_mods is wv.layout_root_builder_mods
+
+
+def test_files_the_game_rewrote_after_the_install_are_not_damage(tmp_path, monkeypatch):
+    """Real case (2026-11-26): Nuclear Sunset's first launch rewrote New Vegas
+    Reloaded's shader cache and Cell Offset Generator's .fco files through the
+    deploy links; the check called 449 of them damaged."""
+    wj, modlist, _, staging, profile = _installed(tmp_path, monkeypatch)
+    assert wv._installed_at([profile]) > 0            # the install recorded it
+    tex = staging / "ModA" / "textures" / "a.dds"
+    tex.write_bytes(b"\0" * tex.stat().st_size)                       # written now
+    r = _check(wj, modlist, staging, profile)
+    (p,) = r.problems
+    assert p.reason == wv.WRITTEN_LATER
+    assert r.ok and r.repairable == []
+    assert "rebuilt caches" in wv.verify_summary(r)
+    assert wv.remove_bad_files(r, staging) == 0
+
+
+def test_without_a_recorded_install_time_the_meta_ini_dates_decide(tmp_path, monkeypatch):
+    """A profile installed before installed_at was recorded. Real data: the
+    game also re-saved a settings file with the same contents after its
+    cache writes, so "the newest matching file" can't be the reference."""
+    from Utils.profile.profile_state import (
+        read_wabbajack_modlist_info,
+        write_wabbajack_modlist_info,
+    )
+    wj, modlist, _, staging, profile = _installed(tmp_path, monkeypatch)
+    info = read_wabbajack_modlist_info(profile)
+    info.pop("installed_at")
+    write_wabbajack_modlist_info(profile, info)
+    # the install's files and meta.ini stamps are an hour old; the game
+    # rewrites one file five minutes later; one is damaged at install time
+    old = time.time() - 3600
+    for f in staging.rglob("*"):
+        if f.is_file():
+            os.utime(f, (old, old))
+    tex = staging / "ModA" / "textures" / "a.dds"
+    tex.write_bytes(b"\0" * tex.stat().st_size)
+    os.utime(tex, (old + 300, old + 300))
+    _damage(staging / "ModA" / "ModA.esp", b"ESP BYTEZ")
+    got = {p.path: p.reason for p in _check(wj, modlist, staging, profile).problems}
+    assert got == {"ModA/textures/a.dds": wv.WRITTEN_LATER,
+                   "ModA/ModA.esp": wv.CHANGED}
+
+
+def test_a_damaged_plugin_is_damage_whatever_its_date(tmp_path, monkeypatch):
+    """Deploying sets plugin dates to fix the load order, so a plugin the
+    install got wrong can carry a date after the install."""
+    wj, modlist, _, staging, profile = _installed(tmp_path, monkeypatch)
+    (staging / "ModA" / "ModA.esp").write_bytes(b"ESP BYTEZ")          # dated now
+    (p,) = _check(wj, modlist, staging, profile).problems
+    assert p.reason == wv.CHANGED and p.repairable

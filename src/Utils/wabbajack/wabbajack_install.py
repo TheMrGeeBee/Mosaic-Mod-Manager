@@ -44,6 +44,7 @@ import re
 import shutil
 import tempfile
 import threading
+import time
 from collections import Counter
 from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
@@ -1413,6 +1414,9 @@ def run_wabbajack_install(*, wabbajack_path: "str | Path", modlist: ModList, gam
             "name": modlist.name, "author": modlist.author, "version": modlist.version,
             "game_type": modlist.game_type, "source_file": str(wabbajack_path),
             "mo2_profile": mo2_profile,
+            # When the files were built: the file check calls a later change
+            # the game's doing, not damage (see wabbajack_verify).
+            "installed_at": time.time(),
         })
     _rebuild_index(game, list(targets.values()), log)
     cb.on_status("Done")

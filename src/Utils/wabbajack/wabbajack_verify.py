@@ -33,7 +33,17 @@ an install error):
 * a file whose contents are another file of the same modlist was swapped in
   by the modlist itself (a main-menu randomizer copies a random theme over
   the menu files at each launch) -- reported as :data:`SWAPPED`, with the
-  file it matches.
+  file it matches;
+* any other file written after the install finished was rebuilt by the game
+  or a plugin -- reported as :data:`WRITTEN_LATER`. Real case (2026-11-26,
+  Nuclear Sunset): the first launch rewrote New Vegas Reloaded's shader cache
+  and Cell Offset Generator's ``.fco`` files, 449 files the check called
+  damaged. The install records when it finished (``installed_at``); a profile
+  installed before that was recorded goes by the mods' ``meta.ini`` files,
+  which the install stamps as its last step (the median, so the few Mosaic
+  rewrites later don't count). Plugins are never taken for the game's: the
+  game doesn't write them, and deploying sets their dates to fix the load
+  order.
 """
 from __future__ import annotations
 
@@ -44,6 +54,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from Utils.mods.modlist import read_modlist
+from Utils.profile.profile_state import read_wabbajack_modlist_info
 
 from .wabbajack_hash import hash_file, hashes_match
 from .wabbajack_install import (
@@ -69,6 +80,12 @@ CHANGED = "contents differ"
 NOT_ARCHIVE = "not a BSA/BA2 archive"
 SETTINGS = "settings file changed"
 SWAPPED = "replaced by another file of the modlist"
+WRITTEN_LATER = "rewritten after the install (by the game or a plugin)"
+
+# A file this much newer than the install's end counts as written later.
+# Only matters for the meta.ini fallback, stamped a moment before the end.
+_LATER_MARGIN = 60.0
+_PLUGIN_SUFFIXES = {".esp", ".esm", ".esl"}
 
 _SETTINGS_SUFFIXES = {".ini", ".json", ".toml", ".yaml", ".yml", ".cfg", ".txt", ".xml"}
 
@@ -83,7 +100,7 @@ class VerifyProblem:
 
     @property
     def repairable(self) -> bool:
-        return self.reason not in (SETTINGS, SWAPPED)
+        return self.reason not in (SETTINGS, SWAPPED, WRITTEN_LATER)
 
     @property
     def mod(self) -> str:
@@ -237,12 +254,53 @@ def verify_install(modlist: ModList, wabbajack_path, game,
     with ThreadPoolExecutor(max_workers=max(1, workers)) as pool:
         list(pool.map(one, todo))
     report.cancelled = bool(cancel is not None and cancel.is_set())
-    _explain(report, modlist, finder)
+    finished = _installed_at([p for p, _ in profiles]) or _meta_stamped_at(staging)
+    _explain(report, modlist, finder, finished or None)
     return report
 
 
-def _explain(report: VerifyReport, modlist: ModList, finder: _Finder) -> None:
-    """Tell changed files apart from damaged ones (see the module doc)."""
+def _installed_at(profile_dirs) -> float:
+    """When the newest install or Repair of these profiles finished, or 0
+    when none of them recorded it (installed before it was recorded). The
+    newest, so a file a later Repair rebuilt is never taken for the game's."""
+    times = []
+    for profile_dir in profile_dirs:
+        info = read_wabbajack_modlist_info(Path(profile_dir)) or {}
+        try:
+            times.append(float(info.get("installed_at") or 0))
+        except (TypeError, ValueError):
+            pass
+    return max(times, default=0.0)
+
+
+def _meta_stamped_at(staging: Path) -> float:
+    """For a profile installed before ``installed_at`` was recorded: the
+    median date of the mods' ``meta.ini`` files plus a margin, or 0 when
+    there are none."""
+    times = []
+    for meta in Path(staging).glob("*/meta.ini"):
+        try:
+            times.append(meta.stat().st_mtime)
+        except OSError:
+            pass
+    if not times:
+        return 0.0
+    times.sort()
+    return times[len(times) // 2] + _LATER_MARGIN
+
+
+def _mtime(finder: "_Finder", rel: str) -> float:
+    path = finder.find(rel)
+    try:
+        return path.stat().st_mtime if path is not None else 0.0
+    except OSError:
+        return 0.0
+
+
+def _explain(report: VerifyReport, modlist: ModList, finder: _Finder,
+             finished: "float | None" = None) -> None:
+    """Tell changed files apart from damaged ones (see the module doc).
+    ``finished`` is when the install finished; None when unknown."""
     wrong = [p for p in report.problems if p.reason in (WRONG_SIZE, CHANGED)]
     if not wrong:
         return
@@ -264,6 +322,9 @@ def _explain(report: VerifyReport, modlist: ModList, finder: _Finder) -> None:
             continue
         if source:
             p.reason, p.note = SWAPPED, source
+        elif (finished is not None and path.suffix.lower() not in _PLUGIN_SUFFIXES
+              and _mtime(finder, p.path) > finished):
+            p.reason = WRITTEN_LATER
 
 
 def remove_bad_files(report: VerifyReport, staging: Path, log=lambda _m: None) -> int:
@@ -301,8 +362,12 @@ def verify_summary(report: VerifyReport) -> str:
     later = ""
     if changed:
         later = (f" {changed} other file(s) were changed since the install, by the game, "
-                 "a plugin or the modlist itself (settings files, swapped menu files); "
+                 "a plugin or the modlist itself (settings files, swapped menu files, "
+                 "rebuilt caches); "
                  "Repair leaves those alone.")
+    if not bad and changed:
+        return (f"None of the {report.checked} mod files are missing or damaged{how}."
+                f"{later}")
     if not bad:
         return f"All {report.checked} mod files match the modlist{how}.{later}"
     mods: "dict[str, int]" = {}
